@@ -448,59 +448,81 @@ async def handle_list_tools() -> list[Tool]:
 
 
 _lens_kicks_fired = False
+_recurring_kicks_last = 0.0
 _lens_kicks_lock = threading.Lock()
+# Re-check the refresh + stale-ingest gates this often on a LONG-LIVED server.
+# The kicks themselves are internally gated (REFRESH_MIN_AGE_H / the 24h stale-pass
+# marker / the cross-process lock / the _recently_kicked cooldown), so re-firing is
+# a cheap no-op when nothing is due. This fixes the once-per-process freeze
+# (confirmed 2026-06-29): a days-long MCP server fired the refresh ONCE at its first
+# tool call and never again, so the lens/ingest silently froze until a manual
+# `lens --force`. The chairman was never the problem — the trigger was.
+_RECURRING_KICK_INTERVAL_S = 1800.0  # 30 min
 
 
 def _maybe_fire_lens_kicks() -> None:
-    """Fire the first-lens-build + activity-refresh kicks once per process, on
-    the first tool call (where an MCP session is registered so the build can
-    sample). Best-effort: never let an auto-kick failure break a tool call."""
-    global _lens_kicks_fired
+    """On a tool call: fire the keep-current kicks (lens refresh + stale ingest)
+    the first time AND every _RECURRING_KICK_INTERVAL_S after, so a long-lived
+    server stays current without a restart; fire the genuinely-once kicks (embedder
+    offer, roots discovery) only on the first call. Best-effort: never let an
+    auto-kick failure break a tool call."""
+    global _lens_kicks_fired, _recurring_kicks_last
+    import time as _time
+
+    now = _time.monotonic()
     with _lens_kicks_lock:
-        if _lens_kicks_fired:
-            return
+        first_time = not _lens_kicks_fired
         _lens_kicks_fired = True
-    try:
-        from .cold_start import maybe_kick_first_lens_build, maybe_kick_lens_refresh
+        # Recurring = first call OR the interval has elapsed since the last one.
+        due_recurring = first_time or (now - _recurring_kicks_last) >= _RECURRING_KICK_INTERVAL_S
+        if due_recurring:
+            _recurring_kicks_last = now
 
-        # First build owns the cold-start case; refresh owns keep-current. Each
-        # internally gates (should_build/should_refresh + the shared lock), so
-        # calling both is a cheap no-op once a current lens exists.
-        maybe_kick_first_lens_build()
-        maybe_kick_lens_refresh()
-    except Exception:
-        pass
-    try:
-        # #251: MCP usage (not just councils) also counts as the Auto-Dream
-        # "usage" trigger for the stale ingest+embed pass — a user who works
-        # through ask/get_picks for days without a council still heals.
-        # Internally gated (24h marker + lock + TRINITY_AUTOSCAN_DISABLED).
-        from .stale_pass import maybe_kick_stale_pass
+    if due_recurring:
+        try:
+            from .cold_start import maybe_kick_first_lens_build, maybe_kick_lens_refresh
 
-        maybe_kick_stale_pass(trigger="mcp_first_tool_call")
-    except Exception:
-        pass
-    try:
-        # Plugin-only installs run on the lexical fallback (the bootstrap venv
-        # ships only numpy/mcp/Pillow). Offer the one-time embedding-engine
-        # download via MCP elicitation — gated, background, opt-out-able; no-op
-        # when the embedder is already live or the client lacks elicitation.
-        from .embedder_wizard import maybe_offer_embedder_download
+            # First build owns the cold-start case; refresh owns keep-current. Each
+            # internally gates (should_build/should_refresh + the shared lock), so
+            # calling both is a cheap no-op once a current lens exists.
+            maybe_kick_first_lens_build()
+            maybe_kick_lens_refresh()
+        except Exception:
+            pass
+        try:
+            # #251: MCP usage (not just councils) is the Auto-Dream "usage" trigger
+            # for the stale ingest+embed pass — a user who works through ask/get_picks
+            # for days without a council still heals. Internally gated (24h marker +
+            # lock + TRINITY_AUTOSCAN_DISABLED).
+            from .stale_pass import maybe_kick_stale_pass
 
-        maybe_offer_embedder_download()
-    except Exception:
-        pass
-    # Roots: ask the client what filesystem roots it exposes (e.g. the open
-    # project), and log them. Best-effort — surfaces what transcript dirs a
-    # future ingest could auto-discover; no-op when the client lacks roots.
-    try:
-        from .mcp_features import discover_roots, mcp_log
+            maybe_kick_stale_pass(trigger="mcp_tool_call")
+        except Exception:
+            pass
 
-        roots = discover_roots()
-        if roots:
-            mcp_log("info", f"Client exposed {len(roots)} root(s): {', '.join(roots[:5])}")
-    except Exception:
-        pass
+    if first_time:
+        try:
+            # Plugin-only installs run on the lexical fallback (the bootstrap venv
+            # ships only numpy/mcp/Pillow). Offer the one-time embedding-engine
+            # download via MCP elicitation — gated, background, opt-out-able; no-op
+            # when the embedder is already live or the client lacks elicitation.
+            # ONCE per process — re-offering every interval would re-nag the wizard.
+            from .embedder_wizard import maybe_offer_embedder_download
+
+            maybe_offer_embedder_download()
+        except Exception:
+            pass
+        # Roots: ask the client what filesystem roots it exposes (e.g. the open
+        # project), and log them. Best-effort — surfaces what transcript dirs a
+        # future ingest could auto-discover; no-op when the client lacks roots.
+        try:
+            from .mcp_features import discover_roots, mcp_log
+
+            roots = discover_roots()
+            if roots:
+                mcp_log("info", f"Client exposed {len(roots)} root(s): {', '.join(roots[:5])}")
+        except Exception:
+            pass
 
 
 @server.call_tool()

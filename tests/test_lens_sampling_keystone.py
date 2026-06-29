@@ -40,8 +40,8 @@ class TestKicksFireOnFirstToolCall:
         assert "maybe_kick_lens_refresh" not in src
 
     def test_fire_lens_kicks_is_idempotent(self, monkeypatch):
-        """_maybe_fire_lens_kicks calls each kick exactly once per process,
-        even across many tool calls."""
+        """Rapid tool calls within the recurring-interval window coalesce: each
+        keep-current kick fires once, not once-per-call."""
         from trinity_local import mcp_server
 
         first = []
@@ -54,14 +54,47 @@ class TestKicksFireOnFirstToolCall:
             "trinity_local.cold_start.maybe_kick_lens_refresh",
             lambda: refresh.append(1),
         )
-        # Reset the fire-once latch for a clean assertion.
+        # Reset both latches for a clean assertion.
         monkeypatch.setattr(mcp_server, "_lens_kicks_fired", False)
+        monkeypatch.setattr(mcp_server, "_recurring_kicks_last", 0.0)
 
         for _ in range(5):
             mcp_server._maybe_fire_lens_kicks()
 
         assert first == [1]
         assert refresh == [1]
+
+    def test_recurring_kicks_refire_after_interval(self, monkeypatch):
+        """The keep-current kicks (lens refresh + stale ingest) MUST re-fire after
+        _RECURRING_KICK_INTERVAL_S on a long-lived server — this is the 2026-06-29
+        freeze fix (a days-long MCP server fired the refresh once at startup and
+        never again, so the lens/ingest silently froze). The genuinely-once kicks
+        (embedder offer) must NOT re-nag."""
+        import time
+
+        from trinity_local import mcp_server
+
+        refresh, stale, embedder = [], [], []
+        monkeypatch.setattr("trinity_local.cold_start.maybe_kick_first_lens_build", lambda: None)
+        monkeypatch.setattr("trinity_local.cold_start.maybe_kick_lens_refresh", lambda: refresh.append(1))
+        monkeypatch.setattr("trinity_local.stale_pass.maybe_kick_stale_pass", lambda **k: stale.append(1))
+        monkeypatch.setattr("trinity_local.embedder_wizard.maybe_offer_embedder_download", lambda: embedder.append(1))
+        monkeypatch.setattr("trinity_local.mcp_features.discover_roots", lambda: [])
+
+        monkeypatch.setattr(mcp_server, "_lens_kicks_fired", False)
+        monkeypatch.setattr(mcp_server, "_recurring_kicks_last", 0.0)
+        clock = {"t": 1000.0}
+        monkeypatch.setattr(time, "monotonic", lambda: clock["t"])
+
+        mcp_server._maybe_fire_lens_kicks()  # first call @ t=1000
+        mcp_server._maybe_fire_lens_kicks()  # within interval — must NOT re-fire
+        assert refresh == [1] and stale == [1], "rapid calls within interval coalesce"
+        assert embedder == [1], "embedder offered once"
+
+        clock["t"] = 1000.0 + mcp_server._RECURRING_KICK_INTERVAL_S + 1.0  # past the interval
+        mcp_server._maybe_fire_lens_kicks()
+        assert refresh == [1, 1] and stale == [1, 1], "recurring kicks re-fire after the interval"
+        assert embedder == [1], "once-per-process kicks do NOT re-nag after the interval"
 
     def test_fire_lens_kicks_never_raises(self, monkeypatch):
         """A kick failure must not break the tool call that triggered it."""
