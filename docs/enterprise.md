@@ -136,5 +136,4 @@ first. If you're evaluating Trinity for an org, the technical claims above are l
 and verifiable in the repo; the support contract is a conversation, not a checkout.
 
 **Talk to us:** open an issue on
-[github.com/keepwhatworks/trinity](https://github.com/keepwhatworks/trinity)
-or reach the maintainer at [@vishigondi](https://x.com/vishigondi).
+[github.com/keepwhatworks/trinity](https://github.com/keepwhatworks/trinity).
