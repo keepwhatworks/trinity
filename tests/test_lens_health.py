@@ -409,3 +409,48 @@ def test_handler_caution_exits_zero(monkeypatch):
         trustworthy=True, verdict="caution")
     monkeypatch.setattr(cmd, "run_lens_health", lambda: caution)
     assert cmd.handle_lens_health(SimpleNamespace(as_json=False)) == 0  # caution doesn't block
+
+
+# ── Lens freshness (2026-06-29): a structurally-sound lens can still be STALE ──
+# (auto-refresh stopped landing — chairman timeout/quota). lens-health is the
+# "can you trust the answer" verb; it greened an 18-day-frozen lens because it had
+# no freshness dimension. Same gap class as the status surfacing, in the trust verb.
+
+def test_freshness_stale_is_weak_caution(monkeypatch):
+    monkeypatch.setattr("trinity_local.cold_start.lens_freshness_status",
+                        lambda: ("stale", "677 new prompts, 425h since last build"))
+    c = lh._freshness()
+    assert c.key == "freshness"
+    assert c.status == lh.WEAK, c.status
+    assert "677 new prompts" in c.summary
+    assert "lens --force" in c.fix  # the escape hatch must be offered
+
+
+def test_freshness_current_is_ok(monkeypatch):
+    monkeypatch.setattr("trinity_local.cold_start.lens_freshness_status",
+                        lambda: ("current", "corpus unchanged since last build"))
+    assert lh._freshness().status == lh.OK
+
+
+def test_freshness_absent_abstains(monkeypatch):
+    monkeypatch.setattr("trinity_local.cold_start.lens_freshness_status",
+                        lambda: ("absent", "no lens built yet"))
+    assert lh._freshness().status == lh.ABSTAIN
+
+
+def test_stale_lens_is_a_caution_not_a_block(monkeypatch, tmp_path):
+    """A sound-but-stale lens surfaces as a WEAK caution in the full report — it
+    does NOT flip trust to False (the lens is valid, just behind). Mutation-proof
+    of the wiring: drop _freshness() from the checks list → no 'freshness' key →
+    this reds."""
+    _topics(tmp_path, [100] * 10)
+    _lens(tmp_path)
+    _env(monkeypatch, tmp_path, coverage=_HEALTHY_COV, backend=True, noise=_CLEAN_NOISE, findings=[])
+    monkeypatch.setattr("trinity_local.cold_start.lens_freshness_status",
+                        lambda: ("stale", "677 new prompts, 425h since last build"))
+    r = lh.run_lens_health()
+    by = _by_key(r)
+    assert "freshness" in by, list(by)
+    assert by["freshness"].status == lh.WEAK
+    assert r.trustworthy is True and r.weak  # trustworthy, but the staleness caution surfaced
+    assert "with cautions" in lh.format_human(r)

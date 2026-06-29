@@ -393,6 +393,36 @@ def _partition_sweep(findings: list[str]) -> tuple[list[str], list[str], list[st
 # ── orchestration ────────────────────────────────────────────────────────────
 
 
+def _freshness() -> LensCheck:
+    """Is the lens CURRENT, or standing in for an out-of-date you? A structurally
+    sound lens can still be stale: the activity-gated auto-refresh stopped LANDING
+    (e.g. chairman timeout/quota — the 2026-06-29 freeze: 677 new prompts, 18 days
+    behind) while the lens content stayed valid. The chairman then picks the answer
+    your taste-as-of-the-last-build would pick, not your recent taste. WEAK — a
+    caution that does NOT flip the verdict (the lens is sound, just behind), with
+    the cause + escape hatch."""
+    try:
+        from .cold_start import lens_freshness_status
+
+        state, reason = lens_freshness_status()
+    except Exception:  # noqa: BLE001 - a freshness read must never break the self-test
+        return LensCheck("freshness", "Lens freshness", ABSTAIN, "freshness not measurable.")
+    if state == "stale":
+        return LensCheck(
+            "freshness", "Lens freshness", WEAK,
+            f"the lens isn't current — {reason}; the chairman is picking for an "
+            "out-of-date you.",
+            fix="run `trinity-local lens --force` to rebuild from your latest "
+                "transcripts (it also surfaces the chairman error if the "
+                "auto-refresh is silently failing).",
+        )
+    if state == "absent":
+        # No lens to age — corpus/lens ABSENT checks already own the cold-start case.
+        return LensCheck("freshness", "Lens freshness", ABSTAIN, "no lens built yet.")
+    return LensCheck("freshness", "Lens freshness", OK,
+                     "the lens reflects your latest transcripts.")
+
+
 def run_lens_health() -> LensHealthReport:
     """Run every dimension against the live ~/.trinity and return an honest verdict.
     Read-only; never raises."""
@@ -418,6 +448,7 @@ def run_lens_health() -> LensHealthReport:
         _semantic_noise(backend.status == OK),
         _preference_collapse(backend.status == OK),
         _lens_structure(lens_f),
+        _freshness(),
         _known_issues(other_f),
     ]
 
