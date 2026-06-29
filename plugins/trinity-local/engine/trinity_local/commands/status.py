@@ -406,6 +406,19 @@ def handle_status(args):
             print(f"    ✅ lens current   ({why})")
     except Exception:
         pass
+    # Corpus-ingest freshness — DISTINCT from lens freshness above: if the
+    # background ingest pass stops firing, even search/ask/k-NN read a stale
+    # corpus (missing the latest transcripts), not just the lens (the 2026-06-29
+    # 13-day stall: councils chairman-failing + the once-per-process MCP kick).
+    try:
+        from ..stale_pass import ingest_freshness
+        ifresh, iwhy = ingest_freshness()
+        if ifresh == "stale":
+            print(f"    ⚠️ corpus stale   ingest not landing — {iwhy}; run `trinity-local ingest-recent`")
+        elif ifresh == "current":
+            print(f"    ✅ corpus fresh   ({iwhy})")
+    except Exception:
+        pass
     # Life chapters (#252) — datable topic episodes across the corpus timeline.
     # Reads the TRUE `timestamp`, so it shows real history span, not ingest day.
     try:

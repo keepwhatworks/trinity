@@ -106,6 +106,49 @@ def stale_pass_is_due() -> tuple[bool, str]:
     return False, f"fresh ({age_h:.1f}h ago)"
 
 
+# >this many windows since the last completed pass = the TRIGGER has stopped, not
+# merely "due". The pass goes "due" every window (24h) and normal activity refires
+# it; only a multi-window gap means ingest isn't landing (the 2026-06-29 stall:
+# councils chairman-failing + the once-per-process MCP kick on a long-lived server).
+INGEST_STALE_MULTIPLE = 3.0
+
+
+def ingest_freshness() -> tuple[str, str]:
+    """Ground-truth corpus-ingest freshness for `status` — ('stale' | 'current' |
+    'absent', reason). Reads the completed-ingest marker (last_stale_pass.json),
+    NOT the cursors. 'stale' = SIGNIFICANTLY overdue (>INGEST_STALE_MULTIPLE × the
+    window): the background ingest trigger has stopped firing, so the corpus is
+    missing recent transcripts and search/ask/k-NN run on stale data — distinct
+    from (and broader than) the lens-build freeze, which only stalls the lens.
+    Pure read; never raises."""
+    from datetime import datetime, timezone
+
+    path = marker_path()
+    if not path.exists():
+        return "absent", "no ingest pass recorded yet"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "absent", "ingest marker unreadable"
+    if not isinstance(raw, dict):  # guard_shape_not_just_parse
+        return "absent", "ingest marker wrong shape"
+    completed = raw.get("completed_at") or raw.get("started_at")
+    if not isinstance(completed, str) or not completed:
+        return "absent", "ingest marker missing timestamp"
+    try:
+        when = datetime.fromisoformat(completed.replace("Z", "+00:00"))
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return "absent", "ingest timestamp unparseable"
+    age_h = (datetime.now(timezone.utc) - when).total_seconds() / 3600.0
+    if age_h >= _stale_hours() * INGEST_STALE_MULTIPLE:
+        return "stale", (f"last ingest {age_h / 24:.0f}d ago "
+                         f"(>{_stale_hours() * INGEST_STALE_MULTIPLE:.0f}h) — "
+                         "the corpus is missing recent transcripts")
+    return "current", f"last ingest {age_h:.0f}h ago"
+
+
 def _try_claim_lock() -> bool:
     """Atomic cross-process claim (O_CREAT|O_EXCL). A lock file older than
     _LOCK_STALE_S belonged to a crashed pass — take it over."""

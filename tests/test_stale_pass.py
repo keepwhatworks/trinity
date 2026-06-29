@@ -283,3 +283,45 @@ class TestConsolidateOnUsage:
         summary = sp.run_stale_pass("test")
         assert summary["consolidate"] == {"routable_basins": 0}
         assert called["saved"] is False, "empty routing must NOT call save (clobber-safe)"
+
+
+class TestIngestFreshness:
+    """ingest_freshness() surfaces a STALLED ingest pass — the trigger stopped
+    firing, not merely 'due' — so `status` warns the corpus is missing recent
+    transcripts (search/ask/k-NN then read stale data), distinct from the lens
+    freeze. Found 2026-06-29: last pass 13d ago, invisible until surfaced."""
+
+    def test_absent_when_no_marker(self, stale_home):
+        from trinity_local.stale_pass import ingest_freshness
+        assert ingest_freshness()[0] == "absent"
+
+    def test_current_when_recent(self, stale_home):
+        import json
+        from trinity_local.stale_pass import ingest_freshness, marker_path
+        from trinity_local.utils import now_iso
+        marker_path().parent.mkdir(parents=True, exist_ok=True)
+        marker_path().write_text(json.dumps({"completed_at": now_iso()}))
+        assert ingest_freshness()[0] == "current"
+
+    def test_stale_when_significantly_overdue(self, stale_home):
+        import json
+        from datetime import datetime, timezone, timedelta
+        from trinity_local.stale_pass import ingest_freshness, marker_path
+        old = (datetime.now(timezone.utc) - timedelta(days=13)).isoformat()
+        marker_path().parent.mkdir(parents=True, exist_ok=True)
+        marker_path().write_text(json.dumps({"completed_at": old}))
+        state, reason = ingest_freshness()
+        assert state == "stale", (state, reason)
+        assert "missing recent transcripts" in reason
+
+    def test_due_but_not_yet_stale_is_current(self, stale_home):
+        """30h ago is DUE (>24h, refires on normal activity) but NOT 'stale'
+        (<3× window) — the discriminator that stops crying wolf on the daily
+        due-window. THE key bite: a stalled trigger (multi-day) vs normal due."""
+        import json
+        from datetime import datetime, timezone, timedelta
+        from trinity_local.stale_pass import ingest_freshness, marker_path
+        d = (datetime.now(timezone.utc) - timedelta(hours=30)).isoformat()
+        marker_path().parent.mkdir(parents=True, exist_ok=True)
+        marker_path().write_text(json.dumps({"completed_at": d}))
+        assert ingest_freshness()[0] == "current"

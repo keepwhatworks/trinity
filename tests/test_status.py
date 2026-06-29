@@ -708,3 +708,39 @@ class TestStatusLensFreshnessRender:
         out = capsys.readouterr().out
         assert "lens stale" in out, out[-1500:]
         assert "lens --force" in out  # the manual escape hatch must be offered
+
+
+class TestStatusCorpusFreshnessRender:
+    """SURFACE-BINDING guard: `status` paints corpus-ingest staleness — distinct
+    from lens freshness. The 2026-06-29 stall (ingest 13d behind) was invisible
+    because no surface read it; status now warns + offers the manual ingest. Reds
+    if the print block is dropped (value-computed-but-not-surfaced shape)."""
+
+    def test_stale_corpus_is_painted_with_ingest_hint(self, tmp_path, monkeypatch, capsys):
+        from contextlib import ExitStack
+        from unittest.mock import patch
+
+        from trinity_local.adapters import AdapterStatus
+        from trinity_local.commands.status import handle_status
+
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        monkeypatch.setattr("trinity_local.stale_pass.ingest_freshness",
+                            lambda: ("stale", "last ingest 13d ago (>72h) — the corpus is missing recent transcripts"))
+        with ExitStack() as st:
+            st.enter_context(patch("trinity_local.commands.status.state_dir")).return_value = tmp_path
+            (tmp_path / "test").mkdir(exist_ok=True)
+            st.enter_context(patch("trinity_local.commands.status.tasks_dir")).return_value = tmp_path / "test"
+            st.enter_context(patch("trinity_local.commands.status.check_all_adapters")).return_value = [
+                AdapterStatus(provider="claude", cli_name="claude", installed=True, version="1.0", transcript_root=None)
+            ]
+            st.enter_context(patch("trinity_local.commands.status.count_actions_by_status")).return_value = {}
+            st.enter_context(patch("trinity_local.commands.status.check_drift")).return_value = []
+
+            class _Args:
+                as_json = False
+
+            handle_status(_Args())
+
+        out = capsys.readouterr().out
+        assert "corpus stale" in out, out[-1500:]
+        assert "ingest-recent" in out  # the manual escape hatch
