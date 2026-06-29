@@ -664,3 +664,47 @@ class TestSoftDegradedSurfacing:
         ])
         health_block = out.split("Health:")[1].split("Schema:")[0]
         assert "⚠" not in health_block, "healthy install should not show degradation warnings"
+
+
+class TestStatusLensFreshnessRender:
+    """SURFACE-BINDING guard: `status` must PAINT lens-build staleness.
+
+    The 2026-06-29 silent-freeze (lens frozen 18 days / 677 prompts behind while
+    the refresh marker false-greened "done") was invisible because NO surface read
+    ground-truth lens freshness. status.py now calls lens_freshness_status() and
+    paints a ⚠️ line when 'stale'. This drives the real text render with a stale
+    verdict and asserts the line + the manual escape hatch are painted — the
+    'value computed but not surfaced' shape (loop_data_correctness_bug_shape)."""
+
+    def test_stale_lens_is_painted_with_force_hint(self, tmp_path, monkeypatch, capsys):
+        from contextlib import ExitStack
+        from unittest.mock import patch
+
+        from trinity_local.adapters import AdapterStatus
+        from trinity_local.commands.status import handle_status
+
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        # Force the ground-truth verdict to 'stale' (the freeze condition).
+        monkeypatch.setattr(
+            "trinity_local.cold_start.lens_freshness_status",
+            lambda: ("stale", "677 new prompts, 424h since last build"),
+        )
+        with ExitStack() as st:
+            mock_state = st.enter_context(patch("trinity_local.commands.status.state_dir"))
+            mock_state.return_value = tmp_path
+            (tmp_path / "test").mkdir(exist_ok=True)
+            st.enter_context(patch("trinity_local.commands.status.tasks_dir")).return_value = tmp_path / "test"
+            st.enter_context(patch("trinity_local.commands.status.check_all_adapters")).return_value = [
+                AdapterStatus(provider="claude", cli_name="claude", installed=True, version="1.0", transcript_root=None)
+            ]
+            st.enter_context(patch("trinity_local.commands.status.count_actions_by_status")).return_value = {}
+            st.enter_context(patch("trinity_local.commands.status.check_drift")).return_value = []
+
+            class _Args:
+                as_json = False
+
+            handle_status(_Args())
+
+        out = capsys.readouterr().out
+        assert "lens stale" in out, out[-1500:]
+        assert "lens --force" in out  # the manual escape hatch must be offered

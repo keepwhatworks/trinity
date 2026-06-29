@@ -408,6 +408,29 @@ def should_refresh_lens() -> tuple[bool, str]:
         return False, f"gate error: {exc}"
 
 
+def lens_freshness_status() -> tuple[str, str]:
+    """Ground-truth lens-build freshness for surfacing on `status` — ('stale' |
+    'current' | 'absent', human_reason).
+
+    Reads `built_at` vs the live corpus fingerprint (via should_refresh_lens),
+    NOT the lens_refresh.json marker. The marker can't be trusted: a degenerate
+    build that preserved the prior lens (clobber-guard) still recorded
+    status="done"/ok:true, which hid an 18-day-stale lens (677 new prompts
+    unincorporated) on a real install 2026-06-29. A persistent 'stale' here means
+    the activity gate is OPEN yet the auto-refresh build isn't LANDING — surface
+    it instead of silently trusting "done".
+    """
+    try:
+        from .me_builder import me_path
+
+        if not me_path().exists():
+            return "absent", "no lens built yet"
+        due, reason = should_refresh_lens()
+        return ("stale" if due else "current"), reason
+    except Exception as exc:  # pragma: no cover - never let a status read raise
+        return "absent", f"freshness check error: {exc}"
+
+
 def _recently_kicked() -> bool:
     """True if a refresh was kicked within the cooldown — damps re-kicks on
     repeated connects while one is still in flight."""

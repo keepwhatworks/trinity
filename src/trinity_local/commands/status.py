@@ -393,6 +393,19 @@ def handle_status(args):
         print(f"    {marker} core.md       {core.stat().st_size:>8,} bytes — chairman reads this first")
     else:
         print("    · core.md       not distilled — run `trinity-local dream` (Phase 5 distills core.md)")
+    # Lens-build freshness (ground truth: built_at vs live corpus fingerprint —
+    # NOT the refresh marker, which false-greened "done" while the lens sat 18
+    # days / 677 prompts stale on a real install). A persistent "stale" means the
+    # background auto-refresh build isn't LANDING — surface it + the manual escape.
+    try:
+        from ..cold_start import lens_freshness_status
+        fresh, why = lens_freshness_status()
+        if fresh == "stale":
+            print(f"    ⚠️ lens stale     refresh overdue but not landing — {why}; run `trinity-local lens --force`")
+        elif fresh == "current":
+            print(f"    ✅ lens current   ({why})")
+    except Exception:
+        pass
     # Life chapters (#252) — datable topic episodes across the corpus timeline.
     # Reads the TRUE `timestamp`, so it shows real history span, not ingest day.
     try:

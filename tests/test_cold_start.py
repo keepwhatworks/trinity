@@ -404,3 +404,44 @@ class TestStateShapeGuard:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text('{"spawned_at": "2026-06-09T00:00:00Z"}', encoding="utf-8")
         assert cs.read_state() == {"spawned_at": "2026-06-09T00:00:00Z"}
+
+
+class TestLensFreshnessStatus:
+    """`lens_freshness_status()` reads ground truth (built_at vs the live corpus
+    fingerprint via should_refresh_lens), NOT the lens_refresh.json marker. The
+    marker false-greened status="done"/ok:true while a degenerate build preserved
+    a stale lens — hiding an 18-day-frozen lens (677 prompts unincorporated) on a
+    real install 2026-06-29. This is what `status` surfaces so the freeze is visible.
+    """
+
+    def test_absent_when_no_lens_built(self, isolated_home):
+        from trinity_local.cold_start import lens_freshness_status
+        state, _ = lens_freshness_status()
+        assert state == "absent"
+
+    def test_stale_when_refresh_gate_open(self, isolated_home, monkeypatch):
+        import trinity_local.cold_start as cs
+        from trinity_local.me_builder import me_path
+        me_path().parent.mkdir(parents=True, exist_ok=True)
+        me_path().write_text("# /me\n\nprimacy vs sacrifice\n", encoding="utf-8")
+        # Gate open (new prompts past the age floor) => the auto-refresh build is
+        # due; a persistent 'stale' means it isn't LANDING.
+        monkeypatch.setattr(
+            cs, "should_refresh_lens",
+            lambda: (True, "677 new prompts, 424h since last build"),
+        )
+        state, reason = cs.lens_freshness_status()
+        assert state == "stale", (state, reason)
+        assert "677 new prompts" in reason
+
+    def test_current_when_gate_closed(self, isolated_home, monkeypatch):
+        import trinity_local.cold_start as cs
+        from trinity_local.me_builder import me_path
+        me_path().parent.mkdir(parents=True, exist_ok=True)
+        me_path().write_text("# /me\n\nprimacy vs sacrifice\n", encoding="utf-8")
+        monkeypatch.setattr(
+            cs, "should_refresh_lens",
+            lambda: (False, "corpus unchanged since last build"),
+        )
+        state, _ = cs.lens_freshness_status()
+        assert state == "current"
