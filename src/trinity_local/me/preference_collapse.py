@@ -106,6 +106,20 @@ def evaluate_split(
     n = concordant + len(false_accepts)
     if n == 0:
         return {"ready": False, "reason": "no held-out acts load on the lens direction"}
+    # Underpowered guard: the loading filter above can shrink the effective sample (n)
+    # far below the raw val split that cleared MIN_VALIDATION. If even a PERFECT split
+    # (all concordant) can't reach COLLAPSE_P — i.e. the minimum achievable p,
+    # one_sided_sign_p(n, n), is already >= COLLAPSE_P — the test CANNOT reject, so a
+    # "collapse" verdict would be a false alarm on thin data (n<5 at p<0.05). Abstain
+    # instead of crying wolf. (2026-06-29: a freshly-rebuilt lens with n=4 and ZERO
+    # false-accepts was mislabeled "collapse" because min p = 0.0625 >= 0.05.) This is
+    # the module's stated contract — "never emits a collapse verdict it can't support."
+    min_p = one_sided_sign_p(n, n)
+    if min_p >= COLLAPSE_P:
+        return {"ready": False, "reason": (
+            f"only {n} held-out act(s) load on the lens direction — underpowered "
+            f"(even a perfect split gives p {min_p:.3f} >= {COLLAPSE_P}); can't test collapse"
+        )}
     p = one_sided_sign_p(concordant, n)      # is the concordant majority significant?
     verdict = "ok" if p < COLLAPSE_P else "collapse"
     return {

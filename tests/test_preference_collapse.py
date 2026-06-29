@@ -88,3 +88,23 @@ def test_public_signal_splits_and_evaluates():
     acts = [_terse_act(i) for i in range(40)]
     r = lens_collapse_signal(acts, embed_fn=_fake_embed)
     assert r["ready"] and r["verdict"] == "ok" and r["train_n"] >= MIN_TRAIN
+
+
+def _neutral_act(i):  # no terse/verbose keywords → embeds to [0,0] → does NOT load on the direction
+    return PreferenceAct(id=f"n{i}", trigger=MODEL_MISS,
+                         privileged="apple banana", sacrificed="cherry date",
+                         kind="REFRAME", why="w")
+
+
+def test_abstains_when_too_few_loaded_underpowered():
+    """len(val) clears MIN_VALIDATION, but only 4 acts LOAD on the direction (the rest
+    score within the axis-noise band) → the sign test is underpowered: even a PERFECT
+    split gives min p = 0.0625 >= 0.05, so it can never reject. Must ABSTAIN, not emit a
+    false 'collapse'. (2026-06-29 fresh-lens false caution: n=4, 0 false-accepts, but
+    mislabeled 'collapse' because min p >= 0.05.)"""
+    train = [_terse_act(i) for i in range(10)]
+    val = [_terse_act(100 + i) for i in range(4)] + [_neutral_act(i) for i in range(4)]
+    r = evaluate_split(train, val, embed_fn=_fake_embed)
+    assert not r["ready"], r                       # abstain, not a verdict
+    assert "underpowered" in r["reason"], r["reason"]
+    assert r.get("verdict") != "collapse"          # the false alarm we're preventing
