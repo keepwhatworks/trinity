@@ -190,12 +190,12 @@
         for cross-provider AI. The moves map one-to-one:
       </p>
       <ul style="margin: 14px 0 14px 22px; font-size: 14px; color: var(--text-secondary); line-height: 1.65;">
-        <li><strong>Name the roles:</strong> chairman, member, conductor, harness, lens — typed slots, not job titles.</li>
-        <li><strong>Enforce the boundaries:</strong> the chairman synthesizes; members don't see each other's reasoning. Boundaries written into the call graph, not the prompt.</li>
+        <li><strong>Name the roles:</strong> chairman, member, harness, lens — typed slots, not job titles.</li>
+        <li><strong>Enforce the boundaries:</strong> the chairman synthesizes; in the default parallel mode, members don't see each other's reasoning. Boundaries written into the call graph, not the prompt.</li>
         <li><strong>Put signal in its channel:</strong> agreed_claims, disagreed_claims with why_matters, provider_scores. Each signal has its own field in the routing JSON, never collapsed into prose.</li>
         <li><strong>Cheap path = right path:</strong> the MCP install brief is one paste. No new app, no API key. The default path is the path.</li>
         <li><strong>Narrow waist between layers:</strong> <code>~/.trinity/</code> is the invariant — same files, same schemas, across MCP, pip, extension. Every backend speaks to that one waist.</li>
-        <li><strong>Self-correction built in:</strong> the chairman's pick is lens-governed — each council's <code>routing_label.winner</code> already reflects your taste, then flows into the personal routing table and shapes the next chairman's pick. Error correction is the primitive, not a feature; the lens decides which pick counts as correct.</li>
+        <li><strong>Self-correction built in:</strong> the chairman's pick is lens-governed — each council's <code>routing_label.winner</code> already reflects your taste, then flows into the personal routing table that shapes the next single-call route (the <code>ask</code> tool's basin lookup). Error correction is the primitive, not a feature — the lens conditions every synthesis, so each pick is already rendered through your taste.</li>
       </ul>
       <p>
         The moat isn't a feature list. It's the substrate. The labs
