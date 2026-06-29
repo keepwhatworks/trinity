@@ -202,6 +202,54 @@ class TestRegistryLookups:
         assert "not a known retired" in msg
 
 
+class TestRetiredCliExitsGracefully:
+    """A retired CLI verb must exit 0 with a migration hint — NOT argparse's
+    `invalid choice` SystemExit(2).
+
+    The bite (found 2026-06-29 auditing a real install): a stale launchd agent
+    `com.trinity.local.watch` was still invoking `trinity-local watch-loop` after
+    the watcher subsystem was retired. argparse exited 2; the agent's
+    `KeepAlive{SuccessfulExit:false}` read that as a crash and relaunched
+    instantly — an infinite spin that grew `~/.trinity/daemon.error.log` past
+    250M. Exit 0 → SuccessfulExit:true → the dead agent finally rests, and the
+    user sees a pointer to the replacement instead of a cryptic argparse error.
+    """
+
+    def test_retired_cli_token_identifies_retired_subcommand(self):
+        from trinity_local.main import _retired_cli_token
+
+        assert _retired_cli_token(["watch-loop", "--notify"]) == "watch-loop"
+        # robust against --config consuming a value before the subcommand token
+        assert _retired_cli_token(["--config", "x.json", "watch-loop"]) == "watch-loop"
+
+    def test_valid_or_absent_subcommand_is_not_intercepted(self):
+        from trinity_local.main import _retired_cli_token
+
+        for argv in (["status"], ["council", "--task", "x"], ["--mcp"], []):
+            assert _retired_cli_token(argv) is None, argv
+
+    def test_main_exits_zero_on_retired_cli(self, monkeypatch, capsys, tmp_path):
+        import sys
+
+        from trinity_local import main as main_mod
+
+        # Hermetic: even if the guard regresses and execution falls through to
+        # schema migrations, they hit a throwaway home, never the real ~/.trinity.
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
+        monkeypatch.setattr(sys, "argv", ["trinity-local", "watch-loop", "--notify"])
+
+        with pytest.raises(SystemExit) as exc:
+            main_mod.main()
+
+        # Exit 0 (not argparse's 2) is the whole fix — KeepAlive stops relaunching.
+        assert exc.value.code == 0, f"retired CLI must exit 0, got {exc.value.code}"
+        err = capsys.readouterr().err
+        assert "watch-loop" in err
+        assert "ingest-recent" in err
+        assert "retired" in err
+
+
 class TestNoPresentTenseInDocs:
     """For each retired CLI, scan launch-credibility docs for
     present-tense references. This is the iter #68/#69 catch shape

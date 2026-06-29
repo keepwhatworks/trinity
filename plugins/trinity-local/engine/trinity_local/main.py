@@ -203,7 +203,49 @@ def _run_schema_migrations() -> None:
         pass
 
 
+def _retired_cli_token(argv: list[str]) -> str | None:
+    """Return the subcommand token in ``argv`` iff it names a RETIRED cli verb.
+
+    A retired subcommand (e.g. a stale launchd/cron job still calling `watch-loop`
+    after the watcher subsystem was retired 2026-05-17) would otherwise hit
+    argparse's `invalid choice` path and `SystemExit(2)`. A KeepAlive launchd
+    agent with `SuccessfulExit:false` reads exit 2 as a crash and relaunches
+    instantly — an infinite spin that spammed `~/.trinity/daemon.error.log` to
+    250M+ on a real install. Recognizing the retired name lets `main()` exit 0
+    with a migration hint, so KeepAlive lets the dead agent rest.
+
+    Identifies the subcommand the same way argparse would: the first bare token
+    after the top-level options (`--config` takes a value; `--mcp` is a flag).
+    """
+    from . import retired_names
+
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        if tok in ("--config", "-c"):
+            i += 2  # option + its value
+            continue
+        if tok.startswith("-"):  # --config=..., --mcp, -h — self-contained
+            i += 1
+            continue
+        rec = retired_names.get(tok)
+        return tok if (rec is not None and rec.kind == "cli") else None
+    return None
+
+
 def main() -> None:
+    import sys
+
+    # Intercept a retired CLI verb BEFORE argparse (and before any migration /
+    # offline-pin work): a stale scheduler still invoking it should exit 0 with a
+    # pointer to the replacement, not crash-loop under a KeepAlive agent.
+    retired = _retired_cli_token(sys.argv[1:])
+    if retired is not None:
+        from . import retired_names
+
+        sys.stderr.write(retired_names.format_migration_hint(retired) + "\n")
+        raise SystemExit(0)
+
     _pin_hf_offline()
     _run_schema_migrations()
     parser = build_parser()
