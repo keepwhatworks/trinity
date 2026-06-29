@@ -445,3 +445,47 @@ class TestLensFreshnessStatus:
         )
         state, _ = cs.lens_freshness_status()
         assert state == "current"
+
+
+class TestRefreshMarkerStatus:
+    """The refresh marker must record an HONEST status. build_me returns ok:False
+    on a chairman timeout/quota abort and preserved_existing on a clobber-guard
+    preserve — neither advanced the lens, so "done" was the false-green that hid an
+    18-day freeze (2026-06-29). Map them to failed/no-op."""
+
+    def test_aborted_build_is_failed(self):
+        from trinity_local.cold_start import _refresh_marker_status
+        assert _refresh_marker_status({"ok": False, "aborted": "stage0_batch_failed",
+                                       "reason": "chairman returned empty output"}) == "failed"
+
+    def test_preserved_or_skipped_is_no_op(self):
+        from trinity_local.cold_start import _refresh_marker_status
+        assert _refresh_marker_status({"preserved_existing": True}) == "no-op"
+        assert _refresh_marker_status({"ok": True, "skipped": True, "reason": "no_corpus_change"}) == "no-op"
+
+    def test_real_advance_is_done(self):
+        from trinity_local.cold_start import _refresh_marker_status
+        assert _refresh_marker_status({"accepted": 14, "active_tensions": 11,
+                                       "preserved_existing": False}) == "done"
+
+
+class TestLensFreshnessSurfacesFailureCause:
+    """When stale, lens_freshness_status enriches the reason with the last build's
+    failure cause (read from the now-honest marker) so `status` points at WHY the
+    refresh isn't landing (chairman timeout/quota), not just THAT it isn't."""
+
+    def test_stale_reason_includes_last_failure(self, isolated_home, monkeypatch):
+        import json
+        import trinity_local.cold_start as cs
+        from trinity_local.me_builder import me_path
+        me_path().parent.mkdir(parents=True, exist_ok=True)
+        me_path().write_text("# /me\n\nprimacy vs sacrifice\n", encoding="utf-8")
+        monkeypatch.setattr(cs, "should_refresh_lens",
+                            lambda: (True, "677 new prompts, 424h since last build"))
+        # The now-honest marker carries the chairman-failure cause.
+        cs.lens_refresh_marker_path().write_text(json.dumps({
+            "status": "failed", "error": "chairman returned empty output",
+        }), encoding="utf-8")
+        state, reason = cs.lens_freshness_status()
+        assert state == "stale"
+        assert "last build failed: chairman returned empty output" in reason

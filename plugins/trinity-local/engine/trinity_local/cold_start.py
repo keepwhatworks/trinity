@@ -408,17 +408,34 @@ def should_refresh_lens() -> tuple[bool, str]:
         return False, f"gate error: {exc}"
 
 
+def _refresh_marker_status(summary) -> str:
+    """Map a build summary to an HONEST refresh-marker status. The build returns
+    `ok:False` (+ `aborted`) on a chairman timeout/quota abort and
+    `preserved_existing` when the clobber-guard kept the prior lens over a
+    tension-less render — NEITHER advanced the lens, so recording "done" for them
+    was the false-green that hid an 18-day freeze. A legit unchanged-corpus skip
+    is a benign no-op too."""
+    if not isinstance(summary, dict):
+        return "done"
+    if summary.get("ok") is False or summary.get("aborted"):
+        return "failed"
+    if summary.get("preserved_existing") or summary.get("skipped"):
+        return "no-op"
+    return "done"
+
+
 def lens_freshness_status() -> tuple[str, str]:
     """Ground-truth lens-build freshness for surfacing on `status` — ('stale' |
     'current' | 'absent', human_reason).
 
     Reads `built_at` vs the live corpus fingerprint (via should_refresh_lens),
-    NOT the lens_refresh.json marker. The marker can't be trusted: a degenerate
-    build that preserved the prior lens (clobber-guard) still recorded
+    NOT the lens_refresh.json marker. The marker can't be trusted on its own: a
+    degenerate build that preserved the prior lens (clobber-guard) used to record
     status="done"/ok:true, which hid an 18-day-stale lens (677 new prompts
     unincorporated) on a real install 2026-06-29. A persistent 'stale' here means
-    the activity gate is OPEN yet the auto-refresh build isn't LANDING — surface
-    it instead of silently trusting "done".
+    the activity gate is OPEN yet the auto-refresh build isn't LANDING. When stale,
+    enrich the reason with the last refresh's failure cause (chairman timeout/
+    quota) so the surface points at WHY, not just THAT.
     """
     try:
         from .me_builder import me_path
@@ -426,7 +443,16 @@ def lens_freshness_status() -> tuple[str, str]:
         if not me_path().exists():
             return "absent", "no lens built yet"
         due, reason = should_refresh_lens()
-        return ("stale" if due else "current"), reason
+        if not due:
+            return "current", reason
+        # Stale → look up why the last build didn't land (now that the marker is honest).
+        try:
+            mk = json.loads(lens_refresh_marker_path().read_text(encoding="utf-8"))
+            if isinstance(mk, dict) and mk.get("status") == "failed" and mk.get("error"):
+                reason = f"{reason} · last build failed: {mk['error']}"
+        except Exception:
+            pass
+        return "stale", reason
     except Exception as exc:  # pragma: no cover - never let a status read raise
         return "absent", f"freshness check error: {exc}"
 
@@ -544,10 +570,21 @@ def maybe_kick_lens_refresh() -> dict | None:
             try:
                 from .me_builder import build_me_via_lens_pipeline
                 _path, summary = build_me_via_lens_pipeline()
-                _write_refresh_marker({
-                    "last_kick_at": now_iso(), "reason": reason, "status": "done",
+                # Honest outcome: build_me returns ok:False on a chairman
+                # timeout/quota abort and preserved_existing on a clobber-guard
+                # preserve — NEITHER advanced the lens. Recording "done" for those
+                # was the false-green that hid an 18-day freeze; map to failed/no-op
+                # and carry the cause so the status surface can point at WHY.
+                mstatus = _refresh_marker_status(summary)
+                marker = {
+                    "last_kick_at": now_iso(), "reason": reason, "status": mstatus,
                     "finished_at": now_iso(), "summary": summary,
-                })
+                }
+                if mstatus == "failed" and isinstance(summary, dict):
+                    marker["error"] = str(
+                        summary.get("reason") or summary.get("aborted") or "build did not land"
+                    )[:200]
+                _write_refresh_marker(marker)
             except Exception as exc:
                 _write_refresh_marker({
                     "last_kick_at": now_iso(), "reason": reason, "status": "failed",
