@@ -1,0 +1,197 @@
+/* keepwhatworks.com — shared stylesheet
+ * "Calm / Muted Teal" design language (2026-06-02). Cool mist neutrals, one
+ * muted-teal accent, a soft humanist sans (Hanken Grotesk) — soothing, document-
+ * first, and distinct from both the warm-cream/serif "Claude default" look AND the
+ * dev-terminal look. Tokens mirror trinity-local's design-system/ (colors_and_type.css)
+ * + ui_kits/website/. No green, no cream, no serif. Self-hosted fonts (OFL, no CDN).
+ */
+
+/* Hanken Grotesk (everything) + JetBrains Mono (commands/paths) — vendored under
+   docs/fonts/ (OFL). No CDN: the "nothing leaves your machine" promise holds here too. */
+@font-face { font-family:"Hanken Grotesk"; font-style:normal; font-weight:400; font-display:swap; src:url("./fonts/HankenGrotesk-400.woff2") format("woff2"); }
+@font-face { font-family:"Hanken Grotesk"; font-style:normal; font-weight:500; font-display:swap; src:url("./fonts/HankenGrotesk-500.woff2") format("woff2"); }
+@font-face { font-family:"Hanken Grotesk"; font-style:normal; font-weight:600; font-display:swap; src:url("./fonts/HankenGrotesk-600.woff2") format("woff2"); }
+@font-face { font-family:"Hanken Grotesk"; font-style:normal; font-weight:700; font-display:swap; src:url("./fonts/HankenGrotesk-700.woff2") format("woff2"); }
+@font-face { font-family:"JetBrains Mono"; font-style:normal; font-weight:400; font-display:swap; src:url("./fonts/JetBrainsMono-400.woff2") format("woff2"); }
+@font-face { font-family:"JetBrains Mono"; font-style:normal; font-weight:500; font-display:swap; src:url("./fonts/JetBrainsMono-500.woff2") format("woff2"); }
+
+:root {
+  --bg-base: #eaecef;        /* cool mist — the page */
+  --bg-wash: #eff1f4;        /* gentle raised ground */
+  --surface: #fafbfc;        /* card / panel fill — near white */
+  --surface-muted: #f1f3f6;  /* inputs, quieter surface */
+  --border: #dde1e6;         /* soft hairline — always visible */
+  --text-primary: #2f363c;   /* cool charcoal */
+  --text-secondary: #5b646b;
+  --text-muted: #5e666f;     /* AA 4.5:1+ on light bgs */
+  --accent: #4f9095;         /* muted teal — the one accent */
+  --accent-deep: #34666b;    /* hover / accent text on light */
+  --accent-fill: #3f777c;    /* solid button fill — white 4.96:1 (AA) */
+  --accent-soft: #e1edec;    /* soft wash for tints/washes */
+  --accent-text: #fbfdfc;    /* light text on filled teal */
+  --quiet: #94a3ad;          /* soft slate — quiet secondary */
+  --success: #4f9095;
+  --warning: #bd9658;
+  --danger: #bd6a5a;
+  --info: #7fa0ad;
+
+  --display: "Hanken Grotesk", "SF Pro Text", system-ui, -apple-system, sans-serif;
+  --sans: "Hanken Grotesk", "SF Pro Text", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", ui-monospace, "Cascadia Code", monospace;
+  --shadow: 0 10px 40px rgba(60,72,86,.10);
+  --shadow-soft: 0 4px 18px rgba(60,72,86,.06);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--sans);
+  font-size: 15.5px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* The `article.essay figure.hero` full-bleed uses `width: 100vw` (+ -50vw
+     margins). 100vw INCLUDES the scrollbar gutter, so on classic-scrollbar
+     systems (Linux) the bled-out image is ~gutter-px wider than the content
+     area → a few px of horizontal scroll on mobile. Clip it here (no sticky
+     elements on these pages, so `hidden` is safe). Guarded by
+     test_landing_page_render_browser.py. */
+  overflow-x: hidden;
+}
+/* Long inline-code identifiers/paths (e.g. `compute_personal_routing_table()`,
+   `~/.trinity/council_outcomes/`) are unbreakable monospace tokens that can
+   exceed a phone's content width. Let them wrap instead of overflowing — this
+   removes the *source* the body `overflow-x: hidden` above otherwise just
+   clips (content lost at the edge). There are no <pre> code blocks on these
+   pages, so no code-block formatting is at stake. */
+code { overflow-wrap: anywhere; }
+/* Anchor nav (#articles / #trinity) glides instead of jumping — reduced-motion-safe. */
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+/* Keyboard focus ring — was missing entirely; an a11y + polish gap on every
+   nav link, button, and article card. :focus-visible so it never shows on mouse. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* soft top highlight + ambient breathing aura — slow, gentle, reduced-motion-safe */
+body { background-image: radial-gradient(120% 80% at 50% -10%, rgba(255,255,255,.6), transparent 60%); position: relative; }
+body::before, body::after { content:""; position:fixed; z-index:-1; border-radius:50%; filter:blur(70px); pointer-events:none; }
+body::before { width:560px; height:560px; left:-160px; top:-110px; opacity:.45;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 32%, transparent), transparent 70%);
+  animation: drift1 27s ease-in-out infinite alternate; }
+body::after { width:640px; height:640px; right:-180px; bottom:-160px; opacity:.5;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 18%, transparent), transparent 70%);
+  animation: drift2 33s ease-in-out infinite alternate; }
+@keyframes drift1 { from { transform: translate(0,0) scale(1); } to { transform: translate(64px,44px) scale(1.12); } }
+@keyframes drift2 { from { transform: translate(0,0) scale(1); } to { transform: translate(-50px,-40px) scale(1.1); } }
+@media (prefers-reduced-motion: reduce) { body::before, body::after { animation: none; } }
+
+.container { max-width: 720px; margin: 0 auto; padding: 60px 24px 96px; }
+.container.wide { max-width: 960px; }
+
+/* — Topbar — */
+.topbar { max-width: 960px; margin: 0 auto; padding: 30px 24px 0; display: flex; justify-content: space-between; align-items: center; }
+.topbar a.brand { font-family: var(--display); font-size: 19px; font-weight: 600; color: var(--text-primary); text-decoration: none; letter-spacing: -0.01em; }
+.topbar a.brand::before {
+  /* terminal-prompt mark — "lives in your shell". Muted teal. */
+  content: ">"; color: var(--accent); font-family: var(--mono); font-size: 18px; font-weight: 500; line-height: 1; margin-right: 10px; vertical-align: -1px;
+}
+.topbar nav { display: flex; gap: 26px; }
+.topbar nav a { color: var(--text-secondary); text-decoration: none; font-size: 14px; }
+.topbar nav a:hover { color: var(--accent-deep); }
+
+/* — Hero — */
+.hero { padding: 72px 0 52px; }
+.hero .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.16em; color: var(--accent-deep); text-transform: uppercase; margin-bottom: 16px; display: inline-flex; align-items: center; gap: 9px; }
+.hero .eyebrow::before { content:""; width:18px; height:1.5px; border-radius:2px; background: var(--accent); opacity:.7; }
+.hero h1 { font-family: var(--display); font-size: clamp(38px, 6vw, 58px); font-weight: 600; line-height: 1.06; letter-spacing: -0.02em; color: var(--text-primary); margin-bottom: 22px; }
+.hero h1 em { font-style: normal; color: var(--accent-deep); }  /* one-word accent in teal, never italic */
+.hero .sub { font-size: 18px; line-height: 1.6; color: var(--text-secondary); max-width: 600px; }
+
+/* — Section headers — */
+.section-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; color: var(--accent-deep); text-transform: uppercase; margin-bottom: 12px; display: inline-flex; align-items: center; gap: 9px; }
+.section-eyebrow::before { content:""; width:16px; height:1.5px; border-radius:2px; background: var(--accent); opacity:.7; }
+.section-title { font-family: var(--display); font-size: 27px; font-weight: 600; letter-spacing: -0.01em; color: var(--text-primary); margin-bottom: 8px; }
+.section-sub { font-size: 15px; color: var(--text-secondary); margin-bottom: 34px; max-width: 580px; line-height: 1.65; }
+
+section { padding: 56px 0; }
+section + section { border-top: 1px solid var(--border); }
+
+/* — Article cards (site cards: 14px) — */
+.articles { display: grid; grid-template-columns: 1fr; gap: 16px; }
+.article-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 26px 30px; text-decoration: none; color: inherit; display: block; box-shadow: var(--shadow-soft); transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+.article-card:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: var(--shadow); }
+.article-card .meta { font-size: 11.5px; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 9px; }
+.article-card h3 { font-family: var(--display); font-size: 23px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 9px; }
+.article-card p { color: var(--text-secondary); font-size: 14.5px; line-height: 1.6; }
+
+/* — Product card (Trinity) — left teal rail, 22px — */
+.product-card { background: var(--surface); border: 1px solid var(--border); border-radius: 22px; padding: 40px; position: relative; box-shadow: var(--shadow); overflow: hidden; }
+.product-card::before { content:""; position: absolute; left: 0; top: 26px; bottom: 26px; width: 3px; border-radius: 3px; background: var(--accent); opacity: .6; }
+.product-card .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.16em; color: var(--accent-deep); text-transform: uppercase; margin-bottom: 12px; display: inline-flex; align-items: center; gap: 9px; }
+.product-card .eyebrow::before { content:""; width:18px; height:1.5px; border-radius:2px; background: var(--accent); opacity:.7; }
+.product-card h2 { font-family: var(--display); font-size: 34px; font-weight: 600; letter-spacing: -0.015em; margin-bottom: 14px; }
+.product-card .tagline { font-size: 16.5px; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.6; }
+.product-card .install { background: var(--surface-muted); border: 1px solid var(--border); border-radius: 14px; font-family: var(--mono); font-size: 13px; color: var(--text-secondary); padding: 15px 18px; margin-bottom: 18px; overflow-x: auto; user-select: all; line-height: 1.5; }
+/* Product proof-shot — the launchpad, framed to match the card tokens (14px
+   radius, hairline border, soft shadow). Show-don't-tell on the conversion
+   surface; self-hosted PNG under docs/, so the no-CDN promise holds. */
+.product-card .product-shot { margin: 2px 0 22px; position: relative; }
+/* The asset is a FULL-PAGE launchpad capture (very tall) — crop to a hero band
+   (the "Run a council" top) so it reads as a clean product shot, not a long
+   thumbnail. object-position:top keeps the strongest region in frame. */
+.product-card .product-shot img { display: block; width: 100%; height: auto; max-height: 430px; object-fit: cover; object-position: top center; border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-soft); }
+/* Soft fade at the crop edge so the clip reads as intentional, not cut off. */
+.product-card .product-shot::after { content:""; position:absolute; left:1px; right:1px; top:1px; height:430px; border-radius:14px; pointer-events:none; background:linear-gradient(to bottom, transparent 78%, color-mix(in srgb, var(--surface) 88%, transparent)); }
+.product-card .product-shot figcaption { font-size: 13px; color: var(--text-muted); margin-top: 11px; line-height: 1.5; }
+.product-card .features { list-style: none; margin: 22px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 13px 30px; }
+.product-card .features li { font-size: 14px; color: var(--text-secondary); padding-left: 22px; position: relative; line-height: 1.5; }
+.product-card .features li::before { content: "→"; position: absolute; left: 0; color: var(--accent); font-weight: 600; }
+.btn { display: inline-flex; align-items: center; gap: 8px; background: var(--accent-fill); color: var(--accent-text); font-family: var(--sans); font-size: 14px; padding: 12px 22px; border-radius: 999px; text-decoration: none; font-weight: 600; transition: background .18s ease, transform .18s ease; box-shadow: 0 6px 18px rgba(79,144,149,.26); }
+.btn:hover { background: var(--accent-deep); transform: translateY(-1px); }
+.btn.ghost { background: transparent; color: var(--accent-deep); border: 1px solid var(--border); margin-left: 10px; box-shadow: none; }
+.btn.ghost:hover { border-color: var(--accent); background: transparent; }
+
+/* — Article (long-form) — */
+article.essay { max-width: 680px; margin: 0 auto; }
+article.essay header { padding: 48px 0 30px; border-bottom: 1px solid var(--border); margin-bottom: 38px; }
+article.essay figure.hero {
+  position: relative; width: 100vw; left: 50%; margin-left: -50vw; margin-right: -50vw; margin-top: 0; margin-bottom: 48px; padding: 0;
+}
+article.essay figure.hero img { display: block; width: 100%; height: auto; }
+article.essay header .meta { font-size: 12px; font-weight: 600; letter-spacing: 0.16em; color: var(--accent-deep); text-transform: uppercase; margin-bottom: 16px; display: inline-flex; align-items: center; gap: 9px; }
+article.essay header .meta::before { content:""; width:18px; height:1.5px; border-radius:2px; background: var(--accent); opacity:.7; }
+article.essay header h1 { font-family: var(--display); font-size: clamp(34px, 5vw, 50px); font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; margin-bottom: 18px; }
+article.essay header .dek { font-size: 18.5px; color: var(--text-secondary); font-style: normal; line-height: 1.55; }
+article.essay header .dek em { font-style: normal; color: var(--accent-deep); }
+article.essay h2 { font-family: var(--display); font-size: 24px; font-weight: 600; margin: 46px 0 14px; letter-spacing: -0.01em; }
+article.essay h3 { font-family: var(--display); font-size: 19px; font-weight: 600; margin: 34px 0 10px; }
+article.essay p { font-size: 17px; line-height: 1.75; margin-bottom: 18px; color: var(--text-primary); }
+article.essay p em { color: var(--accent-deep); font-style: normal; font-weight: 500; }
+article.essay blockquote { border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 12px 12px 0; padding: 16px 22px; margin: 28px 0; color: var(--text-primary); font-style: normal; font-size: 18px; line-height: 1.55; }
+article.essay ul, article.essay ol { margin: 8px 0 22px 26px; }
+article.essay li { font-size: 17px; line-height: 1.7; margin-bottom: 10px; }
+article.essay hr { border: none; border-top: 1px solid var(--border); margin: 44px 0; }
+
+/* — Trinity callout inside articles — left teal rail — */
+.trinity-callout { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px 16px 16px 8px; padding: 24px 28px; margin: 44px 0; box-shadow: var(--shadow-soft); }
+.trinity-callout .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.18em; color: var(--accent-deep); text-transform: uppercase; margin-bottom: 10px; display: inline-flex; align-items: center; gap: 8px; }
+.trinity-callout .eyebrow::before { content:""; width:16px; height:1.5px; border-radius:2px; background: var(--accent); opacity:.7; }
+.trinity-callout h4 { font-family: var(--display); font-size: 21px; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.01em; }
+.trinity-callout p { font-size: 15px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 12px; }
+.trinity-callout a { color: var(--accent-deep); text-decoration: none; font-weight: 600; font-size: 14px; }
+.trinity-callout a:hover { text-decoration: underline; }
+
+/* — Footer — */
+footer { max-width: 960px; margin: 0 auto; padding: 38px 24px 56px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 14px; color: var(--text-muted); font-size: 13px; }
+footer a { color: var(--text-secondary); text-decoration: none; }
+footer a:hover { color: var(--accent-deep); }
+
+/* — Responsive — */
+@media (max-width: 640px) {
+  .container { padding: 32px 18px 64px; }
+  .topbar { padding: 24px 18px 0; }
+  .topbar nav { gap: 18px; }
+  .product-card { padding: 28px 22px; }
+  .product-card .features { grid-template-columns: 1fr; }
+}

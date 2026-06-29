@@ -1,0 +1,2 @@
+{"move_slug":"tighten-verbose-bullets","move_name":"tighten verbose bullets","move_basin":"basin_42","demoted_at":"2026-05-26T18:30:00+00:00","tier":"T4","reason":"posterior 0.32 below baseline 0.75 after 12 executions","posterior":0.32,"baseline":0.75,"executions":12}
+{"move_slug":"reframe-as-direct-question","move_name":"reframe as direct question","move_basin":"basin_13","demoted_at":"2026-05-26T18:30:00+00:00","tier":"T4","reason":"posterior 0.48 below baseline 0.65 after 8 executions","posterior":0.48,"baseline":0.65,"executions":8}

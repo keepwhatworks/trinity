@@ -1,0 +1,21 @@
+# Trinity Local
+
+> Own your taste. Trinity is a local, cross-provider AI council + memory layer. Ask once; it fans your question out to Claude, GPT, and Gemini, shows you where they split, and synthesizes the answer your taste would have picked — reading a "lens" distilled from your own transcripts. No new app, no cloud, no API key: an MCP server inside Claude Code / Codex CLI / Antigravity / Cursor, plus a Chrome extension that captures web chats locally. Your transcripts never leave your machine.
+
+The moat is cross-provider data sovereignty: Anthropic can't recommend ChatGPT, OpenAI can't recommend Claude, Google can't recommend either — so the layer that reads your transcripts across all three has to come from outside the labs. Free for individuals, MIT, local-first. Councils dispatch through the CLIs you already authenticated (your own subscriptions), so there's nothing to meter and nothing to bill.
+
+## Start here
+- [README](https://github.com/keepwhatworks/trinity/blob/main/README.md): install, how it works, objections, and a side-by-side comparison with LMArena / promptfoo / OpenRouter.
+- [Landing](https://keepwhatworks.com): the public overview.
+- [Install (one line)](https://github.com/keepwhatworks/trinity/blob/main/scripts/install.sh): `curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash` — registers the MCP server in every harness it detects and pre-wires the Chrome capture host.
+
+## How it works
+- [How Trinity works](https://github.com/keepwhatworks/trinity/blob/main/docs/how-trinity-works.md): the end-to-end pipeline — transcripts → embeddings → dream → lens → runtime.
+- [Architecture](https://github.com/keepwhatworks/trinity/blob/main/docs/architecture.md): wire diagram + design rationale (chairman synthesizes member outputs into structured Routing JSON).
+- [The lens](https://github.com/keepwhatworks/trinity/blob/main/docs/lens.md): identity → paired tensions → subject basins → vocabulary, read top-down on every council.
+
+## For tool builders
+- [Preference corpus spec](https://github.com/keepwhatworks/trinity/blob/main/docs/PREFERENCE_CORPUS_SPEC.md): `~/.trinity/` is a CC0, JSON-Schema-validated on-disk contract any tool (Aider / Cline / Continue) can read or write — the folder is the API.
+
+## For teams
+- [Trinity for teams](https://github.com/keepwhatworks/trinity/blob/main/docs/enterprise.md): same product, with support, for running it across a team.

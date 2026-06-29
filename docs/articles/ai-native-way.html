@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The AI-Native Way · keepwhatworks</title>
+<meta name="description" content="The Bitter Lesson restated for builders. Rules and logic don't matter long-term. The only durable strategy is a systems-level data pipeline. That loop is the moat.">
+<link rel="canonical" href="https://keepwhatworks.com/articles/ai-native-way.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Keep What Works">
+<meta property="og:title" content="The AI-Native Way · keepwhatworks">
+<meta property="og:description" content="The Bitter Lesson restated for builders. Rules and logic don&#x27;t matter long-term. The only durable strategy is a systems-level data pipeline. That loop is the moat.">
+<meta property="og:url" content="https://keepwhatworks.com/articles/ai-native-way.html">
+<meta property="og:image" content="https://keepwhatworks.com/articles/img/ai-native-way.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The AI-Native Way · keepwhatworks">
+<meta name="twitter:description" content="The Bitter Lesson restated for builders. Rules and logic don&#x27;t matter long-term. The only durable strategy is a systems-level data pipeline. That loop is the moat.">
+<meta name="twitter:image" content="https://keepwhatworks.com/articles/img/ai-native-way.jpg">
+
+<link rel="icon" type="image/png" href="../favicon.png">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="../">keepwhatworks</a>
+  <nav>
+    <a href="../#articles">Essays</a>
+    <a href="../#trinity">Trinity</a>
+    <a href="https://github.com/keepwhatworks/trinity" target="_blank" rel="noopener">GitHub</a>
+  </nav>
+</header>
+
+<main class="container">
+  <article class="essay">
+
+    <figure class="hero">
+      <img src="img/ai-native-way.jpg" alt="Hero image from the original X article 'The AI-Native Way'.">
+    </figure>
+
+    <header>
+      <div class="meta">Essay · Nov 9, 2025</div>
+      <h1>The AI-Native Way</h1>
+      <p class="dek">
+        The Bitter Lesson, restated for builders. Rules and logic you
+        write in code don't matter long-term. The only durable strategy
+        is a systems-level data pipeline. That loop <em>is</em> the moat.
+      </p>
+    </header>
+
+    <h2>The 10x Mandate</h2>
+
+    <p>
+      Often, you don't realize how bad something is until a truly good
+      alternative appears, suddenly revealing the old way as
+      intolerable. However, human nature resists change. Due to
+      switching costs, loss aversion, and status quo bias, getting
+      people to move is incredibly difficult — unless the new thing is
+      at least 10 times better. When a solution is 10x better, it's
+      surprising how fast demand can shift, like water turning to ice.
+    </p>
+
+    <p>
+      The ingredients to create such a solution often already exist.
+      The innovation lies in unbundling a currently unscalable system
+      and optimizing it to hit a specific price point with healthy
+      margins. As Jim Barksdale said,
+    </p>
+
+    <blockquote>
+      There are only two ways I know of to make money: bundling and unbundling.
+    </blockquote>
+
+    <h2>The Architectural Playbook</h2>
+
+    <p>
+      Critical Path Analysis shows us the path to unbundling. The goal
+      is to use <em>Dependency Inversion</em> — where high-level and
+      low-level modules depend on abstractions (APIs), not on each
+      other — to parallelize formerly serial steps. This approach,
+      however, runs into a fundamental limit described by Stephen
+      Wolfram's <em>Computational Irreducibility</em>, which states
+      that some steps in a complex process cannot be parallelized and
+      must be computed serially.
+    </p>
+
+    <p>
+      The trick is to identify the few, true, minimal, and independent
+      causal chains and parallelize everything else. Amdahl's Law then
+      helps quantify the potential speedup from these improvements and
+      reduce waste.
+    </p>
+
+    <h2>The Brittleness Trap</h2>
+
+    <p>
+      This structural optimization creates a problem: a brittle system.
+      When foundational constraints change, as they always do thanks
+      to forces like Moore's Law, the entire system can be disrupted.
+      This puts you on a treadmill, constantly re-architecting just to
+      keep up.
+    </p>
+
+    <h2>The AI-Native Solution</h2>
+
+    <p>
+      The "Bitter Lesson" of AI shows the way out of this trap. Don't
+      waste time building things that will be replaced. The rules and
+      logic you write in code don't matter in the long run; platforms,
+      tools, and logic are all ephemeral.
+    </p>
+
+    <p>
+      The only durable strategy is to build <strong>systems-level data
+      pipelines</strong>. This creates a system that learns and adapts
+      instead of breaking through a continuous loop:
+    </p>
+
+    <ol>
+      <li>Find the edge cases where the system fails in production.</li>
+      <li>Save these failures as high-value training data.</li>
+      <li>Finetune new models that learn from this data.</li>
+      <li>Test the new models against edge cases and then in the real world to verify they're better than the current ones.</li>
+      <li>Release when ready, and repeat the loop.</li>
+    </ol>
+
+    <p>
+      Crucially, this requires building for scale from the start while
+      always designing for verifiability by instrumenting the
+      end-user experience and capturing exceptions. This is what makes
+      the learning loop robust.
+    </p>
+
+    <p>
+      The AI-native solution not only creates something truly useful
+      but also comes with a durable moat.
+    </p>
+
+    <hr>
+
+    <p style="font-size:14px;color:var(--text-muted);">
+      Originally published on
+      <a href="https://x.com/vishigondi/status/1965050742164668683" target="_blank" rel="noopener" style="color:var(--text-secondary);">X</a>
+      · Sep 8, 2025.
+    </p>
+
+  </article>
+</main>
+
+<footer>
+  <div>© Vishi Gondi · written from the arena</div>
+  <div>
+    <a href="https://x.com/vishigondi" target="_blank" rel="noopener">@vishigondi</a> ·
+    <a href="https://github.com/keepwhatworks/trinity" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</footer>
+
+</body>
+</html>

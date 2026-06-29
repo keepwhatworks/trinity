@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "trinity",
+  "owner": {
+    "name": "Vishi Gondi",
+    "url": "https://keepwhatworks.com"
+  },
+  "description": "Trinity Local — ask all three, keep what works. Local-first cross-provider councils across Claude, Codex, and Gemini: a chairman synthesizes the verdict, an opt-in taste lens personalizes it, smart routing picks the winner.",
+  "version": "1.0.0",
+  "metadata": {
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "trinity-local",
+      "source": "./plugins/trinity-local",
+      "displayName": "Trinity Local",
+      "description": "Cross-provider councils, a taste lens, and smart routing — local-first. Registers the Trinity MCP server and adds /trinity-local:council, :ask, and :lens.",
+      "version": "1.7.389",
+      "author": {
+        "name": "Vishi Gondi",
+        "url": "https://keepwhatworks.com"
+      },
+      "homepage": "https://keepwhatworks.com",
+      "repository": "https://github.com/keepwhatworks/trinity",
+      "license": "MIT",
+      "keywords": ["memory", "council", "multi-model", "routing", "cross-provider", "local-first"],
+      "category": "productivity"
+    }
+  ]
+}

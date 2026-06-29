@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/keepwhatworks/trinity/main/schemas/council_outcome.schema.json",
+  "title": "Council Outcome",
+  "description": "One council run: the user's task, the providers it dispatched to, what each said, the chairman's structured synthesis, and the user verdict (if recorded). Lives at ~/.trinity/council_outcomes/<council_run_id>.json. The canonical store for cross-provider preference signal — everything downstream (personal_routing_table, picks.json, lens.md) is computed from this.",
+  "type": "object",
+  "required": [
+    "council_run_id",
+    "bundle_id",
+    "created_at",
+    "primary_provider",
+    "member_results",
+    "synthesis_output",
+    "routing_label"
+  ],
+  "properties": {
+    "council_run_id": {
+      "type": "string",
+      "description": "Stable id, sha1 prefix. Used as the on-disk filename.",
+      "pattern": "^council_[a-f0-9]{16}$"
+    },
+    "bundle_id": {
+      "type": "string",
+      "description": "Id of the originating prompt bundle (the user's question + context)."
+    },
+    "task_cluster_id": {
+      "type": ["string", "null"],
+      "description": "Optional basin/topic id this council belongs to. Used for per-basin aggregation downstream."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC. When the council started."
+    },
+    "primary_provider": {
+      "type": "string",
+      "description": "The chairman provider (the model that ran the synthesis pass)."
+    },
+    "primary_session_id": {
+      "type": ["string", "null"],
+      "description": "Session ID of the chairman provider's underlying call. Lets the harness correlate a council with the provider's own session record (e.g. a Claude Code session uuid). Optional."
+    },
+    "agreement_score": {
+      "type": ["number", "null"],
+      "description": "Aggregate cross-member agreement scalar [0.0, 1.0]. Higher = more consensus on agreed_claims. Lets downstream consumers (replay, ranking) filter by deliberation quality without re-parsing routing_label.disagreed_claims."
+    },
+    "needs_followup": {
+      "type": ["boolean", "null"],
+      "description": "Chairman-flagged signal that the council should be re-run with refined context or different members (e.g. all members hedged, the question was misframed, etc.). Downstream consumers can treat as a soft escalation hint."
+    },
+    "primary_model": {
+      "type": ["string", "null"],
+      "description": "Chairman model id (e.g. 'claude-opus-4-5')."
+    },
+    "winner_provider": {
+      "type": ["string", "null"],
+      "description": "Chairman's pick of which member's answer was strongest. This IS the supervision signal — feeds compute_personal_routing_table() directly."
+    },
+    "winner_model": {
+      "type": ["string", "null"]
+    },
+    "member_results": {
+      "type": "array",
+      "description": "One entry per member that responded. Order is provider name; check `provider` field.",
+      "items": {
+        "type": "object",
+        "required": ["provider", "output_text"],
+        "properties": {
+          "provider": {"type": "string"},
+          "model": {"type": ["string", "null"]},
+          "session_id": {"type": ["string", "null"], "description": "Provider-side session token (Claude Code session, Codex CLI session, etc.) if the dispatch retained one."},
+          "output_text": {"type": "string", "description": "The raw member response."},
+          "metadata": {"type": "object", "description": "Per-member free-form metadata (timing, retry counts, fallback signals) — keys are stable but contents evolve. Empty {} when nothing notable."}
+        }
+      }
+    },
+    "synthesis_prompt": {
+      "type": ["string", "null"],
+      "description": "The full prompt the chairman saw. Includes member outputs and the user's lens.md."
+    },
+    "synthesis_output": {
+      "type": "string",
+      "description": "Chairman's narrative synthesis — the user-facing answer."
+    },
+    "differences": {
+      "description": "Free-text summary OR a list of difference points. Legacy field; downstream consumers should prefer `routing_label.disagreed_claims` which carries the structured shape.",
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string"},
+        {"type": "array", "items": {"type": "string"}}
+      ]
+    },
+    "routing_label": {
+      "$ref": "#/$defs/routing_label",
+      "description": "Structured JSON the chairman emits per council. This is the supervision signal Trinity learns from."
+    },
+    "mode": {
+      "type": "string",
+      "description": "Council shape. `parallel` (default) runs members concurrently then chairman synthesizes. `chain` runs sequential refinement. `consensus_round` is a legacy/pre-v1 shape preserved for historical outcomes; new code emits parallel or chain only."
+    },
+    "chain_steps": {
+      "type": "array",
+      "description": "Populated when mode=chain. One entry per sequential refinement step.",
+      "items": {
+        "type": "object",
+        "required": ["step_index", "model_provider", "input_text", "output_text"],
+        "properties": {
+          "step_index": {"type": "integer", "minimum": 0},
+          "model_provider": {"type": "string"},
+          "model_name": {"type": ["string", "null"]},
+          "input_text": {"type": "string"},
+          "output_text": {"type": "string"},
+          "started_at": {"type": "string", "description": "ISO 8601 timestamp the step's dispatch began. Empty string when timing wasn't captured."},
+          "completed_at": {"type": "string", "description": "ISO 8601 timestamp the step's dispatch finished."},
+          "latency_seconds": {"type": ["number", "null"], "minimum": 0},
+          "cost_estimate_usd": {"type": ["number", "null"], "minimum": 0},
+          "metadata": {"type": "object", "description": "Per-step free-form metadata (retry count, fallback signals). Omitted when empty."}
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Free-form sidecar. Notable key: chain_root_id (thread grouping). The legacy user_verdict block was retired 2026-05-22 along with the entire rating surface — chairman's winner is the supervision signal now (compute_personal_routing_table aggregates from routing_label.winner directly). Existing on-disk councils get user_verdict wiped on next read by load_council_outcome.",
+      "properties": {
+        "chain_root_id": {
+          "type": ["string", "null"],
+          "description": "Groups multi-round chain councils as one thread. All councils sharing chain_root_id are refinement steps of the same original question."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "routing_label": {
+      "type": "object",
+      "description": "Structured Routing JSON the chairman emits per council. The supervision-signal shape every downstream consumer reads.",
+      "required": ["task_type", "winner", "agreed_claims", "disagreed_claims"],
+      "properties": {
+        "task_type": {
+          "type": "string",
+          "description": "Chairman-labeled task kind (e.g. 'coding', 'design', 'writing'). Distinct from `category` (the coarser LMArena-aligned grouping)."
+        },
+        "task_domain": {
+          "type": ["string", "null"],
+          "description": "Optional subject-matter tag."
+        },
+        "winner": {
+          "type": ["string", "null"],
+          "description": "Chairman's pick — duplicates the top-level `winner_provider`, kept here for self-contained routing-label parsing."
+        },
+        "runner_up": {
+          "type": ["string", "null"]
+        },
+        "confidence": {
+          "description": "Chairman's confidence in the winner. Numeric in [0, 1] or a categorical label ('low' | 'medium' | 'high') — the chairman emits whichever shape the synthesis prompt called for.",
+          "oneOf": [
+            {"type": "null"},
+            {"type": "number", "minimum": 0.0, "maximum": 1.0},
+            {"type": "string", "enum": ["low", "medium", "high"]}
+          ]
+        },
+        "agreed_claims": {
+          "type": "array",
+          "description": "Statements all members converged on. The compressed signal.",
+          "items": {"type": "string"}
+        },
+        "disagreed_claims": {
+          "type": "array",
+          "description": "Statements where members diverged + why it matters. The residual signal (see meta-principle #18). Each entry: {claim, why_matters, providers[]}.",
+          "items": {
+            "type": "object",
+            "required": ["claim"],
+            "properties": {
+              "claim": {"type": "string"},
+              "why_matters": {"type": "string"},
+              "providers": {
+                "type": "array",
+                "items": {"type": "string"}
+              }
+            }
+          }
+        },
+        "provider_scores": {
+          "type": "object",
+          "description": "Per-provider scores on this task. Two shapes are valid: (1) flat `{provider: number}` for a single composite score; (2) nested `{provider: {axis: score}}` when the chairman emits a per-axis rubric (overall / planning / execution / specificity / user_fit / risk / conciseness etc.). Downstream consumers normalize to the composite when aggregating.",
+          "additionalProperties": {
+            "oneOf": [
+              {"type": "number"},
+              {"type": "object", "additionalProperties": {"type": "number"}}
+            ]
+          }
+        },
+        "user_likely_values": {
+          "type": "array",
+          "description": "Inferred user-preference axes. Folds into lens.md over time.",
+          "items": {"type": "string"}
+        },
+        "routing_lesson": {
+          "type": ["string", "null"],
+          "description": "One-sentence takeaway for the personal_routing_table — why this winner won."
+        },
+        "major_failure_mode": {
+          "type": ["string", "null"],
+          "description": "What the losing member(s) got wrong, in user-facing terms."
+        },
+        "eval_seed": {
+          "type": ["string", "null"],
+          "description": "Optional seed-prompt label, used by the corpus-based eval harness (#122) to slice replayable benchmarks."
+        }
+      }
+    }
+  }
+}

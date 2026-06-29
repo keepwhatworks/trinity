@@ -1,0 +1,10 @@
+data: {"message":{"id":"msg-7ab2","author":{"role":"assistant","name":null,"metadata":{}},"create_time":1747270000,"update_time":null,"content":{"content_type":"text","parts":[""]},"status":"in_progress","end_turn":null,"weight":1.0,"metadata":{"conversation_id":"conv-abc-xyz"},"recipient":"all","channel":null},"conversation_id":"conv-abc-xyz"}
+
+data: {"message":{"id":"msg-7ab2","author":{"role":"assistant","name":null,"metadata":{}},"create_time":1747270000,"update_time":null,"content":{"content_type":"text","parts":["Trinity Local"]},"status":"in_progress","end_turn":null,"weight":1.0,"metadata":{},"recipient":"all","channel":null},"conversation_id":"conv-abc-xyz"}
+
+data: {"message":{"id":"msg-7ab2","author":{"role":"assistant","name":null,"metadata":{}},"create_time":1747270000,"update_time":null,"content":{"content_type":"text","parts":["Trinity Local is the cross-provider memory layer"]},"status":"in_progress","end_turn":null,"weight":1.0,"metadata":{},"recipient":"all","channel":null},"conversation_id":"conv-abc-xyz"}
+
+data: {"message":{"id":"msg-7ab2","author":{"role":"assistant","name":null,"metadata":{}},"create_time":1747270000,"update_time":1747270010,"content":{"content_type":"text","parts":["Trinity Local is the cross-provider memory layer the labs are commercially prevented from building."]},"status":"finished_successfully","end_turn":true,"weight":1.0,"metadata":{"finish_details":{"type":"stop"}},"recipient":"all","channel":null},"conversation_id":"conv-abc-xyz"}
+
+data: [DONE]
+

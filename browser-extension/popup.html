@@ -1,0 +1,434 @@
+<!doctype html>
+<!--
+  Trinity Local — toolbar popup.
+
+  The ONLY extension-specific UI. The extension's duplicate
+  launchpad.html was removed; the popup dispatches `open-launchpad`
+  via Native Messaging, which runs `trinity-local portal-html
+  --open-browser` and opens the single canonical file:// launchpad.
+
+  Visual language matches src/trinity_local/design_system.py:
+  Calm/Muted-Teal palette (cool-mist BG, muted-teal action), Hanken
+  Grotesk headline, system-sans body. Council input is a multi-line
+  textarea so a real question fits.
+
+  When the user fires a council, the popup transitions to a status
+  panel that mirrors the launchpad's running-council surface:
+  rotating loading copy + per-member status chips + synthesis row,
+  fed by polling capture_host's in-process `get-council-status`
+  handler. See popup.js for the polling loop.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Trinity</title>
+  <style>
+    :root {
+      /* Calm/Muted-Teal palette — mirrors src/trinity_local/design_system.py
+         (COLORS). Was the old warm cream/forest/sage set; updated v1.7.347. */
+      --bg-base: #eaecef;
+      --bg-wash: #eff1f4;
+      --surface: #fafbfc;
+      --border: #dde1e6;
+      --text-primary: #2f363c;
+      --text-secondary: #5b646b;
+      --text-muted: #5e666f;
+      --action: #3f777c;
+      --action-hover: #34666b;
+      --action-text: #fbfdfc;
+      --success: #4f9095;
+      --warning: #bd9658;
+      /* The FILL amber (#bd9658) is unreadable as 11-13px text on light
+         (2.3-2.6:1). --warning-text is the deepened amber that clears WCAG
+         AA 4.5:1 — mirrors src/trinity_local/design_system.py COLORS
+         ["warning_text"]. UX sweep 2026-06-21 (the popup was the
+         hand-maintained sibling the launchpad's --warning split missed). */
+      --warning-text: #79591b;
+      --info: #7fa0ad;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      font-family: "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+      line-height: 1.5;
+      font-size: 14px;
+    }
+    body {
+      width: 440px;
+      padding: 18px 18px 16px;
+    }
+    h1 {
+      font-family: "Hanken Grotesk", "SF Pro Display", system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1.1;
+      margin: 0 0 14px 0;
+      color: var(--text-primary);
+      letter-spacing: -0.01em;
+    }
+    .field-group { margin-bottom: 14px; }
+    .field-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    textarea#task {
+      width: 100%;
+      min-height: 64px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: var(--surface);
+      font-family: inherit;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--text-primary);
+      resize: vertical;
+    }
+    textarea#task:focus {
+      outline: none;
+      border-color: var(--action);
+      box-shadow: 0 0 0 3px rgba(77, 139, 144, 0.12);
+    }
+    textarea#task::placeholder { color: var(--text-muted); }
+    .btn {
+      /* flex-center + 44px floor so the popup's action buttons clear the WCAG
+         2.5.5 / Apple HIG touch target (matches the launchpad's .button, which
+         was founder-flagged at 43px; 10px padding + 14px text left these at
+         37-39px). */
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 44px;
+      padding: 10px 14px;
+      border: none;
+      border-radius: 5px;
+      background: var(--action);
+      color: var(--action-text);
+      font-family: inherit;
+      font-size: 14px;
+      /* 700 (bold) lifts the white-on-teal fill to WCAG AA-large (matches the
+         launchpad's .button.primary); keeps the muted-teal action color. */
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      transition: background 0.12s ease;
+    }
+    .btn:hover { background: var(--action-hover); }
+    .btn:disabled { opacity: 0.55; cursor: default; }
+    /* Panel-action buttons must not wrap their label mid-button —
+       "Open council page" is two words too long for the 380px popup
+       when split across two flex children, so the popup is widened
+       to 440px AND labels are kept single-line. */
+    .panel-actions .btn { white-space: nowrap; }
+    .btn.secondary {
+      background: transparent;
+      color: var(--action);
+      border: 1px solid var(--border);
+    }
+    .btn.secondary:hover {
+      background: rgba(77, 139, 144, 0.06);
+      border-color: var(--action);
+    }
+    /* Visually-hidden but screen-reader-available — for the persistent
+       aria-live status mirror that announces copy-ack "✓ Copied" confirmations
+       (WCAG 4.1.3). clip+1px (NOT display:none, which removes it from the a11y
+       tree) keeps it spoken while taking no visual space. */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .status {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      margin: 6px 0 0 0;
+      /* Collapse to nothing when empty (no message) — it previously reserved
+         16px + 8px of dead air between "Send to council" and the launchpad
+         button even with no status text (founder: "too much space"). It still
+         grows to fit an error/ok message when one appears. */
+      min-height: 0;
+      white-space: pre-wrap;
+      line-height: 1.4;
+      /* A dispatch failure paints arbitrary runner error text here via
+         setStatus("Failed: " + extractError(...)) / "Couldn't open the
+         launchpad: <error>" — it can carry a long UNBREAKABLE token (a
+         quota/billing URL, a hash, a non-path id that survives
+         safeErrorMessage). pre-wrap wraps at spaces but will NOT break a
+         separator-free token; without this the token streams off the right
+         edge and stretches the fixed 440px popup card (the sibling
+         .panel-tip already breaks this exact case — this .status ribbon was
+         the asymmetric unprotected sibling). Break the token; never widen
+         the card. */
+      overflow-wrap: anywhere;
+      min-width: 0;
+    }
+    .status:empty { margin: 0; }
+    /* --warning-text / --action-hover (the DEEP teal), not the FILL
+       --warning / --success: failure + success status copy is 12.5px body
+       text and the fill tokens read at 2.3-3.1:1 on light (below AA). */
+    .status.error { color: var(--warning-text); }
+    .status.ok    { color: var(--action-hover); }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 12px 0;
+      opacity: 0.6;
+    }
+
+    /* Running-council status panel — mirrors the launchpad's running
+       surface inside the 380px popup. Rotating tip line on top, then a
+       row per member with a colored status dot, then the synthesis row.
+       Same vocabulary as the launchpad (Queued/Running/Done/Failed). */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px 14px 12px;
+      position: relative;
+    }
+    .panel-close {
+      position: absolute;
+      top: 6px; right: 8px;
+      width: 24px; height: 24px;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .panel-close:hover {
+      background: var(--bg-wash);
+      color: var(--text-primary);
+    }
+    .panel-title {
+      font-family: "Hanken Grotesk", "SF Pro Display", system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      margin: 0 0 4px 0;
+      letter-spacing: -0.005em;
+    }
+    .panel-tip {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin: 0 0 12px 0;
+      min-height: 18px;
+      font-style: italic;
+      /* On a FAILED council the tip renders status.error verbatim — an
+         arbitrary runner exception / stderr excerpt that can carry a long
+         unbreakable token (a path, a quota URL, a hash). The popup body is
+         a fixed 440px; without this the token streams off the right edge
+         and stretches the whole popup card (the launchpad's running-card
+         .provider-status-detail already breaks this exact case at
+         launchpad_template.py:717 — this was the asymmetric unprotected
+         sibling). Break the token; never force the card wider. */
+      overflow-wrap: anywhere;
+      min-width: 0;
+    }
+    .member-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 0;
+      font-size: 13px;
+      border-top: 1px solid rgba(215, 204, 185, 0.5);
+    }
+    .member-row:first-of-type { border-top: none; }
+    .member-row .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex: 0 0 8px;
+      background: var(--text-muted);
+    }
+    .member-row .dot.pending { background: #c8bca8; }
+    .member-row .dot.running {
+      background: var(--info);
+      animation: dot-pulse 1.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      transform-origin: center;
+      will-change: transform, box-shadow;
+    }
+    .member-row .dot.done    { background: var(--success); }
+    .member-row .dot.failed  { background: var(--warning); }
+    .member-row .name { flex: 1 1 auto; color: var(--text-primary); }
+    .member-row .pill {
+      font-size: 11px;
+      letter-spacing: 0.02em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+    /* The status PILL is 11px text — even further below the body floor on
+       the fill tokens (done 3.5:1, failed 2.6:1). Use the deep teal /
+       deep amber TEXT variants so the per-member verdict is readable. */
+    .member-row .pill.done   { color: var(--action-hover); }
+    .member-row .pill.failed { color: var(--warning-text); }
+    @keyframes dot-pulse {
+      0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(49, 92, 133, 0.45);
+      }
+      50% {
+        transform: scale(1.45);
+        box-shadow: 0 0 0 5px rgba(49, 92, 133, 0);
+      }
+    }
+
+    .panel-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .panel-actions .btn { flex: 1 1 0; }
+
+    /* Setup card — shown when Native Messaging host missing or
+       CLI not on PATH. Same visual language as the rest of the popup
+       so the install-first experience doesn't feel like a different
+       app. */
+    .setup-reason {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin: 0 0 14px 0;
+      padding: 10px 12px;
+      background: var(--bg-wash);
+      border-left: 3px solid var(--warning);
+      border-radius: 3px;
+      line-height: 1.45;
+    }
+    .setup-step {
+      font-size: 13.5px;
+      margin: 12px 0 6px 0;
+      color: var(--text-primary);
+      line-height: 1.45;
+    }
+    #copy-setup-brief,
+    #copy-setup-cmds { margin: 4px 0 0 0; }
+    .setup-footer {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 16px;
+      text-align: right;
+    }
+    /* --action-hover (deep teal), not the FILL --info (#7fa0ad → 2.36:1 on
+       light): the "Setup details →" link is 12px text and must be readable.
+       Matches the design system's small-teal-text-uses-the-deep-teal rule. */
+    .setup-footer a { color: var(--action-hover); text-decoration: none; }
+    .setup-footer a:hover { text-decoration: underline; }
+
+    /* Per-harness paste-in snippet picker (#166). Pills wrap to fit the
+       440px popup; the selected harness reveals its target file + a
+       copyable config block. */
+    .harness-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 8px 0 4px;
+    }
+    .harness-pill {
+      padding: 5px 10px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--text-secondary);
+      font-family: inherit;
+      font-size: 12.5px;
+      cursor: pointer;
+      transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+    }
+    .harness-pill:hover { border-color: var(--action); color: var(--action); }
+    .harness-pill.active {
+      background: var(--action);
+      border-color: var(--action);
+      color: var(--action-text);
+    }
+    .harness-detail { margin-top: 10px; }
+    .harness-file {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin: 0 0 6px 0;
+      line-height: 1.4;
+    }
+    .harness-snippet {
+      background: var(--bg-wash);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 10px 12px;
+      margin: 0 0 8px 0;
+      overflow-x: auto;
+      font-family: "SF Mono", ui-monospace, "Menlo", monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      color: var(--text-primary);
+      white-space: pre;
+    }
+  </style>
+</head>
+<body>
+  <div id="compose">
+    <h1>Trinity Local</h1>
+
+    <div class="field-group">
+      <label for="task">Run a quick council</label>
+      <textarea id="task" rows="2"
+                placeholder="Ask the same question across Claude, Codex, and Gemini. Chairman synthesizes in your voice. (⌘/Ctrl+Enter to launch)"
+                autofocus></textarea>
+    </div>
+    <button class="btn" id="run-btn">Send to council</button>
+    <!-- WCAG 4.1.3 Status Messages: this ribbon carries feedback the user gets
+         WITHOUT focus moving or a reload — the "Type a question first."
+         validation error, the "Failed: <error>" dispatch failure, and the
+         "Opening launchpad…" ack (all written by setStatus()). role=status +
+         aria-live=polite so a screen-reader user HEARS why the submit didn't
+         fire / that the council failed; before the fix this was a mute <div>
+         and AT announced nothing. aria-atomic so the whole (re)written message
+         is read as one unit, not a partial diff. -->
+    <div class="status" id="status" role="status" aria-live="polite" aria-atomic="true"></div>
+
+    <div class="divider"></div>
+
+    <button class="btn secondary" id="open-launchpad-btn">Open Trinity launchpad →</button>
+  </div>
+
+  <!-- Status panel — hidden until a council launches. Replaces #compose.
+       Button labels mirror the launchpad's operation-actions exactly
+       (Open council page / Stop council / Dismiss when finished). The
+       ✕ in the corner is a popup-specific affordance — closes the
+       popup without stopping the council (which keeps running headless,
+       since we Popen'd with start_new_session). -->
+  <!-- WCAG 4.1.3: role=status + aria-live=polite so the in-place title/tip
+       transitions (Council running → Council ready / Council failed / Council
+       stopped, and the tip rendering the error verbatim) are ANNOUNCED. These
+       mutate while the panel is already visible (poll loop), so a sighted user
+       sees the new state but, before this, a screen-reader user heard nothing.
+       Mirrors the launchpad's .launch-status role=status region. -->
+  <div id="status-panel" class="panel" style="display:none" role="status" aria-live="polite">
+    <button class="panel-close" id="panel-close-btn" aria-label="Close popup (council keeps running)" title="Close popup (council keeps running)">×</button>
+    <div class="panel-title" id="panel-title">Council running</div>
+    <div class="panel-tip" id="panel-tip">Reticulating splines...</div>
+    <div id="member-rows"></div>
+    <div class="panel-actions">
+      <button class="btn secondary" id="panel-open-btn">Open council page</button>
+      <button class="btn secondary" id="panel-stop-btn">Stop council</button>
+      <button class="btn secondary" id="panel-dismiss-btn" style="display:none">Dismiss</button>
+    </div>
+  </div>
+
+  <script src="harness-snippets.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

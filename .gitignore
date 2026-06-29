@@ -1,0 +1,47 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.DS_Store
+.venv/
+config.json
+state/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.Trinity Dispatch-signed.shortcut
+
+# Session / dev artifacts — playwright traces, ad-hoc screenshots, agent state
+.claude/
+.claude.json
+.playwright-mcp/
+*.png
+!docs/launchpad_example.png
+!docs/favicon.png
+!docs/og-card.png
+!docs/launch_assets/*.png
+!browser-extension/icons/*.png
+mock_gen.py
+pylint_report.txt
+
+# Personal-data guard (the 2026-05-31 corpus leak): never commit machine-mined
+# corpus briefs or raw ~/.trinity content. Enforcement is the docs/** PII grep in
+# tests/test_doc_count_consistency.py; these patterns are belt-and-suspenders.
+# Screenshots must be regenerated from a SYNTHETIC fixture, not ~/.trinity, so
+# the smoke/me-card PNG re-include exceptions were removed above.
+**/*corpus-gold*
+**/preference_acts*.jsonl
+conversations/
+
+# Node.js artifacts — optional browser-extension smoke-test deps
+node_modules/
+browser-extension/package-lock.json
+.agents/
+launch_councils/
+.antigravitycli/
+
+# internal/ + docs/maxroom-redesign.html are intentionally version-controlled now
+# (do NOT re-ignore them). Real personal data — config.json, conversations/,
+# preference_acts*, *corpus-gold* — stays ignored above.

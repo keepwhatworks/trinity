@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Trinity MCP launcher — bundled with the Claude Code plugin so that installing the
+# plugin alone gives a working Trinity (no separate `curl|bash`). The engine itself
+# is VENDORED into this plugin at ../engine/trinity_local (regenerated on release by
+# scripts/bundle_engine.sh); the 3 runtime deps (numpy/mcp/Pillow) are compiled /
+# per-platform so they can't be vendored — the launcher installs them ONCE into
+# ~/.trinity/venv on first boot.
+#
+# Resolution order (first that works wins):
+#   1. `trinity-local` on PATH — an existing curl|bash / dev install; their canonical
+#      engine (and it auto-updates via `trinity-local update`). Leave it alone.
+#   2. The BUNDLED engine + a one-time deps bootstrap into ~/.trinity/venv. This is the
+#      "just install the plugin" path — no curl, no commands.
+#   3. Fail LOUD with an install hint (never a silent hang).
+#
+# The embedder (torch/mlx + the ~600 MB model) is NOT bootstrapped here — it's a
+# separate, opt-in download offered by an in-session wizard; Trinity runs on the
+# lexical fallback until the user accepts.
+set -euo pipefail
+
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+ENGINE="$PLUGIN_ROOT/engine"          # vendored package: $ENGINE/trinity_local/
+TRINITY_HOME="${TRINITY_HOME:-$HOME/.trinity}"
+VENV="$TRINITY_HOME/venv"
+
+# 1. An existing console-script install wins.
+if command -v trinity-local >/dev/null 2>&1; then
+  exec trinity-local --mcp "$@"
+fi
+
+# 2. The bundled engine needs a python that can import numpy / mcp / Pillow.
+_have_deps() { "$1" -c "import numpy, mcp, PIL" >/dev/null 2>&1; }
+
+PYBIN=""
+if [ -x "$VENV/bin/python" ] && _have_deps "$VENV/bin/python"; then
+  PYBIN="$VENV/bin/python"                                  # already bootstrapped
+elif command -v python3 >/dev/null 2>&1 && _have_deps python3; then
+  PYBIN="python3"                                           # system python already has them (free)
+elif command -v python3 >/dev/null 2>&1; then
+  # First-boot bootstrap (ONE time): a private venv + the 3 base deps. Slow on the
+  # very first session (~a numpy download); every later boot reuses the venv.
+  if python3 -m venv "$VENV" >/dev/null 2>&1; then
+    "$VENV/bin/python" -m pip install --quiet --upgrade pip >/dev/null 2>&1 || true
+    if "$VENV/bin/python" -m pip install --quiet "numpy>=1.26" "mcp>=1.0" "Pillow>=10" >/dev/null 2>&1 \
+       && _have_deps "$VENV/bin/python"; then
+      PYBIN="$VENV/bin/python"
+    fi
+  fi
+fi
+
+if [ -n "$PYBIN" ] && [ -d "$ENGINE/trinity_local" ]; then
+  exec env PYTHONPATH="$ENGINE${PYTHONPATH:+:$PYTHONPATH}" "$PYBIN" -m trinity_local --mcp "$@"
+fi
+
+# 3. Couldn't resolve or bootstrap — surface an actionable hint, never a silent hang.
+echo "Trinity couldn't start: no python3 with deps was found and the bundled-engine" >&2
+echo "bootstrap failed. Install once, then reload the plugin (/reload-plugins):" >&2
+echo "  curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash" >&2
+exit 1

@@ -1,0 +1,88 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trinity-local"
+version = "1.7.396"
+description = "Cross-provider memory layer for Claude, Codex, and Gemini — local-first councils and personal benchmarks. Rides on your existing subscriptions."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+classifiers = [
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "Pillow>=10",
+    "mcp>=1.0",  # MCP-default install — Trinity is exposed as an MCP server to Claude Code / Codex CLI / Antigravity
+    "numpy>=1.26",  # Embedding matmul fast-path, k-means clustering, vocabulary stats — used across src/trinity_local/{embeddings,memory,me/basins,knn_analytics,vocabulary}
+]
+
+[project.urls]
+Homepage = "https://keepwhatworks.com"
+Source = "https://github.com/keepwhatworks/trinity"
+Issues = "https://github.com/keepwhatworks/trinity/issues"
+
+[project.scripts]
+trinity-local = "trinity_local.main:main"
+trinity-local-capture-host = "trinity_local.capture_host:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+trinity_local = [
+    "data/skills/**/*.md",
+    "data/vendor/*.js",
+    "data/vendor/*.woff2",     # Hanken Grotesk + JetBrains Mono — the launchpad/council/memory webfonts
+    "data/vendor/*.txt",       # the woff2 OFL licenses (ship with the fonts)
+    "data/fonts/*.ttf",        # Hanken + JetBrains variable TTFs — the PIL share-card fonts
+    "data/fonts/*.txt",        # the TTF OFL licenses
+    "data/config.example.json",
+    "data/models.json",
+]
+
+[project.optional-dependencies]
+# pyflakes powers the unused-import guard (test_doc_count_consistency.py
+# TestNoUnusedImportsInTests). It MUST be a declared test dep: without it the
+# guard shells out to a missing `python -m pyflakes`, gets empty stdout, and
+# passes VACUOUSLY — a false green exactly in CI, which installs only `.[test]`.
+test = ["pytest>=7", "pyflakes>=3"]
+mlx = [
+    # Real Apple-MLX path (#244): mlx + mlx-embeddings run modernbert-embed-base
+    # natively on Apple Silicon (~6300 nodes/s). Markers gate them to arm64 macOS
+    # so non-Apple installs skip them and use the torch path below.
+    "mlx>=0.20; platform_system == 'Darwin' and platform_machine == 'arm64'",
+    "mlx-embeddings>=0.1; platform_system == 'Darwin' and platform_machine == 'arm64'",
+    # Cross-platform fallback (Linux/Windows CUDA/ROCm, Intel Mac): the same
+    # modernbert-embed-base on torch (standard arch — MPS-clean, no nomic_bert wedge).
+    "sentence-transformers>=2.2",
+    "einops",
+    "torch>=2.0",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "real_corpus: runs against the real ~/.trinity install; skipped when none present",
+    "slow: tests that hit real Chrome / MLX / provider subprocesses; deselect with '-m \"not slow\"' for fast feedback. Run all with TRINITY_SLOW=1 or pytest -m slow.",
+    "browser: real-Chrome Playwright render tests (also 'slow'). Run in the dedicated CI 'browser' job via `pytest -m browser` after `playwright install chromium`; each skips cleanly when chromium is unavailable. These guard the production HTML surfaces (launchpad / memory viewer / live council) that the default suite never renders.",
+]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false

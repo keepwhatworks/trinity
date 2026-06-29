@@ -1,0 +1,114 @@
+{
+  "max_turns": 4,
+  "notifications": true,
+  "providers": {
+    "mlx": {
+      "type": "mlx",
+      "enabled": true,
+      "label": "MLX Small",
+      "model": "mlx-community/Qwen3-0.6B-4bit",
+      "command": [
+        "python3",
+        "-m",
+        "mlx_lm.generate"
+      ],
+      "args": [
+        "--temp",
+        "0.2",
+        "--max-tokens",
+        "900"
+      ],
+      "task_types": [
+        "general",
+        "reasoning",
+        "coding"
+      ]
+    },
+    "claude": {
+      "type": "cli",
+      "enabled": true,
+      "label": "Claude",
+      "model": "claude-opus-4-8",
+      "command": [
+        "claude",
+        "-p"
+      ],
+      "args": [
+        "--model",
+        "claude-opus-4-8"
+      ],
+      "task_types": [
+        "general",
+        "reasoning",
+        "coding",
+        "writing"
+      ],
+      "effort": "high"
+    },
+    "antigravity": {
+      "type": "cli",
+      "enabled": true,
+      "label": "Antigravity",
+      "command": [
+        "agy",
+        "-p"
+      ],
+      "args": [],
+      "task_types": [
+        "general",
+        "reasoning",
+        "research"
+      ],
+      "model": "Gemini 3.1 Pro (high)"
+    },
+    "codex": {
+      "type": "codex",
+      "enabled": true,
+      "label": "Codex",
+      "model": "gpt-5.5",
+      "command": [
+        "codex",
+        "exec"
+      ],
+      "args": [
+        "--sandbox",
+        "workspace-write",
+        "--skip-git-repo-check",
+        "--model",
+        "gpt-5.3-codex"
+      ],
+      "task_types": [
+        "coding",
+        "debugging"
+      ],
+      "effort": "high"
+    }
+  },
+  "task_preferences": {
+    "coding": [
+      "codex",
+      "claude",
+      "mlx"
+    ],
+    "debugging": [
+      "codex",
+      "claude",
+      "antigravity"
+    ],
+    "reasoning": [
+      "mlx",
+      "claude",
+      "antigravity"
+    ],
+    "research": [
+      "antigravity",
+      "claude",
+      "mlx"
+    ],
+    "general": [
+      "claude",
+      "mlx",
+      "antigravity"
+    ]
+  }
+}

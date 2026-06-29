@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>keepwhatworks — Notes from the arena</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* Calm / Muted Teal — cool neutral mist + one teal accent (mirrors ui_kits/launchpad). */
+  --bg:#eaecef;            /* cool mist canvas */
+  --bg-2:#eff1f4;          /* gentle raised ground */
+  --panel:#fafbfc;         /* card fill — near white */
+  --panel-2:#f1f3f6;       /* inputs / quieter surface */
+  --line:#dde1e6;          /* soft border */
+  --line-soft:#e7eaee;
+  --ink:#2f363c;           /* cool charcoal */
+  --ink-2:#5b646b;         /* secondary */
+  --muted:#616a73;         /* metadata */
+  --green:#4f9095;         /* accent / active — muted teal */
+  --green-deep:#34666b;    /* hover / text */
+  --green-fill:#3f777c;    /* button fill */
+  --green-fill-h:#34666b;
+  --green-soft:#e1edec;    /* soft wash for tints/active */
+  --warm:#94a3ad;          /* quiet secondary — soft slate */
+  --info:#7fa0ad;
+  --sans:"Hanken Grotesk","SF Pro Text",system-ui,-apple-system,sans-serif;
+  --mono:"JetBrains Mono","SF Mono",ui-monospace,monospace;
+  --shadow:0 10px 40px rgba(60,72,86,.10);
+  --shadow-soft:0 4px 18px rgba(60,72,86,.06);
+  --max-site:960px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15.5px;line-height:1.65;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+body{background-image:radial-gradient(120% 80% at 50% -10%, rgba(255,255,255,.6), transparent 60%);position:relative;}
+/* ambient breathing aura — soft drifting mist behind the layout */
+body::before,body::after{content:"";position:fixed;z-index:-1;border-radius:50%;filter:blur(70px);pointer-events:none;}
+body::before{width:560px;height:560px;left:-160px;top:-110px;opacity:.5;
+  background:radial-gradient(circle, color-mix(in srgb,var(--green) 34%, transparent), transparent 70%);
+  animation:drift1 27s ease-in-out infinite alternate;}
+body::after{width:640px;height:640px;right:-180px;bottom:-160px;opacity:.55;
+  background:radial-gradient(circle, color-mix(in srgb,var(--green) 20%, transparent), transparent 70%);
+  animation:drift2 33s ease-in-out infinite alternate;}
+@keyframes drift1{from{transform:translate(0,0) scale(1);}to{transform:translate(64px,44px) scale(1.12);}}
+@keyframes drift2{from{transform:translate(0,0) scale(1);}to{transform:translate(-50px,-40px) scale(1.1);}}
+a{color:var(--green-deep);text-decoration:none;text-underline-offset:3px;}
+a:hover{text-decoration:underline;}
+code,.mono{font-family:var(--mono);}
+::selection{background:rgba(79,144,149,.18);color:var(--ink);}
+
+/* ---- Topbar / wordmark ---- */
+.topbar{max-width:var(--max-site);margin:0 auto;padding:30px 24px 0;display:flex;align-items:center;justify-content:space-between;gap:16px;}
+.brand{display:inline-flex;align-items:center;gap:12px;font-size:19px;font-weight:600;color:var(--ink);letter-spacing:-.01em;}
+.brand:hover{text-decoration:none;}
+.brand .pr{font-family:var(--mono);color:var(--green);font-weight:500;font-size:19px;}
+/* the die mark — three teal pips, settles in on load */
+.die{width:18px;height:18px;border:1.5px solid var(--green);border-radius:5px;position:relative;flex:none;animation:dieSettle .9s cubic-bezier(.18,.85,.25,1) both;}
+.die span{position:absolute;width:3px;height:3px;border-radius:50%;background:var(--green);animation:pipIn .5s ease both;}
+.die span:nth-child(1){left:3px;top:3px;animation-delay:.5s;}
+.die span:nth-child(2){left:7.5px;top:7.5px;animation-delay:.63s;}
+.die span:nth-child(3){left:12px;top:12px;animation-delay:.76s;}
+@keyframes dieSettle{from{transform:rotate(-115deg) scale(.55);opacity:0;}60%{opacity:1;}to{transform:rotate(0) scale(1);opacity:1;}}
+@keyframes pipIn{from{transform:scale(0);opacity:0;}60%{transform:scale(1.35);}to{transform:scale(1);opacity:1;}}
+.nav{display:flex;gap:26px;}
+.nav a{color:var(--ink-2);font-size:14px;}
+.nav a:hover{color:var(--green-deep);text-decoration:none;}
+
+/* ---- Layout ---- */
+.wrap{max-width:var(--max-site);margin:0 auto;padding:0 24px;}
+.col{max-width:720px;}
+section{padding:56px 0;}
+section + section.divide{border-top:1px solid var(--line);}
+
+/* ---- Eyebrow (teal dash) ---- */
+.eyebrow{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.16em;color:var(--green-deep);display:inline-flex;align-items:center;gap:9px;margin-bottom:14px;}
+.eyebrow::before{content:"";width:18px;height:1.5px;border-radius:2px;background:var(--green);opacity:.7;}
+
+/* ---- Hero ---- */
+.hero{padding:64px 0 44px;}
+.hero h1{font-size:clamp(38px,6vw,60px);font-weight:600;line-height:1.06;letter-spacing:-.02em;margin-bottom:22px;}
+.hero h1 .accent{color:var(--green-deep);}
+.hero .sub{font-size:18px;line-height:1.6;color:var(--ink-2);max-width:600px;}
+
+/* ---- Section heads ---- */
+.section-eyebrow{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.2em;color:var(--green-deep);margin-bottom:12px;display:inline-flex;align-items:center;gap:9px;}
+.section-eyebrow::before{content:"";width:16px;height:1.5px;border-radius:2px;background:var(--green);opacity:.7;}
+.section-title{font-size:27px;font-weight:600;letter-spacing:-.01em;margin-bottom:8px;}
+.section-sub{font-size:15px;color:var(--ink-2);max-width:580px;line-height:1.65;margin-bottom:34px;}
+
+/* ---- Product card (Trinity) — left teal rail ---- */
+.product-card{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:40px;position:relative;box-shadow:var(--shadow);overflow:hidden;}
+.product-card::before{content:"";position:absolute;left:0;top:26px;bottom:26px;width:3px;border-radius:3px;background:var(--green);opacity:.6;}
+.product-card .eyebrow{margin-bottom:12px;}
+.product-card h2{font-size:34px;font-weight:600;letter-spacing:-.015em;margin-bottom:14px;}
+.product-card .tagline{font-size:16.5px;color:var(--ink-2);margin-bottom:20px;line-height:1.6;max-width:640px;}
+.product-card .tagline.small{font-size:14.5px;color:var(--ink-2);margin-bottom:14px;}
+.product-card .tagline.small em{font-style:normal;color:var(--green-deep);font-weight:500;}
+.install{background:var(--panel-2);border:1px solid var(--line);border-radius:14px;font-family:var(--mono);font-size:13px;color:var(--ink-2);padding:15px 18px;margin:6px 0 18px;overflow-x:auto;user-select:all;line-height:1.5;}
+.install::selection,.install *::selection{background:var(--green-soft);}
+.features{list-style:none;margin:22px 0;display:grid;grid-template-columns:1fr 1fr;gap:13px 30px;}
+.features li{font-size:14px;color:var(--ink-2);padding-left:22px;position:relative;line-height:1.5;}
+.features li::before{content:"→";position:absolute;left:0;color:var(--green);font-weight:600;}
+.btn-row{display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap;}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 22px;border-radius:999px;font-size:14px;font-weight:600;cursor:pointer;transition:.18s ease;border:1px solid transparent;}
+.btn.primary{background:var(--green-fill);color:var(--accent-text,#fbfdfc);box-shadow:0 6px 18px rgba(79,144,149,.28);}
+.btn.primary:hover{background:var(--green-fill-h);text-decoration:none;transform:translateY(-1px);}
+.btn.ghost{background:transparent;color:var(--green-deep);border-color:var(--line);}
+.btn.ghost:hover{border-color:var(--green);text-decoration:none;}
+
+/* ---- Essay grid ---- */
+.essays{display:grid;grid-template-columns:1fr;gap:16px;}
+.essay-card{display:block;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:26px 30px;color:inherit;box-shadow:var(--shadow-soft);transition:.18s ease;}
+.essay-card:hover{border-color:var(--green);transform:translateY(-2px);text-decoration:none;box-shadow:var(--shadow);}
+.essay-card .meta{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:9px;}
+.essay-card .meta .new{color:var(--green-deep);font-weight:600;}
+.essay-card h3{font-size:23px;font-weight:600;letter-spacing:-.01em;margin-bottom:9px;}
+.essay-card p{font-size:14.5px;color:var(--ink-2);line-height:1.6;margin:0;}
+
+/* ---- Footer ---- */
+footer{max-width:var(--max-site);margin:0 auto;padding:38px 24px 56px;border-top:1px solid var(--line);display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;color:var(--muted);font-size:13px;}
+footer a{color:var(--ink-2);}
+footer a:hover{color:var(--green-deep);}
+
+/* ---- Entrance: gentle staggered rise ---- */
+.rise{animation:rise .6s ease both;}
+.rise:nth-child(2){animation-delay:.05s;} .rise:nth-child(3){animation-delay:.1s;}
+@keyframes rise{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
+
+@media (prefers-reduced-motion:reduce){
+  body::before,body::after,.die,.die span,.rise{animation:none;}
+}
+@media (max-width:680px){
+  .features{grid-template-columns:1fr;}
+  .product-card{padding:28px 24px;}
+  .nav{gap:18px;}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <span class="die" aria-hidden="true"><span></span><span></span><span></span></span>
+    <span><span class="pr">&gt;</span> keepwhatworks</span>
+  </a>
+  <nav class="nav">
+    <a href="#essays">Essays</a>
+    <a href="#trinity">Trinity</a>
+    <a href="https://github.com/keepwhatworks/trinity">GitHub</a>
+  </nav>
+</header>
+
+<main class="wrap">
+
+  <!-- Hero -->
+  <section class="hero rise">
+    <div class="col">
+      <div class="eyebrow">Notes from the arena</div>
+      <h1>Keep what <span class="accent">works</span>.<br>Throw the rest.</h1>
+      <p class="sub">
+        Essays on building durable systems in an age of disposable answers — and the
+        tools that come out of writing them. Reality isn't a noun — it's a verb. The
+        point was never the destination. It was always the becoming.
+      </p>
+    </div>
+  </section>
+
+  <!-- Featured product -->
+  <section id="trinity" class="divide">
+    <div class="section-eyebrow">Featured · Product</div>
+    <h2 class="section-title">Trinity Local</h2>
+    <p class="section-sub">Most ideas on this site ended up in a single product. This is the first one.</p>
+
+    <div class="product-card rise">
+      <div class="eyebrow">Open source · v1.7</div>
+      <h2>Ask all three. Keep what works.</h2>
+      <p class="tagline">
+        Stop copy-pasting prompts between tabs like an animal. Ask once. Trinity fans
+        it out to Claude, GPT, and Gemini. Shows you where they split. Makes the call
+        the way <b>your</b> taste would.
+      </p>
+      <div class="install">curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash</div>
+      <p class="tagline small">
+        Just an MCP and a Chrome extension — no new app, no cloud, no API key. Your
+        transcripts never leave your machine. Day one, you run <em>councils</em>: ask
+        once, all three labs answer in parallel, and the <em>chairman</em> hands you
+        one synthesized verdict — plus exactly where they <em>split</em>.
+      </p>
+      <p class="tagline small">
+        Then it compounds. Your <em>lens</em> builds quietly in the background from the
+        transcripts already on your disk — the pattern in how you rephrase, judge, and
+        decide. Once it's there, the chairman stops returning the generic answer and
+        starts returning the one you would have picked. The council is the painkiller;
+        the lens is the moat.
+      </p>
+      <ul class="features">
+        <li>Run a council across all three labs — day one</li>
+        <li>See exactly where the models split</li>
+        <li>Your lens builds from transcripts already on your disk</li>
+        <li>Every council runs through your lens — the answer you'd pick</li>
+        <li>Score any new model against your taste the day it lands</li>
+        <li>Embedding model + index stay local</li>
+      </ul>
+      <div class="btn-row">
+        <a class="btn primary" href="https://github.com/keepwhatworks/trinity">See how it works →</a>
+        <a class="btn ghost" href="https://github.com/keepwhatworks/trinity">View source</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Essays -->
+  <section id="essays" class="divide">
+    <div class="section-eyebrow">Essays</div>
+    <h2 class="section-title">The thinking behind the build</h2>
+    <p class="section-sub">
+      Five essays on what stays durable once AI commoditizes the rest — each one naming
+      a principle that ended up load-bearing for Trinity. Read together, they circle a
+      single idea: what stays valuable when the answers get cheap.
+    </p>
+    <div class="essays">
+      <a class="essay-card rise" href="essay.html">
+        <div class="meta">Feb 22, 2026 · Essay</div>
+        <h3>The Architecture of Becoming</h3>
+        <p>The Builder's Trinity — grit, curiosity, simplicity — and why the goal was never a flawless foundation, but a distributed system of error correction. Reality isn't a noun. It's a verb.</p>
+      </a>
+      <a class="essay-card rise" href="essay.html">
+        <div class="meta">Feb 22, 2026 · Essay</div>
+        <h3>The Gravity of Becoming</h3>
+        <p>Difficulty was never the point. Depth was. Time to Wow: under five seconds. Time to Mastery: infinity. In a world of flawless AI outputs, imperfection becomes proof of humanity.</p>
+      </a>
+      <a class="essay-card rise" href="essay.html">
+        <div class="meta">May 18, 2026 · Essay · <span class="new">New</span></div>
+        <h3>Design the Affordance</h3>
+        <p>It's a design problem, not a prediction problem. Behavior is not goal-driven — it's a structural affordance. The motivation industry is 70 years of symptom management. Six moves replace the entire incentive layer.</p>
+      </a>
+      <a class="essay-card rise" href="essay.html">
+        <div class="meta">Sep 8, 2025 · Essay</div>
+        <h3>The AI-Native Way</h3>
+        <p>The Bitter Lesson, restated for builders. Rules and logic you write in code don't matter long-term. The only durable strategy is a systems-level data pipeline: find the edges, save the failures, finetune, repeat. That loop is the moat.</p>
+      </a>
+      <a class="essay-card rise" href="essay.html">
+        <div class="meta">Nov 27, 2025 · Essay</div>
+        <h3>Utopia is a Mechanism</h3>
+        <p>Democracy, science, free speech — not vaults, algorithms. Distributed error correction: knowledge isn't a settled state of being right, it's the dynamic process of being less wrong. Utopia is not a destination, it's a mechanism.</p>
+      </a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <span>© 2026 keepwhatworks — written from the arena.</span>
+  <span><a href="https://github.com/keepwhatworks/trinity">GitHub</a> · <a href="https://x.com/vishigondi">@vishigondi</a></span>
+</footer>
+
+</body>
+</html>

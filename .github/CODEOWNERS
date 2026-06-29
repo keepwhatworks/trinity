@@ -1,0 +1,4 @@
+# CODEOWNERS — GitHub auto-requests review from these owners on every PR.
+# Solo-maintainer state today; expand as contributors take ownership of
+# specific layers.
+*       @vishigondi

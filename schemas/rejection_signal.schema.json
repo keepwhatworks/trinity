@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/keepwhatworks/trinity/main/schemas/rejection_signal.schema.json",
+  "title": "Rejection Signal (turn-pair gap)",
+  "description": "One classified rejection mined from a (assistant_text, user_next_turn) pair. Written by `trinity-local lens-build` (Stage 0 turn-pair gap extraction). Lives one-per-line in ~/.trinity/me/rejections.jsonl. The empirical proof the user rejected a specific response shape — load-bearing for the eval-set builder (#122) and the inversion-test pipeline (#113).",
+  "type": "object",
+  "required": ["id", "type", "model_quote", "user_substitute"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable id (typically `r_NNN` sequential within a lens-build run).",
+      "pattern": "^r_"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["REFRAME", "COMPRESSION", "REDIRECT", "SHARPENING"],
+      "description": "The four implicit-rejection signal types from the taste-terminal schema. REFRAME = user substitutes a different frame entirely. COMPRESSION = user wanted shorter (validator: user_text wc ≤ model_text/10). REDIRECT = user wanted a structurally different output (validator: model_text was multi-part). SHARPENING = user wanted more precision on the same topic (validator: user_text shares ≥2 keywords with model_text)."
+    },
+    "model_quote": {
+      "type": "string",
+      "description": "The assistant utterance that triggered the rejection — quoted verbatim so the eval scorer can compare a candidate's response against the same anti-pattern."
+    },
+    "user_substitute": {
+      "type": "string",
+      "description": "What the user typed next — their implicit correction. NOT a request to redo; the next turn's content directly substitutes for what the user actually wanted."
+    },
+    "why_signal": {
+      "type": "string",
+      "description": "Chairman-extracted rationale for why this counts as a rejection of the named type. Stored so the eval scorer has rubric context."
+    },
+    "prompt_id": {
+      "type": ["string", "null"],
+      "description": "PromptNode id of the user's turn that elicited the rejected response. Null if the index has churned and the prompt can't be re-located."
+    },
+    "basin": {
+      "type": ["string", "null"],
+      "description": "Topic-cluster id (from topics.json). Enables per-basin × rejection_type aggregation."
+    },
+    "next_user_turn": {
+      "type": "string",
+      "description": "REFRAME-only — the user's turn AFTER the substitute, used to verify the frame persisted (i.e. wasn't a one-off correction). Empty when not applicable."
+    }
+  }
+}

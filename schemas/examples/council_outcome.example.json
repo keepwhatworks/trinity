@@ -1,0 +1,23 @@
+{
+  "council_run_id": "council_a1b2c3d4e5f60718",
+  "bundle_id": "bundle_demo",
+  "created_at": "2026-05-14T12:00:00Z",
+  "primary_provider": "claude",
+  "member_results": [
+    {"provider": "claude", "output_text": "answer A"},
+    {"provider": "antigravity", "output_text": "answer B"}
+  ],
+  "synthesis_output": "Both answers converge on X. Claude's framing is sharper.",
+  "routing_label": {
+    "task_type": "explanation",
+    "winner": "claude",
+    "agreed_claims": ["Both note that X follows from Y."],
+    "disagreed_claims": [
+      {
+        "claim": "Whether to mention edge case Z",
+        "why_matters": "Z applies to half the user's actual use cases",
+        "providers": ["claude"]
+      }
+    ]
+  }
+}

@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Trinity</title>
+  <style>
+    /* Calm/Muted-Teal palette — mirrors src/trinity_local/design_system.py + popup.html. */
+    :root {
+      --bg: #eaecef; --surface: #fafbfc; --border: #dde1e6;
+      --text: #2f363c; --text2: #5b646b; --muted: #5e666f;
+      --action: #3f777c; --action-hover: #34666b; --action-text: #fbfdfc; --success: #4f9095;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--text);
+      font-family: "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+      font-size: 14px; line-height: 1.5;
+    }
+    [hidden] { display: none !important; }
+    /* The launchpad/council UI runs inside a SANDBOXED iframe — petite-vue needs
+       eval, which the MV3 extension-page CSP forbids, but a manifest sandbox page
+       gets a relaxed CSP that allows it. The shell (this page) stays CSP-safe and
+       bridges chrome.runtime for the sandbox (sidepanel-bridge.js). */
+    /* Match the launchpad's own bg so a not-yet-painted iframe never flashes
+       white during load (the sandboxed launchpad takes a beat to mount). */
+    #app { display: block; width: 100%; height: 100vh; border: 0; background: var(--bg); }
+
+    /* Loading state — shown immediately while host-detection (a native-messaging
+       round-trip) + the sandboxed launchpad iframe come up, so the panel never
+       sits BLANK (founder-caught: "takes a while for this pane to load"). */
+    #loading {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px; color: var(--text2);
+    }
+    #loading .spinner {
+      width: 28px; height: 28px; border: 3px solid var(--border);
+      border-top-color: var(--action); border-radius: 50%;
+      animation: trinity-spin 0.8s linear infinite;
+    }
+    @keyframes trinity-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { #loading .spinner { animation: none; } }
+
+    /* Standalone "own your transcripts" view — shown when no local Trinity host
+       (the CLI) is detected, so the extension is useful on its own. */
+    #standalone { padding: 20px 18px; }
+    #standalone h1 {
+      font-family: "Hanken Grotesk", "SF Pro Display", system-ui, sans-serif;
+      font-size: 21px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em;
+    }
+    .sub { color: var(--text2); font-size: 13px; margin: 0 0 18px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 14px; }
+    .count { font-family: "Hanken Grotesk", sans-serif; font-size: 34px; font-weight: 700; line-height: 1; margin: 0 0 2px; }
+    .count-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+    .providers { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; }
+    .prov { font-size: 13px; color: var(--text2); }
+    .prov b { color: var(--text); font-weight: 600; }
+    .empty { color: var(--muted); font-size: 13px; }
+    .btn {
+      /* flex-center so the 44px floor never letterboxes the label. 11px padding +
+         14px/1.5 text ≈ 43px — 1px under the WCAG 2.5.5 / Apple HIG 44px touch
+         floor on the narrow draggable panel (founder-flagged on the launchpad's
+         .button, design_system.py; this hand-maintained shell never inherited it). */
+      display: flex; align-items: center; justify-content: center;
+      width: 100%; min-height: 44px; padding: 11px 14px; border: none; border-radius: 6px;
+      background: var(--action); color: var(--action-text); font: inherit; font-weight: 700;
+      cursor: pointer; transition: background 0.12s ease;
+    }
+    .btn:hover { background: var(--action-hover); }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+    /* overflow-wrap is the load-bearing half: the download-failure status renders
+       "Download failed: " + chrome.runtime.lastError.message — a writer-supplied error
+       that can carry a separator-free token (a quota/billing host, a blob URL, a native
+       host error id). With pre-wrap but no break rule that token streamed off the panel
+       (documentElement.scrollWidth ~639px on a 320px panel). The popup's .status twin
+       already breaks this exact case (popup.html); this sidepanel .status was the
+       asymmetric miss (UX sweep 2026-06-23). */
+    .status { font-size: 12.5px; color: var(--muted); margin-top: 8px; min-height: 0; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+    /* --action-hover (deep teal #34666b, 5.4:1 on --bg), NOT the FILL --success
+       (#4f9095 → only 3.08:1 as 12.5px text on --bg): the "Saved N conversation(s)"
+       download-success line is small readable status text and must clear AA 4.5:1.
+       --success is the FILL token (dots/bars/borders), unreadable as body text on
+       the light panel bg. Mirrors popup.html's .status.ok, which is already
+       --action-hover. UX sweep 2026-06-22 (357 sibling: FILL token used as text). */
+    .status.ok { color: var(--action-hover); }
+    .tip {
+      position: relative; background: #eef1f4; border-left: 3px solid var(--action);
+      border-radius: 4px; padding: 11px 40px 11px 12px; margin-top: 16px; font-size: 13px; color: var(--text2);
+    }
+    .tip .cta { color: var(--action-hover); font-weight: 600; }
+    /* A URL CTA is a real link — underline + pointer is the affordance that
+       tells the user it opens the install site (it used to be a dead span). */
+    .tip a.cta-link { text-decoration: underline; cursor: pointer; }
+    .tip a.cta-link:hover { color: var(--action); }
+    /* A command CTA is a copy button: monospace command + a 44px-floored hit
+       box (WCAG 2.5.5) so the tap lands on the narrow panel. Reset the native
+       button chrome so it sits inline in the tip prose. */
+    .tip button.cta-copy {
+      font: inherit; font-weight: 600; color: var(--action-hover);
+      background: none; border: none; padding: 0; cursor: pointer;
+      text-decoration: underline; text-align: left;
+      display: inline-flex; align-items: center; min-height: 44px;
+      font-family: "SF Mono", ui-monospace, "Menlo", monospace; font-size: 12.5px;
+    }
+    .tip button.cta-copy:hover { color: var(--action); }
+    /* Inline-flex hit area floored to the 44px touch target (the launchpad
+       icon-button pattern) — the × glyph stays small, the tappable box doesn't. */
+    .tip .x {
+      position: absolute; top: 0; right: 0; cursor: pointer; color: var(--muted);
+      border: none; background: none; font-size: 16px; line-height: 1;
+      min-width: 44px; min-height: 44px; padding: 4px;
+      display: inline-flex; align-items: flex-start; justify-content: flex-end;
+    }
+    .tip .x:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="spinner" aria-hidden="true"></div>
+    <div>Loading Trinity…</div>
+  </div>
+
+  <div id="standalone" hidden>
+    <h1>Your AI transcripts</h1>
+    <p class="sub">Captured locally from Claude, ChatGPT &amp; Gemini — they never leave your machine.</p>
+    <div class="card">
+      <div class="count" id="cap-count">0</div>
+      <!-- The noun pluralizes off the SAME count #cap-count shows (set in
+           initStandalone, mirroring the launchpad's `council{{ r.count === 1 ?
+           '' : 's' }}`). A static "conversations captured" read "1 CONVERSATIONS
+           CAPTURED" on the first-capture path (count=1) — the standalone view's
+           one headline metric, ungrammatical for a brand-new extension user. -->
+      <div class="count-label" id="cap-count-label">conversations captured</div>
+      <div class="providers" id="cap-providers"></div>
+    </div>
+    <button class="btn" id="download-btn" disabled>Download my transcripts</button>
+    <!-- WCAG 4.1.3 Status Messages: "Download my transcripts" is a deferred async
+         action (bundle fetch + chrome.downloads.download callback). The status text
+         it writes here in place — "Bundling…" → "Saved N conversation(s) → …" /
+         "Download failed: …" / "Nothing captured yet…" — lands in THIS element while
+         keyboard focus has left the now-disabled button (drops to <body>), so a
+         screen-reader user otherwise hears NOTHING about whether the download
+         succeeded, failed, or had nothing to bundle. role=status + aria-live=polite
+         (mirroring the popup's #status and the launchpad .launch-status) makes the
+         persistent element itself the live region so every transition announces with
+         no JS change and no drift between the visible and announced text. -->
+    <div class="status" id="dl-status" role="status" aria-live="polite" aria-atomic="true"></div>
+    <div id="tip-slot"></div>
+  </div>
+
+  <iframe id="app" src="sandbox/launchpad.html" title="Trinity launchpad" hidden></iframe>
+
+  <script src="sidepanel-shell.js"></script>
+  <script src="sidepanel-bridge.js"></script>
+</body>
+</html>

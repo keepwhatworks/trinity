@@ -1,0 +1,25 @@
+{
+  "eval_id": "eval_a1b2c3d4e5f6",
+  "built_at": "2026-05-14T12:00:00Z",
+  "source": "rejections",
+  "stats": {
+    "items": 1,
+    "by_rejection_type": {"COMPRESSION": 1},
+    "by_basin": {"b00": 1}
+  },
+  "items": [
+    {
+      "eval_item_id": "ei_a1b2c3d4e5f6",
+      "prompt": "Explain X concisely.",
+      "rejection_type": "COMPRESSION",
+      "rejected_response": "A long lecture about X with five subsections.",
+      "user_substitute": "tldr",
+      "rubric_signal": "user wanted shorter",
+      "basin_id": "b00",
+      "source": "rejections",
+      "source_id": "r_001",
+      "prompt_id": "pn_42",
+      "provider_of_rejected_response": "claude"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "trinity-local": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/trinity-mcp"
+    }
+  }
+}

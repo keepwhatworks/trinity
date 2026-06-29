@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Trust + privacy concern
+    url: https://github.com/keepwhatworks/trinity/blob/main/SECURITY.md
+    about: Vulnerability or privacy issue? Read SECURITY.md and email security@keepwhatworks.com — please don't open a public issue for these.
+  - name: First-install help
+    url: https://github.com/keepwhatworks/trinity/blob/main/docs/INSTALL-skill.md
+    about: Install or `status` problems — INSTALL-skill.md walks the full flow with troubleshooting. Open a bug report only if `trinity-local status` doesn't surface a fix.

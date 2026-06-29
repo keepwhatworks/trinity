@@ -1,0 +1,130 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        # pyproject declares requires-python >=3.10. The dev box + the old CI
+        # matrix were 3.12-only, which masked 3.10/3.11 breaks (a PEP-701
+        # f-string backslash is a hard SyntaxError pre-3.12 while 3.12 stays
+        # green — that bit us 2026-06-02). test_min_python_syntax.py catches
+        # GRAMMAR structurally; this matrix catches RUNTIME (stdlib-API) drift
+        # by actually running the suite on the declared floor.
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history so commit-hash-resolution tests can resolve
+          # historical hashes cited in the retirement registry and elsewhere.
+          # actions/checkout's default is shallow (depth 1) which makes
+          # `git cat-file -e <old-sha>` fail.
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install Trinity + test extras
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+
+      - name: Run pytest
+        run: pytest -q --tb=short
+
+  # Browser render guards (`-m browser`) — real-Chrome Playwright tests over the
+  # production HTML surfaces (launchpad / memory viewer / live council). The `test`
+  # job above runs `pytest -q` with NO `TRINITY_SLOW=1`, so conftest skips every
+  # `slow` test — and even if it didn't, `.[test]` ships no chromium, so they'd
+  # skip on `importorskip`. That left the entire browser suite UN-ENFORCED in CI:
+  # a regression that blanks the launchpad, breaks the painkiller, or reintroduces
+  # the topology XSS would pass green. This job installs chromium and runs only the
+  # `browser`-marked tests so those surfaces are actually protected on every PR.
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # portal-html + a few guards resolve repo-relative paths
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install Trinity + test extras + Playwright
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]" playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Run browser render guards
+        run: pytest -m browser -q --tb=short
+
+  # End-to-end smoke of the REAL curl|sh front door (scripts/install.sh). The
+  # `test` job runs pytest but NEVER executes install.sh — so the #274 launch
+  # blocker (silenced `pip --user` stderr + a baked interpreter path with no
+  # fallback) was caught BY HAND, not by CI. This runs the actual script against
+  # a file-local clone in an isolated HOME, exercising the bits pytest can't:
+  # wrapper generation, the PEP-668 venv dep install, and `install-mcp` — then
+  # asserts the wrapper actually resolves python + PYTHONPATH + module and runs.
+  # ubuntu + macOS only (the two supported OSes; Windows is WSL2-scoped per #272).
+  install-smoke:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install via scripts/install.sh in an isolated HOME and verify wrappers run
+        run: |
+          set -euo pipefail
+          # A stable branch ref to clone from, regardless of detached-HEAD checkout.
+          git branch -f trinity-ci-src HEAD
+          export HOME="$(mktemp -d)"
+          export TRINITY_REPO_URL="$GITHUB_WORKSPACE"
+          export TRINITY_BRANCH="trinity-ci-src"
+          export TRINITY_SKILL_DIR="$HOME/.trinity/code"
+          export TRINITY_BIN_DIR="$HOME/.local/bin"
+          export TRINITY_AUTOSCAN_DISABLED=1
+          bash "$GITHUB_WORKSPACE/scripts/install.sh"
+
+          echo "=== asserting the install produced working wrappers ==="
+          test -x "$TRINITY_BIN_DIR/trinity-local" \
+            || { echo "FAIL: trinity-local wrapper missing or not executable"; exit 1; }
+          test -x "$TRINITY_BIN_DIR/trinity-local-capture-host" \
+            || { echo "FAIL: trinity-local-capture-host wrapper missing or not executable"; exit 1; }
+          # The wrapper must actually resolve python + PYTHONPATH + module and run
+          # (the exact #274 regression — a wrapper that writes fine but can't execute).
+          "$TRINITY_BIN_DIR/trinity-local" --help >/dev/null \
+            || { echo "FAIL: 'trinity-local --help' did not run (import/PYTHONPATH/interpreter break)"; exit 1; }
+          # status may report 'not ready' (no providers on CI) — that's a nonzero
+          # exit, not a crash. Run it for log visibility but don't gate on it.
+          "$TRINITY_BIN_DIR/trinity-local" status || true
+          echo "install-smoke OK"

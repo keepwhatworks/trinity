@@ -1,0 +1,189 @@
+/* ============================================================================
+   Trinity Local — colors_and_type.css  ·  CALM theme (Muted Teal)
+   ----------------------------------------------------------------------------
+   DIRECTION NOTE
+   Trinity's shipped product UI uses a warm-paper + serif "field notebook" look
+   (see trinity-local/DESIGN.md). In practice that template reads as the generic
+   "Claude / Opus default house style" (warm cream, serif display, italic
+   accents, terracotta). This design system instead adopts a deliberately
+   **calm, soothing** direction: a cool neutral mist, a soft humanist sans, and
+   a single muted-teal accent — restful, quiet, and distinct from both the
+   cream-editorial and the dev-terminal looks. The brand DNA Trinity keeps is
+   the three-model "council," the die mark, and the >-prompt wordmark.
+
+   FONT NOTE
+   The product targets system fonts (Iowan Old Style / SF Pro Text / SF Mono),
+   none of which ship in the repo. This theme uses:
+     • Hanken Grotesk  — soft humanist sans for everything (headings + body)
+     • JetBrains Mono  — only for commands / paths / inline code
+   Load in <head>:
+     <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+   ============================================================================ */
+
+:root {
+  /* ---- Neutral spine — cool soothing mist ---- */
+  --bg-base:        #eaecef; /* cool mist — the page */
+  --bg-wash:        #eff1f4; /* gentle raised ground */
+  --surface:        #fafbfc; /* card / panel fill — near white */
+  --surface-muted:  #f1f3f6; /* inputs, quieter surface, table head */
+  --border:         #dde1e6; /* soft hairline — always visible */
+  --border-soft:    #e7eaee; /* faint inner dividers */
+
+  --text-primary:   #2f363c; /* cool charcoal — titles, emphasis */
+  --text-secondary: #5b646b; /* explanatory copy */
+  --text-muted:     #5e666f; /* metadata, captions, timestamps — AA 4.5:1+ on light bgs incl. tinted accent cards */
+
+  /* ---- Accent — muted teal (the one action color) ---- */
+  --accent:         #4f9095; /* active / links / accent */
+  --accent-deep:    #34666b; /* hover, accent text on light */
+  --accent-fill:    #3f777c; /* solid button fill — white text 4.96:1 (AA) */
+  --accent-fill-hover:#34666b;
+  --accent-soft:    #e1edec; /* low-alpha wash: tints, active, badges */
+  --accent-text:    #fbfdfc; /* light text on filled teal */
+  --accent-quiet:   #94a3ad; /* soft slate — quiet secondary signal */
+
+  /* ---- Semantic status (only ever to encode status) ---- */
+  --success:        #4f9095; /* shares the calm teal family */
+  --warning:        #bd9658;
+  --danger:         #bd6a5a;
+  --info:           #7fa0ad;
+  --success-wash:   #e1edec;
+  --warning-wash:   #f1ece1;
+  --danger-wash:    #f3e8e5;
+  --info-wash:      #e6eef1;
+
+  /* ---- Font stacks ---- */
+  --sans: "Hanken Grotesk", "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", ui-monospace, "Cascadia Code", monospace;
+
+  /* ---- Spacing scale (4 → 64) ---- */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 64px;
+
+  /* ---- Radii — soft & rounded ---- */
+  --radius-lg: 22px; /* cards / panels */
+  --radius-md: 18px; /* controls, inner cards */
+  --radius-sm: 14px; /* inputs, chips */
+  --radius-pill: 999px;
+
+  /* ---- Elevation — soft, cool, low-contrast ---- */
+  --shadow-card: 0 10px 40px rgba(60, 72, 86, 0.10);
+  --shadow-soft: 0 4px 18px rgba(60, 72, 86, 0.06);
+
+  /* ---- Layout ---- */
+  --max-content: 1000px; /* product column */
+  --max-site:    960px;  /* marketing site column */
+  --page-pad:    40px;
+  --page-pad-mobile: 20px;
+}
+
+/* ============================================================================
+   BASE TYPE — element defaults (no serif anywhere; one soft sans)
+   ============================================================================ */
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--sans);
+  font-size: 15.5px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Page title — soft sans, large, gentle tracking. */
+h1 {
+  font-family: var(--sans);
+  font-size: clamp(36px, 5vw, 52px);
+  font-weight: 600;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  margin: 0 0 20px 0;
+  color: var(--text-primary);
+}
+/* one-word accent in a title uses teal, NOT italic */
+h1 .accent { color: var(--accent-deep); }
+
+/* Section title. */
+h2 {
+  font-family: var(--sans);
+  font-size: 25px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  margin: 0 0 12px 0;
+  color: var(--text-primary);
+}
+
+/* Sub-section. */
+h3 {
+  font-family: var(--sans);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 0 0 10px 0;
+  color: var(--text-primary);
+}
+
+p { margin: 0 0 12px 0; color: var(--text-secondary); }
+
+a { color: var(--accent-deep); text-decoration: none; text-underline-offset: 3px; }
+a:hover { text-decoration: underline; }
+
+code, pre {
+  font-family: var(--mono);
+  font-size: 13.5px;
+  background: var(--surface-muted);
+  padding: 2px 7px;
+  border-radius: 7px;
+}
+pre { padding: 14px; overflow-x: auto; margin: 12px 0; line-height: 1.5; }
+
+@media (max-width: 768px) { h1 { font-size: clamp(30px, 8vw, 40px); } h2 { font-size: 21px; } }
+
+/* ============================================================================
+   SEMANTIC TYPE CLASSES
+   ============================================================================ */
+
+/* Eyebrow / label — soft tracked marker (pair with a small teal dash). */
+.eyebrow {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--accent-deep);
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 10px 0;
+}
+.eyebrow::before {
+  content: "";
+  width: 18px; height: 1.5px; border-radius: 2px;
+  background: var(--accent); opacity: 0.7;
+}
+
+/* Lede — opening paragraph, a notch larger. */
+.lede { font-size: 17.5px; line-height: 1.6; color: var(--text-secondary); }
+
+/* Secondary body. */
+.body-secondary { font-size: 14.5px; line-height: 1.6; color: var(--text-secondary); }
+
+/* Metadata row — muted one-liners. */
+.meta { font-size: 13.5px; color: var(--text-muted); }
+
+/* Quiet uppercase label (over content). */
+.label {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--text-muted);
+}
+
+/* Command / path inline — monospace chip (reserved for real code/paths). */
+.mono { font-family: var(--mono); font-size: 0.92em; }

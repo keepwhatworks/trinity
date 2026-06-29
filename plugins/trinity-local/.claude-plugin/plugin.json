@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "trinity-local",
+  "displayName": "Trinity Local",
+  "version": "1.7.389",
+  "description": "Ask all three. Keep what works. Cross-provider councils, a taste lens, and smart routing across Claude, Codex, and Gemini — local-first, riding your existing CLI subscriptions. No new app, no service, no API key.",
+  "author": {
+    "name": "Vishi Gondi",
+    "url": "https://keepwhatworks.com"
+  },
+  "homepage": "https://keepwhatworks.com",
+  "repository": "https://github.com/keepwhatworks/trinity",
+  "license": "MIT",
+  "keywords": [
+    "memory",
+    "council",
+    "multi-model",
+    "routing",
+    "cross-provider",
+    "local-first",
+    "taste"
+  ],
+  "commands": ["./commands/"],
+  "mcpServers": "./.mcp.json"
+}

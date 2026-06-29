@@ -1,0 +1,10 @@
+{
+  "name": "trinity-local-browser-extension",
+  "private": true,
+  "scripts": {
+    "smoke:stagehand": "node ./smoke-stagehand.mjs"
+  },
+  "devDependencies": {
+    "@browserbasehq/stagehand": "^3.2.1"
+  }
+}

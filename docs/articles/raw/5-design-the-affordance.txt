@@ -1,0 +1,22 @@
+URL: (drafted May 18, 2026)
+Title: Design the Affordance
+Source: thinking notes — themes extracted, no private content surfaced
+
+Core claims (the user's own ideas, scrubbed of any private chat context):
+
+- "It's a design problem, not a prediction problem."
+- "Behavior is not goal-driven; it's a structural affordance."
+- "The motivation industry — incentives, KPIs, OKRs, rewards, gamification —
+  is 70 years of symptom management."
+- "Behavior emerges from structure."
+- Six moves replace the entire incentive layer:
+  1. Name the roles
+  2. Enforce the boundaries
+  3. Put signal in its channel
+  4. Cheap path = right path
+  5. Narrow waist between layers
+  6. Self-correction built in
+- "The lever is always one layer deeper than people are looking."
+- Arc of the six moves: foundation (roles) → substrate (boundaries) →
+  content (signal) → dynamics (cheap path) → composability (waist) →
+  resilience (self-correction). Static → dynamic → systemic.
