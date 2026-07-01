@@ -196,13 +196,14 @@ def _provider_dict_to_rejection_signal(
             if why_signal
             else f"[{source_provider}/{confidence}]"
         ),
-        # provider doesn't know our prompt-node ids, so prompt_id stays None. But
-        # if the provider supplied `original_prompt` (#280), carry it inline as
-        # prompt_text — build_eval_set falls back to it when prompt_id doesn't
-        # resolve, so the rejection becomes a SCOREABLE eval item rather than
-        # being dropped as unresolved. Without it (or with an echoed-gold prompt,
-        # filtered above), the signal still feeds the LENS; only its use as an
-        # *eval item* is gated on a real, non-degenerate prompt.
+        # provider doesn't know our prompt-node ids, so prompt_id stays None. The
+        # inline `original_prompt` (#280) is the signal's ONLY turn-pair anchor, so it
+        # is now load-bearing, not optional: `handle_eval_import` runs every mapped
+        # signal through `provenance_gap`, and one with no `original_prompt` (or an
+        # echoed-gold prompt, blanked above) has no anchor and is REFUSED — a provider
+        # asserting taste is not a record of a correction the user made. Signals that
+        # carry it resolve as scoreable eval items (build_eval_set falls back to
+        # prompt_text) and feed the lens; prompt-less ones enter neither.
         prompt_id=None,
         prompt_text=original_prompt,
         basin=None,  # provider doesn't know our basin ids
@@ -219,9 +220,36 @@ def _read_existing_ids() -> set[str]:
 
 def _append_signals(signals: list[RejectionSignal]) -> None:
     """Append each provider rejection to the unified ledger as a model_miss
-    act. Append-only; the caller dedups by id via `_read_existing_ids`."""
+    act. Append-only; the caller dedups by id via `_read_existing_ids` and gates
+    provenance via `_gate_by_provenance` (only anchored signals reach here)."""
     from ..me.preference_acts import append_preference_acts, from_rejection
     append_preference_acts([from_rejection(s) for s in signals])
+
+
+def _gate_by_provenance(
+    signals: list[RejectionSignal],
+) -> tuple[list[RejectionSignal], list[tuple[RejectionSignal, str]]]:
+    """The provenance firewall at the import boundary — broad-ownership, no exceptions.
+
+    A provider-supplied signal enters the ledger ONLY if the PreferenceAct it maps to
+    passes the SAME `provenance_gap` every other ledger write must pass. A provider
+    rejection has no local `prompt_id` (the provider doesn't know our node ids), so its
+    only turn-pair anchor is the inline `original_prompt` (carried as `prompt_text`). A
+    prompt-less rejection is a bare quote/substitute — a provider ASSERTING taste, not a
+    record of a correction the user actually made — so it has no anchor and is refused
+    here, exactly as an unanchored write from anywhere else would be. Returns
+    ``(admitted, rejected)`` where ``rejected`` pairs each dropped signal with its reason."""
+    from ..me.preference_acts import from_rejection, provenance_gap
+
+    admitted: list[RejectionSignal] = []
+    rejected: list[tuple[RejectionSignal, str]] = []
+    for s in signals:
+        gap = provenance_gap(from_rejection(s))
+        if gap:
+            rejected.append((s, gap))
+        else:
+            admitted.append(s)
+    return admitted, rejected
 
 
 def handle_eval_import(args) -> int:
@@ -251,33 +279,44 @@ def handle_eval_import(args) -> int:
     new_signals = [s for s in parsed if s.id not in existing_ids]
     duplicates = len(parsed) - len(new_signals)
 
-    # Per-axis breakdown for human + analytics consumers.
+    # Provenance firewall (broad-ownership, no exceptions): a provider signal enters
+    # the ledger ONLY if it passes the SAME provenance_gap as every other ledger write.
+    # A prompt-less rejection has no turn-pair anchor — a provider ASSERTION, not a
+    # record of a correction the user made — so it is refused, not silently written.
+    admitted, rejected = _gate_by_provenance(new_signals)
+    rejected_no_provenance = len(rejected)
+
+    # Per-axis breakdown over the ADMITTED signals (what actually lands).
     axis_counts: dict[str, int] = {}
-    for s in new_signals:
+    for s in admitted:
         axis_counts[s.type] = axis_counts.get(s.type, 0) + 1
 
-    # Provider-imported rejections carry no original prompt (prompt_id=None — see
-    # _provider_dict_to_rejection_signal), so build_eval_set can't feed a candidate
-    # model and DROPS them as unresolved. Surface how many are actually scoreable
-    # so the "next" line doesn't falsely promise an eval set the build will skip.
-    scoreable = sum(1 for s in new_signals if getattr(s, "prompt_id", None))
+    # An admitted signal is scoreable as an eval item when it carries the original
+    # prompt (inline as prompt_text — build_eval_set falls back to it) or a resolvable
+    # prompt_id. Post-gate every admitted signal is anchored, so the "next: eval-build"
+    # line is an honest promise, not a false-green.
+    scoreable = sum(
+        1 for s in admitted
+        if getattr(s, "prompt_id", None) or getattr(s, "prompt_text", "")
+    )
 
     result = {
         "ok": True,
         "source_provider": source_provider,
         "rejections": {
             "incoming": len(parsed),
-            "new": len(new_signals),
+            "new": len(admitted),
             "scoreable_as_eval": scoreable,
             "duplicates": duplicates,
             "skipped_malformed": skipped,
+            "rejected_no_provenance": rejected_no_provenance,
             "by_axis": axis_counts,
         },
         "dry_run": bool(args.dry_run),
     }
 
-    if not args.dry_run and new_signals:
-        _append_signals(new_signals)
+    if not args.dry_run and admitted:
+        _append_signals(admitted)
         result["ledger_path"] = str(preference_acts_path())
 
     if args.as_json:
@@ -292,21 +331,19 @@ def handle_eval_import(args) -> int:
             f"{r['duplicates']} duplicates, "
             f"{r['skipped_malformed']} skipped"
         )
-        if not args.dry_run and new_signals:
+        if not args.dry_run and admitted:
             print(f"  → {result['ledger_path']}")
-            if scoreable:
-                print(
-                    "  next: `trinity-local eval-build` to package these into "
-                    "an eval set, then `trinity-local eval-run` to score a model"
-                )
-            else:
-                # Honest status (no false-green): provider rejections carry no
-                # original prompt, so eval-build can't score them — promising an
-                # eval set here would be a lie the build silently breaks.
-                print(
-                    "  note: these enrich your LENS (chairman context), but are "
-                    "NOT scoreable eval items — the provider response carries no "
-                    "original prompt, so eval-build skips them as unresolved. "
-                    "Captured rejections (with the prompt) are what eval-run scores."
-                )
+            print(
+                "  next: `trinity-local eval-build` to package these into "
+                "an eval set, then `trinity-local eval-run` to score a model"
+            )
+        if rejected_no_provenance:
+            # No silent drop (green-gate discipline): name what was refused and why.
+            print(
+                f"  {rejected_no_provenance} rejected: no turn-pair anchor. A provider "
+                "rejection enters the ledger only WITH its `original_prompt` (the same "
+                "anchor every other ledger write carries) — a bare quote/substitute is "
+                "an assertion, not a record of your correction. See "
+                "docs/evals-from-provider.md."
+            )
     return 0
