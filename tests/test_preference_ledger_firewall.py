@@ -24,6 +24,13 @@ from transcripts); a synthesizer touching the ledger is not (it injects). Four g
      from the set of modules that can write the ledger; only sanctioned observers may.
   4. ``test_transcripts_append_only`` — the ground-truth layer is append-only +
      latest-wins; nothing rewrites it.
+  5. ``TestImportBoundaryGatedByProvenance`` — the one path where a PROVIDER (not the
+     user's transcripts) supplies ledger content — ``import_provider_memory`` /
+     ``eval-import`` — passes the SAME ``provenance_gap`` as every other write: a
+     provider signal enters only with a real turn-pair anchor, never a bare assertion.
+
+The provenance check itself lives in production (``me/preference_acts.provenance_gap``)
+and is consumed here, so the tool's gate and the firewall assertion can't drift apart.
 
 Same two-layer shape as ``test_preference_corpus_schemas.py``: a synthetic round-trip
 (catches code drift) plus real-corpus sampling (catches on-disk drift; skipped on a
@@ -40,12 +47,12 @@ import pytest
 from trinity_local.me.decisions import Decision
 from trinity_local.me.preference_acts import (
     MODEL_MISS,
-    SELF_EXPRESSED,
     PreferenceAct,
     from_decision,
     from_rejection,
     load_preference_acts,
     preference_acts_path,
+    provenance_gap,
     save_preference_acts,
 )
 from trinity_local.me.turn_pairs import RejectionSignal
@@ -53,12 +60,9 @@ from trinity_local.me.turn_pairs import RejectionSignal
 REPO = Path(__file__).resolve().parents[1]
 SRC = REPO / "src" / "trinity_local"
 
-# Substrings that mark a `source` as SYNTHESIZED — injected content, not a projection
-# of ground truth. A ledger act whose source contains any of these is a firewall
-# breach (the optimizer wrote taste instead of the observer recording it).
-SYNTHESIZED_SOURCE_MARKERS = (
-    "synthes", "chairman", "distill", "dream", "virtual", "generated", "council", "llm",
-)
+# `provenance_gap` is the ONE production check (me/preference_acts.py) that every
+# ledger write must pass; the test consumes it directly rather than reimplementing it,
+# so the tool's gate and the firewall assertion can never drift apart.
 
 # The functions that WRITE the ledger. A module that calls one of these is in the
 # ledger's "write closure".
@@ -69,9 +73,10 @@ LEDGER_WRITE_FUNCS = {"save_preference_acts", "append_preference_acts"}
 #                            migration appends recovered legacy rows).
 #   me_builder.py          — lens-build's re-derivation from transcripts. A full
 #                            rewrite, but a *pure re-derivation* (guarded by test #1).
-#   commands/eval_import.py — imports another tool's REAL user rejections (an observer
-#                            of ground truth that happens to live in someone else's
-#                            transcript).
+#   commands/eval_import.py — imports another tool's user rejections. A GATED writer:
+#                            every provider signal must pass `provenance_gap` (carry a
+#                            real turn-pair anchor) before it appends — a provider can
+#                            annotate the user's ground truth, not inject taste into it.
 # A new writer outside this set is a breach until justified and added here.
 SANCTIONED_LEDGER_WRITERS = {
     "me/preference_acts.py",
@@ -128,35 +133,6 @@ def _called_names(pyfile: Path) -> set[str]:
             fn = node.func
             out.add(fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", ""))
     return out
-
-
-def _source_is_synthesized(source: str) -> bool:
-    s = (source or "").lower()
-    return any(marker in s for marker in SYNTHESIZED_SOURCE_MARKERS)
-
-
-def _act_provenance_problem(act: PreferenceAct) -> str | None:
-    """Return a reason string if ``act``'s provenance is illegal, else None.
-
-    Legal provenance = (a) an extraction trigger (model_miss | self_expressed — the
-    two shapes that *come from* a turn-pair), (b) a non-synthesized source, and (c) a
-    transcript anchor. A ``model_miss`` act IS a ``[question]→[answer]→[reaction]``
-    turn-pair, so it must carry an anchor: a ``prompt_id`` (resolves to a local node)
-    or the inline prompt/question the provider-import shape carries. A
-    ``self_expressed`` decision may be user-logged (no prompt_id), so an inline anchor
-    or an explicit user-logged/lens-edit source suffices."""
-    if act.trigger not in (MODEL_MISS, SELF_EXPRESSED):
-        return f"unknown trigger {act.trigger!r} (only model_miss / self_expressed come from turn-pairs)"
-    if _source_is_synthesized(act.source):
-        return f"synthesized source {act.source!r} — injected, not a projection of ground truth"
-    anchored = bool(act.prompt_id or act.prompt_text or act.question_text)
-    if act.trigger == MODEL_MISS:
-        if not anchored:
-            return "model_miss act resolves to no turn-pair (no prompt_id / prompt_text / question_text)"
-    else:  # self_expressed
-        if not (anchored or act.context or act.source in {"user_logged", "lens_edit"}):
-            return "self_expressed act carries no turn-pair anchor"
-    return None
 
 
 def _ledger_records(path: Path) -> list[dict]:
@@ -270,7 +246,7 @@ class TestEntryResolvesToTranscript:
         acts = load_preference_acts()
         assert acts, "ledger empty after write"
         for act in acts:
-            assert _act_provenance_problem(act) is None, _act_provenance_problem(act)
+            assert provenance_gap(act) is None, provenance_gap(act)
             # and its prompt_id genuinely resolves to a seeded transcript node
             assert act.prompt_id and load_prompt_node(act.prompt_id) is not None, (
                 f"{act.prompt_id!r} did not resolve to a transcript node"
@@ -284,7 +260,7 @@ class TestEntryResolvesToTranscript:
             id="r_bad", trigger=MODEL_MISS, privileged="x", sacrificed="y",
             prompt_id="pn_x", source="chairman-synthesis",
         )
-        problem = _act_provenance_problem(bad)
+        problem = provenance_gap(bad)
         assert problem and "synthesized" in problem
 
     def test_unanchored_model_miss_is_rejected(self):
@@ -292,7 +268,7 @@ class TestEntryResolvesToTranscript:
         floating = PreferenceAct(
             id="r_float", trigger=MODEL_MISS, privileged="x", sacrificed="y", source="lens-build",
         )
-        assert _act_provenance_problem(floating) is not None
+        assert provenance_gap(floating) is not None
 
     def test_every_ledger_entry_resolves_to_transcript(self):
         """Real-corpus: every act on disk carries a real turn-pair provenance and no
@@ -315,7 +291,7 @@ class TestEntryResolvesToTranscript:
                 except (json.JSONDecodeError, TypeError, ValueError) as exc:
                     failures.append((f"line {idx}", f"unreadable: {exc}"))
                     continue
-                problem = _act_provenance_problem(act)
+                problem = provenance_gap(act)
                 if problem:
                     failures.append((act.id or f"line {idx}", problem))
         if failures:
@@ -407,3 +383,71 @@ class TestTranscriptsAppendOnly:
         assert '"a"' in prim or "'a'" in prim, "the transcript write primitive is not append-mode"
         assert "_append_jsonl" in inspect.getsource(store.upsert_prompt_node)
         assert "_append_jsonl" in inspect.getsource(store.upsert_turn_window)
+
+
+# ----------------------------------------- 5. the import boundary shares the same gate
+
+
+class TestImportBoundaryGatedByProvenance:
+    """The recursion, closed with no exceptions. `import_provider_memory` (and its CLI
+    twin `eval-import`) is the one path where a PROVIDER, not the user's transcripts,
+    supplies ledger content. It must pass the SAME `provenance_gap` as every other
+    write: a provider signal enters only with a real turn-pair anchor. A bare
+    quote/substitute — a provider asserting taste — is refused, so the repo is entirely
+    on the broad-ownership branch."""
+
+    def _import(self, rejection: dict):
+        """Drive a single provider rejection through the real import handler."""
+        import json as _json
+        from argparse import Namespace
+        import io
+        import sys as _sys
+
+        from trinity_local.commands.eval_import import handle_eval_import
+
+        payload = _json.dumps({"source_provider": "claude", "rejections": [rejection]})
+        ns = Namespace(path=None, from_json=True, provider=None, dry_run=False, as_json=True)
+        saved, _sys.stdin = _sys.stdin, io.StringIO(payload)
+        buf = io.StringIO()
+        try:
+            from contextlib import redirect_stdout
+            with redirect_stdout(buf):
+                rc = handle_eval_import(ns)
+        finally:
+            _sys.stdin = saved
+        assert rc == 0
+        return _json.loads(buf.getvalue())
+
+    def test_anchored_provider_rejection_is_admitted(self, patch_trinity_home: Path):
+        assert str(patch_trinity_home) in str(preference_acts_path())  # isolated to temp home
+        res = self._import({
+            "type": "REFRAME",
+            "model_quote": "let me first explain the tradeoffs",
+            "user_substitute": "skip it, just pick one",
+            "original_prompt": "which index type for this table?",
+        })
+        assert res["rejections"]["new"] == 1
+        assert res["rejections"]["rejected_no_provenance"] == 0
+        assert len(load_preference_acts()) == 1
+
+    def test_prompt_less_provider_rejection_is_refused(self, patch_trinity_home: Path):
+        assert str(patch_trinity_home) in str(preference_acts_path())  # isolated to temp home
+        res = self._import({
+            "type": "REFRAME",
+            "model_quote": "let me first explain the tradeoffs",
+            "user_substitute": "skip it, just pick one",
+            # no original_prompt → no turn-pair anchor → a provider assertion
+        })
+        assert res["rejections"]["new"] == 0
+        assert res["rejections"]["rejected_no_provenance"] == 1
+        assert not preference_acts_path().exists(), "an unanchored provider signal reached the ledger"
+
+    def test_import_boundary_calls_the_shared_gate(self):
+        """Static tripwire: the import module must route through `provenance_gap` (the
+        one production check). If a refactor drops the call, the behavioral tests above
+        still catch it — but this fails louder, at the exact site."""
+        called = _called_names(SRC / "commands" / "eval_import.py")
+        assert "provenance_gap" in called, (
+            "eval_import.py no longer calls provenance_gap — the import boundary is "
+            "ungated; a provider could inject unanchored taste into the ledger."
+        )

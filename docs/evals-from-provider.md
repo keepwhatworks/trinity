@@ -103,12 +103,14 @@ Trinity's `RejectionSignal` schema so `eval-import` ingests directly.
 
 ## Quality bar
 
-- `original_prompt` is what makes a rejection *scoreable* — it's the prompt
-  Trinity re-runs through each candidate model to test whether they'd avoid the
-  miss. Supply MY actual request (not a paraphrase of the answer); if you omit it,
-  or it just echoes my `user_substitute`, the rejection still teaches the lens but
-  can't enter the benchmark (Trinity drops it as unresolved rather than score a
-  prompt that gives the answer away).
+- `original_prompt` is **required** — it's the turn-pair anchor that makes a
+  rejection a *record of a correction I actually made*, not a preference you're
+  asserting on my behalf. Trinity gates every imported rejection on it (the same
+  provenance check every other ledger write must pass): supply MY actual request
+  (not a paraphrase of the answer), and it enters the ledger AND the benchmark
+  Trinity re-runs through each candidate model. If you omit it — or it just echoes
+  my `user_substitute` — the rejection has no anchor and is **refused at import**,
+  not written. A bare quote/substitute is an assertion, not my ground truth.
 - `model_quote` and `user_substitute` should be short enough to read
   at a glance but specific enough that I can recognize them. If the
   original was longer, pull the load-bearing sentence.

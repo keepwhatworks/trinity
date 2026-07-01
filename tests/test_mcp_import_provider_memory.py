@@ -33,13 +33,21 @@ def _call(args: dict) -> dict:
 
 
 def _good_rejection() -> dict:
+    # Carries `original_prompt` — the turn-pair anchor the provenance gate requires.
     return {
         "type": "REFRAME",
         "model_quote": "Let me first walk you through the rationale",
         "user_substitute": "Skip the rationale, just give me the patch",
         "why_signal": "user wants answer-first",
         "confidence": "high",
+        "original_prompt": "fix the failing migration",
     }
+
+
+def _prompt_less_rejection() -> dict:
+    r = _good_rejection()
+    r.pop("original_prompt", None)
+    return r
 
 
 def _good_tension() -> dict:
@@ -101,6 +109,20 @@ class TestEvalImport:
         # Follow-up real import should still see this as new (nothing landed yet)
         real = _call({"kind": "eval", "payload": payload})
         assert real["rejections"]["new"] == 1
+
+    def test_prompt_less_rejection_is_gated_out(self, home):
+        """The provenance firewall covers the MCP tool, not just the CLI: a provider
+        agent inside the harness can no longer inject a prompt-less rejection (a bare
+        quote/substitute with no turn-pair anchor) into the ledger — it's refused,
+        reported, and not written. This is the compute-oligarchy branch, closed."""
+        from trinity_local.me.preference_acts import preference_acts_path
+
+        payload = {"source_provider": "claude", "rejections": [_prompt_less_rejection()]}
+        result = _call({"kind": "eval", "payload": payload})
+        assert result["ok"] is True
+        assert result["rejections"]["new"] == 0
+        assert result["rejections"]["rejected_no_provenance"] == 1
+        assert not preference_acts_path().exists(), "an unanchored MCP import reached the ledger"
 
 
 class TestLensImport:

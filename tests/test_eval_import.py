@@ -27,13 +27,24 @@ def home(tmp_path, monkeypatch):
 
 
 def _good_rejection(axis: str = "REFRAME") -> dict:
+    # Carries `original_prompt` — the turn-pair anchor the provenance gate now
+    # requires (a bare quote/substitute with no prompt is a provider assertion and is
+    # refused at import). Tests that specifically exercise the prompt-less path build
+    # their dict without it.
     return {
         "type": axis,
         "model_quote": "Let me explain why X is hard before showing the answer",
         "user_substitute": "skip the why, just give me the SQL",
         "why_signal": "user wants the answer first, justification second",
         "confidence": "high",
+        "original_prompt": "write the SQL to join orders and customers",
     }
+
+
+def _prompt_less_rejection(axis: str = "REFRAME") -> dict:
+    r = _good_rejection(axis)
+    r.pop("original_prompt", None)
+    return r
 
 
 def _payload(rejections: list[dict], provider: str = "claude") -> dict:
@@ -76,12 +87,14 @@ class TestProviderDictMapping:
         """Same content → same id, so re-import dedups cleanly."""
         a = _provider_dict_to_rejection_signal(_good_rejection(), "claude", 0)
         b = _provider_dict_to_rejection_signal(_good_rejection(), "claude", 5)
+        assert a is not None and b is not None
         assert a.id == b.id  # seq deliberately NOT mixed in for true dedup
 
     def test_stable_id_distinguishes_providers(self):
         """Same quote captured by two providers → distinct ids (so both land)."""
         a = _provider_dict_to_rejection_signal(_good_rejection(), "claude", 0)
         b = _provider_dict_to_rejection_signal(_good_rejection(), "codex", 0)
+        assert a is not None and b is not None
         assert a.id != b.id
 
 
@@ -207,34 +220,45 @@ class TestCliEndToEnd:
         assert result["rejections"]["new"] == 2
         assert result["rejections"]["skipped_malformed"] == 1
 
-    def test_provider_rejections_reported_not_scoreable_with_honest_note(self, home, tmp_path, capsys):
-        """Provider rejections carry no original prompt (prompt_id=None), so
-        build_eval_set drops them as unresolved (#280). The import must (a) report
-        scoreable_as_eval=0 in the JSON and (b) NOT print the false "eval-build to
-        package these into an eval set" promise — instead an honest note that they
-        enrich the lens but aren't scoreable eval items. Guards the false-green
-        that would otherwise send the user into a build that silently skips them."""
-        # JSON shape: scoreable_as_eval present and 0.
+    def test_prompt_less_rejection_is_gated_out_not_written(self, home, tmp_path, capsys):
+        """The provenance firewall (broad-ownership, no exceptions): a provider
+        rejection with no `original_prompt` has no turn-pair anchor — it's the provider
+        ASSERTING taste, not a record of a correction the user made — so it is REFUSED
+        at the import boundary, not silently written to enrich the lens. The import must
+        (a) count it under rejected_no_provenance, (b) write nothing, and (c) say
+        loudly (no silent drop) why it was refused."""
         f1 = tmp_path / "e1.json"
-        f1.write_text(json.dumps(_payload([_good_rejection("REFRAME")])))
+        f1.write_text(json.dumps(_payload([_prompt_less_rejection("REFRAME")])))
         rc = handle_eval_import(Namespace(path=str(f1), from_json=False, dry_run=False, as_json=True))
         assert rc == 0
         result = json.loads(capsys.readouterr().out)
-        assert result["rejections"]["new"] == 1
-        assert result["rejections"]["scoreable_as_eval"] == 0
-        # Human shape: honest note, not the false promise (distinct axis → not a dup).
+        assert result["rejections"]["new"] == 0, "a prompt-less rejection must not be written"
+        assert result["rejections"]["rejected_no_provenance"] == 1
+        assert not preference_acts_path().exists(), "a prompt-less rejection reached the ledger"
+
+        # Human shape: the refusal is surfaced, not swallowed.
         f2 = tmp_path / "e2.json"
-        f2.write_text(json.dumps(_payload([_good_rejection("COMPRESSION")])))
+        f2.write_text(json.dumps(_payload([_prompt_less_rejection("COMPRESSION")])))
         rc = handle_eval_import(Namespace(path=str(f2), from_json=False, dry_run=False, as_json=False))
         assert rc == 0
         out = capsys.readouterr().out
-        assert "NOT scoreable eval items" in out, (
-            "honest note missing — the false-green could mislead the user"
+        assert "rejected" in out and "no turn-pair anchor" in out, (
+            "the refusal must be reported loudly — a silent drop hides the taste signal"
         )
-        assert "package these into" not in out, (
-            "the false 'eval-build to package these' promise must not show for "
-            "unscoreable (no-prompt) provider imports"
-        )
+
+    def test_anchored_rejection_is_written_and_scoreable(self, home, tmp_path, capsys):
+        """The mirror: a rejection that DOES carry its original prompt passes the gate,
+        lands in the ledger, and is reported scoreable — the eval-build promise is
+        honest post-gate (every admitted signal is anchored)."""
+        f = tmp_path / "ok.json"
+        f.write_text(json.dumps(_payload([_good_rejection("REFRAME")])))
+        rc = handle_eval_import(Namespace(path=str(f), from_json=False, dry_run=False, as_json=True))
+        assert rc == 0
+        result = json.loads(capsys.readouterr().out)
+        assert result["rejections"]["new"] == 1
+        assert result["rejections"]["scoreable_as_eval"] == 1
+        assert result["rejections"]["rejected_no_provenance"] == 0
+        assert len(preference_acts_path().read_text(encoding="utf-8").splitlines()) == 1
 
     def test_missing_file_exits_nonzero(self, home, tmp_path, capsys):
         args = Namespace(
@@ -376,15 +400,16 @@ class TestOriginalPromptScoreable:
         assert sig.prompt_text == "", "an echoed-gold prompt must not be carried"
 
     def test_absent_original_prompt_is_empty(self):
-        sig = _provider_dict_to_rejection_signal(_good_rejection(), "claude", 0)
+        sig = _provider_dict_to_rejection_signal(_prompt_less_rejection(), "claude", 0)
         assert sig is not None
         assert sig.prompt_text == ""
 
-    def test_imported_with_prompt_becomes_scoreable_not_unresolved(self, home, tmp_path):
-        """End-to-end: import a rejection WITH original_prompt, then build the
-        eval set — it must produce a scoreable item (prompt = the original), not
-        a skipped_unresolved drop. A sibling rejection WITHOUT the prompt stays
-        unresolved."""
+    def test_imported_with_prompt_becomes_scoreable_prompt_less_refused(self, home, tmp_path, capsys):
+        """End-to-end: import a rejection WITH original_prompt, then build the eval
+        set — it must produce a scoreable item (prompt = the original). A sibling
+        rejection WITHOUT the prompt is now REFUSED at the import boundary (the
+        provenance gate), so it never reaches the ledger or the eval set at all —
+        stronger than the old behavior, where it was written-but-unresolved."""
         import json as _json
         from argparse import Namespace
         scoreable = _good_rejection(axis="REFRAME")
@@ -395,7 +420,7 @@ class TestOriginalPromptScoreable:
             "user_substitute": "stay on the engineering question",
             "why_signal": "user wants focus",
             "confidence": "high",
-        }  # no original_prompt
+        }  # no original_prompt → no turn-pair anchor → refused at import
         payload_path = tmp_path / "p.json"
         payload_path.write_text(_json.dumps(_payload([scoreable, unscoreable])))
         rc = handle_eval_import(Namespace(
@@ -403,19 +428,18 @@ class TestOriginalPromptScoreable:
             dry_run=False, as_json=True,
         ))
         assert rc == 0
+        result = json.loads(capsys.readouterr().out)
+        # The prompt-less one is refused at the boundary — not written, not unresolved.
+        assert result["rejections"]["new"] == 1
+        assert result["rejections"]["rejected_no_provenance"] == 1
 
         from trinity_local.evals.builder import build_eval_set
         es = build_eval_set()
         items = es.get("items") if isinstance(es, dict) else getattr(es, "items", [])
-        stats = es.get("stats") if isinstance(es, dict) else getattr(es, "stats", {})
         prompts = [
             (it.get("prompt") if isinstance(it, dict) else getattr(it, "prompt", ""))
             for it in (items or [])
         ]
         assert "explain quantum entanglement simply" in prompts, (
             f"the imported rejection with original_prompt wasn't scoreable: {prompts}"
-        )
-        # The one without a prompt is unresolved, not silently scored against gold.
-        assert (stats.get("skipped_unresolved") or 0) >= 1, (
-            f"the prompt-less rejection should be unresolved: {stats}"
         )

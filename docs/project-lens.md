@@ -32,7 +32,7 @@ class: reference
 ### ⓘ 117 · Doc/count/claim drift from shipping reality · `doc-consistency`
 - **the easy wrong move:** hardcode a count / schema-field list / command / commit SHA / brand line inline, fix each drift one-shot when an audit happens to catch it.
 - **the invariant:** drive every cross-cutting claim from one canonical source pinned by an automated doc-consistency guard added the *same* iter the drift is fixed.
-- **enforced by:** the <!-- canonical:doc_consistency_guards -->113<!-- /canonical --> guards in `tests/test_doc_count_consistency.py` (`test_four_surfaces_agree`, `test_claude_md_lists_all_mcp_server_tools`, …). **Latest cleanup:** live install/skill surfaces and `eval-import --help` now point at the unified `preference_acts.jsonl` ledger rather than the retired split stores.
+- **enforced by:** the <!-- canonical:doc_consistency_guards -->0<!-- /canonical --> guards in `tests/test_doc_count_consistency.py` (`test_four_surfaces_agree`, `test_claude_md_lists_all_mcp_server_tools`, …). **Latest cleanup:** live install/skill surfaces and `eval-import --help` now point at the unified `preference_acts.jsonl` ledger rather than the retired split stores.
 
 ### ⓘ 21 · Per-provider dispatch fidelity (recorded == dispatched) · `provider-dispatch`
 - **the easy wrong move:** inject the effort/model flag conveniently — or let a refactor drop/double it, leak `--model` into agy, trust batch-local `r_001` ids, or record `config.model` while args dispatch another model.

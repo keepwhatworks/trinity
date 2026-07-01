@@ -198,6 +198,47 @@ def from_decision(d) -> PreferenceAct:
     )
 
 
+# Substrings that mark a `source` as SYNTHESIZED — injected content, not a
+# projection of the user's ground-truth transcripts. A ledger act whose source
+# contains any of these is a firewall breach (the optimizer wrote taste instead of
+# the observer recording it).
+SYNTHESIZED_SOURCE_MARKERS = (
+    "synthes", "chairman", "distill", "dream", "virtual", "generated", "council", "llm",
+)
+
+
+def provenance_gap(act: "PreferenceAct") -> str | None:
+    """The provenance check EVERY ledger write must pass — no exceptions.
+
+    A PreferenceAct is admissible iff it (a) carries an extraction trigger
+    (``model_miss`` | ``self_expressed`` — the two shapes that come FROM a real
+    turn-pair), (b) has a non-synthesized source, and (c) is anchored to a real
+    transcript turn-pair. A ``model_miss`` act IS a ``[question]→[answer]→[reaction]``
+    pair, so it must carry an anchor: a ``prompt_id`` or the inline prompt/question
+    from that pair. A ``self_expressed`` decision may be user-logged (no ``prompt_id``),
+    so an inline anchor or an explicit ``user_logged`` / ``lens_edit`` source suffices.
+    Returns a reason string when the act fails the check, else ``None``.
+
+    This is the SINGLE gate applied everywhere content enters the ledger: the import
+    boundary (``eval-import`` / ``import_provider_memory``) runs each provider-supplied
+    signal through it before appending, and the ledger-firewall test asserts it over
+    the whole corpus. A provider that supplies a bare quote/substitute with no original
+    prompt is ASSERTING taste, not recording a correction the user made — it has no
+    turn-pair anchor and is refused here, same as any other unanchored write."""
+    if act.trigger not in (MODEL_MISS, SELF_EXPRESSED):
+        return f"unknown trigger {act.trigger!r} (only model_miss / self_expressed come from turn-pairs)"
+    src = (act.source or "").lower()
+    if any(marker in src for marker in SYNTHESIZED_SOURCE_MARKERS):
+        return f"synthesized source {act.source!r} — injected, not a projection of ground truth"
+    anchored = bool(act.prompt_id or act.prompt_text or act.question_text)
+    if act.trigger == MODEL_MISS:
+        if not anchored:
+            return "model_miss act resolves to no transcript turn-pair (no prompt_id / prompt_text / question_text)"
+    elif not (anchored or act.context or act.source in {"user_logged", "lens_edit"}):
+        return "self_expressed act carries no turn-pair anchor"
+    return None
+
+
 def iter_preference_acts() -> list[PreferenceAct]:
     """The unified read layer: every preference act, model-miss and
     self-expressed, as one stream. Order: model_miss first, then
