@@ -24,7 +24,7 @@ from pathlib import Path
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "launcher_path_resolver.sh"
-EXT_ID = "caaojjhagginmgobdaheincllmblcjoi"
+EXT_ID = "paoocajnigihknfodgienihbopikinbm"
 MARKER_REL = "trinity/src/trinity_local/__init__.py"
 
 

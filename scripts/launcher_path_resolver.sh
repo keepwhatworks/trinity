@@ -34,7 +34,7 @@
 
 set -eu
 
-EXTENSION_ID="${1:-caaojjhagginmgobdaheincllmblcjoi}"
+EXTENSION_ID="${1:-paoocajnigihknfodgienihbopikinbm}"
 
 # Explicit override wins. Path must contain src/trinity_local/ to count
 # as a valid source dir.

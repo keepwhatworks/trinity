@@ -67,9 +67,21 @@ sys.path.insert(0, str(REPO / "src"))
 
 
 def derived_extension_id(path: str) -> str:
-    """Chrome's path-derived id for an unpacked extension: sha256(abspath),
-    first 16 bytes, each nibble mapped 0-f → a-p."""
-    h = hashlib.sha256(path.encode("utf-8")).hexdigest()
+    """Chrome's id for an unpacked extension. When manifest.json carries a
+    "key" (the #271 pin), Chrome derives the id from that public key — the
+    SAME id on every machine. Only keyless manifests fall back to the
+    legacy path-derived id (sha256 of the absolute path). Both variants:
+    first 16 bytes of the sha256, each nibble mapped 0-f → a-p."""
+    manifest = Path(path) / "manifest.json"
+    try:
+        key_b64 = json.loads(manifest.read_text()).get("key")
+    except (OSError, ValueError):
+        key_b64 = None
+    if key_b64:
+        import base64
+        h = hashlib.sha256(base64.b64decode(key_b64)).hexdigest()
+    else:
+        h = hashlib.sha256(path.encode("utf-8")).hexdigest()
     return "".join(chr(ord("a") + int(c, 16)) for c in h[:32])
 
 
@@ -316,7 +328,8 @@ def main() -> int:
         else:
             url = f"{base}/portal_pages/launchpad.html"
 
-    print(f"extension id : {EXT_ID}  (founder match: {EXT_ID == 'caaojjhagginmgobdaheincllmblcjoi'})")
+    from trinity_local.registry import CANONICAL_EXTENSION_ID as _CANON
+    print(f"extension id : {EXT_ID}  (canonical match: {EXT_ID == _CANON})")
     print(f"temp home    : {home}")
     print(f"serving      : {base}")
     print(f"opening      : {url}")

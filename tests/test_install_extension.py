@@ -65,7 +65,13 @@ def test_writes_chrome_and_edge_by_default(fake_home, capsys):
     assert payload["name"] == "local.trinity.capture"
     assert payload["type"] == "stdio"
     assert payload["path"] == "/usr/local/bin/trinity-local-capture-host"
-    assert payload["allowed_origins"] == [f"chrome-extension://{VALID_ID}/"]
+    # Post-#271: the explicit id leads, and the canonical + legacy Trinity
+    # ids stay accepted alongside it (the host is inert for ids that never
+    # connect; dropping canonical would re-break keyed/store installs).
+    from trinity_local.registry import extension_origin_ids
+    assert payload["allowed_origins"][0] == f"chrome-extension://{VALID_ID}/"
+    for eid in extension_origin_ids():
+        assert f"chrome-extension://{eid}/" in payload["allowed_origins"]
 
 
 def test_chrome_only_via_browsers_flag(fake_home, capsys):
@@ -158,6 +164,9 @@ def test_no_extension_id_defaults_to_canonical(fake_home, capsys):
         manifest = (fake_home / ".config/google-chrome/NativeMessagingHosts/"
                     "local.trinity.capture.json")
     assert manifest.exists()
-    assert json.loads(manifest.read_text())["allowed_origins"] == [
-        f"chrome-extension://{CANONICAL_EXTENSION_ID}/"
-    ]
+    # Post-#271: canonical (key-pinned) id first, legacy pre-key sideload
+    # ids kept alongside so an existing unreloaded install keeps capturing.
+    from trinity_local.registry import extension_origin_ids
+    origins = json.loads(manifest.read_text())["allowed_origins"]
+    assert origins == [f"chrome-extension://{eid}/" for eid in extension_origin_ids()]
+    assert origins[0] == f"chrome-extension://{CANONICAL_EXTENSION_ID}/"

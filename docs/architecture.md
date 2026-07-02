@@ -35,7 +35,7 @@ imports, real ModernBERT embeddings when installed, and abstain-gates when only
 the TF-IDF fallback is available.
 
 The verification surface holds a comprehensive passing test suite,
-<!-- canonical:doc_consistency_guards -->0<!-- /canonical --> doc-consistency
+<!-- canonical:doc_consistency_guards -->113<!-- /canonical --> doc-consistency
 guards, and a <!-- canonical:smoke_surface_count -->35<!-- /canonical -->-surface
 browser smoke gate. The remaining launch risks are not core council mechanics:
 public repo flip, extension release/ID sequencing, native Windows beyond WSL2,

@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Trinity Local",
-  "version": "0.2.21",
-  "description": "Ask all three. Keep what works. Captures conversations from Claude, ChatGPT, and Gemini, and dispatches CLI actions (run council, ingest recent prompts) from the toolbar \u2014 all to your local ~/.trinity/ install. No server, no account.",
+  "version": "0.2.22",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtOcnGtnuJl1lA4iwJcK1u0CzAO3TtYM5k74D76cpmti7DkwQbVds8e2Vjhx+CbXlbnED3YQd2FK9qO/zexoA+z28eDsfnID3/9s1AOABuiSQjAWB7e3aqsA1+YtrivKc/1eEMxMR6h5p0yDSe/ufM42Xxx2OP+SPQ+l5FK5A6nBKP9Sgu4NsDwbvua3/PQTO091+g3kFiV/sWEzIcL/5x564l31ZzE9FC1VarfedrEE6b05M1+gNeLguzIt4OwhXm+h6aYsg+p9Xt5NDxXEOjrhO/LRJI0rrHxeKEHaiEYyY1ShYrHkVuX/lb5Md49cbb9fSAHrUrSPypQJNEHK41QIDAQAB",
+  "description": "Ask all three. Keep what works. Captures conversations from Claude, ChatGPT, and Gemini, and dispatches CLI actions (run council, ingest recent prompts) from the toolbar — all to your local ~/.trinity/ install. No server, no account.",
   "permissions": [
     "nativeMessaging",
     "storage",
@@ -18,7 +19,7 @@
     "128": "icons/icon-128.png"
   },
   "action": {
-    "default_title": "Trinity \u2014 open the side panel",
+    "default_title": "Trinity — open the side panel",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png",

@@ -78,7 +78,7 @@ not from the Chrome Web Store). Web Store publish is post-launch.
    Or click the Trinity toolbar icon — the launchpad opens in a
    side panel; the "Launch Council" composer should fire end-to-end.
 
-## What v0.2 ships (current — `browser-extension/manifest.json` version `<!-- canonical:chrome_extension_version -->0.2.21<!-- /canonical -->`)
+## What v0.2 ships (current — `browser-extension/manifest.json` version `<!-- canonical:chrome_extension_version -->0.2.22<!-- /canonical -->`)
 
 - Toolbar icon → opens the side panel (`sidepanel.html`), which hosts
   the launchpad + council composer (the manifest sets

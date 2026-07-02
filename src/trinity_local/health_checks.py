@@ -1069,12 +1069,15 @@ def _check_browser_capture() -> CheckResult:
             provisional = False
         if provisional:
             detail = (
-                "Manifest written but PROVISIONAL — it points at Trinity's canonical "
-                "(Web Store) extension id, which install.sh pre-wires before any "
-                "extension is installed. If you SIDELOADED the extension (Load "
-                "unpacked), Chrome assigned it a different per-machine id, so the host "
-                "rejects the connection and capture is silently dead. Fix: copy the id "
-                "from chrome://extensions, then `trinity-local install-extension "
+                "Manifest written but no captures yet — install.sh pre-wires the host "
+                "for Trinity's canonical extension id before any extension is "
+                "installed, so a written manifest is not proof the pipe is live. Since "
+                "0.2.22 the id is KEY-PINNED (every sideload and store install shares "
+                "it), so the likely causes are: the extension isn't installed/enabled "
+                "yet, or you're running a pre-0.2.22 sideload whose per-machine "
+                "path-derived id predates the pin — reload the unpacked extension from "
+                "the current browser-extension/ build, or copy the id from "
+                "chrome://extensions and run `trinity-local install-extension "
                 "--extension-id <that id>`. Skip if you don't use chat-UI captures."
             )
         else:

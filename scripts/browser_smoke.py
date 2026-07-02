@@ -340,26 +340,72 @@ def main() -> int:
             lambda msg: console_errors.append(msg.text) if msg.type == "error" else None,
         )
 
-        # ─── Surface 1: launchpad cold-render ────────────────────────────────
+        # ─── Surface 1: launchpad cold-render (home) + stats chart ──────────
+        # The fusion-first split (2026-06-16) made Chart.js LAZY: the home view
+        # never loads it (parsing 205 KB lingered the side-panel spinner,
+        # founder-caught), and renderChart() bails on .lp-view-home. Charts
+        # live on the /stats view. So the HOME contract is the ABSENCE of
+        # Chart.js + a healthy petite-vue mount; the chart-bars assertion moved
+        # to stats.html where the lazy loader actually fires. (The old
+        # assertion — chart bars on home cold-render — had been failing since
+        # Jun 16 while the gate wasn't run: the silent-rot this gate's own
+        # memory warns about.)
         page.goto(f"{base_url}/portal_pages/launchpad.html", wait_until="networkidle", timeout=15000)
-        page.wait_for_timeout(1500)  # petite-vue + Chart.js settle
-        chart_data = page.evaluate(
+        page.wait_for_timeout(1500)  # petite-vue settle
+        home_state = page.evaluate(
             """() => {
-              const c = document.getElementById('personal-preference-chart');
-              if (!c) return {chart_attached: false, reason: 'canvas missing'};
-              const ch = (window.Chart && Chart.getChart) ? Chart.getChart(c) : null;
-              if (!ch) return {chart_attached: false, reason: 'no chart instance'};
-              const has_bars = ch.data.datasets.some(d => d.data.some(v => v !== null));
-              return {chart_attached: true, has_bars, labels: ch.data.labels, first_dataset: ch.data.datasets[0]?.data};
+              let pd = null;
+              try { pd = JSON.parse(document.getElementById('page-data').textContent); } catch (e) {}
+              const rawVue = /\\{\\{[^}]+\\}\\}/.test(document.body.innerText || '');
+              return {
+                page_data_ok: !!pd,
+                chartjs_absent_on_home: !window.Chart,
+                raw_vue_leak: rawVue,
+              };
             }"""
         )
         page.screenshot(path=str(SHOTS_DIR / "1-launchpad.png"), full_page=True)
-        if chart_data.get("chart_attached") and chart_data.get("has_bars"):
-            print(f"[ ✓ ] Surface 1 launchpad: chart bars present {chart_data['first_dataset']}")
+        home_ok = (
+            home_state.get("page_data_ok")
+            and home_state.get("chartjs_absent_on_home")
+            and not home_state.get("raw_vue_leak")
+        )
+        # Stats view: the lazy loader injects Chart.js and attaches the
+        # personal-preference chart — assert instance + bars HERE, with a
+        # condition wait (the injection is async; a fixed sleep is a flake).
+        page.goto(f"{base_url}/portal_pages/stats.html", wait_until="networkidle", timeout=15000)
+        stats_ok = True
+        stats_reason = ""
+        try:
+            page.wait_for_function(
+                """() => {
+                  const c = document.getElementById('personal-preference-chart');
+                  const ch = (window.Chart && Chart.getChart) ? Chart.getChart(c) : null;
+                  return !!(ch && ch.data.datasets.some(d => d.data.some(v => v !== null)));
+                }""",
+                timeout=10000,
+            )
+        except Exception:
+            stats_ok = False
+            stats_reason = page.evaluate(
+                """() => {
+                  if (!window.Chart) return 'chart.js never lazy-loaded on stats';
+                  const c = document.getElementById('personal-preference-chart');
+                  if (!c) return 'canvas missing on stats';
+                  if (!Chart.getChart(c)) return 'no chart instance on stats';
+                  return 'no bars in any dataset on stats';
+                }"""
+            )
+        page.screenshot(path=str(SHOTS_DIR / "1b-stats.png"), full_page=True)
+        if home_ok and stats_ok:
+            print("[ ✓ ] Surface 1 launchpad: home clean (Chart.js correctly absent) · stats chart bars present")
         else:
-            reason = chart_data.get("reason") or "no bars in any dataset"
+            reason = stats_reason if home_ok else f"home unhealthy: {home_state}"
             print(f"[ ✗ ] Surface 1 launchpad: {reason}")
             fails.append((1, "launchpad cold-render", reason))
+        # Surfaces 2+ assume the page is sitting on the launchpad — restore it.
+        page.goto(f"{base_url}/portal_pages/launchpad.html", wait_until="networkidle", timeout=15000)
+        page.wait_for_timeout(1200)
 
         # ─── Surface 2: Settings gear ────────────────────────────────────────
         gear_clicked = page.evaluate(
@@ -690,7 +736,26 @@ def main() -> int:
                 wait_until="networkidle",
                 timeout=15000,
             )
-            page.wait_for_timeout(1500)  # petite-vue hydration
+            # Condition-wait, not a fixed sleep: each round hydrates via its own
+            # async loadOutcomeScript + markdown render, so a 4-round thread can
+            # take >1.5s cold — the old fixed 1500ms raced hydration and reported
+            # phantom "missing synthesis / zero quote chips" (observed 2026-07-02;
+            # the same page fully rendered at 2.5s). Wait until every segment has
+            # its synthesis body, then fall through to the assertions either way
+            # so a genuine regression still reports honestly.
+            try:
+                page.wait_for_function(
+                    """() => {
+                      const segs = document.querySelectorAll('.chain-segment');
+                      if (segs.length < 3) return false;
+                      return Array.from(segs).every(seg =>
+                        seg.querySelector('.synthesis-section .markdown-body'));
+                    }""",
+                    timeout=20000,
+                )
+            except Exception:
+                pass  # assertions below report the real state
+            page.wait_for_timeout(300)  # let quote chips/composer settle post-hydration
             thread_state = page.evaluate(
                 """() => {
                   const segments = Array.from(document.querySelectorAll('.chain-segment'));
@@ -2381,16 +2446,25 @@ def main() -> int:
 
 
 def _find_multi_round_thread() -> str | None:
-    """Pick a thread bundle on disk with 3+ segments, for Surface 9.
+    """Pick a thread bundle on disk with 3+ COMPLETED segments, for Surface 9.
 
     Walks `~/.trinity/council_outcomes/_thread_*.js`, parses the embedded
-    JSON, returns the chain_root_id of the first qualifying thread.
-    Prefers threads where at least one segment's outcome carries
-    user_refinement (so the refinement-directive assertion in Surface 9
-    has something to assert against); falls back to any 3+ thread when
-    no refinement-bearing thread exists (e.g. legacy bundles predating
-    council-iterate). Returns None if no such bundle exists — Surface 9
-    then skips.
+    JSON, returns the chain_root_id of the best qualifying thread.
+
+    A qualifying thread must be FULLY COMPLETED: every segment's outcome
+    JSON exists on disk with a non-empty synthesis_output. Surface 9's
+    assertions (per-round synthesis, quote chips, composer) are the
+    completed-thread contract — an ABANDONED thread (a round dispatched
+    but never finished, e.g. harness-testing residue) renders honestly as
+    "round N still running", which correctly hides the composer and every
+    quote chip (chainBusy). Asserting completed-thread invariants against
+    one of those is a false failure, not a regression (observed
+    2026-07-02: the picker chose a 3/4-complete bundle and Surface 9
+    red-flagged the product's correct busy-state render).
+
+    Among complete threads, prefers one where a segment's outcome carries
+    user_refinement (the tick-#56 regression target). Returns None when
+    no fully-completed 3+ thread exists — Surface 9 then skips.
     """
     threads_dir = TRINITY_HOME / "council_outcomes"
     if not threads_dir.is_dir():
@@ -2419,28 +2493,29 @@ def _find_multi_round_thread() -> str | None:
         chain_root = payload.get("chain_root_id")
         if not chain_root:
             continue
-        if fallback is None:
-            fallback = chain_root
-        # Check whether any segment has user_refinement on its outcome —
-        # this is the regression target for tick #56 (the bug that lost
-        # refinement directives on reload).
+        # Completeness + refinement in one pass over the segments' outcomes.
+        all_complete = True
         has_refinement = False
         for seg in segments:
             cid = seg.get("council_id")
-            if not cid:
-                continue
-            outcome_path = threads_dir / f"{cid}.json"
-            if not outcome_path.is_file():
-                continue
-            try:
-                outcome = json.loads(outcome_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
+            outcome_path = threads_dir / f"{cid}.json" if cid else None
+            outcome = None
+            if outcome_path is not None and outcome_path.is_file():
+                try:
+                    outcome = json.loads(outcome_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    outcome = None
+            if not outcome or not str(outcome.get("synthesis_output") or "").strip():
+                all_complete = False
+                break
             if (outcome.get("metadata") or {}).get("user_refinement"):
                 has_refinement = True
-                break
+        if not all_complete:
+            continue
         if has_refinement:
             return chain_root
+        if fallback is None:
+            fallback = chain_root
     return fallback
 
 

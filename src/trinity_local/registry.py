@@ -60,17 +60,42 @@ CAPTURE_PROVIDERS: tuple[str, ...] = ("claude", "chatgpt", "gemini")
 #
 # This is what makes "the extension auto-wires itself to Trinity" possible:
 # install.sh pre-registers the native-messaging host for THIS id, so when
-# the user installs the published extension (which has this fixed id) the
-# host is already there and the extension connects on first run. A bare
+# the user installs the extension (which has this fixed id) the host is
+# already there and the extension connects on first run. A bare
 # native-messaging host only accepts connections whose origin is in its
 # allowed_origins, so the id MUST match the installed extension.
 #
-# Today this is the id Chrome assigned to the locally-loaded unpacked build.
-# On Web Store publish, replace it with the assigned store id (the store id
-# is fixed forever once published). The bash resolver
-# (scripts/launcher_path_resolver.sh) hard-codes the same value as its
-# default — `test_extension_id_sync` keeps the two in lockstep.
-CANONICAL_EXTENSION_ID: str = "caaojjhagginmgobdaheincllmblcjoi"
+# The id is PINNED by the "key" field in browser-extension/manifest.json
+# (Chrome derives the id from the embedded public key, not the install
+# path): every Load-unpacked sideload on every machine gets THIS id, and a
+# Web Store upload whose zip carries the key keeps the SAME id — so the
+# pre-wired host manifest works for sideloads and store installs alike
+# (closes #271: the previous id was path-derived from the founder's
+# unpacked dir, so every other machine — sideload or store — got a
+# different id and capture silently died). The private half of the
+# keypair lives OUTSIDE the public repo; the manifest carries only the
+# public key. `TestCanonicalIdSingleSourceOfTruth` keeps this constant,
+# the manifest key, and the bash resolver default in lockstep.
+CANONICAL_EXTENSION_ID: str = "paoocajnigihknfodgienihbopikinbm"
+
+
+# Extension ids that older installs may still be wired to. The pre-key
+# builds (< 0.2.22) had NO manifest key, so Chrome derived a per-machine id
+# from the unpacked path — this is the founder-machine value, kept in
+# allowed_origins so an existing sideload keeps capturing until it reloads
+# the keyed build. Append here rather than replace on any future id
+# migration; install-extension writes one allowed_origin per id.
+LEGACY_EXTENSION_IDS: tuple[str, ...] = ("caaojjhagginmgobdaheincllmblcjoi",)
+
+
+def extension_origin_ids() -> tuple[str, ...]:
+    """Every extension id the native-messaging host should accept:
+    canonical first, then legacy pre-key sideload ids, deduped."""
+    seen: list[str] = []
+    for ext_id in (CANONICAL_EXTENSION_ID, *LEGACY_EXTENSION_IDS):
+        if ext_id and ext_id not in seen:
+            seen.append(ext_id)
+    return tuple(seen)
 
 
 # The Chrome Web Store listing URL. EMPTY until published — when empty,

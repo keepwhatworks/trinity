@@ -722,28 +722,33 @@ def handle_install_extension(args):
         )
         return 1
 
-    if not extension_id:
-        # Default to the canonical (published Web Store) id so a bare
-        # `install-extension` — and install.sh's best-effort pre-wire —
-        # registers the host for the extension users actually install. The
-        # host is inert until an extension with this exact id connects, so
-        # pre-registering ahead of the install is safe. A SIDELOADED build
-        # gets a different per-machine id; that user passes --extension-id.
-        from ..registry import CANONICAL_EXTENSION_ID
-        extension_id = CANONICAL_EXTENSION_ID
+    # The manifest accepts EVERY id Trinity ships under: the canonical
+    # key-pinned id (identical for all sideloads AND the Web Store build,
+    # since the manifest "key" pins it — #271) plus legacy pre-key
+    # sideload ids that older installs may still run. An explicit
+    # --extension-id (e.g. a fork with its own key) is ADDED to that set,
+    # not substituted for it — the host is inert for ids that never
+    # connect, so the extra origins are safe.
+    from ..registry import extension_origin_ids
+    accepted_ids = list(extension_origin_ids())
+    if extension_id:
+        extension_id = extension_id.strip().lower()
+        if not re.fullmatch(r"[a-p]{32}", extension_id):
+            print(
+                f"error: extension ID {extension_id!r} does not match Chrome's 32-char a-p format. "
+                "Copy it from chrome://extensions next to the Trinity extension."
+            )
+            return 1
+        if extension_id not in accepted_ids:
+            accepted_ids.insert(0, extension_id)
+        print(f"  Accepting extension id {extension_id} (plus Trinity's canonical id).")
+    else:
         print(
-            f"  Using the canonical extension id ({extension_id}).\n"
-            "  Sideloaded a local build instead? Re-run with "
+            f"  Using Trinity's canonical extension id ({accepted_ids[0]}) — the "
+            "key-pinned id every sideload and store install shares.\n"
+            "  Running a fork with its own key? Re-run with "
             "--extension-id <the id from chrome://extensions>."
         )
-
-    extension_id = extension_id.strip().lower()
-    if not re.fullmatch(r"[a-p]{32}", extension_id):
-        print(
-            f"error: extension ID {extension_id!r} does not match Chrome's 32-char a-p format. "
-            "Copy it from chrome://extensions next to the Trinity extension."
-        )
-        return 1
 
     # Phase 2 (extension transition): write the manifest to every
     # browser the user requested. Default: chrome + edge (covers ~85%
@@ -758,7 +763,7 @@ def handle_install_extension(args):
         "description": "Trinity local conversation capture",
         "path": str(host_path),
         "type": "stdio",
-        "allowed_origins": [f"chrome-extension://{extension_id}/"],
+        "allowed_origins": [f"chrome-extension://{eid}/" for eid in accepted_ids],
     }
     written: list[str] = []
     for browser_label, dir_path in _native_messaging_dirs(browsers):
@@ -806,7 +811,7 @@ def handle_install_extension(args):
             "description": "Trinity local conversation capture",
             "path": str(host_path),
             "type": "stdio",
-            "allowed_extensions": [f"trinity-local@{extension_id[:8]}.example"],
+            "allowed_extensions": [f"trinity-local@{accepted_ids[0][:8]}.example"],
         }
         for dir_path in _firefox_manifest_dirs():
             if str(dir_path).startswith("registry:"):
@@ -838,7 +843,10 @@ def handle_install_extension(args):
     from .. import state_paths as _sp
     settings_path = _sp.telemetry_settings_dir() / "extension.json"
     settings_payload = {
-        "extension_id": extension_id,
+        # The PRIMARY id the launchpad should sendMessage to: the explicit
+        # --extension-id when given, else the canonical key-pinned id.
+        "extension_id": accepted_ids[0],
+        "accepted_ids": accepted_ids,
         "host_path": str(host_path),
         "browsers": list(written),
     }
@@ -851,7 +859,7 @@ def handle_install_extension(args):
     for entry in written:
         print(f"    {entry}")
     print(f"  host: {host_path}")
-    print(f"  extension: {extension_id}")
+    print(f"  extension: {accepted_ids[0]} (+{len(accepted_ids) - 1} legacy origin(s) accepted)")
     print()
     print("Next: visit claude.ai (or chatgpt.com), send a message, then check")
     print("      ~/.trinity/conversations/<provider>/ for the captured turn.")

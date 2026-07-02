@@ -231,7 +231,13 @@ class TestProvisionalPrewireWarning:
         )
         return home
 
-    def test_canonical_id_manifest_flagged_provisional(self, fake_home):
+    def test_canonical_id_manifest_names_prewire_honestly(self, fake_home):
+        """Manifest carrying the canonical id + zero captures must NOT read
+        as proof the pipe works (install.sh pre-wires the host before any
+        extension exists). Post-#271 the id is key-pinned so the manifest
+        itself is durable, not provisional — the message now names the
+        real suspects (extension not installed yet / a pre-key sideload)
+        and keeps the --extension-id escape hatch."""
         from trinity_local.health_checks import _check_browser_capture
         from trinity_local.registry import CANONICAL_EXTENSION_ID
 
@@ -241,7 +247,7 @@ class TestProvisionalPrewireWarning:
         )
         result = _check_browser_capture()
         assert result.ok is True  # still soft
-        assert "PROVISIONAL" in result.detail
+        assert "not proof" in result.detail.lower()
         assert "sideload" in result.detail.lower()
         assert "install-extension --extension-id" in result.detail
 
