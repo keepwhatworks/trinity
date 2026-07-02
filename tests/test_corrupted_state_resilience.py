@@ -779,44 +779,31 @@ _COUNCIL_WRONGTYPE_CASES = [
 
 
 @pytest.mark.parametrize("label,field_path,value,symptom", _COUNCIL_WRONGTYPE_CASES)
-def test_render_unified_council_page_survives_wrong_type(
+def test_load_council_outcome_coerces_wrong_type(
     tmp_path, monkeypatch, label, field_path, value, symptom
 ):
     """A corrupt council_outcomes/*.json with a NESTED wrong-type field must not
-    crash the unified review render. `load_council_outcome` now coerces wrong-type
+    crash the council-review pipeline. `load_council_outcome` coerces wrong-type
     nested fields (routing_label / metadata / provider_scores / claims /
-    member_results / chain_steps) to safe shapes at the load boundary, and the
-    render guards synthesis_output / round_number scalars. Symptom on the un-fixed
-    code: {symptom}."""
+    member_results / chain_steps) to safe shapes at the load boundary — the real
+    invariant, tested directly since render_unified_council_page was removed
+    (#311/#8; the live council page renders outcomes in the browser now). The
+    production write path a completed council takes (write_unified_council_page →
+    redirect + write_live_council_page) must also survive the coerced outcome.
+    Symptom on the un-fixed code: {symptom}."""
     monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
     monkeypatch.setenv("TRINITY_DISABLE_MLX", "1")
     _seed_outcome(tmp_path, _mutate(field_path, value))
 
     from trinity_local.council_runtime import load_council_outcome, load_prompt_bundle
-    from trinity_local.council_review import (
-        render_unified_council_page, write_unified_council_page,
-    )
+    from trinity_local.council_review import write_unified_council_page
     outcome = load_council_outcome("council_xyz")  # must not raise on wrong-type nesting
     bundle = load_prompt_bundle(outcome.bundle_id)
-    html = render_unified_council_page(bundle, outcome)  # raises if render crashes
-    assert isinstance(html, str) and len(html) > 5000, (
-        f"unified council render degraded wrong for {label} — expected the page "
-        f"to still render (symptom on un-fixed code: {symptom})"
+    path = write_unified_council_page(bundle, outcome)  # redirect + live page; must not raise
+    assert path.exists(), (
+        f"council write path degraded wrong for {label} — expected the coerced "
+        f"outcome to write cleanly (symptom on un-fixed code: {symptom})"
     )
-    # A corrupt per-provider `overall` (NaN/Inf) must not paint the literal token
-    # "nan"/"inf" into the routing-scores table on this PERSISTENT, shareable
-    # artifact — the row must drop, not render junk. (Scoped to the score cell so a
-    # legit word containing these letters elsewhere can't false-trip.)
-    import re as _re
-    for _cell in _re.findall(r'<td>([^<]*)</td>', html):
-        _t = _cell.strip().lower()
-        assert _t not in ("nan", "inf", "-inf", "+inf"), (
-            f"council review painted a junk score cell {_cell!r} for {label} — "
-            f"finite_float_or_none must skip a non-finite provider overall"
-        )
-    # The page still writes to disk (the artifact a review-link / share opens).
-    path = write_unified_council_page(bundle, outcome)
-    assert path.exists(), f"unified council page failed to write for {label}"
 
 
 @pytest.mark.parametrize("label,field_path,value,symptom", _COUNCIL_WRONGTYPE_CASES)

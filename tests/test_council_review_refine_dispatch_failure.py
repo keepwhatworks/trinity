@@ -31,8 +31,9 @@ def test_chain_error_data_field_initialized():
     src = _render_single()
     # There are TWO Vue apps in this file (single-council + thread); both
     # need the chainError data field. Same pattern as launchpad pendingPrompt.
-    assert src.count("chainError: ''") == 2, (
-        "Expected chainError init in both Vue apps (single-council + thread)"
+    assert src.count("chainError: ''") == 1, (
+        "Expected chainError init on the live council page's chain app "
+        "(the static render_unified copy was removed, #311/#8)"
     )
     assert "_pendingChainSegmentToken: ''" in src, (
         "Thread app needs _pendingChainSegmentToken for segment rollback"
@@ -43,8 +44,8 @@ def test_chain_error_banner_renders_outside_chainBusy_guard():
     src = _render_single()
     # Find the chainError banner. Must use v-if="chainError" (not nested
     # inside chainBusy v-if).
-    assert src.count('v-if="chainError"') >= 2, (
-        "Expected the chainError banner template in both Vue apps"
+    assert src.count('v-if="chainError"') >= 1, (
+        "Expected the chainError banner template on the live council page"
     )
     # The LIVE banner has a Dismiss link that clears chainError manually. It
     # wires to the `dismissChainError` method (not a bare inline `chainError = ''`)
@@ -176,20 +177,20 @@ def test_chain_dispatch_payload_shape_is_correct():
     rounds:'3'.
     """
     src = _render_single()
-    # BOTH Vue apps (single-council `_startChainAction` ~L531 + thread ~L1796)
-    # build the chain payload. Assert by COUNT so a mutation to EITHER app's
-    # copy reds the test — a presence-only `in src` stays green on the
-    # un-mutated copy (the mutation_testing_validates_regression_coverage trap;
-    # this guard's first draft missed exactly that).
-    assert src.count("kind: 'council-iterate',") == 2, (
-        "both apps must dispatch kind 'council-iterate' (the only ACTION_ALLOWLIST "
-        "chain kind; any other silently no-ops at capture_host)"
+    # The live council page's single-council + thread chain apps build the chain
+    # payload. Assert by COUNT so a mutation to the copy reds the test — a
+    # presence-only `in src` stays green (the
+    # mutation_testing_validates_regression_coverage trap). (Count dropped from 2
+    # to 1 when the static render_unified copy was removed, #311/#8.)
+    assert src.count("kind: 'council-iterate',") == 1, (
+        "the live council page must dispatch kind 'council-iterate' (the only "
+        "ACTION_ALLOWLIST chain kind; any other silently no-ops at capture_host)"
     )
-    # Each app targets the correct council: the single page targets the page's
-    # council; the thread targets the LATEST round's council (last.councilId).
-    assert src.count("council: pageData.councilId,") == 1, (
-        "single-council app must target pageData.councilId"
-    )
+    # The live page's chain dispatch targets the LATEST round's council
+    # (last.councilId). (The single-council `council: pageData.councilId` /
+    # `status_token: statusToken` dispatch was render_unified's — removed with it,
+    # #311/#8; on the live page a single council refines INTO a thread, so chain
+    # dispatch always runs through the thread app.)
     assert src.count("council: last.councilId,") == 1, (
         "thread app must target the latest round's council (last.councilId)"
     )
@@ -198,10 +199,7 @@ def test_chain_dispatch_payload_shape_is_correct():
     # spelling ('status-token') silently dropped the token, so council-iterate
     # ran under a fresh bundle_id and the page polled a token nothing was
     # written under → "council never started" (founder 2026-06-12). Assert the
-    # underscore form AND that the hyphen form is gone, in BOTH apps.
-    assert src.count("status_token: statusToken,") == 1, (
-        "single-council payload must carry its status token under the underscore key"
-    )
+    # underscore form AND that the hyphen form is gone.
     assert src.count("status_token: newToken,") == 1, (
         "thread payload must carry its (new-round) status token under the underscore key"
     )
@@ -210,12 +208,13 @@ def test_chain_dispatch_payload_shape_is_correct():
         "reads payload['status_token'], so the token is silently dropped (the "
         "2026-06-12 'council never started' bug)"
     )
-    # Per-action args folded onto the payload in BOTH apps.
-    assert src.count("if (args.prompt) extensionAction.prompt = args.prompt;") == 2, (
-        "both apps must fold the refine prompt onto the payload"
+    # Per-action args folded onto the payload (live council page; the static
+    # render_unified copy that made this count 2 was removed, #311/#8).
+    assert src.count("if (args.prompt) extensionAction.prompt = args.prompt;") == 1, (
+        "the live council page must fold the refine prompt onto the payload"
     )
-    assert src.count("if (args.max_rounds) extensionAction.rounds = String(args.max_rounds);") == 2, (
-        "both apps must fold the auto-chain rounds onto the payload"
+    assert src.count("if (args.max_rounds) extensionAction.rounds = String(args.max_rounds);") == 1, (
+        "the live council page must fold the auto-chain rounds onto the payload"
     )
 
 

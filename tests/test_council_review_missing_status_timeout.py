@@ -77,10 +77,13 @@ def test_missing_status_patches_segment_failed_with_install_hint():
 
 
 def test_polling_stops_after_threshold():
-    """Don't keep polling after we've declared failure — EACH give-up branch
-    must stop ITS poller. The two pollers clean up different handles:
-    startPolling → this.clearPolling(); _pollChainStatus → clearInterval(
-    this._chainPollHandle). Both branches must stop polling."""
+    """Don't keep polling after we've declared failure — the give-up branch must
+    stop the poller (startPolling → this.clearPolling()). The live council page
+    also polls chain segments (Continue / Refine) THROUGH startPolling, so this
+    one give-up covers the chain-action path too. (The static render_unified page
+    carried a separate _pollChainStatus poller with its own give-up; it was
+    removed with render_unified, #311/#8, so there is one give-up branch now, not
+    two.)"""
     src = _src()
     idx, found = 0, 0
     while True:
@@ -94,39 +97,15 @@ def test_polling_stops_after_threshold():
             or "clearInterval(this._chainPollHandle)" in branch_excerpt
         ), "each give-up branch must stop its own poller, not keep ticking"
         idx = threshold_idx + 1
-    assert found >= 2, "both startPolling and _pollChainStatus must have a give-up branch"
+    assert found >= 1, "the live council page's poller must have a give-up branch"
 
 
-def test_chain_action_poller_also_has_missing_status_giveup():
-    """SIBLING-INSTANCE guard (2026-06-01). startPolling (the thread-LOAD path)
-    got the MAX_MISSING_POLLS give-up, but `_pollChainStatus` (the Continue /
-    Refine chain-ACTION path) was the un-fixed sibling — its `if (!status)
-    return;` polled a missing status FOREVER. A user clicking "Continue the
-    thread" with a broken/missing extension hit the SAME perpetual-spinner bug
-    the load path was fixed for. BOTH pollers must carry the give-up."""
-    src = _src()
-    # Two independent pollers, each declaring its own give-up threshold.
-    assert src.count("const MAX_MISSING_POLLS = 8") >= 2, (
-        "both startPolling AND _pollChainStatus must declare the give-up; "
-        "one means the chain-action poller can still spin forever"
-    )
-    # The give-up must live INSIDE _pollChainStatus, not merely elsewhere in the
-    # file — mutation-robust per the orphan-substring lesson. Bound the body
-    # between its def and the next method (startContinue).
-    start = src.find("_pollChainStatus(statusToken)")
-    assert start != -1, "_pollChainStatus must exist"
-    end = src.find("startContinue()", start)
-    body = src[start:end if end != -1 else start + 2500]
-    assert "missingPollCount" in body, "_pollChainStatus must track missing polls"
-    assert "missingPollCount >= MAX_MISSING_POLLS" in body, (
-        "_pollChainStatus must give up after the threshold, not poll forever"
-    )
-    assert "this.chainError" in body, (
-        "_pollChainStatus must surface a chainError when dispatch silently fails"
-    )
-    assert "clearInterval(this._chainPollHandle)" in body, (
-        "_pollChainStatus must stop polling once it declares the round dead"
-    )
+# (test_chain_action_poller_also_has_missing_status_giveup retired with
+# render_unified_council_page, #311/#8: `_pollChainStatus` was that dead static
+# page's SEPARATE chain-action poller. On the live council page the Continue /
+# Refine chain action reuses startPolling — whose give-up test_polling_stops_
+# after_threshold above already guards — so there is no separate poller left to
+# spin forever.)
 
 
 def test_synthesis_section_hidden_on_failed_or_canceled_segment():

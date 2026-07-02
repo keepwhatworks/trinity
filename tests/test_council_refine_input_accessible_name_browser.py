@@ -128,49 +128,6 @@ def _seed_live(tmp_path, monkeypatch, token):
     (status_dir / f"council_status_{token}.js").write_text(sidecar, encoding="utf-8")
 
 
-def _seed_static(tmp_path, monkeypatch):
-    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-    monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
-    from trinity_local import vendor as _vendor
-    from trinity_local.council_review import render_unified_council_page
-    from trinity_local.council_schema import (
-        CouncilMemberResult, CouncilOutcome, CouncilRoutingLabel, PromptBundle,
-    )
-    from trinity_local.state_paths import review_pages_dir
-
-    bundle = PromptBundle(
-        bundle_id="bundle_refine_name", task_cluster_id="cluster_refine_name",
-        task_text="Pick the strongest fix for a multi-tenant caching collision.",
-        goal="Choose the strongest answer.",
-        comparison_instructions="Prefer the strongest answer.",
-        created_at="2026-06-01T12:00:00+00:00",
-    )
-    members = [
-        CouncilMemberResult(provider="claude", model="claude-opus-4-8",
-                            output_text="Claude reframes around tenancy isolation."),
-        CouncilMemberResult(provider="codex", model="gpt-5.5",
-                            output_text="Codex enumerates the concurrency failure modes."),
-    ]
-    routing_label = CouncilRoutingLabel(
-        winner="claude", runner_up="codex", confidence="high", task_type="design",
-        agreed_claims=["Namespace the cache key per tenant"], disagreed_claims=[],
-        routing_lesson="prefer_per_call_for_multi_tenant_isolation",
-    )
-    outcome = CouncilOutcome(
-        council_run_id="council_refine_name", bundle_id=bundle.bundle_id,
-        task_cluster_id=bundle.task_cluster_id, primary_provider="claude",
-        winner_provider="claude", member_results=members,
-        synthesis_output="# Synthesis\n\nNamespace the key per tenant.",
-        routing_label=routing_label, created_at="2026-06-01T12:05:00+00:00",
-    )
-    review_dir = review_pages_dir()
-    review_dir.mkdir(parents=True, exist_ok=True)
-    (review_dir / "review_refine_name.html").write_text(
-        render_unified_council_page(bundle, outcome), encoding="utf-8"
-    )
-    _vendor.publish_vendor_files(review_dir)
-
-
 def _name_of_refine_input(port, url):
     from playwright.sync_api import sync_playwright
 
@@ -213,21 +170,6 @@ def test_live_council_refine_input_has_accessible_name(tmp_path, monkeypatch):
     )
 
 
-def test_static_review_refine_input_has_accessible_name(tmp_path, monkeypatch):
-    pytest.importorskip("playwright.sync_api")
-    _seed_static(tmp_path, monkeypatch)
-    httpd, port = _serve(tmp_path)
-    try:
-        res, _errs = _name_of_refine_input(
-            port,
-            f"http://127.0.0.1:{port}/review_pages/review_refine_name.html",
-        )
-    finally:
-        httpd.shutdown()
-
-    assert res.get("found"), "the static review page rendered no .chain-refine-input textarea"
-    assert res.get("name", "").strip(), (
-        "the STATIC council review page's refine <textarea> has an EMPTY accessible "
-        "name — placeholder-only, the same gap as the live page. It needs an aria-label "
-        "or a <label for> so AT announces what the field does."
-    )
+# (test_static_review_refine_input_has_accessible_name removed with
+# render_unified_council_page, #311/#8 — the live-page test above guards the
+# refine textarea's accessible name on the page a teammate actually opens.)

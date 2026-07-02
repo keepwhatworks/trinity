@@ -52,55 +52,15 @@ def _referenced_tokens(html: str) -> set[str]:
 def _rendered_surfaces() -> dict[str, str]:
     """name -> rendered HTML for each f-string HTML-generating module.
 
-    Covers the no-arg surfaces directly and the unified review page via a minimal
-    fixture so the actual SHARED_CSS / page-local `:root` tokens are in the string.
+    Covers the no-arg render surfaces directly via a minimal
+    fixture so the SHARED_CSS / page-local `:root` tokens are in the string.
     """
     from trinity_local import council_review, memory_viewer
-    from trinity_local.council_schema import (
-        CouncilMemberResult,
-        CouncilOutcome,
-        PromptBundle,
-    )
     from trinity_local.launchpad_template import render_launchpad_html
-
-    bundle = PromptBundle(
-        bundle_id="bundle_css_guard",
-        task_cluster_id="cluster_css_guard",
-        task_text="Compare the three answers and pick a winner.",
-        goal="Choose the strongest answer.",
-        comparison_instructions="Prefer specificity.",
-        context_excerpt="context",
-        created_at="2026-06-17T12:00:00+00:00",
-    )
-    outcome = CouncilOutcome(
-        council_run_id="council_css_guard",
-        bundle_id=bundle.bundle_id,
-        task_cluster_id=bundle.task_cluster_id,
-        primary_provider="claude",
-        winner_provider="antigravity",
-        member_results=[
-            CouncilMemberResult(
-                provider="antigravity",
-                model="gemini-pro",
-                output_text="Best take.",
-            ),
-            CouncilMemberResult(
-                provider="claude",
-                model="opus",
-                output_text="Alternative take.",
-            ),
-        ],
-        synthesis_output="The strongest answer.",
-        synthesis_prompt="Review all council answers.",
-        created_at="2026-06-17T12:05:00+00:00",
-    )
 
     return {
         "live_council (council_review.render_live_council_page)": (
             council_review.render_live_council_page()
-        ),
-        "unified_review (council_review.render_unified_council_page)": (
-            render_unified_council_page_safe(bundle, outcome)
         ),
         "memory_viewer (memory_viewer.render_memory_viewer_html)": (
             memory_viewer.render_memory_viewer_html()
@@ -109,12 +69,8 @@ def _rendered_surfaces() -> dict[str, str]:
             render_launchpad_html(page_data={"version": "0.0.0-test"})
         ),
     }
-
-
-def render_unified_council_page_safe(bundle, outcome) -> str:
-    from trinity_local import council_review
-
-    return council_review.render_unified_council_page(bundle, outcome)
+    # (unified_review surface removed with render_unified_council_page, #311/#8;
+    # the live council page carries the same CSS vars and is still checked above.)
 
 
 def test_no_surface_references_an_undefined_css_var():
