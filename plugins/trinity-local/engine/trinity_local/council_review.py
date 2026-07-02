@@ -1707,25 +1707,30 @@ def render_live_council_page() -> str:
                (no model answered). The all-failed disclosure line below carries
                that state honestly. -->
           <p class="meta" v-if="seg.completed && isSoloFor(seg) && respondedMembersFor(seg) >= 1">The one model that answered. With a second provider enabled, the chairman would mark a <strong>Lens pick</strong> here.</p>
-          <!-- Honest partial-council disclosure (#238 lineage). Three branches keyed
-               on the RESPONDER count AND the terminal state: with >=1 responder on a
-               COMPLETED council the synthesis is real but PARTIAL ("over the N that
-               responded"); with 0 responders there is NO synthesis at all, so the
-               "over the 0 that responded" phrasing was a flat self-contradiction (it
-               claimed a synthesis existed AND that nobody answered it) sitting right
-               under the "Council failed — all members failed to respond" banner. Total
-               failure gets its own honest line instead. The THIRD branch is the
-               terminal-with-partial-responders case (a FAILED/STOPPED council where one
-               member landed before the runner died or the user hit Stop): the synthesis
-               section is suppressed for failed/canceled segments (v-if !seg.failed &&
-               !seg.canceled above), so claiming "this synthesis is over the N that
-               responded" asserted a synthesis that NEVER ran — the same #238/0-responder
-               self-contradiction, just on a council that stopped mid-flight. Gate the
-               "synthesis is over N" copy on seg.completed; failed/canceled gets a line
-               that names what actually happened (answers landed, never synthesized). -->
+          <!-- Honest partial-council disclosure (#238 lineage). The lifecycle has
+               THREE states, not two, and conflating "not completed" with "terminal"
+               was a green-while-degraded bug: an IN-FLIGHT council (chairman still to
+               run) is !seg.completed AND !seg.failed AND !seg.canceled. b4cbbae4 gated
+               the terminal copy on bare !seg.completed, so a running 2-of-3 council
+               with one live failure rendered "the council failed before the chairman
+               ran" while it was genuinely still running (caught by
+               test_sidepanel_failed_member_disclosure_browser). Four branches, each
+               keyed on responder count × real lifecycle state:
+                 1. COMPLETED + partial → synthesis is real but PARTIAL ("over the N
+                    that responded").
+                 2. TERMINAL (failed/canceled) + partial → the synthesis section is
+                    suppressed for failed/canceled (v-if !seg.failed && !seg.canceled
+                    above), so name what happened: answers landed, never synthesized.
+                 3. RUNNING (in-flight) + partial → NEW: honest present tense, "the
+                    council is running on the N that responded" — no completed-synthesis
+                    claim, no failure claim.
+                 4. 0 responders + TERMINAL → total failure, "no synthesis to show"
+                    (gated on terminal so it can't false-fire mid-flight before the
+                    survivors land). -->
           <p class="meta status-error" v-if="failedMembersFor(seg) > 0 && respondedMembersFor(seg) > 0 && seg.completed">⚠ {{{{ failedMembersFor(seg) }}}} provider{{{{ failedMembersFor(seg) === 1 ? '' : 's' }}}} attempted but failed and {{{{ failedMembersFor(seg) === 1 ? 'was' : 'were' }}}} excluded — this synthesis is over the {{{{ respondedMembersFor(seg) }}}} that responded.</p>
-          <p class="meta status-error" v-if="failedMembersFor(seg) > 0 && respondedMembersFor(seg) > 0 && !seg.completed">⚠ {{{{ failedMembersFor(seg) }}}} provider{{{{ failedMembersFor(seg) === 1 ? '' : 's' }}}} failed and the council {{{{ seg.canceled ? 'was stopped' : 'failed' }}}} before the chairman ran — the {{{{ respondedMembersFor(seg) }}}} answer{{{{ respondedMembersFor(seg) === 1 ? '' : 's' }}}} below {{{{ respondedMembersFor(seg) === 1 ? 'was' : 'were' }}}} never synthesized.</p>
-          <p class="meta status-error" v-if="failedMembersFor(seg) > 0 && respondedMembersFor(seg) === 0">⚠ Every provider attempted but failed to respond — there's no synthesis to show.</p>
+          <p class="meta status-error" v-if="failedMembersFor(seg) > 0 && respondedMembersFor(seg) > 0 && (seg.failed || seg.canceled)">⚠ {{{{ failedMembersFor(seg) }}}} provider{{{{ failedMembersFor(seg) === 1 ? '' : 's' }}}} failed and the council {{{{ seg.canceled ? 'was stopped' : 'failed' }}}} before the chairman ran — the {{{{ respondedMembersFor(seg) }}}} answer{{{{ respondedMembersFor(seg) === 1 ? '' : 's' }}}} below {{{{ respondedMembersFor(seg) === 1 ? 'was' : 'were' }}}} never synthesized.</p>
+          <p class="meta status-error" v-if="failedMembersFor(seg) > 0 && respondedMembersFor(seg) > 0 && !seg.completed && !seg.failed && !seg.canceled">⚠ {{{{ failedMembersFor(seg) }}}} provider{{{{ failedMembersFor(seg) === 1 ? '' : 's' }}}} attempted but failed and {{{{ failedMembersFor(seg) === 1 ? 'was' : 'were' }}}} excluded — the synthesis will run over the {{{{ respondedMembersFor(seg) }}}} that responded.</p>
+          <p class="meta status-error" v-if="failedMembersFor(seg) > 0 && respondedMembersFor(seg) === 0 && (seg.completed || seg.failed || seg.canceled)">⚠ Every provider attempted but failed to respond — there's no synthesis to show.</p>
           <div :class="memberRowsFor(seg).length === 3 ? 'answers-grid answers-grid-three' : 'answers-grid'">
             <article
               class="provider-status-row"
