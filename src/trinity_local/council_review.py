@@ -2,180 +2,12 @@ from __future__ import annotations
 
 import html
 import json
-import re
 from pathlib import Path
 
 
-_ROUTING_JSON_FENCE_STRIP_RE = re.compile(
-    r"```\s*routing[-_ ]?json\s*\n.*?\n\s*```",
-    re.IGNORECASE | re.DOTALL,
-)
-
-
-def _strip_routing_json_fence(text: str | None) -> str:
-    """Remove the chairman's routing-json fenced block so it doesn't render
-    as a raw code dump alongside the structured Routing label card."""
-    if not text:
-        return ""
-    if not isinstance(text, str):
-        # A corrupt on-disk outcome can carry synthesis_output as a wrong-type
-        # scalar/list (valid JSON, wrong shape). `re.sub` on a non-str raised
-        # TypeError ("expected string or bytes-like object, got 'int'") — a 500
-        # on the unified review page. Coerce to str so the synthesis renders as
-        # text (degrade-safe) instead of crashing the whole page.
-        text = str(text)
-    return _ROUTING_JSON_FENCE_STRIP_RE.sub("", text).strip()
-
-from .council_schema import CouncilOutcome, PromptBundle, provider_model_brand
+from .council_schema import CouncilOutcome, PromptBundle
 from .design_system import page_data_script_json, render_html_footer, render_html_head
-from .dispatch_registry import make_dispatch_action
-from .markdown_utils import render_markdown
 from .launchpad_runtime import launchpad_runtime_js
-# The macOS-Shortcut dispatch tier retired 2026-05-17 (Native Messaging
-# via the Chrome extension's capture_host took over). These constants
-# stay as harmless data-attr defaults the JS dispatch knows to skip
-# when the URL is empty. See retired_names.py: `shortcuts_integration`.
-DEFAULT_SHORTCUT_NAME = "Trinity Dispatch"
-_EMPTY_SHORTCUT_URL = ""
-from .state_paths import review_pages_dir
-from .utils import finite_float_or_none
-
-
-def _esc(value: str | None) -> str:
-    return html.escape(value or "")
-
-
-def _render_routing_label_section(outcome: CouncilOutcome, solo: bool = False) -> str:
-    label = outcome.routing_label
-    if label is None:
-        return ""
-    parts: list[str] = []
-    parts.append('<section class="card routing-label-card mb-lg">')
-    parts.append('  <div class="eyebrow">Routing label</div>')
-    confidence_badge = (
-        f'<span class="badge confidence-{_esc(label.confidence)}">{_esc(label.confidence.title())} confidence</span>'
-    )
-    # SOLO council (1 responder): a single model has no contest to win and no one
-    # to agree/disagree with, so the chairman's winner + consensus blocks are
-    # degenerate competition framing that OVERCLAIMS on this shareable artifact
-    # (the #35 green-while-degenerate the SHARE CARD already suppresses in its
-    # solo branch). State what actually happened instead.
-    if solo:
-        parts.append(
-            '  <p class="routing-winner"><strong>One model — no council.</strong> '
-            '<span class="meta">Only one model responded, so there\'s no winner '
-            'and nothing to agree on yet.</span></p>'
-        )
-    else:
-        winner_line = f"<strong>{_esc(provider_model_brand(label.winner) if label.winner else 'No winner')}</strong>"
-        if label.runner_up:
-            winner_line += f' &middot; runner-up: {_esc(provider_model_brand(label.runner_up))}'
-        parts.append(f'  <p class="routing-winner">{winner_line} {confidence_badge}</p>')
-    if label.task_type or label.task_domain:
-        # Plain-English labels + humanized enum VALUES. The chairman emits these
-        # as raw snake_case enums (`code_generation`, `backend_systems`); painted
-        # verbatim with snake_case `task_type:` / `task_domain:` LABELS, this line
-        # leaked four raw code symbols into the user-facing prose on a PERSISTENT,
-        # shareable review artifact — the why_matters/per-task_type leak class
-        # (Iters 164/165). The routing-lesson row one block below already
-        # `.replace("_", " ")`-humanizes the same enums; this meta line was the
-        # un-humanized sibling. Mirror its treatment.
-        _tt = (label.task_type or "—").replace("_", " ")
-        _td = (label.task_domain or "—").replace("_", " ")
-        parts.append(
-            f'  <p class="meta">Task type: {_esc(_tt)} &middot; '
-            f'Domain: {_esc(_td)}</p>'
-        )
-    if label.routing_lesson:
-        # Humanize task_type enums in the lesson (model_identity_query →
-        # "model identity question"). The chairman cites them verbatim; users
-        # read them.
-        lesson = label.routing_lesson.replace("_", " ")
-        parts.append(
-            f'  <p class="routing-lesson"><span class="meta">Routing lesson:</span> {_esc(lesson)}</p>'
-        )
-    if label.eval_seed:
-        parts.append(
-            f'  <p class="routing-eval-seed"><span class="meta">How to verify next time:</span> {_esc(label.eval_seed)}</p>'
-        )
-    if label.major_failure_mode:
-        parts.append(
-            f'  <p class="routing-failure"><span class="meta">Failure mode:</span> {_esc(label.major_failure_mode)}</p>'
-        )
-    if label.provider_scores:
-        rows = []
-        for provider, scores in label.provider_scores.items():
-            # Shape-guard the per-provider score block (#304): from_dict normalizes
-            # provider_scores KEYS but passes each inner `sub` through raw, so a
-            # corrupt/hand-edited council_outcome can carry `scores` as a non-dict
-            # (`scores.get` → AttributeError) or `overall` as a non-numeric string
-            # ("abc" → `f"{overall:.1f}"` raises "Unknown format code 'f' for str"),
-            # a bool (paints "1.0"), or a NaN/Inf (paints literal "nan"/"inf") — any
-            # of which 500'd / garbled this PERSISTENT shareable council page.
-            # `finite_float_or_none` skips a non-finite/non-numeric score so the row
-            # drops cleanly instead of crashing or painting a junk number.
-            overall = finite_float_or_none(scores.get("overall")) if isinstance(scores, dict) else None
-            if overall is None:
-                continue
-            rows.append(
-                f'<tr><td>{_esc(provider_model_brand(provider))}</td><td>{overall:.1f}</td></tr>'
-            )
-        if rows:
-            parts.append(
-                '  <table class="routing-scores"><thead><tr><th>Provider</th><th>Overall</th></tr></thead><tbody>'
-                + "".join(rows)
-                + "</tbody></table>"
-            )
-
-    # Structured agreement / disagreement — the council painkiller's core value
-    # ("see exactly where the models agreed vs disagreed"). The LIVE page renders
-    # this; this PERSISTENT, shareable review page only had the synthesis prose,
-    # so the scannable breakdown didn't survive on the artifact that travels.
-    # Back-ported 2026-06-07 (founder-greenlit). Shape-guarded: malformed claim
-    # entries are skipped, providers branded via provider_model_brand (consistent
-    # with the rest of the page), text escaped.
-    agreed = getattr(label, "agreed_claims", None) or []
-    if isinstance(agreed, list) and not solo:
-        agreed_items = "".join(
-            f"<li>{_esc(str(c))}</li>" for c in agreed if isinstance(c, str) and c.strip()
-        )
-        if agreed_items:
-            parts.append(
-                '  <div class="routing-claims agreed"><strong>Where they agreed</strong>'
-                f"<ul>{agreed_items}</ul></div>"
-            )
-    disagreed = getattr(label, "disagreed_claims", None) or []
-    if isinstance(disagreed, list) and not solo:
-        rows = []
-        for entry in disagreed:
-            if not isinstance(entry, dict):
-                continue
-            claim = (entry.get("claim") or "").strip() if isinstance(entry.get("claim"), str) else ""
-            if not claim:
-                continue
-            meta_bits = []
-            for field, prefix in (("providers_for", "for"), ("providers_against", "against")):
-                providers = entry.get(field)
-                if isinstance(providers, list) and providers:
-                    branded = ", ".join(provider_model_brand(p) for p in providers if isinstance(p, str) and p)
-                    if branded:
-                        meta_bits.append(f"{prefix}: {branded}")
-            meta_line = f' <span class="meta">— {_esc(" · ".join(meta_bits))}</span>' if meta_bits else ""
-            why = entry.get("why_matters")
-            why_line = f'<div class="meta">{_esc(str(why))}</div>' if isinstance(why, str) and why.strip() else ""
-            rows.append(f"<li><span>{_esc(claim)}</span>{meta_line}{why_line}</li>")
-        if rows:
-            parts.append(
-                '  <div class="routing-claims disagreed"><strong>Where they disagreed</strong>'
-                f'<ul>{"".join(rows)}</ul></div>'
-            )
-
-    parts.append("</section>")
-    return "\n".join(parts)
-
-
-
-
 # IIFE build (derived at vendor-publish time). See
 # trinity_local.launchpad_template:PETITE_VUE_IIFE for the rationale —
 # Chrome treats every file:// URL as a unique origin, so the ES module
@@ -186,6 +18,17 @@ PETITE_VUE_IIFE = "../portal_pages/vendor/petite-vue.iife.js"
 # the single source instead of hand-maintaining a second copy. launchpad_data
 # doesn't import council_review, so this module-level import can't cycle.
 from .launchpad_data import COUNCIL_LOADING_MESSAGES as LIVE_COUNCIL_LOADING_MESSAGES
+# The macOS-Shortcut dispatch tier retired 2026-05-17 (Native Messaging
+# via the Chrome extension's capture_host took over). These constants
+# stay as harmless data-attr defaults the JS dispatch knows to skip
+# when the URL is empty. See retired_names.py: `shortcuts_integration`.
+DEFAULT_SHORTCUT_NAME = "Trinity Dispatch"
+_EMPTY_SHORTCUT_URL = ""
+from .state_paths import review_pages_dir
+
+
+def _esc(value: str | None) -> str:
+    return html.escape(value or "")
 
 
 def write_unified_council_page(bundle: PromptBundle, outcome: CouncilOutcome) -> Path:
