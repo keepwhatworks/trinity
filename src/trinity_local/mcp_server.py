@@ -2026,7 +2026,6 @@ async def _run_council(args: dict) -> list[Any]:
             "task_path": raw.get("task_path"),
             "sync_path": raw.get("sync_path"),
             "review_path": raw.get("review_path"),
-            "review_action_path": raw.get("review_action_path"),
         },
     }
 

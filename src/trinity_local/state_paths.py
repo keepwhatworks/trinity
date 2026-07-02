@@ -166,10 +166,9 @@ def task_sync_dir() -> Path:
     return path
 
 
-def actions_dir() -> Path:
-    path = state_dir() / "actions"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+# (actions_dir retired 2026-07-02 with the action store, #332 — see
+# retired_names.py. The ~/.trinity/actions/ directory is no longer
+# created or read; stale installs may still carry one.)
 
 
 def reviews_dir() -> Path:

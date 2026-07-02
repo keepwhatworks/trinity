@@ -294,7 +294,6 @@ class TestRunCouncilChainPropagation:
                 "task_path": "/tmp/x",
                 "sync_path": "/tmp/y",
                 "review_path": "/tmp/z",
-                "review_action_path": "/tmp/a",
             }))
 
         from trinity_local.commands import council as council_cmd
@@ -566,7 +565,7 @@ class TestRunCouncilCanonicalizesProviderSlugs:
             print(json.dumps({
                 "council_run_id": "council_test_canon",
                 "task_path": "/tmp/x", "sync_path": "/tmp/y",
-                "review_path": "/tmp/z", "review_action_path": "/tmp/a",
+                "review_path": "/tmp/z",
             }))
 
         from trinity_local.commands import council as council_cmd

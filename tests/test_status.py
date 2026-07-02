@@ -1,6 +1,7 @@
 """Tests for the status command."""
 from __future__ import annotations
 
+import contextlib
 import json
 from unittest.mock import patch
 
@@ -43,10 +44,9 @@ class TestStatusCommand:
                             transcript_root=None,
                         )
                     ]
-                    with patch(
-                        "trinity_local.commands.status.count_actions_by_status"
-                    ) as mock_actions:
-                        mock_actions.return_value = {}
+                    # (count_actions_by_status mock retired with the action
+                    # store, #332 — nullcontext preserves the nesting depth.)
+                    with contextlib.nullcontext():
                         with patch(
                             "trinity_local.commands.status.check_drift"
                         ) as mock_drift:
@@ -87,10 +87,9 @@ class TestStatusCommand:
                             transcript_root=None,
                         )
                     ]
-                    with patch(
-                        "trinity_local.commands.status.count_actions_by_status"
-                    ) as mock_actions:
-                        mock_actions.return_value = {}
+                    # (count_actions_by_status mock retired with the action
+                    # store, #332 — nullcontext preserves the nesting depth.)
+                    with contextlib.nullcontext():
                         with patch(
                             "trinity_local.commands.status.check_drift"
                         ) as mock_drift:
@@ -178,9 +177,7 @@ class TestStatusDriftMessageRender:
              patch("trinity_local.commands.status.check_all_adapters",
                    return_value=[AdapterStatus(provider="claude", cli_name="claude",
                                                installed=True, version="1.0",
-                                               transcript_root=None)]), \
-             patch("trinity_local.commands.status.count_actions_by_status",
-                   return_value={}):
+                                               transcript_root=None)]):
             handle_status(Args(as_json=False))
         out = capsys.readouterr().out
 
@@ -529,55 +526,8 @@ class TestActionableSignals:
         assert "State:" in out
 
 
-class TestActionsSuggestionFraming:
-    """The Actions line shows auto-extracted council/workflow suggestions.
-    Nothing ever marks these 'completed', so the old 'N pending, 0 completed'
-    framing read as a stuck queue (live 2026-05-31: 18191 pending / 0 done).
-    Reframe: 'N suggested' (+ 'acted on' only when non-zero)."""
-
-    def _run(self, tmp_path, monkeypatch, capsys, action_counts):
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        with patch("trinity_local.commands.status.state_dir") as mock_state:
-            mock_state.return_value = tmp_path
-            (tmp_path / "test").mkdir(exist_ok=True)
-            with patch("trinity_local.commands.status.tasks_dir") as mock_tasks:
-                mock_tasks.return_value = tmp_path / "test"
-                with patch("trinity_local.commands.status.check_all_adapters") as ma:
-                    ma.return_value = []
-                    with patch(
-                        "trinity_local.commands.status.count_actions_by_status"
-                    ) as mc:
-                        mc.return_value = action_counts
-                        with patch(
-                            "trinity_local.commands.status.check_drift"
-                        ) as md:
-                            md.return_value = []
-                            handle_status(Args(as_json=False))
-        return capsys.readouterr().out
-
-    def test_pending_only_reads_as_suggestions_not_a_stuck_queue(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        out = self._run(tmp_path, monkeypatch, capsys,
-                        {"pending": 18191, "completed": 0})
-        # The broken-queue framing is GONE.
-        assert "0 completed" not in out, (
-            "Actions line still shows '0 completed' — reads as a stuck queue."
-        )
-        assert "pending, " not in out.split("Actions:")[1].split("\n")[0]
-        # Honest framing present.
-        assert "18191 suggested" in out
-        assert "auto-extracted" in out
-
-    def test_acted_on_count_shown_only_when_nonzero(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        out = self._run(tmp_path, monkeypatch, capsys,
-                        {"pending": 5, "completed": 2})
-        actions_line = out.split("Actions:")[1].split("\n")[0]
-        assert "5 suggested" in actions_line
-        assert "2 acted on" in actions_line
-        assert "auto-extracted" not in actions_line  # that copy is pending-only
+# (TestActionsSuggestionFraming removed 2026-07-02 with the action store,
+# #332 — the "Actions: N suggested" line it guarded no longer exists.)
 
 
 class TestSoftDegradedSurfacing:
@@ -596,7 +546,6 @@ class TestSoftDegradedSurfacing:
              patch.object(status_mod, "state_dir", lambda: tmp_path), \
              patch.object(status_mod, "tasks_dir", lambda: tmp_path / "t"), \
              patch.object(status_mod, "check_all_adapters", lambda: []), \
-             patch.object(status_mod, "count_actions_by_status", lambda: {}), \
              patch.object(status_mod, "check_drift", lambda: []):
             (tmp_path / "t").mkdir(exist_ok=True)
             handle_status(Args(as_json=False))
@@ -697,7 +646,6 @@ class TestStatusLensFreshnessRender:
             st.enter_context(patch("trinity_local.commands.status.check_all_adapters")).return_value = [
                 AdapterStatus(provider="claude", cli_name="claude", installed=True, version="1.0", transcript_root=None)
             ]
-            st.enter_context(patch("trinity_local.commands.status.count_actions_by_status")).return_value = {}
             st.enter_context(patch("trinity_local.commands.status.check_drift")).return_value = []
 
             class _Args:
@@ -733,7 +681,6 @@ class TestStatusCorpusFreshnessRender:
             st.enter_context(patch("trinity_local.commands.status.check_all_adapters")).return_value = [
                 AdapterStatus(provider="claude", cli_name="claude", installed=True, version="1.0", transcript_root=None)
             ]
-            st.enter_context(patch("trinity_local.commands.status.count_actions_by_status")).return_value = {}
             st.enter_context(patch("trinity_local.commands.status.check_drift")).return_value = []
 
             class _Args:

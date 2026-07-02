@@ -12,7 +12,6 @@ from __future__ import annotations
 import json
 
 from ..adapters import check_all_adapters
-from ..action_runtime import count_actions_by_status
 from ..health_checks import format_one_line, run_doctor
 from ..drift import check_drift
 from ..state_paths import state_dir, tasks_dir
@@ -74,13 +73,9 @@ def handle_status(args):
     # Tasks
     task_count = _count_files(tasks_dir())
 
-    # Actions — use the count-only fast path. The full PendingAction
-    # objects aren't needed here (only `len()` ever shows up below);
-    # the previous `list_actions(status=...)` twice opened every JSON
-    # twice (~36K file reads on a real 18K-file install for ~1.5s).
-    action_counts = count_actions_by_status()
-    pending_action_count = action_counts.get("pending", 0)
-    completed_action_count = action_counts.get("completed", 0)
+    # (The action store retired 2026-07-02, #332 — councils stopped writing
+    # per-run "review_ready" records whose completion path died 2026-05-18;
+    # the 18k-file scan this used to do was the slowest part of `status`.)
 
     # Drift
     drift_alerts = check_drift()
@@ -199,10 +194,6 @@ def handle_status(args):
             # `tasks_dir()` retained for back-compat with the v1.7
             # rename; external surfaces use the post-rename "todos".
             "todos": task_count,
-            "actions": {
-                "pending": pending_action_count,
-                "completed": completed_action_count,
-            },
             "reviews": review_count,
             "councils": council_count,
             "drift_alerts": len(drift_alerts),
@@ -322,17 +313,6 @@ def handle_status(args):
     # Display label matches the on-disk directory (~/.trinity/todos/);
     # internal Python name `tasks_dir()` retained for back-compat.
     print(f"  Todos:     {task_count}")
-    # Actions are auto-extracted council/workflow suggestions (one per task
-    # cluster Trinity found in your transcripts), NOT a tracked work queue —
-    # nothing marks them "completed". The old "N pending, 0 completed" framing
-    # read as a broken queue (18k pending / 0 done looks stuck), and a fresh
-    # user running a few councils saw "5 pending, 0 completed" — equally
-    # alarming. Surface them as what they are: suggestions. Only show an
-    # "acted on" count when it's genuinely non-zero.
-    if completed_action_count:
-        print(f"  Actions:   {pending_action_count} suggested · {completed_action_count} acted on")
-    else:
-        print(f"  Actions:   {pending_action_count} suggested (auto-extracted from your transcripts)")
     print(f"  Reviews:   {review_count}")
     print(f"  Councils:  {council_count}")
     # Council value proof (#236) — the council-first painkiller, in one stat:

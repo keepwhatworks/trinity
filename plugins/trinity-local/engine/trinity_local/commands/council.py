@@ -24,10 +24,9 @@ from ..council_status import (
     load_council_status,
     write_council_status,
 )
-from ..action_runtime import create_review_ready_action, save_action
 from ..notifications import open_path
 from ..refresh import refresh_launchpad
-from ..task_runtime import ensure_task_record, load_task_record, save_sync_record, save_task_record
+from ..task_runtime import ensure_task_record, save_sync_record, save_task_record
 from ..utils import stable_id
 from .helpers import read_text_file
 
@@ -255,12 +254,10 @@ def handle_council_start(args):
     finally:
         signal.signal(signal.SIGTERM, original_sigterm)
         signal.signal(signal.SIGINT, original_sigint)
-    final_task = load_task_record(str(result.task_path)) if result.task_path else task
-    review_action = create_review_ready_action(
-        task=final_task,
-        command_hint=f"trinity-local open-review --task {final_task.task_id}",
-    )
-    review_action_path = save_action(review_action)
+    # (The per-council "review_ready" action record retired 2026-07-02, #332:
+    # its completion path died 2026-05-18 with the action-complete CLI, so the
+    # store only ever GREW — 18k pending records, 2.3s status scans, zero
+    # readers. The review page itself is the artifact; see retired_names.py.)
     if status_token and load_council_status(status_token) is None:
         write_council_status(
             status_token,
@@ -296,7 +293,6 @@ def handle_council_start(args):
         "task_path": str(result.task_path or task_path),
         "sync_path": str(result.sync_path or sync_path),
         "review_path": str(result.review_path),
-        "review_action_path": str(review_action_path),
         "opened": opened,
         "council_run_id": result.outcome.council_run_id,
     }

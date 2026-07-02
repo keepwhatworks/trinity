@@ -1006,6 +1006,29 @@ RETIRED: dict[str, RetirementRecord] = {
         reason="The cortex collapse (#298, council_0dd6ee69698d620b) replaced the v1.5 cortex ENGINE — an LLM flagship rule-extractor + 6-component TrustScore + a SEPARATE per-basin cortex centroid (#277 stale-space bug) — with a deterministic per-lens-basin recency-weighted chairman-winner tally (lens_routing.compute_basin_routing). The `consolidate` CLI flags that only made sense for that engine were removed: `--audit` / `--audit-provider` (the independent-chairman audit pass that fed the audit_score trust component), `--centroids-only` (recompute the separate cortex centroids in the live embedding space — the cheap #277 fix, now structurally unnecessary since routing reads the lens's always-live centroids), `--min-basin-size` / `--basin` / `--provider` (per-basin LLM-extraction gating). The retired cortex symbols (RoutingPattern, TrustScore, RoutingRule, FailureModes, compute_trust_score, consolidate_basin, consolidate_all, make_flagship_extractor, make_rule_auditor, refresh_centroids, AUDIT_SCORE_MAP, TRUST_USE_RULE/TRUST_KNN_FALLBACK) and the MCP picks-store schema (trust_score / routing_rule / basin_centroid / winner_distribution / failure_modes / audit_status / centroid_embedder) went with them — picks.json is now the flat `{basin_id: {winner, count, margin, n_episodes, evidence}}`.",
         kind="concept",
     ),
+    "action_runtime": RetirementRecord(
+        name="action_runtime",
+        retired_at="2026-07-02",
+        commit="",
+        replacement="",
+        reason="The pending-action store (#332): every council wrote a per-run "
+        "'review_ready' record into ~/.trinity/actions/, but the completion "
+        "path died 2026-05-18 when the action-complete CLI was dropped — so "
+        "the store only ever grew (18k pending records on the founder "
+        "install, ~2.3s of every `status` run spent scanning them) and "
+        "nothing ever read the records back. The review page itself is the "
+        "artifact a council produces; the action wrapper was a dead pointer "
+        "to it. Removed: action_runtime.py + action_schema.py (PendingAction, "
+        "create_review_ready_action, save_action, load_action, list_actions, "
+        "count_actions_by_status, find_action, mark_action_status), "
+        "state_paths.actions_dir, the council payload's review_action_path "
+        "key (also dropped from run_council's _local_paths), and the "
+        "`Actions: N suggested` line + `actions` JSON block in `status`. "
+        "Stale ~/.trinity/actions/ directories on existing installs are "
+        "inert and safe to delete.",
+        kind="module",
+        artifact_persists=True,
+    ),
 }
 
 

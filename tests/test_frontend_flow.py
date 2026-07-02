@@ -513,18 +513,8 @@ class TestCouncilLaunchCommand:
             )
 
         monkeypatch.setattr("trinity_local.commands.council.run_council", fake_run_council)
-        monkeypatch.setattr(
-            "trinity_local.commands.council.load_task_record",
-            lambda path: SimpleNamespace(task_id="task_live", title="Live council", status="running"),
-        )
-        monkeypatch.setattr(
-            "trinity_local.commands.council.create_review_ready_action",
-            lambda **kwargs: SimpleNamespace(action_id="action_live"),
-        )
-        monkeypatch.setattr(
-            "trinity_local.commands.council.save_action",
-            lambda action: patch_trinity_home / "actions" / "action_live.json",
-        )
+        # (load_task_record / create_review_ready_action / save_action patches
+        # removed 2026-07-02 — the per-council action record retired, #332.)
         monkeypatch.setattr("trinity_local.commands.council.open_path", lambda path: False)
 
         args = SimpleNamespace(

@@ -78,10 +78,11 @@
       is to use <em>Dependency Inversion</em> — where high-level and
       low-level modules depend on abstractions (APIs), not on each
       other — to parallelize formerly serial steps. This approach,
-      however, runs into a fundamental limit described by Stephen
-      Wolfram's <em>Computational Irreducibility</em>, which states
-      that some steps in a complex process cannot be parallelized and
-      must be computed serially.
+      however, runs into a fundamental limit: some computations are
+      <em>inherently sequential</em>. Certain problems are P-complete —
+      they sit outside NC, the class of work that massive parallelism
+      can actually speed up — so their steps must run one after another
+      no matter how many workers you add.
     </p>
 
     <p>
