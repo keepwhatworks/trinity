@@ -370,7 +370,9 @@ class TestZeroYieldWarning:
 
     def test_source_with_sessions_no_warning(self):
         detected = [{"source": "chatgpt", "path": "/x/conversations.json", "hint": "h"}]
-        assert import_export._zero_yield_warnings(detected, {"chatgpt": 3}, None) == []
+        assert import_export._zero_yield_warnings(
+            detected, {"chatgpt": 3}, None, prompts_indexed=3
+        ) == []
 
     def test_mixed_only_empty_source_warns(self):
         detected = [
@@ -378,7 +380,7 @@ class TestZeroYieldWarning:
             {"source": "gemini_takeout", "path": "/g.html", "hint": "g"},
         ]
         w = import_export._zero_yield_warnings(
-            detected, {"chatgpt": 2, "gemini_takeout": 0}, None
+            detected, {"chatgpt": 2, "gemini_takeout": 0}, None, prompts_indexed=2
         )
         assert [x["source"] for x in w] == ["gemini_takeout"]
 
@@ -389,6 +391,68 @@ class TestZeroYieldWarning:
         assert import_export._zero_yield_warnings(detected, {"chatgpt": 0}, -1) == []
         # A positive limit that simply wasn't reached still warns on a 0 yield.
         assert len(import_export._zero_yield_warnings(detected, {"chatgpt": 0}, 5)) == 1
+
+    def test_parsed_but_nothing_staged_warns(self):
+        """The SECOND zero-yield shape (360-loop live probe 2026-07-02): sessions
+        parse fine (seen > 0) but 0 prompts index — a re-import where everything
+        dedups, or threads with no user turns. Previously returned bare zeros
+        with NO warning: ``ok: true`` + all-zero totals + silence, the exact
+        dead-end shape 1 was built to prevent."""
+        detected = [{"source": "chatgpt", "path": "/c.json", "hint": "c"}]
+        w = import_export._zero_yield_warnings(
+            detected, {"chatgpt": 1}, None, prompts_indexed=0
+        )
+        assert len(w) == 1 and w[0]["source"] == "all", w
+        assert "indexed 0 prompts" in w[0]["message"]
+        # A healthy import (prompts landed) must not fire it.
+        assert import_export._zero_yield_warnings(
+            detected, {"chatgpt": 1}, None, prompts_indexed=5
+        ) == []
+        # --limit <= 0 suppresses this shape too (expected zero, not degraded).
+        assert import_export._zero_yield_warnings(
+            detected, {"chatgpt": 1}, 0, prompts_indexed=0
+        ) == []
+
+    def test_handler_warns_when_sessions_parse_but_nothing_stages(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """End-to-end through the handler: a ChatGPT export whose only thread
+        carries NO user turns parses (sessions_seen=1) but stages nothing
+        (prompts_indexed=0). The output must carry the parsed-but-nothing-staged
+        warning, not silent ``ok: true`` zeros (360-loop live probe 2026-07-02)."""
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path / "home"))
+        monkeypatch.setenv("TRINITY_DISABLE_MLX", "1")
+        export_dir = tmp_path / "ex"
+        export_dir.mkdir()
+        conv = [{
+            "title": "assistant-only thread",
+            "create_time": 1750000000, "update_time": 1750000001,
+            "mapping": {
+                "root": {"id": "root", "message": None, "parent": None,
+                         "children": ["m1"]},
+                "m1": {"id": "m1", "parent": "root", "children": [],
+                       "message": {"id": "m1", "author": {"role": "assistant"},
+                                   "create_time": 1750000000,
+                                   "content": {"content_type": "text",
+                                               "parts": ["assistant only"]},
+                                   "status": "finished_successfully"}},
+            },
+            "conversation_id": "c1", "current_node": "m1",
+        }]
+        (export_dir / "conversations.json").write_text(
+            json.dumps(conv), encoding="utf-8"
+        )
+        import_export.handle_import_export(
+            self._args(path=str(export_dir), dry_run=False)
+        )
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["ok"] is True
+        assert payload["totals"]["sessions_seen"] == 1
+        assert payload["totals"]["prompts_indexed"] == 0
+        assert "warnings" in payload, payload
+        assert any(w["source"] == "all" for w in payload["warnings"]), payload
+        # No false success CTA on a zero-yield import.
+        assert "next_steps" not in payload, payload
 
     def test_handler_surfaces_warning_for_empty_export(self, tmp_path, monkeypatch, capsys):
         """End-to-end through the handler: an empty-activity Gemini Takeout

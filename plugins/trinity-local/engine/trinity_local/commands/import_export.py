@@ -191,19 +191,25 @@ def _zero_yield_warnings(
     detected: list[dict[str, Any]],
     per_source_counts: dict[str, int],
     limit: int | None,
+    prompts_indexed: int = 0,
 ) -> list[dict[str, Any]]:
-    """Honest-degradation (#238) warnings for detected-but-empty sources.
+    """Honest-degradation (#238) warnings for zero-yield imports.
 
-    A source can be DETECTED (the filename / structure signature matched) yet
-    parse to 0 sessions — an empty-activity export (e.g. a Google Takeout from
-    an account that never used Gemini) or a file whose internal structure this
-    parser doesn't recognize (vendor HTML drift). Without surfacing it,
-    ``ok: true`` + all-zero totals reads as a successful import when nothing
-    actually landed — the "green while degenerate" trap.
+    Two shapes produce the "green while degenerate" trap where ``ok: true`` +
+    all-zero totals reads as a successful import when nothing actually landed:
 
-    Returns one warning dict per 0-yield source. Suppressed entirely when
-    ``limit <= 0`` (a 0/negative ``--limit`` legitimately yields nothing, so a
-    0-count there is expected, not a degradation).
+    1. DETECTED-but-empty — the filename / structure signature matched yet the
+       source parsed to 0 sessions (an empty-activity export, or vendor HTML
+       drift the parser doesn't recognize). One warning per 0-seen source.
+    2. PARSED-but-nothing-staged — sessions parse fine (seen > 0) but 0 prompts
+       index: every thread is already in the index (a re-import), or the
+       threads carry no user turns to stage. Found by the 360-loop live probe
+       2026-07-02: this shape previously returned bare zeros with NO warning,
+       the exact silent dead-end shape 1 was built to prevent.
+
+    Suppressed entirely when ``limit <= 0`` (a 0/negative ``--limit``
+    legitimately yields nothing, so a 0-count there is expected, not a
+    degradation).
     """
     if limit is not None and limit <= 0:
         return []
@@ -219,6 +225,17 @@ def _zero_yield_warnings(
                 "file may have no activity, or its structure isn't one this "
                 "parser recognizes. Nothing was imported for this source. Try "
                 "--source to force a parser, or confirm the export isn't empty."
+            ),
+        })
+    total_seen = sum(per_source_counts.values())
+    if total_seen > 0 and prompts_indexed == 0:
+        warnings.append({
+            "source": "all",
+            "message": (
+                f"Parsed {total_seen} session(s) but indexed 0 prompts — "
+                "either everything here is already in the index (a re-import "
+                "adds nothing new) or these threads carry no user prompts to "
+                "stage. Nothing new was imported."
             ),
         })
     return warnings
@@ -348,7 +365,7 @@ def handle_import_export(args):
             "trinity-local lens         — build your taste lens from the imported history",
             "trinity-local portal-html  — open the launchpad to see your lens and run a council",
         ]
-    warnings = _zero_yield_warnings(detected, per_source_counts, args.limit)
+    warnings = _zero_yield_warnings(detected, per_source_counts, args.limit, prompts_indexed)
     if warnings:
         result["warnings"] = warnings
     print(json.dumps(result, indent=2))
