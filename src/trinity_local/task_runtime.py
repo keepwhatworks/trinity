@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from .council_schema import CouncilOutcome, PromptBundle
-from .state_paths import state_dir, tasks_dir, task_sync_dir
+from .state_paths import prune_store_to_cap, state_dir, tasks_dir, task_sync_dir
 from .task_schema import TaskRecord, TaskRecommendation, TaskRunRef, TaskSyncRecord
 from .utils import now_iso, stable_id
 
@@ -56,6 +56,10 @@ def save_task_record(task: TaskRecord) -> Path:
     path.write_text(json.dumps(task.to_dict(), indent=2), encoding="utf-8")
     with task_index_path().open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({"task_id": task.task_id, "updated_at": task.updated_at, "status": task.status}) + "\n")
+    # Opt-in retention (TRINITY_STORE_CAP, default OFF → no-op). This store has
+    # no built-in retention and grows one record per council; when armed the cap
+    # keeps the newest N. The just-written record is always kept (newest). #7.
+    prune_store_to_cap(tasks_dir())
     return path
 
 
@@ -234,4 +238,5 @@ def save_sync_record(task: TaskRecord) -> Path:
     sync = make_sync_record(task)
     path = task_sync_dir() / f"{task.task_id}.json"
     path.write_text(json.dumps(sync.to_dict(), indent=2), encoding="utf-8")
+    prune_store_to_cap(task_sync_dir())  # opt-in retention (#7); no-op by default
     return path

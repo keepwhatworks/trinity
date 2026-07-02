@@ -1,8 +1,59 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from .config import trinity_home
+
+
+def _store_cap() -> int | None:
+    """Optional per-store retention cap — the newest-N `*.json` to keep in the
+    high-churn entity stores (todos / task_sync / prompt_bundles). DEFAULT OFF:
+    `TRINITY_STORE_CAP` unset (or non-positive/non-int) → None → no pruning, so
+    the write path is byte-identical to today. Set it to a positive int to keep
+    only the newest N records per capped store. The canonical
+    `council_outcomes/` ledger is NEVER capped (routing/consolidate read all of
+    it); nor is anything else — only the callers that opt in via
+    `prune_store_to_cap` are affected."""
+    raw = os.environ.get("TRINITY_STORE_CAP", "").strip()
+    if not raw:
+        return None
+    try:
+        cap = int(raw)
+    except ValueError:
+        return None
+    return cap if cap > 0 else None
+
+
+def prune_store_to_cap(directory: Path) -> int:
+    """Keep only the newest `TRINITY_STORE_CAP` `*.json` files in `directory`
+    (by mtime), deleting the rest. No-op — and zero filesystem reads — when the
+    cap is unset (the default), so armed-off is byte-identical. Never raises:
+    retention is a maintenance side effect and must never crash the write it
+    piggybacks on. Returns the count pruned."""
+    cap = _store_cap()
+    if cap is None:
+        return 0
+    entries: list[tuple[float, Path]] = []
+    try:
+        for path in directory.glob("*.json"):
+            try:
+                entries.append((path.stat().st_mtime, path))
+            except OSError:
+                continue
+    except OSError:
+        return 0
+    if len(entries) <= cap:
+        return 0
+    entries.sort(reverse=True)  # newest first — the just-written record is kept
+    pruned = 0
+    for _, path in entries[cap:]:
+        try:
+            path.unlink()
+            pruned += 1
+        except OSError:
+            pass
+    return pruned
 
 
 # v1 schema lock. Bump only when the on-disk layout changes in a way that

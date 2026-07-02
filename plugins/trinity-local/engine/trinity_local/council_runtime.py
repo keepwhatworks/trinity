@@ -17,6 +17,7 @@ from .state_paths import (
     council_runs_path,
     launch_events_path,
     prompt_bundles_dir,
+    prune_store_to_cap,
 )
 from .utils import now_iso, stable_id
 
@@ -57,6 +58,7 @@ def save_prompt_bundle(bundle: PromptBundle) -> Path:
     from .utils import atomic_write_text
     path = prompt_bundles_dir() / f"{bundle.bundle_id}.json"
     atomic_write_text(path, json.dumps(bundle.to_dict(), indent=2))
+    prune_store_to_cap(prompt_bundles_dir())  # opt-in retention (#7); no-op by default
     return path
 
 
