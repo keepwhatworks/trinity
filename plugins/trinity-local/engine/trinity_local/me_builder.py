@@ -999,8 +999,14 @@ def build_me_via_lens_pipeline(
     pairs = stage3_parse(stage3_result.stdout or "")
     print(f"           → {len(pairs)} candidate pairs proposed", flush=True)
 
-    # Stage 4: deterministic basin post-filter
-    accepted, orderings = stage4_post_filter(pairs, decisions)
+    # Stage 4: deterministic basin post-filter. The report callback prints the
+    # verdict distribution BEFORE the guarded write, so when the cliff-drop
+    # guard refuses a shrink (e.g. 10 proposed → 0 accepted, 2026-07-02) the
+    # log records which gate killed the candidates instead of just the refusal.
+    accepted, orderings = stage4_post_filter(
+        pairs, decisions,
+        report=lambda line: print(f"           → stage 4 {line}", flush=True),
+    )
 
     # Stage 4b (the literal same-axis-opposite-pole contradiction detector, #141)
     # was RETIRED 2026-06-05: it produced an empty conflicts.json on the real corpus

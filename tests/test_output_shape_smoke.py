@@ -172,3 +172,46 @@ class TestLensBuildStage4OutputShape:
             "single-basin tension should land in orderings (preserved "
             "signal), not vanish entirely"
         )
+
+    def test_cliff_drop_refusal_reports_verdict_distribution(self, patch_trinity_home):
+        """When the cliff-drop guard refuses to shrink the live registry, the
+        `report` callback must have already recorded WHERE the candidates died
+        (chairman verdicts vs the basin gates). The 2026-07-02 real-home
+        rebuild hit exactly this blind spot: 10 candidates proposed → 0
+        accepted, and the log carried only the refusal — no trace of which
+        gate killed them."""
+        from trinity_local.me.pair_mining import LensPair
+        from trinity_local.me.decisions import Decision
+        from trinity_local.me.pipeline import stage4_post_filter
+        from trinity_local.me.turn_pairs import DegenerateExtractionError
+
+        # Seed the LIVE registry with 5 accepted lenses — the guard only arms
+        # at _CLOBBER_MIN_EXISTING (5) live entries.
+        decisions = [
+            Decision(id=f"d{i}", privileged="p", sacrificed="q",
+                     valence="regret", basin=f"b0{i}", verbatim="v")
+            for i in range(3)
+        ]
+        seed_pairs = [
+            LensPair(pole_a=f"pole_{k}", pole_b=f"anti_{k}", failure_a="f",
+                     failure_b="g", tension_decisions=["d0", "d1", "d2"],
+                     verdict="accepted")
+            for k in range(5)
+        ]
+        accepted, _ = stage4_post_filter(seed_pairs, decisions)
+        assert len(accepted) == 5, "seeding the live registry failed"
+
+        # Now a doomed batch: one pair whose decision IDs don't anchor to any
+        # basin (dropped) — 0 accepted against a live registry of 5 → the
+        # guard must refuse, and the report must already have fired.
+        doomed = LensPair(pole_a="x", pole_b="y", failure_a="f", failure_b="g",
+                          tension_decisions=["nope1", "nope2"], verdict="accepted")
+        lines: list[str] = []
+        with pytest.raises(DegenerateExtractionError):
+            stage4_post_filter([doomed], decisions, report=lines.append)
+        assert lines, (
+            "the cliff-drop guard fired with NO verdict-distribution report — "
+            "the 2026-07-02 blind spot is back (a refusal with no trace of "
+            "which gate killed the candidates)"
+        )
+        assert "dropped=1" in lines[0] and "0×1" in lines[0], lines

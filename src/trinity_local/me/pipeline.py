@@ -268,11 +268,35 @@ def _load_basin_centroids() -> dict[str, list[float]]:
     return out
 
 
-def stage4_post_filter(pairs: list[LensPair], decisions: list[Decision]) -> tuple[list[LensPair], list[LensPair]]:
-    """Apply basin post-filter (count + semantic), then split by verdict."""
+def stage4_post_filter(
+    pairs: list[LensPair],
+    decisions: list[Decision],
+    report=None,
+) -> tuple[list[LensPair], list[LensPair]]:
+    """Apply basin post-filter (count + semantic), then split by verdict.
+
+    ``report`` (optional callable, one string arg) receives the verdict
+    distribution BEFORE the guarded write. When ``save_lenses`` raises the
+    cliff-drop ``DegenerateExtractionError`` (refusing to shrink the live
+    registry), this line is the only record of WHERE the candidates died —
+    the chairman's own verdicts vs the basin count/semantic gates. Found by
+    the 2026-07-02 real-home rebuild: 10 candidates proposed → 0 accepted
+    with zero trace of which gate killed them. Kept as a callback so this
+    module stays print-free (the caller controls reporting, per the module
+    docstring)."""
     basin_centroids = _load_basin_centroids()
     filtered = basin_post_filter(pairs, decisions, basin_centroids=basin_centroids)
     accepted, orderings = split_by_verdict(filtered)
+    if report is not None and pairs:
+        from collections import Counter
+        verdicts = Counter(p.verdict or "?" for p in filtered)
+        spans = Counter(len(p.basins_spanned or []) for p in filtered)
+        report(
+            "verdicts: "
+            + ", ".join(f"{k}={v}" for k, v in sorted(verdicts.items()))
+            + " · basins spanned: "
+            + ", ".join(f"{n}×{c}" for n, c in sorted(spans.items()))
+        )
     save_lenses(accepted, orderings)
     return accepted, orderings
 
