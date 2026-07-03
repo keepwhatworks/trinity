@@ -325,3 +325,39 @@ class TestIngestFreshness:
         marker_path().parent.mkdir(parents=True, exist_ok=True)
         marker_path().write_text(json.dumps({"completed_at": d}))
         assert ingest_freshness()[0] == "current"
+
+    def test_cli_ingest_cursors_clear_stale_without_marker(self, stale_home):
+        """THE 2026-07-03 permanent false-stale: a manual `trinity-local
+        ingest-recent` writes the CURSORS but not the stale-pass marker, so the
+        marker-only check kept saying "run trinity-local ingest-recent" forever
+        — the warning's own recommended command could never clear it. Fresh
+        cursors alone (marker old OR absent) must count as landed-ingest
+        evidence; both-old must still bite."""
+        import json
+        import os
+        import time
+        from datetime import datetime, timezone, timedelta
+        from trinity_local.stale_pass import ingest_freshness, marker_path
+        from trinity_local.state_paths import ingest_cursors_path
+
+        # Old marker (13d) + FRESH cursors (a just-completed CLI ingest) → current.
+        old = (datetime.now(timezone.utc) - timedelta(days=13)).isoformat()
+        marker_path().parent.mkdir(parents=True, exist_ok=True)
+        marker_path().write_text(json.dumps({"completed_at": old}))
+        cur = ingest_cursors_path()
+        cur.parent.mkdir(parents=True, exist_ok=True)
+        cur.write_text("{}")
+        state, reason = ingest_freshness()
+        assert state == "current", (state, reason)
+
+        # No marker at all + fresh cursors → still current (not 'absent').
+        marker_path().unlink()
+        assert ingest_freshness()[0] == "current"
+
+        # BOTH signals old → stale still bites (the check didn't go soft).
+        past = time.time() - 13 * 86400
+        os.utime(cur, (past, past))
+        marker_path().write_text(json.dumps({"completed_at": old}))
+        state, reason = ingest_freshness()
+        assert state == "stale", (state, reason)
+        assert "missing recent transcripts" in reason

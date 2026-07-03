@@ -115,33 +115,55 @@ INGEST_STALE_MULTIPLE = 3.0
 
 def ingest_freshness() -> tuple[str, str]:
     """Ground-truth corpus-ingest freshness for `status` — ('stale' | 'current' |
-    'absent', reason). Reads the completed-ingest marker (last_stale_pass.json),
-    NOT the cursors. 'stale' = SIGNIFICANTLY overdue (>INGEST_STALE_MULTIPLE × the
-    window): the background ingest trigger has stopped firing, so the corpus is
-    missing recent transcripts and search/ask/k-NN run on stale data — distinct
-    from (and broader than) the lens-build freeze, which only stalls the lens.
-    Pure read; never raises."""
+    'absent', reason). 'stale' = SIGNIFICANTLY overdue (>INGEST_STALE_MULTIPLE ×
+    the window): ingest has stopped landing, so the corpus is missing recent
+    transcripts and search/ask/k-NN run on stale data — distinct from (and
+    broader than) the lens-build freeze, which only stalls the lens.
+
+    Evidence = the NEWEST of two completed-ingest signals:
+    - the stale-pass marker (last_stale_pass.json), written by the BACKGROUND
+      trigger (MCP-ask kick → run_stale_pass);
+    - the ingest cursors (prompts/cursors.json) mtime, written at the end of
+      EVERY ingest pass — including the manual `trinity-local ingest-recent`.
+    This check originally read the marker ALONE, which produced a permanent
+    false-stale (found 2026-07-03 after a real-home CLI ingest): the manual
+    CLI — the exact command this warning recommends — never writes the marker,
+    so the warning could never clear via its own advice. Pure read; never
+    raises."""
     from datetime import datetime, timezone
 
+    now = datetime.now(timezone.utc)
+    ages_h: list[float] = []  # completed-ingest evidence; newest (min) wins
+
     path = marker_path()
-    if not path.exists():
+    if path.exists():
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            raw = None
+        if isinstance(raw, dict):  # guard_shape_not_just_parse
+            completed = raw.get("completed_at") or raw.get("started_at")
+            if isinstance(completed, str) and completed:
+                try:
+                    when = datetime.fromisoformat(completed.replace("Z", "+00:00"))
+                    if when.tzinfo is None:
+                        when = when.replace(tzinfo=timezone.utc)
+                    ages_h.append((now - when).total_seconds() / 3600.0)
+                except ValueError:
+                    pass
+
+    try:
+        from .state_paths import ingest_cursors_path
+        cursors = ingest_cursors_path()
+        if cursors.exists():
+            when = datetime.fromtimestamp(cursors.stat().st_mtime, tz=timezone.utc)
+            ages_h.append((now - when).total_seconds() / 3600.0)
+    except OSError:
+        pass
+
+    if not ages_h:
         return "absent", "no ingest pass recorded yet"
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return "absent", "ingest marker unreadable"
-    if not isinstance(raw, dict):  # guard_shape_not_just_parse
-        return "absent", "ingest marker wrong shape"
-    completed = raw.get("completed_at") or raw.get("started_at")
-    if not isinstance(completed, str) or not completed:
-        return "absent", "ingest marker missing timestamp"
-    try:
-        when = datetime.fromisoformat(completed.replace("Z", "+00:00"))
-        if when.tzinfo is None:
-            when = when.replace(tzinfo=timezone.utc)
-    except ValueError:
-        return "absent", "ingest timestamp unparseable"
-    age_h = (datetime.now(timezone.utc) - when).total_seconds() / 3600.0
+    age_h = min(ages_h)  # newest evidence = smallest age
     if age_h >= _stale_hours() * INGEST_STALE_MULTIPLE:
         return "stale", (f"last ingest {age_h / 24:.0f}d ago "
                          f"(>{_stale_hours() * INGEST_STALE_MULTIPLE:.0f}h) — "
