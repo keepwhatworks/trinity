@@ -454,3 +454,36 @@ def test_stale_lens_is_a_caution_not_a_block(monkeypatch, tmp_path):
     assert by["freshness"].status == lh.WEAK
     assert r.trustworthy is True and r.weak  # trustworthy, but the staleness caution surfaced
     assert "with cautions" in lh.format_human(r)
+
+
+def test_collapse_advice_is_build_aware(monkeypatch, tmp_path):
+    """Trust fix 2026-07-03: the collapse meter runs on the lens AS BUILT, so
+    right after a fresh build "Re-run `trinity-local dream`" is a no-op (same
+    corpus in, same direction out) — a user who just ran the pipeline reads
+    the product as telling them to redo what they did. Fresh lens (<24h) must
+    switch the advice to accumulate-more-corrections; an old lens keeps the
+    re-run wording."""
+    import os
+    import time
+
+    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+    import trinity_local.me.preference_collapse as pc
+    monkeypatch.setattr(pc, "lens_collapse_signal", lambda *a, **k: {
+        "ready": True, "verdict": "collapse", "false_accept_rate": 0.29,
+        "val_n": 24, "p": 0.03,
+    })
+    from trinity_local.lens_health import WEAK, _preference_collapse
+    from trinity_local.state_paths import lens_path
+
+    lens_path().parent.mkdir(parents=True, exist_ok=True)
+    lens_path().write_text("# Lens\n", encoding="utf-8")
+
+    fresh = _preference_collapse(backend_ok=True)
+    assert fresh.status == WEAK
+    assert "just rebuilt" in (fresh.fix or ""), fresh.fix
+
+    past = time.time() - 3 * 86400
+    os.utime(lens_path(), (past, past))
+    aged = _preference_collapse(backend_ok=True)
+    assert aged.status == WEAK
+    assert "Re-run" in (aged.fix or ""), aged.fix

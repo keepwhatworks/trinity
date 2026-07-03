@@ -312,14 +312,31 @@ def _preference_collapse(backend_ok: bool) -> LensCheck:
     rate = float(sig.get("false_accept_rate", 0.0) or 0.0)
     metric = {"false_accept_rate": rate, "val_n": sig.get("val_n"), "p": sig.get("p")}
     if sig.get("verdict") == "collapse":
+        # Advice must be BUILD-AWARE (trust fix, 2026-07-03): this meter runs on
+        # the lens as built, so right after a fresh build "re-run dream" is a
+        # no-op — same corpus in, same verdict out — and a user who just ran the
+        # pipeline reads the product as telling them to redo what they did.
+        # Fresh lens → the honest cure is new signal, not a rebuild.
+        fix = ("Re-run `trinity-local dream`; if it persists the lens is over-fit "
+               "to one axis and the blind-spot corrections need their own tension.")
+        try:
+            from .state_paths import lens_path
+            import time as _time
+            age_h = (_time.time() - lens_path().stat().st_mtime) / 3600.0
+            if age_h < 24.0:
+                fix = ("The lens was just rebuilt — re-running now won't change this "
+                       "(same corpus in, same direction out). Keep correcting answers "
+                       "you disagree with; the divergent corrections become their own "
+                       "tension in a future build.")
+        except OSError:
+            pass
         return LensCheck(
             "preference_collapse", "Preference collapse", WEAK,
             f"the lens direction doesn't reliably rank held-out corrections "
             f"({rate*100:.0f}% false-accepts) — possible collapse to surface features; the "
             "divergent corrections are blind spots the next build should weight up.",
             metric=metric,
-            fix="Re-run `trinity-local dream`; if it persists the lens is over-fit to one axis "
-                "and the blind-spot corrections need their own tension.",
+            fix=fix,
         )
     return LensCheck(
         "preference_collapse", "Preference collapse", OK,
