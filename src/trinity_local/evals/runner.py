@@ -26,6 +26,20 @@ from ..providers import (
 from .builder import EvalSet, results_dir
 
 
+def _stderr_excerpt(stderr: str | None, *, cap: int = 400) -> str:
+    """Excerpt a failed dispatch's stderr for the persisted target_error.
+
+    Keeps the TAIL, not just the head: CLIs print their startup banner first
+    and the actual error LAST, so the previous head-only `[:200]` slice stored
+    8 identical banner fragments and dropped the real cause ("You've hit your
+    usage limit…") on the 2026-07-03 codex rate-limit run — the failure was
+    undiagnosable from disk."""
+    text = (stderr or "no stderr").strip()
+    if len(text) <= cap:
+        return text
+    return f"{text[:120]} … {text[-(cap - 140):]}"
+
+
 def _identity_effort(config: ProviderConfig, model: str | None) -> str | None:
     """The thinking-level half of the #239 identity triple.
 
@@ -181,7 +195,7 @@ def run_eval(
             if result.returncode != 0:
                 error = (
                     f"{target_provider} returned exit {result.returncode}: "
-                    f"{(result.stderr or 'no stderr').strip()[:200]}"
+                    f"{_stderr_excerpt(result.stderr)}"
                 )
                 failed += 1
             response_text = result.stdout

@@ -778,6 +778,37 @@ class TestModelIdentityTriple:
         cfg = self._config(model="gpt-5.3-codex", effort=None)
         assert _identity_effort(cfg, "gpt-5.3-codex") is None
 
+    def test_explicit_args_override_wins_over_effort_field(self):
+        """THE 2026-07-03 stamp bug: a config whose args carry
+        `-c model_reasoning_effort="xhigh"` DISPATCHES xhigh (CodexProvider
+        skips its own append as already_set) while config.effort says
+        "high" — so the stamp recorded an effort the CLI never ran,
+        corrupting cross-run comparability. The args override must win at
+        the stamp exactly as it wins at dispatch."""
+        from trinity_local.config import ProviderConfig
+        from trinity_local.evals.runner import _identity_effort
+        cfg = ProviderConfig(
+            name="codex", type="codex", enabled=True, label="Codex",
+            command=["codex", "exec"],
+            args=["--sandbox", "workspace-write", "-c",
+                  'model_reasoning_effort="xhigh"'],
+            task_types=set(), model="gpt-5.5", effort="high",
+        )
+        assert _identity_effort(cfg, "gpt-5.5") == "xhigh"
+
+    def test_stderr_excerpt_keeps_the_tail(self):
+        """The persisted target_error must carry the LAST lines of stderr —
+        the 2026-07-03 rate-limit run stored only the codex startup banner
+        (head-only slice) and dropped the actual 'usage limit' error."""
+        from trinity_local.evals.runner import _stderr_excerpt
+        banner = "Reading additional input from stdin...\n" + ("config line\n" * 30)
+        err = banner + "ERROR: You've hit your usage limit. Try again later."
+        out = _stderr_excerpt(err)
+        assert "usage limit" in out, out
+        # short stderr passes through whole; empty degrades honestly
+        assert _stderr_excerpt("boom") == "boom"
+        assert _stderr_excerpt(None) == "no stderr"
+
     def test_effort_round_trips_through_save_load(self, tmp_path, monkeypatch):
         import trinity_local.state_paths as sp
         monkeypatch.setattr(sp, "state_dir", lambda: tmp_path)

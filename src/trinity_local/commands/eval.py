@@ -840,6 +840,17 @@ def handle_eval_run(args):
                   f"measured non-self-preferential)")
         else:
             print(f"  Aggregate score:  {run_result.aggregate_score:.3f}  ({args.target} vs rejected_responses)")
+        if run_result.items_failed:
+            # Survivorship warning (2026-07-03): 8/33 codex dispatches died on
+            # rate limits and the aggregate silently covered only the 25
+            # survivors — which excluded disproportionately HARD items (the
+            # rival scored 0.16 on the failed set vs 0.30 overall), inflating
+            # the headline. A partial aggregate is not comparable to a full
+            # run and must say so where the number is read.
+            print(f"  ⚠ aggregate covers only the {run_result.n_scored} scored item(s) — "
+                  f"{run_result.items_failed} dispatch failure(s) excluded. If failures "
+                  f"cluster on hard prompts the score is inflated; re-run before comparing "
+                  f"against a full run.")
         if run_result.by_rejection_type:
             from ..evals.scorer import AXIS_ONELINER
             print("  By rejection axis (what the user wanted that the rejected response missed):")

@@ -121,7 +121,22 @@ def _effective_effort(config: ProviderConfig) -> str | None:
     Trinity stores this on ProviderConfig.effort. agy users set it via
     `/model` inside agy; the live council card reads back the persisted
     selection so the chip shows the actual model+effort, not a guess.
+
+    An explicit `-c model_reasoning_effort=<level>` in config.args WINS over
+    config.effort at dispatch time (CodexProvider skips its own append when
+    args already carry the override), so it must win here too — otherwise
+    every surface that stamps identity (eval results' target_effort, the
+    #239 triple) records an effort the CLI never ran. Found 2026-07-03: a
+    config with args `-c model_reasoning_effort="xhigh"` + effort "high"
+    dispatched xhigh but stamped high, corrupting cross-run comparability.
     """
+    args = config.args or []
+    for i, a in enumerate(args):
+        if a == "-c" and i + 1 < len(args) and "model_reasoning_effort" in str(args[i + 1]):
+            _, _, value = str(args[i + 1]).partition("=")
+            value = value.strip().strip('"').strip("'")
+            if value:
+                return value
     return config.effort
 
 
