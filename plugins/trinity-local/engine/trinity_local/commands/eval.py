@@ -78,6 +78,12 @@ def register(subparsers):
         "--no-score", dest="skip_score", action="store_true",
         help="Skip the scorer step. Useful when you want to inspect raw responses before paying the judge dispatch cost.",
     )
+    run_p.add_argument(
+        "--regrade", action="store_true",
+        help="Re-score the newest SAVED result for (--eval-id, --target) with the chosen "
+             "--judge — zero target re-dispatch. Use after a judge failure (empty/unparseable "
+             "verdicts): the target responses on disk are kept, only judging is paid again.",
+    )
     run_p.set_defaults(handler=handle_eval_run)
 
     show_p = subparsers.add_parser(
@@ -786,14 +792,43 @@ def handle_eval_run(args):
         status = "✗" if item_run.target_error else "→"
         print(f"  [{idx}/{total}] {status} {pad_axis} {item_run.elapsed_seconds:5.1f}s")
 
-    print(f"Running eval {eval_id} against {args.target}...")
-    run_result = run_eval(
-        eval_set,
-        args.target,
-        provider_configs,
-        limit=args.limit,
-        progress_callback=_progress,
-    )
+    if getattr(args, "regrade", False):
+        # --regrade: re-score the newest SAVED result for (eval_id, target)
+        # with the chosen judge — ZERO target re-dispatch. This is the path the
+        # judge-failure hint promises; before 2026-07-04 the hint said "no
+        # target re-dispatch needed" while every eval-run invocation
+        # re-dispatched all items (misleading-copy trust bug, found when a
+        # fable-config judge returned unparseable verdicts and re-grading the
+        # 27 saved responses required calling the scorer API by hand).
+        from ..evals.runner import load_run_result
+        from ..evals.builder import results_dir
+        if args.skip_score:
+            print("✗ --regrade with --no-score is a no-op (regrade IS the scoring step).")
+            raise SystemExit(2)
+        saved = sorted(
+            results_dir().glob(f"eval_{eval_id}__model_{args.target}__*.json"),
+            key=lambda p: (p.stat().st_mtime, p.stem),
+        )
+        if not saved:
+            print(f"✗ no saved result for eval {eval_id} target {args.target!r} — "
+                  "run without --regrade first (the dispatch pass writes it).")
+            raise SystemExit(2)
+        run_result = load_run_result(saved[-1])
+        if run_result is None:
+            print(f"✗ newest saved result unreadable: {saved[-1].name}")
+            raise SystemExit(2)
+        n_saved = sum(1 for it in run_result.items if it.target_response)
+        print(f"Re-grading {n_saved} saved response(s) from {saved[-1].name} — "
+              "zero target re-dispatch.")
+    else:
+        print(f"Running eval {eval_id} against {args.target}...")
+        run_result = run_eval(
+            eval_set,
+            args.target,
+            provider_configs,
+            limit=args.limit,
+            progress_callback=_progress,
+        )
 
     if not args.skip_score:
         # Judge priority: explicit --judge > the MEASURED most-aligned judge (the
@@ -892,9 +927,10 @@ def handle_eval_run(args):
         alt = _suggest_alt_judge(judge_used, args.target, provider_configs)
         if alt:
             print(
-                "    → Re-grade with a different judge (no target re-dispatch needed if "
-                "you keep the same set):\n"
-                f"        trinity-local eval-run --target {args.target} --judge {alt} --eval-id {eval_id}"
+                "    → Re-grade the saved responses with a different judge "
+                "(--regrade = zero target re-dispatch):\n"
+                f"        trinity-local eval-run --target {args.target} --judge {alt} "
+                f"--eval-id {eval_id} --regrade"
             )
     print(f"\n  → {path}")
 

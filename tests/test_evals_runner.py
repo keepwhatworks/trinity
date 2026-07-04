@@ -497,6 +497,103 @@ class TestEvalRunCLI:
             )
 
 
+class TestEvalRegrade:
+    """--regrade re-scores the newest SAVED result with the chosen judge and
+    must NEVER re-dispatch the target. Before 2026-07-04 the judge-failure
+    hint promised "no target re-dispatch needed" while eval-run always
+    re-dispatched — the flag makes the promise true; this test pins it with a
+    dispatch sentinel."""
+
+    def test_regrade_rescores_saved_run_without_dispatch(self, tmp_path, monkeypatch, capsys):
+        from types import SimpleNamespace
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+
+        from trinity_local.config import ProviderConfig
+        import trinity_local.config as config_mod
+        import trinity_local.evals.builder as builder
+        import trinity_local.evals.runner as runner_mod
+        import trinity_local.evals.scorer as scorer_mod
+        from trinity_local.commands import eval as eval_cmd
+        from trinity_local.evals.runner import EvalItemRun, EvalRunResult, save_run_result
+
+        # A saved run with target responses but NO scores (the judge-failure shape).
+        rr = EvalRunResult(
+            eval_id="eval_regrademe", target_provider="claude",
+            target_model="claude-fable-5", target_effort="xhigh",
+            started_at="2026-07-04T00:00:00+00:00",
+            completed_at="2026-07-04T00:10:00+00:00",
+            items_total=2, items_completed=2, items_failed=0,
+            items=[
+                EvalItemRun(
+                    eval_item_id=f"ei_{i}", rejection_type="REFRAME",
+                    prompt="p", rejected_response="r", user_substitute="u",
+                    rubric_signal="s", basin_id="b00",
+                    target_response="an answer", target_error=None,
+                    elapsed_seconds=0.1, score=None, score_reason="",
+                    judge_provider=None,
+                ) for i in range(2)
+            ],
+        )
+        save_run_result(rr)
+
+        providers = {
+            "claude": ProviderConfig(name="claude", type="cli", enabled=True,
+                                     label="Claude", command=["claude", "-p"],
+                                     args=[], task_types=set(),
+                                     model="claude-opus-4-8", effort="high"),
+            "codex": ProviderConfig(name="codex", type="codex", enabled=True,
+                                    label="Codex", command=["codex", "exec"],
+                                    args=[], task_types=set(),
+                                    model="gpt-5.5", effort="high"),
+        }
+        monkeypatch.setattr(config_mod, "load_config",
+                            lambda *a, **k: SimpleNamespace(providers=providers))
+        monkeypatch.setattr(builder, "load_eval_set",
+                            lambda eid: SimpleNamespace(eval_id=eid))
+
+        def _no_dispatch(*a, **k):
+            raise AssertionError("run_eval called — --regrade must NOT re-dispatch the target")
+        monkeypatch.setattr(runner_mod, "run_eval", _no_dispatch)
+
+        def _fake_score(run_result, lens_text, judge, provider_configs, **kw):
+            for it in run_result.items:
+                it.score, it.score_reason, it.judge_provider = 0.8, "ok", judge
+            run_result.finalize_scores() if hasattr(run_result, "finalize_scores") else None
+            return run_result
+        monkeypatch.setattr(scorer_mod, "score_run", _fake_score)
+        monkeypatch.setattr(eval_cmd, "_record_judge_alignment", lambda *a, **k: None)
+
+        args = SimpleNamespace(eval_id="eval_regrademe", target="claude",
+                               judge="claude", skip_score=False, regrade=True,
+                               limit=None, config=None)
+        eval_cmd.handle_eval_run(args)
+        out = capsys.readouterr().out
+        assert "Re-grading" in out and "zero target re-dispatch" in out, out
+        assert "eval_regrademe" in out
+
+    def test_regrade_with_no_score_refuses(self, tmp_path, monkeypatch, capsys):
+        from types import SimpleNamespace
+        import pytest as _pytest
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        import trinity_local.evals.builder as builder
+        from trinity_local.commands import eval as eval_cmd
+        from trinity_local.config import ProviderConfig
+        import trinity_local.config as config_mod
+        providers = {"claude": ProviderConfig(
+            name="claude", type="cli", enabled=True, label="Claude",
+            command=["claude", "-p"], args=[], task_types=set(),
+            model="claude-opus-4-8", effort="high")}
+        monkeypatch.setattr(config_mod, "load_config",
+                            lambda *a, **k: SimpleNamespace(providers=providers))
+        monkeypatch.setattr(builder, "load_eval_set",
+                            lambda eid: SimpleNamespace(eval_id=eid))
+        args = SimpleNamespace(eval_id="eval_x", target="claude", judge=None,
+                               skip_score=True, regrade=True, limit=None, config=None)
+        with _pytest.raises(SystemExit):
+            eval_cmd.handle_eval_run(args)
+        assert "no-op" in capsys.readouterr().out
+
+
 class TestEvalShowCLI:
     """The eval-show subcommand renders a past run result without
     requiring re-dispatch. Tests use a fake result file rather than
