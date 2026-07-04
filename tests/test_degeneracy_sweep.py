@@ -55,7 +55,10 @@ def test_sweep_no_eval_ledger_is_clean_not_error(home: Path):
 
 def test_lens_freshness_flags_stale_vocab(home: Path):
     """vocab/topics older than the newest council (by >1 day) → soft warning with
-    a `dream` fix so status surfaces it (founder 2026-06-01 stale-vocab finding)."""
+    a `lens` fix so status surfaces it (founder 2026-06-01 stale-vocab finding;
+    fix retargeted dream→lens 2026-07-04 when the vocabulary scan folded into
+    the lens post-build hooks — advice-closure: the recommended command must
+    write what this check reads; see tests/test_advice_closure.py)."""
     from trinity_local.health_checks import _check_lens_freshness
 
     vocab = home / "memories" / "vocabulary.md"
@@ -72,7 +75,7 @@ def test_lens_freshness_flags_stale_vocab(home: Path):
 
     r = _check_lens_freshness()
     assert r.ok is True  # soft — stale, not broken
-    assert r.fix == "trinity-local dream"
+    assert r.fix == "trinity-local lens"
     assert "predate" in r.detail
 
 
