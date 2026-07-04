@@ -571,6 +571,77 @@ class TestEvalRegrade:
         assert "Re-grading" in out and "zero target re-dispatch" in out, out
         assert "eval_regrademe" in out
 
+    def test_effort_model_override_hits_target_only(self, tmp_path, monkeypatch, capsys):
+        """--effort/--model rewrite the TARGET's config for this run (including
+        any explicit -c model_reasoning_effort arg, which otherwise WINS at
+        dispatch) while the judge keeps its configured identity — the fable
+        test showed a config.json edit mutates the judge too."""
+        from types import SimpleNamespace
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        from trinity_local.config import ProviderConfig
+        import trinity_local.config as config_mod
+        import trinity_local.evals.builder as builder
+        import trinity_local.evals.runner as runner_mod
+        from trinity_local.commands import eval as eval_cmd
+
+        providers = {
+            "codex": ProviderConfig(name="codex", type="codex", enabled=True,
+                                    label="Codex", command=["codex", "exec"],
+                                    args=["-c", 'model_reasoning_effort="xhigh"'],
+                                    task_types=set(), model="gpt-5.5", effort="high"),
+            "claude": ProviderConfig(name="claude", type="cli", enabled=True,
+                                     label="Claude", command=["claude", "-p"],
+                                     args=[], task_types=set(),
+                                     model="claude-opus-4-8", effort="high"),
+        }
+        monkeypatch.setattr(config_mod, "load_config",
+                            lambda *a, **k: SimpleNamespace(providers=providers))
+        monkeypatch.setattr(builder, "load_eval_set",
+                            lambda eid: SimpleNamespace(eval_id=eid))
+        captured = {}
+        def _capture(eval_set, target, provider_configs, **kw):
+            captured["configs"] = provider_configs
+            raise SystemExit(0)  # stop before scoring — we only assert the configs
+        monkeypatch.setattr(runner_mod, "run_eval", _capture)
+
+        import pytest as _pytest
+        args = SimpleNamespace(eval_id="eval_x", target="codex", judge="claude",
+                               skip_score=False, regrade=False, limit=None,
+                               config=None, effort_override="low",
+                               model_override="gpt-6-preview")
+        with _pytest.raises(SystemExit):
+            eval_cmd.handle_eval_run(args)
+        tgt = captured["configs"]["codex"]
+        assert tgt.model == "gpt-6-preview" and tgt.effort == "low"
+        # the explicit args override was rewritten too — it would WIN otherwise
+        assert "model_reasoning_effort=low" in " ".join(tgt.args)
+        # the judge's config is untouched
+        judge = captured["configs"]["claude"]
+        assert judge.model == "claude-opus-4-8" and judge.effort == "high"
+
+    def test_override_with_regrade_refuses(self, tmp_path, monkeypatch, capsys):
+        from types import SimpleNamespace
+        import pytest as _pytest
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        from trinity_local.config import ProviderConfig
+        import trinity_local.config as config_mod
+        import trinity_local.evals.builder as builder
+        from trinity_local.commands import eval as eval_cmd
+        providers = {"claude": ProviderConfig(
+            name="claude", type="cli", enabled=True, label="Claude",
+            command=["claude", "-p"], args=[], task_types=set(),
+            model="claude-opus-4-8", effort="high")}
+        monkeypatch.setattr(config_mod, "load_config",
+                            lambda *a, **k: SimpleNamespace(providers=providers))
+        monkeypatch.setattr(builder, "load_eval_set",
+                            lambda eid: SimpleNamespace(eval_id=eid))
+        args = SimpleNamespace(eval_id="eval_x", target="claude", judge=None,
+                               skip_score=False, regrade=True, limit=None,
+                               config=None, effort_override="max", model_override=None)
+        with _pytest.raises(SystemExit):
+            eval_cmd.handle_eval_run(args)
+        assert "never" in capsys.readouterr().out.lower()
+
     def test_regrade_with_no_score_refuses(self, tmp_path, monkeypatch, capsys):
         from types import SimpleNamespace
         import pytest as _pytest

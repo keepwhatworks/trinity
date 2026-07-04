@@ -84,6 +84,19 @@ def register(subparsers):
              "--judge — zero target re-dispatch. Use after a judge failure (empty/unparseable "
              "verdicts): the target responses on disk are kept, only judging is paid again.",
     )
+    run_p.add_argument(
+        "--effort", default=None, dest="effort_override",
+        help="Override the TARGET's reasoning effort for this run only (config untouched; "
+             "the judge keeps its configured effort). For apples-to-apples model claims run "
+             "each provider at its TOP tier (claude max / codex xhigh) — effort labels are "
+             "not calibrated across labs, so top-vs-top is the only fair matching.",
+    )
+    run_p.add_argument(
+        "--model", default=None, dest="model_override",
+        help="Override the TARGET's model for this run only (config untouched; the judge "
+             "keeps its configured model) — score a new model the day it lands without "
+             "editing config.json.",
+    )
     run_p.set_defaults(handler=handle_eval_run)
 
     show_p = subparsers.add_parser(
@@ -786,6 +799,37 @@ def handle_eval_run(args):
     if args.target not in provider_configs:
         print(f"✗ target provider {args.target!r} not enabled. Available: {sorted(provider_configs)}")
         raise SystemExit(2)
+
+    # --effort / --model: per-run overrides applied to the TARGET config only
+    # (the judge keeps its configured identity — the 2026-07-04 fable test
+    # showed that editing config.json mutates the judge too, and a fable-config
+    # judge returned unparseable verdicts on every item). An explicit
+    # `-c model_reasoning_effort=…` in args WINS over the effort field at
+    # dispatch (see providers._effective_effort), so an effort override must
+    # rewrite that arg as well or it would silently lose.
+    effort_override = getattr(args, "effort_override", None)
+    model_override = getattr(args, "model_override", None)
+    if effort_override or model_override:
+        if getattr(args, "regrade", False):
+            print("✗ --effort/--model with --regrade would stamp an identity that never "
+                  "dispatched — run without --regrade to dispatch at the override.")
+            raise SystemExit(2)
+        import dataclasses
+        tgt = provider_configs[args.target]
+        new_args = list(tgt.args or [])
+        if effort_override:
+            for i, a in enumerate(new_args):
+                if a == "-c" and i + 1 < len(new_args) and "model_reasoning_effort" in str(new_args[i + 1]):
+                    new_args[i + 1] = f"model_reasoning_effort={effort_override}"
+        provider_configs = dict(provider_configs)
+        provider_configs[args.target] = dataclasses.replace(
+            tgt,
+            args=new_args,
+            effort=effort_override or tgt.effort,
+            model=model_override or tgt.model,
+        )
+        print(f"  target override: model={provider_configs[args.target].model} "
+              f"effort={provider_configs[args.target].effort} (config.json untouched)")
 
     def _progress(idx, total, item_run):
         pad_axis = item_run.rejection_type.ljust(11)
