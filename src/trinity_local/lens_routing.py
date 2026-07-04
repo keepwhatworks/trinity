@@ -48,8 +48,45 @@ HALF_LIFE_DAYS = 30.0  # recency weight halves every N days, relative to the new
 # ties); only ~4/23 cleared 0.15 decisively.
 WINNER_MARGIN_FLOOR = 0.15
 
+# Model-churn honesty (council_39e25084ea339099, 2026-07-04 — Design B + floor).
+# An episode whose winner_model differs from that provider's CURRENTLY
+# configured model is evidence about a model that no longer answers — it stays
+# usable (Design C's reset discards too much) but at half weight (0.5 ratified
+# by the claude+antigravity majority over codex's 0.25). winner_model=None
+# (legacy records) is treated as stale/unknown — the agreed None-rule.
+STALE_MODEL_DECAY = 0.5
+# The council's key addition over plain Design B: margin-only decay fails when
+# ALL of a basin's wins are stale — the margin survives while the evidence is
+# dead, a confidently-stale pick. `effective_n` (the post-decay weight mass)
+# must clear this floor or the basin refuses to route (falls to kNN).
+MIN_EFFECTIVE_N = 3.0
+
 
 _TOPICS_BASINS_CACHE: tuple[str, float, list[dict]] | None = None
+
+
+def pick_routes(entry: dict) -> bool:
+    """THE routing gate for a picks.json entry — one predicate so ask(),
+    get_picks, and every surface agree (the drift-by-two-copies trap).
+
+    Routes iff margin >= WINNER_MARGIN_FLOOR AND the post-decay evidence mass
+    clears MIN_EFFECTIVE_N (council_39e25084ea339099: margin alone false-greens
+    a basin whose wins are all stale). Legacy entries written before the churn
+    fields existed carry no effective_n — they fall back to the margin-only
+    gate until the next consolidate rewrites them."""
+    try:
+        margin = float(entry.get("margin") or 0.0)
+    except (TypeError, ValueError):
+        return False
+    if margin < WINNER_MARGIN_FLOOR:
+        return False
+    eff = entry.get("effective_n")
+    if eff is None:
+        return True  # legacy entry — margin-only until re-consolidated
+    try:
+        return float(eff) >= MIN_EFFECTIVE_N
+    except (TypeError, ValueError):
+        return False
 
 
 def load_topics_basins() -> list[dict]:
@@ -107,6 +144,7 @@ def compute_basin_routing(
     margin_floor: float = MARGIN_FLOOR,
     min_count: int = MIN_COUNT,
     half_life_days: float = HALF_LIFE_DAYS,
+    current_models: dict[str, str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Per-lens-basin recency-weighted chairman-winner tally.
 
@@ -136,7 +174,8 @@ def compute_basin_routing(
     # `consolidate` (which does NOT wrap this in try/except, unlike `ask`)
     # degrades gracefully — an empty tally — instead of crashing the CLI verb.
     basins = [b for b in basins if isinstance(b, dict)]
-    placed: dict[str, list[tuple[str, float, str]]] = {}  # basin_id -> [(winner, weight, council_id)]
+    # basin_id -> [(winner, weight, council_id, winner_model, fresh)]
+    placed: dict[str, list[tuple[str, float, str, str, bool]]] = {}
     times = [_to_epoch(c.get("created_at") or "") for c in councils]
     t0 = max(times) if times else 0.0
     day = 86400.0
@@ -177,15 +216,38 @@ def compute_basin_routing(
             continue  # out-of-domain or ambiguous placement → no basin (kNN handles it)
         age_days = max(0.0, (t0 - _to_epoch(c.get("created_at") or "")) / day)
         weight = 0.5 ** (age_days / half_life_days) if half_life_days > 0 else 1.0
-        placed.setdefault(bid, []).append((winner, weight, str(c.get("council_id") or "")))
+        # Model-churn decay (council_39e25084ea339099): an episode won by a
+        # model that is NOT the provider's currently-configured one is stale
+        # evidence — half weight. None winner_model = stale/unknown (the
+        # agreed rule). When the current model for that provider is UNKNOWN
+        # (no map entry — e.g. a provider removed from config), staleness
+        # can't be assessed: no decay, matching pre-#churn behavior.
+        wm_raw = c.get("winner_model")
+        wm = wm_raw.strip() if isinstance(wm_raw, str) else ""
+        cur = (current_models or {}).get(winner) or ""
+        fresh = True
+        if cur:
+            fresh = bool(wm) and wm.lower() == cur.strip().lower()
+            if not fresh:
+                weight *= STALE_MODEL_DECAY
+        placed.setdefault(bid, []).append(
+            (winner, weight, str(c.get("council_id") or ""), wm or "unknown", fresh)
+        )
 
     out: dict[str, dict[str, Any]] = {}
     for bid, rows in placed.items():
         if len(rows) < min_count:
             continue
         tally: dict[str, float] = {}
-        for w, wt, _ in rows:
+        models: dict[str, int] = {}
+        fresh_n = stale_n = 0
+        for w, wt, _, wm, fresh in rows:
             tally[w] = tally.get(w, 0.0) + wt
+            models[wm] = models.get(wm, 0) + 1
+            if fresh:
+                fresh_n += 1
+            else:
+                stale_n += 1
         # Highest recency-weighted tally wins the basin, tie-broken on the
         # provider slug so the stored/displayed winner is deterministic: two
         # providers with an EQUAL accumulated weight would otherwise resolve to
@@ -203,7 +265,14 @@ def compute_basin_routing(
             "count": len(rows),
             "margin": round((ranked[0][1] - runner_weight) / total, 3),
             "n_episodes": len(rows),
-            "evidence": [cid for _, _, cid in rows if cid][:20],
+            # Post-decay weight mass — the honest sample size under model
+            # churn. A basin whose wins are all stale keeps its margin but
+            # loses effective_n; `pick_routes` refuses it below the floor.
+            "effective_n": round(sum(wt for _, wt, _, _, _ in rows), 3),
+            "fresh_n": fresh_n,
+            "stale_n": stale_n,
+            "models": models,
+            "evidence": [cid for _, _, cid, _, _ in rows if cid][:20],
         }
     return out
 
@@ -275,15 +344,32 @@ def _load_council_records() -> list[dict[str, Any]]:
         if not cid:
             continue
         task_text = ""
+        oc = None
         try:
             oc = load_council_outcome(cid)
             task_text = (oc.metadata or {}).get("task_text") or ""
         except Exception:
-            pass
+            oc = None
+        # winner_model: prefer the stamped outcome field; derive from the
+        # winning member's model when absent (the browser-dispatch path
+        # historically left it None — the enabler gap for model-churn decay).
+        winner_slug = r.get("chairman_winner") or r.get("winner_provider") or ""
+        winner_model = None
+        try:
+            if oc is not None:
+                winner_model = getattr(oc, "winner_model", None)
+                if not winner_model and winner_slug:
+                    for m in (getattr(oc, "member_results", None) or []):
+                        if getattr(m, "provider", None) == winner_slug and getattr(m, "model", None):
+                            winner_model = m.model
+                            break
+        except Exception:
+            winner_model = None
         out.append({
             "council_id": cid,
             "task_text": task_text,
-            "winner": r.get("chairman_winner") or r.get("winner_provider") or "",
+            "winner_model": winner_model,
+            "winner": winner_slug,
             "substantive_members": r.get("substantive_members", 2),
             # Carry the distinct-voice count through so picks.json shares the
             # value-proof's real-contest definition: a same-family chain
@@ -307,4 +393,36 @@ def consolidate_via_lens_basins() -> dict[str, dict[str, Any]]:
     basins = load_topics_basins()
     if not basins:
         return {}
-    return compute_basin_routing(_load_council_records(), basins, embed)
+    return compute_basin_routing(
+        _load_council_records(), basins, embed,
+        current_models=_current_models(),
+    )
+
+
+def _current_models() -> dict[str, str]:
+    """provider slug → the model that CURRENTLY answers for it — the freshness
+    reference for the model-churn decay. config.model per provider; for
+    antigravity the agy CLI ignores config.model, so the live selection from
+    agy's own settings wins when readable (read_agy_active_model_raw — the
+    single honest source). Missing/None entries are omitted: unknown current
+    model → staleness can't be assessed → no decay (documented in
+    compute_basin_routing)."""
+    out: dict[str, str] = {}
+    try:
+        from .config import load_config
+        cfg = load_config(required=False)
+        if cfg is None:
+            return out
+        for name, prov in cfg.providers.items():
+            model = getattr(prov, "model", None)
+            if name == "antigravity":
+                try:
+                    from .providers import read_agy_active_model_raw
+                    model = read_agy_active_model_raw() or model
+                except Exception:
+                    pass
+            if isinstance(model, str) and model.strip():
+                out[name] = model.strip()
+    except Exception:
+        return {}
+    return out

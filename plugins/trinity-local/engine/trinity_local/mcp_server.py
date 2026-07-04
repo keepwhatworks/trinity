@@ -833,11 +833,11 @@ def _annotate_picks_routes(obj: Any, floor: float) -> Any:
     out: dict = {}
     for k, v in obj.items():
         if isinstance(v, dict) and isinstance(v.get("winner"), str) and "margin" in v:
-            try:
-                m = float(v.get("margin") or 0.0)
-            except (TypeError, ValueError):
-                m = 0.0
-            out[k] = {**v, "routes": m >= floor}
+            # THE shared predicate (lens_routing.pick_routes): margin floor AND
+            # the model-churn effective-n floor — annotated here so the agent
+            # reads the same verdict ask() would act on.
+            from .lens_routing import pick_routes
+            out[k] = {**v, "routes": pick_routes(v)}
         else:
             out[k] = v
     return out

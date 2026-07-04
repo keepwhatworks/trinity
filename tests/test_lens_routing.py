@@ -217,3 +217,89 @@ def test_load_topics_basins_guards_wrong_shapes(_topics):
 def test_load_topics_basins_drops_non_dict_entries(_topics):
     _topics({"basins": [{"id": "b00"}, "b01", 42, None, {"id": "b02"}]})
     assert _load_topics_basins() == [{"id": "b00"}, {"id": "b02"}]
+
+
+# ─── Model-churn honesty (council_39e25084ea339099, 2026-07-04) ────────────
+# Design B + effective-n floor: stale-model episodes decay ×0.5; a basin whose
+# margin survives on dead evidence must refuse to route.
+
+def _cm(cid, task, winner, model, when="2026-06-01T00:00:00+00:00"):
+    d = _c(cid, task, winner, when=when)
+    d["winner_model"] = model
+    return d
+
+
+def test_stale_model_episodes_are_half_weighted():
+    """3 stale codex wins (gpt-5.3 era) vs 2 fresh claude wins: raw count says
+    codex, churn-decayed weight says claude — the new model's live evidence
+    outranks the old model's ghost."""
+    from trinity_local.lens_routing import compute_basin_routing
+    councils = [
+        _cm("c1", "api question one", "codex", "gpt-5.3-codex"),
+        _cm("c2", "api question two", "codex", "gpt-5.3-codex"),
+        _cm("c3", "api question three", "codex", "gpt-5.3-codex"),
+        _cm("c4", "api question four", "claude", "claude-opus-4-8"),
+        _cm("c5", "api question five", "claude", "claude-opus-4-8"),
+    ]
+    current = {"codex": "gpt-5.5", "claude": "claude-opus-4-8"}
+    r = compute_basin_routing(councils, BASINS, _embed, current_models=current)
+    b = r["b00"]
+    assert b["winner"] == "claude", b   # 2.0 fresh > 1.5 decayed
+    assert b["fresh_n"] == 2 and b["stale_n"] == 3
+    assert b["models"] == {"gpt-5.3-codex": 3, "claude-opus-4-8": 2}
+    assert abs(b["effective_n"] - 3.5) < 1e-6
+
+
+def test_all_stale_basin_keeps_margin_but_loses_effective_n():
+    """THE council's key failure mode: uniform stale wins preserve a perfect
+    margin — margin-only gating would route confidently on a dead model.
+    effective_n must expose it and pick_routes must refuse it."""
+    from trinity_local.lens_routing import compute_basin_routing, pick_routes
+    councils = [
+        _cm(f"c{i}", f"api question {i}", "codex", "gpt-5.3-codex")
+        for i in range(5)
+    ]
+    r = compute_basin_routing(councils, BASINS, _embed,
+                              current_models={"codex": "gpt-5.5"})
+    b = r["b00"]
+    assert b["margin"] == 1.0            # margin survives…
+    assert b["effective_n"] == 2.5       # …but the evidence mass halved
+    assert not pick_routes(b), (
+        "a basin whose wins are ALL from a superseded model routed anyway — "
+        "the confidently-stale pick the council's effective-n floor exists for"
+    )
+
+
+def test_none_winner_model_treated_as_stale():
+    from trinity_local.lens_routing import compute_basin_routing
+    councils = [
+        _cm("c1", "api question", "claude", None),
+        _cm("c2", "api question again", "claude", "claude-opus-4-8"),
+        _cm("c3", "api question thrice", "claude", "claude-opus-4-8"),
+    ]
+    r = compute_basin_routing(councils, BASINS, _embed,
+                              current_models={"claude": "claude-opus-4-8"})
+    b = r["b00"]
+    assert b["stale_n"] == 1 and b["fresh_n"] == 2
+    assert abs(b["effective_n"] - 2.5) < 1e-6
+    assert b["models"].get("unknown") == 1
+
+
+def test_unknown_current_model_applies_no_decay():
+    """A provider absent from current_models can't be staleness-assessed —
+    pre-churn behavior (no decay), documented."""
+    from trinity_local.lens_routing import compute_basin_routing
+    councils = [
+        _cm(f"c{i}", f"api question {i}", "antigravity", "Gemini 2 Pro")
+        for i in range(3)
+    ]
+    r = compute_basin_routing(councils, BASINS, _embed, current_models={})
+    assert abs(r["b00"]["effective_n"] - 3.0) < 1e-6
+
+
+def test_pick_routes_legacy_entry_falls_back_to_margin_gate():
+    from trinity_local.lens_routing import pick_routes
+    assert pick_routes({"winner": "claude", "margin": 0.4})          # legacy: no effective_n
+    assert not pick_routes({"winner": "claude", "margin": 0.05})     # margin floor still bites
+    assert not pick_routes({"winner": "claude", "margin": 0.4, "effective_n": 1.0})
+    assert pick_routes({"winner": "claude", "margin": 0.4, "effective_n": 3.0})

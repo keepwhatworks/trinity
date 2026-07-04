@@ -165,8 +165,8 @@ def _try_cortex_route(query: str, available_providers: list[str] | None) -> AskD
         from .embeddings import embed, mlx_actually_loaded
         from .lens_routing import (
             MIN_COUNT,
-            WINNER_MARGIN_FLOOR,
             load_topics_basins,
+            pick_routes,
             place_query,
         )
     except ImportError:
@@ -219,13 +219,13 @@ def _try_cortex_route(query: str, available_providers: list[str] | None) -> AskD
     margin = float(rule.get("margin", 0.0) or 0.0)
     if not winner or count < MIN_COUNT:
         return None
-    # Quality gate: a near-tie basin (winner barely edged the runner-up) is a
-    # coin flip, not a learned preference — routing it asserts confidence the
-    # tally doesn't support. Below the floor, fall to kNN (advisory, not
-    # decisive). `margin` is (winner_weight − runner_weight)/total, so it
-    # doubles as the confidence proxy the retired 6-component TrustScore used to
-    # carry.
-    if margin < WINNER_MARGIN_FLOOR:
+    # Quality gate — THE shared predicate (lens_routing.pick_routes): margin
+    # floor (a near-tie is a coin flip, not a learned preference) AND the
+    # model-churn effective-n floor (council_39e25084ea339099 — a basin whose
+    # wins are all from superseded models keeps its margin while the evidence
+    # is dead; that must fall to kNN, not route confidently). One predicate so
+    # ask() and get_picks can never disagree on what routes.
+    if not pick_routes(rule):
         return None
     if available_providers and winner not in available_providers:
         return None  # the basin's chairman-winner isn't available → let kNN handle it
