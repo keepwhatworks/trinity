@@ -263,7 +263,7 @@ def run_stale_pass(trigger: str = "manual") -> dict:
         summary["backfill"] = {"error": f"{type(exc).__name__}: {exc}"}
     # Routing compounds AUTOMATICALLY (#316 journey-audit): rebuild picks.json
     # from the lens basins + accumulated council outcomes so `ask`'s basin
-    # routing reflects recent winners WITHOUT a manual `consolidate`/`dream`.
+    # routing reflects recent winners WITHOUT a manual `consolidate`/`lens --deep`.
     # This is the usage event that makes the README's "the right model picked
     # automatically / gets sharper as you use it" claim literally true — fired on
     # a council launch (the same trigger that kicks this pass), not a cron (the

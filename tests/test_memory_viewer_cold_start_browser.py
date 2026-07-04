@@ -10,7 +10,7 @@ EMPTY home (e.g. a null-deref on missing lens.md, or the optional generators tab
 leaking as an empty tab) would slip past both. This pins the cold-start path:
 
   • no uncaught JS / console errors,
-  • a non-blank page with the useful "Not built yet … run trinity-local dream"
+  • a non-blank page with the useful "Not built yet … run trinity-local lens …"
     empty state (a LIVE rebuild verb, not a retired one),
   • the optional generators tier stays HIDDEN with no generators.md (inverse of the
     XSS test, which seeds generators.md and asserts the tab shows),
@@ -77,9 +77,9 @@ def test_cold_start_memory_viewer_renders_useful_and_error_free(tmp_path, monkey
                 "cold viewer missing the 'Not built yet' empty-state copy — a new "
                 "user sees a blank/confusing tab instead of a next step"
             )
-            assert "trinity-local dream" in body, (
+            assert "trinity-local lens" in body, (
                 "cold viewer empty state must surface a live rebuild command "
-                "(trinity-local dream) so the user knows what to run"
+                "(trinity-local lens …) so the user knows what to run"
             )
 
             # The OPTIONAL generators tier must NOT show an empty tab on a cold home.

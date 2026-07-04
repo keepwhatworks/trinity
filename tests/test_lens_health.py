@@ -458,7 +458,7 @@ def test_stale_lens_is_a_caution_not_a_block(monkeypatch, tmp_path):
 
 def test_collapse_advice_is_build_aware(monkeypatch, tmp_path):
     """Trust fix 2026-07-03: the collapse meter runs on the lens AS BUILT, so
-    right after a fresh build "Re-run `trinity-local dream`" is a no-op (same
+    right after a fresh build a re-run is a no-op (same
     corpus in, same direction out) — a user who just ran the pipeline reads
     the product as telling them to redo what they did. Fresh lens (<24h) must
     switch the advice to accumulate-more-corrections; an old lens keeps the

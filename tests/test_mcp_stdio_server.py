@@ -261,7 +261,7 @@ def test_spawned_mcp_server_initialize_list_and_read(tmp_path: Path):
 
         # resources/read an UNSEEDED resource → the cold-start STUB, not an error.
         # The cold-install agent UX depends on a missing resource returning
-        # actionable markdown ("run trinity-local dream") rather than a dead 404 —
+        # actionable markdown ("run trinity-local lens --deep") rather than a dead 404 —
         # and that only matters over the wire, where the harness renders it. The
         # populated reads above never exercise this branch.
         send({"jsonrpc": "2.0", "id": 10, "method": "resources/read",
@@ -269,7 +269,7 @@ def test_spawned_mcp_server_initialize_list_and_read(tmp_path: Path):
         r = _read_response(proc)
         assert r is not None and "result" in r, f"cold-start resource read errored: {r}"
         stub = r["result"]["contents"][0]["text"]
-        assert "does not exist" in stub and "trinity-local dream" in stub, (
+        assert "does not exist" in stub and "trinity-local lens --deep" in stub, (
             "an unseeded resource didn't return the actionable cold-start stub "
             f"over the wire (cold-install UX): {stub[:120]!r}"
         )

@@ -217,7 +217,7 @@ def _basins(sweep_basin_findings: list[str]) -> LensCheck:
             f"{n} basins — the geometry can't separate your domains.",
             metric=metric,
             fix="Re-cluster with mega-basin splitting (TRINITY_SPLIT_MEGA_BASINS=1 "
-                "trinity-local dream), or feed a more diverse corpus.",
+                "trinity-local lens), or feed a more diverse corpus.",
         )
     if n_polluted and n_polluted / n >= TEMPLATE_POLLUTION_DEGRADE_FRAC:
         return LensCheck(
@@ -226,7 +226,7 @@ def _basins(sweep_basin_findings: list[str]) -> LensCheck:
             "scaffolding shape pollutes the topology widely, so it encodes the tool's output, "
             "not your taste.",
             metric=metric,
-            fix="Tighten the ingest filter and re-run `trinity-local dream` (#248).",
+            fix="Tighten the ingest filter and re-run `trinity-local lens` (#248).",
         )
     if n_polluted:
         return LensCheck(
@@ -234,7 +234,7 @@ def _basins(sweep_basin_findings: list[str]) -> LensCheck:
             f"{n_polluted} of {n} basins are template-concentrated (a repeated agent-loop shape) "
             "— localized; the rest of the topology is clean.",
             metric=metric,
-            fix="Tighten the ingest filter and re-run `trinity-local dream` (#248).",
+            fix="Tighten the ingest filter and re-run `trinity-local lens` (#248).",
         )
     if largest >= BASIN_CONCENTRATION_WARN:
         return LensCheck(
@@ -279,7 +279,7 @@ def _semantic_noise(backend_ok: bool) -> LensCheck:
             f"{frac*100:.0f}% of the corpus reads as noise (boilerplate / tool chatter) — the "
             "lens is learning from low-signal turns.",
             metric=metric,
-            fix="Re-run `trinity-local dream`; the semantic filter drops the noise tail at build.",
+            fix="Re-run `trinity-local lens`; the semantic filter drops the noise tail at build.",
         )
     return LensCheck(
         "noise", "Signal vs noise", OK,
@@ -313,11 +313,11 @@ def _preference_collapse(backend_ok: bool) -> LensCheck:
     metric = {"false_accept_rate": rate, "val_n": sig.get("val_n"), "p": sig.get("p")}
     if sig.get("verdict") == "collapse":
         # Advice must be BUILD-AWARE (trust fix, 2026-07-03): this meter runs on
-        # the lens as built, so right after a fresh build "re-run dream" is a
+        # the lens as built, so right after a fresh build "re-run lens" is a
         # no-op — same corpus in, same verdict out — and a user who just ran the
         # pipeline reads the product as telling them to redo what they did.
         # Fresh lens → the honest cure is new signal, not a rebuild.
-        fix = ("Re-run `trinity-local dream`; if it persists the lens is over-fit "
+        fix = ("Re-run `trinity-local lens`; if it persists the lens is over-fit "
                "to one axis and the blind-spot corrections need their own tension.")
         try:
             from .state_paths import lens_path
@@ -363,7 +363,7 @@ def _lens_structure(sweep_lens_findings: list[str]) -> LensCheck:
             "lens", "Lens structure", DEGRADED,
             "; ".join(f.split(": ", 1)[-1] for f in sweep_lens_findings),
             metric={"findings": len(sweep_lens_findings)},
-            fix="Re-run `trinity-local dream` to rebuild the tensions from evidence.",
+            fix="Re-run `trinity-local lens` to rebuild the tensions from evidence.",
         )
     return LensCheck("lens", "Lens structure", OK, "Paired tensions are well-formed and evidenced.")
 
@@ -377,13 +377,13 @@ def _known_issues(other_findings: list[str]) -> LensCheck:
                          "No known degenerate-data patterns on the producer surfaces.")
     # WEAK (caution), not trust-blocking: these are localized producer-view blemishes
     # (a vocab code-identifier leak, a web-era slug in a routing view) that the user
-    # clears with `dream`/`consolidate` — they don't make the chairman's reading of the
+    # clears with `lens`/`consolidate` — they don't make the chairman's reading of the
     # lens geometry a caricature the way a TF-IDF/collapsed lens does.
     return LensCheck(
         "known_issues", "Known degeneracies", WEAK,
         "; ".join(other_findings),
         metric={"findings": len(other_findings)},
-        fix="Re-run `trinity-local dream` (rebuilds vocab/basins); slug leaks clear on the "
+        fix="Re-run `trinity-local lens` (rebuilds vocab/basins); slug leaks clear on the "
             "next consolidate.",
     )
 

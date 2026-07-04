@@ -4,7 +4,7 @@ GTM (2026-06-16): a fresh install is pure cross-provider FUSION — the council
 dispatches to the provider CLIs and the chairman synthesizes neutrally. NONE of
 the lens machinery (the embedder download, the first lens build, the activity
 refresh, the stale embed pass) fires until the user opts into the lens add-on
-via `trinity-local lens setup` (or any explicit `lens` / `dream`). That keeps the
+via `trinity-local lens setup` (or any explicit `lens` run). That keeps the
 core install instant and dependency-light — no hundreds-of-MB embedder, no
 background build — and makes the lens the deliberate upgrade that turns "a better
 answer" into "YOUR answer".
@@ -60,7 +60,7 @@ def lens_enabled() -> bool:
 
 def enable_lens() -> bool:
     """Persist the opt-in (idempotent). Called by `lens setup` and by any
-    explicit `lens` / `dream` run — explicitly building IS opting in. Returns
+    explicit `lens` run — explicitly building IS opting in. Returns
     True if the marker was newly written, False if it already existed / failed."""
     try:
         p = lens_enabled_marker_path()

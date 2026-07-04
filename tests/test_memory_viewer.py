@@ -87,18 +87,18 @@ class TestViewerRebuildChip:
         for marker in (
             '"lens.md" || name === "topics.json") return "lens"',
             '"picks.json") return "consolidate"',
-            # core.md was previously suggested via `distill`; flipped to
-            # `dream` 2026-05-18 (iter #11) when distill CLI was hidden
-            # but the rebuild chip was still emitting a now-dead command.
-            '"core.md") return "dream"',
+            # core.md: `lens --only-distill` since the 2026-07-04 one-concept
+            # fold (distill → dream 2026-05-18 → lens 2026-07-04).
+            '"core.md") return "lens --only-distill"',
             # routing.json (the per-task-type provider scoreboard) is frozen to
-            # disk by `dream` (freeze_routing_to_disk, dream.py) — NOT by
-            # `consolidate` (which writes picks.json + the cortex patterns). It's
-            # a tempting but wrong "fix" to make routing.json mirror picks.json's
-            # consolidate; this guard catches that. Verified live 2026-06-01 on a
-            # cold-start home (memory viewer "Not built yet. Run trinity-local …").
-            '"routing.json") return "dream"',
-            # vocabulary.md is rebuilt by its own `vocabulary` verb, not dream.
+            # disk by the lens post-build hooks (freeze_routing_to_disk) — NOT
+            # by `consolidate` (which writes picks.json). It's a tempting but
+            # wrong "fix" to make routing.json mirror picks.json's consolidate;
+            # this guard catches that. Verified live 2026-06-01 on a cold-start
+            # home (memory viewer "Not built yet. Run trinity-local …").
+            '"routing.json") return "lens"',
+            # vocabulary.md keeps its own fast `vocabulary` verb (also folded
+            # into every lens build 2026-07-04).
             '"vocabulary.md") return "vocabulary"',
         ):
             assert marker in html, f"suggestionFor mapping drifted: {marker}"
@@ -140,8 +140,9 @@ class TestViewerRebuildChip:
         block = html[idx : idx + 800]
         emitted = set(re.findall(r'return "([a-z][a-z-]*)"', block))
         # The mapping covers core/lens/topics/picks/routing/vocabulary; the
-        # fallback `return "dream"` is included. Guard against an empty parse.
-        assert {"lens", "consolidate", "dream", "vocabulary"} <= emitted, (
+        # fallback is `return "lens"` (one concept, 2026-07-04). Guard against
+        # an empty parse.
+        assert {"lens", "consolidate", "vocabulary"} <= emitted, (
             f"suggestionFor parsed too few verbs ({emitted}) — regex/format drift"
         )
 

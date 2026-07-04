@@ -402,7 +402,7 @@ def _embedder_status() -> dict[str, object]:
     """Surface the deeper-memory opt-in state on the launchpad.
 
     The modernbert-embed-base weights are ~600 MB. They aren't bundled
-    with Trinity — first lens-build / dream / vocabulary call triggers
+    with Trinity — first lens / vocabulary call triggers
     a HuggingFace Hub download. The CLAUDE.md status block describes
     this; the user encounters it as a RuntimeError the first time they
     run lens-build, which is jarring.
@@ -2179,7 +2179,7 @@ def _core_status() -> dict:
     """
     # Single source of truth (v1.7.301): distill.core_freshness() owns the
     # core-vs-sources computation + the canonical source list. The cockpit, the
-    # CLI/dream skip-gate (distill.is_core_stale), and `trinity-local status`'s
+    # CLI skip-gate (distill.is_core_stale), and `trinity-local status`'s
     # memory marker all derive from it, so they can't drift (this used to inline
     # an independent copy coupled to distill only by a "must match" comment).
     from .distill import core_freshness
@@ -2296,11 +2296,11 @@ def _memory_health() -> dict:
             "status": "stale",
             "hint": f"{src} is newer than the distillation.",
             # --only-distill is the fast path: ~20s on a real install vs
-            # ~5-15min for the full 5-phase dream. core.md is just the
-            # distillation of the three upstream memories; if those are
-            # current (which they usually are when only core.md is stale),
-            # Phase 5 alone fixes it.
-            "command": "trinity-local dream --only-distill",
+            # minutes for a full build. core.md is just the distillation
+            # of the three upstream memories; if those are current (which
+            # they usually are when only core.md is stale), the distill
+            # alone fixes it.
+            "command": "trinity-local lens --only-distill",
             "href": None,
         })
     elif state == "missing":
@@ -2311,22 +2311,22 @@ def _memory_health() -> dict:
             "name": "core.md",
             "status": "missing",
             "hint": "The singular core memory has not been compiled.",
-            "command": "trinity-local dream",
+            "command": "trinity-local lens --deep",
             "href": None,
         })
 
-    # 1b. vocabulary.md freshness vs the lens it co-builds with. A bare
-    #     `lens` run rebuilds lens.md + topics.json but skips vocab (only
-    #     `dream` Phase 2.5 writes it), so vocab can sit stale — older than
-    #     the lens, carrying pre-filter anchors. `trinity-local vocabulary`
-    #     is the fast targeted refresh (no full dream needed).
+    # 1b. vocabulary.md freshness vs the lens it co-builds with. Since the
+    #     2026-07-04 fold, every `lens` build refreshes vocab too — a stale
+    #     vocab now means a pre-fold install, a failed vocab write, or a
+    #     hand-touched lens.md. `trinity-local vocabulary` remains the fast
+    #     targeted refresh (no full build needed).
     vocab = _vocabulary_status()
     if vocab.get("state") == "stale":
         src = vocab.get("stale_source", "the lens")
         issues.append({
             "name": "vocabulary.md",
             "status": "stale",
-            "hint": f"{src} was rebuilt after your vocabulary — a bare `lens` skips vocab.",
+            "hint": f"{src} was rebuilt after your vocabulary — refresh the anchors.",
             "command": "trinity-local vocabulary",
             "href": None,
         })

@@ -53,7 +53,7 @@ class TestMemoryHealthEmptyState:
 
 class TestVocabularyStalenessSignal:
     """vocabulary.md older than lens/topics → surfaces as issue. Models the
-    `lens`-without-`dream` path: a bare `trinity-local lens` rebuilds
+    legacy pre-fold path (since 2026-07-04 `lens` refreshes vocab too): it rebuilds
     lens.md + topics.json but not vocab, leaving it stale. Found 2026-05-31
     on a real install whose vocab card showed already-filtered template
     headers because the on-disk vocab predated a later `lens` run."""
@@ -126,7 +126,7 @@ class TestCoreStalenessSignal:
         # refreshes core.md from the existing upstream memories (~20s
         # vs ~5-15min for full dream). Stale-core's typical cause is
         # upstream memories getting touched — Phase 5 alone fixes it.
-        assert core_issues[0]["command"] == "trinity-local dream --only-distill"
+        assert core_issues[0]["command"] == "trinity-local lens --only-distill"
 
     def test_core_missing_when_sources_exist(self, isolated_home):
         # Missing core stays on full dream — when core has never been
@@ -139,7 +139,7 @@ class TestCoreStalenessSignal:
         core_issues = [i for i in issues if i["name"] == "core.md"]
         assert len(core_issues) == 1
         assert core_issues[0]["status"] == "missing"
-        assert core_issues[0]["command"] == "trinity-local dream"
+        assert core_issues[0]["command"] == "trinity-local lens --deep"
 
 
 class TestTopicsThreadAwareSignal:

@@ -13,7 +13,7 @@ the research path (research/ranking). It owns model loading and inference.
 The persistent embedding cache (`~/.trinity/cache/embeddings.jsonl`) was
 retired 2026-05-17 in the pre-launch simplification pass. With the
 embedding-powered search hot-path already removed (Tier 1 #4), the only
-remaining consumers are the offline rebuild commands (`dream`,
+remaining consumers are the offline rebuild commands (`lens`,
 `lens-build`, `vocabulary`, `consolidate`); each pass re-encodes its
 own corpus, which costs ~2 min on a 50k-prompt corpus but saves a
 persistent state file, an unbounded growth gotcha, and two CLI surfaces
@@ -234,7 +234,7 @@ def prompt_node_embedding_coverage() -> dict:
 
     incremental_ingest.ingest_recent writes PromptNodes with ``embedding=[]``
     (the fast launchpad/search path) and relies on a later offline pass
-    (lens-build / dream) to backfill the real vectors. Backfill stalled
+    (lens / lens --deep) to backfill the real vectors. Backfill stalled
     2026-05-12, so ~66% of text-bearing nodes carried empty embeddings —
     invisible to k-means basins, which silently skip them
     (`is_finite_embedding` filter in me/basins.py). This is the metric the
@@ -342,7 +342,7 @@ class EmbedderNotReadyError(RuntimeError):
 def require_embedder_ready() -> None:
     """Cheap filesystem probe — fails fast if the embedder model isn't
     downloaded. Call BEFORE starting any heavy CLI work (lens-build,
-    dream, vocabulary) so the user gets a clear "download required"
+    lens --deep, vocabulary) so the user gets a clear "download required"
     signal instead of a multi-minute CLI startup followed by an
     HF_HUB_OFFLINE error mid-call.
 

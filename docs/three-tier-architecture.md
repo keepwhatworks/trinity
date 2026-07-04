@@ -41,7 +41,7 @@ installer clones it. The `trinity-local` shell wrapper at
 `~/.local/bin/trinity-local` resolves to this engine via PYTHONPATH.
 
 The engine contains both the CLI ergonomics (`trinity-local status`,
-`dream`, `update`, …) AND the heavy ops (embeddings, k-means,
+`lens`, `update`, …) AND the heavy ops (embeddings, k-means,
 geometric median, descriptor pipeline). The MCP server (Tier 1) imports
 from here too — same code path, different surface.
 
@@ -105,7 +105,7 @@ same files with the same schemas:
 | `~/.trinity/memories/lens.md` | paired tensions (in-tree) | lens-build |
 | `~/.trinity/memories/topics.json` | basins (in-tree) | basins |
 | `~/.trinity/memories/vocabulary.md` | anchors (in-tree) | vocabulary |
-| `~/.trinity/core.md` | distillation (in-tree) | dream (Phase 5 — the standalone `distill` CLI was retired pre-launch) |
+| `~/.trinity/core.md` | distillation (in-tree) | lens post-build distill (`lens --only-distill` for the fast refresh; the standalone `distill` CLI was retired pre-launch) |
 | `~/.trinity/scoreboard/picks.json` | picks (in-tree) | consolidate |
 | `~/.trinity/scoreboard/routing.json` | routing (in-tree) | aggregation |
 | `~/.trinity/me/preference_acts.jsonl` | `schemas/rejection_signal.schema.json` | turn_pairs |
@@ -220,7 +220,7 @@ launch requirement.
   catches manifest drift in CI.
 - **HF-Hub cold start**: ~3-minute one-time download of
   `modernbert-embed-base` on first embedding call. Surface this in
-  SKILL.md Section 3 before the user runs `dream`.
+  SKILL.md Section 3 before the user runs `lens --deep`.
 
 ---
 

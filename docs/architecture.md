@@ -26,7 +26,7 @@ council.
 ## Where the repo is now
 
 `v<!-- canonical:version -->1.7.396<!-- /canonical -->` is launch-hardened around
-the MCP-first path: `lens`, `council`, `dream`, `status`, and `install` are the
+the MCP-first path: `lens`, `council`, `status`, and `install` are the
 advertised CLI verbs, while older names stay registered for compatibility with
 launchpad dispatch and existing scripts. The core mechanics are in place:
 <!-- canonical:mcp_tool_count -->8<!-- /canonical --> MCP tools, MCP Resources,
@@ -42,14 +42,16 @@ the remaining launch risks are not core council mechanics: Chrome Web Store
 publish + extension-ID pinning, native Windows beyond WSL2, fresh-machine
 install honesty, and the gated real-Chrome smoke.
 
-Two verbs share one engine. `lens` runs the tension pipeline directly and
-then refreshes every thinking memory — the routing freeze, the LLM-free
+One verb owns the memory layer. `lens` runs the tension pipeline and then
+refreshes every thinking memory — the routing freeze, the LLM-free
 `vocabulary.md` scan (folded in 2026-07-04 so the staleness warning's own
-advice can clear it), and the `core.md` distill. `dream` wraps that same
-pipeline as one phase, adding the quota-heavier halo: discover cross-provider
-question pairs in your history, synthesize each as a virtual council, and
-re-consolidate routing basins. Rule of thumb: `lens` = refresh what you have;
-`dream` = also mine new signal from your history.
+advice can clear it), and the `core.md` distill. `lens --deep` first mines
+your history — discover cross-provider question pairs, synthesize each as a
+virtual council, re-consolidate routing basins — then runs the same build:
+the one-command cold start. (`dream` survives only as a compatibility alias
+for `--deep`, folded 2026-07-04; `lens --only-distill` is the ~20s core.md
+refresh.) Rule of thumb: `lens` = refresh what you have; `lens --deep` = also
+mine new signal from your history.
 
 ## Councils are a GPS — broad when you need coverage, deep when you need conviction
 

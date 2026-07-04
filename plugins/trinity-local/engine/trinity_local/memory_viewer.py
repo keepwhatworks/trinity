@@ -36,7 +36,7 @@ from .state_paths import (
 # file contents into the inlined JS payload) and by the client-side JS
 # (to validate the ?file= param against a known set).
 ALLOWED_FILES: list[dict[str, str]] = [
-    # The four THINKING memories — what dream creates from your prompt
+    # The four THINKING memories — what `lens` builds from your prompt
     # corpus, what the chairman reads as identity context on every
     # council. Ordered as the chairman reads them (top-down, drill-only-
     # when-needed): manifesto → tensions → basins → language.
@@ -47,7 +47,7 @@ ALLOWED_FILES: list[dict[str, str]] = [
     {"name": "topics.json", "brain": "semantic memory",
      "tagline": "Subject basins + evidence map for lens. Written by lens (Stage 1)."},
     {"name": "vocabulary.md", "brain": "linguistic memory",
-     "tagline": "Anchors (proper nouns) + homonyms + synonyms. Written by vocabulary (also runs inside dream)."},
+     "tagline": "Anchors (proper nouns) + homonyms + synonyms. Refreshed on every `lens` build."},
     # The OPTIONAL generators tier (the lens "lift") — the cross-domain invariants
     # the task tensions project from. On-demand (`lens-generators` verb); the
     # viewer shows this tab only when ~/.trinity/memories/generators.md exists.
@@ -2931,19 +2931,17 @@ def render_memory_viewer_html() -> str:
     }}
 
     function suggestionFor(name) {{
-      // What to run to populate each memory if it's missing.
-      // core.md was historically rebuilt via `trinity-local distill`,
-      // but the distill CLI was hidden in commit c9b1f9d (it lives as
-      // an internal Phase-5 callable inside dream). For users clicking
-      // the rebuild chip, `dream` is the live path — heavier than
-      // pure distill but always works and ships in v1.7.4.
+      // What to run to populate each memory if it's missing. One concept
+      // (2026-07-04): `lens` owns the memory layer — its post-build hooks
+      // freeze routing.json, refresh vocabulary.md, and distill core.md;
+      // `lens --only-distill` is the ~20s core.md-only path.
       if (name === "lens.md" || name === "topics.json") return "lens";
       if (name === "generators.md") return "lens-generators";
       if (name === "picks.json") return "consolidate";
-      if (name === "routing.json") return "dream";
+      if (name === "routing.json") return "lens";
       if (name === "vocabulary.md") return "vocabulary";
-      if (name === "core.md") return "dream";
-      return "dream";
+      if (name === "core.md") return "lens --only-distill";
+      return "lens";
     }}
   </script>
 </body>

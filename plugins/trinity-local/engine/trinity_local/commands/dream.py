@@ -33,7 +33,9 @@ from types import SimpleNamespace
 def register(subparsers):
     sp = subparsers.add_parser(
         "dream",
-        help="Cold-start the whole personal layer in one pass: discover cross-provider question pairs in your transcripts, synthesize each into a virtual council, re-consolidate cortex, re-build /me lenses. Anthropic's Dreaming, but on your data.",
+        help="(Compatibility alias for `lens --deep`, 2026-07-04 — one concept.) "
+             "Mine your history: discover cross-provider question pairs, synthesize "
+             "each as a virtual council, re-consolidate routing, rebuild the lens.",
     )
     sp.add_argument(
         "--similarity-threshold",

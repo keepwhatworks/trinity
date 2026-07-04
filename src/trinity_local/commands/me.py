@@ -35,11 +35,9 @@ def register(subparsers):
     build_parser = subparsers.add_parser(
         "lens",
         aliases=["lens-build"],
-        help="Build your lens (~/.trinity/memories/lens.md) from your transcripts.",
-    )
-    build_parser.add_argument(
-        "--budget-chars", type=int, default=ME_BUDGET_CHARS,
-        help=f"Soft cap on lens.md size when using --legacy (default {ME_BUDGET_CHARS}).",
+        help="Build your lens (~/.trinity/memories/lens.md) from your transcripts. "
+             "--deep also mines your history first (cross-provider pairs → virtual "
+             "councils → consolidate).",
     )
     build_parser.add_argument(
         "--sample-size", type=int, default=ME_SAMPLE_SIZE,
@@ -56,8 +54,16 @@ def register(subparsers):
         help="Stage 1 only — cluster topics and print their summary, no LLM calls.",
     )
     build_parser.add_argument(
-        "--legacy", action="store_true",
-        help="Use the old single-pass chairman builder (pre-Option C).",
+        "--deep", action="store_true",
+        help="Mine your history first: discover cross-provider question pairs, "
+             "synthesize each as a virtual council (chairman calls), re-consolidate "
+             "routing basins — then rebuild the lens. The one-command cold start. "
+             "(Absorbed the former `dream` verb, 2026-07-04.)",
+    )
+    build_parser.add_argument(
+        "--only-distill", dest="only_distill", action="store_true",
+        help="Skip every build phase and only re-distill core.md from the "
+             "existing thinking memories (~20s; one flagship call).",
     )
     build_parser.add_argument(
         "--force", action="store_true",
@@ -217,6 +223,30 @@ def handle_lens_skill(args):
 
 
 def handle_me_build(args):
+    # --deep: mine history first (discover cross-provider pairs → synthesize
+    # virtual councils → consolidate), then the full lens rebuild. Delegates to
+    # the six-phase engine in commands/dream.py — `dream` itself survives only
+    # as a compatibility alias for this flag (one concept, 2026-07-04; same
+    # alias pattern as `lens-build`).
+    if getattr(args, "only_distill", False):
+        from types import SimpleNamespace
+        from .dream import handle_dream
+        return handle_dream(SimpleNamespace(
+            only_distill=True, skip_distill=False, dry_run=False,
+            primary_provider=None,
+        ))
+
+    if getattr(args, "deep", False):
+        from types import SimpleNamespace
+        from .dream import handle_dream
+        return handle_dream(SimpleNamespace(
+            similarity_threshold=0.85, max_clusters=None,
+            skip_consolidate=False, skip_me_build=False,
+            skip_vocabulary=False, skip_distill=False, only_distill=False,
+            dry_run=getattr(args, "dry_run", False),
+            primary_provider=None,
+        ))
+
     from ..lens_addon import enable_lens
     enable_lens()  # explicitly building the lens = opting into the lens add-on
     # Fail fast if the embedder model isn't downloaded — lens-build
@@ -231,9 +261,11 @@ def handle_me_build(args):
         print(str(exc), file=sys.stderr)
         sys.exit(1)
 
-    if args.legacy:
+    if getattr(args, "legacy", False):
+        # The --legacy CLI flag was removed 2026-07-04 (single build path);
+        # build_me_via_council survives for tests + programmatic callers.
         path, summary = build_me_via_council(
-            budget_chars=args.budget_chars,
+            budget_chars=getattr(args, "budget_chars", ME_BUDGET_CHARS),
             sample_size=args.sample_size,
         )
     else:

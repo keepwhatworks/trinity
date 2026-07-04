@@ -2685,10 +2685,10 @@ th {
           The same "which model for what" answer, broken out by task type — from your own {{ personalRoutingTable.councils_aggregated || 0 }} council{{ (personalRoutingTable.councils_aggregated || 0) === 1 ? '' : 's' }}. The chairman synthesizes through your taste lens and picks the answer YOU would have picked; the <strong>Best</strong> column is who it picks most often (and how often). <strong>Personalization</strong> is how much this pick leans on YOUR councils vs the global default — it climbs from near 0% toward 100% as you run more councils on that task type. The per-provider scores trail behind as supporting detail.
         </p>
         <p class="meta" v-if="coreStatus.state === 'stale'" style="background: rgba(79, 144, 149, 0.08); border-left: 3px solid #b26a1f; padding: 8px 12px; margin-top: 12px; border-radius: 4px;">
-          ⚠️ Your <code>core.md</code> is stale — a memory file was updated since the last dream. Run <code>trinity-local dream</code> so the chairman reads the freshest synthesis on the next council.
+          ⚠️ Your <code>core.md</code> is stale — a memory file was updated since the last distillation. Run <code>trinity-local lens --only-distill</code> (~20s) so the chairman reads the freshest synthesis on the next council.
         </p>
         <p class="meta" v-if="coreStatus.state === 'missing'" style="background: rgba(43, 80, 112, 0.08); border-left: 3px solid #7fa0ad; padding: 8px 12px; margin-top: 12px; border-radius: 4px;">
-          💡 You have core memories but no distillation yet. Run <code>trinity-local dream</code> to produce <code>~/.trinity/core.md</code> — the one paragraph chairmen read first.
+          💡 You have core memories but no distillation yet. Run <code>trinity-local lens --only-distill</code> to produce <code>~/.trinity/core.md</code> — the one paragraph chairmen read first.
         </p>
         <!-- Routing data EXISTS but EVERY task_type is a single council (n=1) — so
              routingCheatSheetMap (n>=2 filtered) is empty. Without this gate the
@@ -3623,7 +3623,7 @@ th {
             <span class="meta" style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;">{{ issue.status }}</span>
             <span style="color: var(--text-primary, #2f363c); flex: 1; min-width: 140px;">{{ issue.hint }}</span>
             <!-- The command chip carries an ARBITRARY-LENGTH command (e.g.
-                 `trinity-local dream --only-distill`). With white-space:nowrap and
+                 `trinity-local lens --only-distill`). With white-space:nowrap and
                  no max-width it became a single unbreakable flex item WIDER than a
                  narrow card (320px side panel) — so even inside a flex-wrap row it
                  pushed ~14px past the card's right edge and the whole sandbox doc

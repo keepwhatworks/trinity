@@ -15,7 +15,7 @@ The contract these tests pin:
 2. URIs follow `trinity://` scheme (per the v2 spec at
    docs/PREFERENCE_CORPUS_SPEC.md).
 3. Cold-install reads (when the underlying file doesn't exist)
-   return a stub with an actionable next-step (`trinity-local dream`),
+   return a stub with an actionable next-step (`trinity-local lens --deep`),
    NOT a 404. The stub is what makes the agent useful out of the box:
    it can tell the user "your lens isn't built yet — run dream first."
 4. Populated reads return raw file contents byte-for-byte.
@@ -204,7 +204,7 @@ class TestReadResourcePopulated:
             handle_read_resource(AnyUrl("trinity://memories/core.md"))))
         assert result[0].content == "# Core\nidentity-paragraph", (
             "core.md resource did not return the real top-level core.md — "
-            "if it came back as a 'run trinity-local dream' stub, the path_func "
+            "if it came back as a 'run trinity-local lens --deep' stub, the path_func "
             "is pointing at memories/core.md instead of state_paths.core_path()."
         )
         assert "_(empty" not in result[0].content, (
@@ -366,7 +366,7 @@ class TestJsonResourceProjection:
 
 class TestReadResourceColdInstall:
     """When the file doesn't exist yet, read_resource MUST return a
-    stub with an actionable next-step (run `trinity-local dream`)
+    stub with an actionable next-step (run `trinity-local lens --deep`)
     rather than 404. This is what makes Trinity useful out of the
     box: the agent reads the stub, sees the suggested action, and
     can surface it to the user."""
@@ -380,7 +380,7 @@ class TestReadResourceColdInstall:
         # Stub must name the resource (so the agent knows WHICH was empty),
         # the action to populate it, AND the on-disk path (for debugging).
         assert "Trinity Lens" in content, "stub must include the resource name"
-        assert "trinity-local dream" in content, (
+        assert "trinity-local lens --deep" in content, (
             "stub must include the actionable command to populate this resource"
         )
         assert "trinity://memories/lens.md" in content, "stub must include the resource URI"

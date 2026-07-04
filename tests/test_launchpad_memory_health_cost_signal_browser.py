@@ -7,7 +7,7 @@ card carries two ONE-CLICK dispatch buttons that look like a free refresh —
 OWN subscription quota (the product's entire cost basis: "free, local, on the
 subscriptions you already pay for"):
 
-  • Refresh memory → dispatches `trinity-local dream`. dream's own docstring +
+  • Refresh memory → dispatches the deep build. its docstring +
     capture_host's allowlist comment: ~10+ flagship model calls over SEVERAL
     MINUTES (Phase 2 one call per cluster + Phase 3 one per basin + Phase 4
     three calls + Phase 5 distill).
@@ -114,7 +114,7 @@ def test_memory_health_card_discloses_dispatch_cost(tmp_path, monkeypatch):
                 "name": "core.md",
                 "status": "stale",
                 "hint": "A memory file changed since the last dream.",
-                "command": "trinity-local dream",
+                "command": "trinity-local lens --deep",
                 "href": None,
             },
         ],

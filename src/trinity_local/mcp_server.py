@@ -256,7 +256,7 @@ async def handle_list_tools() -> list[Tool]:
                 "the user's prompt history across providers (lives at `~/.trinity/memories/lens.md`). "
                 "Pull this once at session start and use it as latent context to tailor responses, "
                 "terseness, vocabulary, and standing decisions to THIS user. Empty string when not "
-                "built — run `trinity-local lens-build` to (re)build, or `trinity-local dream` for "
+                "built — run `trinity-local lens` to (re)build, or `trinity-local lens --deep` for "
                 "the full memory-rebuild pass.\n\n"
                 "AMBIENT ALTERNATIVE (zero call): the user can run `trinity-local lens-skill` to "
                 "write this lens as a `SKILL.md` their harness auto-loads (e.g. into "
@@ -687,7 +687,7 @@ async def handle_list_resources() -> list[Resource]:
     don't exist yet (cold install). read_resource() returns a stub
     explaining how to populate them rather than 404'ing, so the
     agent sees "AGENTS.md not yet generated — run trinity-local
-    dream" and can offer that action to the user.
+    lens --deep" and can offer that action to the user.
     """
     return [
         Resource(
@@ -915,11 +915,11 @@ async def handle_read_resource(uri: AnyUrl) -> list[ReadResourceContents]:
             f"_(empty — this file does not exist yet)_\n\n"
             f"Trinity hasn't generated this resource yet. To populate it:\n\n"
             f"```bash\n"
-            f"trinity-local dream\n"
+            f"trinity-local lens --deep\n"
             f"```\n\n"
             f"Dream reads your existing corpus and writes the four cognitive "
             f"memories (`core.md`, `lens.md`, `topics.json`, `vocabulary.md`) "
-            f"plus the AGENTS.md lens-derived guidance. After dream finishes, "
+            f"plus the AGENTS.md lens-derived guidance. After the deep build finishes, "
             f"re-read this resource and it will be populated.\n\n"
             f"Resource URI: `{uri_str}`\n"
             f"On-disk path: `{path}`\n"

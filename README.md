@@ -86,7 +86,7 @@ args = ["-m", "trinity_local.main", "--mcp"]
 
 For **Antigravity** (`agy` CLI) — model selection happens inside agy itself, not via MCP. Run `/model` and pick your Gemini (e.g. `Gemini 3.1 Pro`); Trinity's launchpad reads the persisted selection from `~/.gemini/antigravity-cli/settings.json`.
 
-Then ask any of these agents: *"Run a Trinity council on …"* — the MCP tools appear inline. Free, local, MIT. The CLI (`trinity-local status`, `trinity-local dream`, etc.) is the engine; the MCP tools are the agent surface.
+Then ask any of these agents: *"Run a Trinity council on …"* — the MCP tools appear inline. Free, local, MIT. The CLI (`trinity-local status`, `trinity-local lens`, etc.) is the engine; the MCP tools are the agent surface.
 
 Requirements: Python 3.10+ and at least one of the `claude` / `codex` / `agy` CLIs authenticated — Trinity works with just one (chairman synthesis + your lens), gets stronger with two (real disagreement), full canonical council with three. **Ollama / MLX models you've pulled locally are auto-discovered** and join the routing pool as free council members (`ollama:<model>` / `mlx:<model>`) — no config edit, no extra MCP tools. To remove: `trinity-local uninstall --yes`.
 
@@ -110,7 +110,7 @@ When Claude 5 lands: *"Claude provider scored 0.88 on my taste — beats last re
 
 ### Your lens, generated from your prompts.
 
-`trinity-local dream` is the consolidation pass. Like sleep: it
+`trinity-local lens --deep` is the consolidation pass. Like sleep: it
 **reweights old facts in light of everything that's come in since**,
 **resolves memories that contradicted each other**, and connects
 **memories that were just sitting there with their neighbors** — turning
@@ -238,11 +238,11 @@ Chairman synthesizes member outputs into structured Routing JSON; members run in
 parallel (or `chain` mode for sequential refinement); lens-discovery is a 5-stage
 pipeline (Stage 0 turn-pair rejections + Stages 1-4 basins→decisions→pair-mining→post-filter) ratifying tensions across ≥3 topical basins.
 
-**Want the full picture?** [`docs/how-trinity-works.md`](docs/how-trinity-works.md) walks the pipeline end-to-end — transcripts → embeddings → dream → lens → runtime. Wire diagram + design rationale in [`docs/architecture.md`](docs/architecture.md).
+**Want the full picture?** [`docs/how-trinity-works.md`](docs/how-trinity-works.md) walks the pipeline end-to-end — transcripts → embeddings → lens → runtime. Wire diagram + design rationale in [`docs/architecture.md`](docs/architecture.md).
 
 ## What's next
 
-Current repo state: v1.7 line, exact package `v<!-- canonical:version -->1.7.396<!-- /canonical -->`. The shipped surface is MCP-first: `lens`, `council`, `dream`, `status`, and `install` are the advertised CLI verbs; the older `lens-build` / `council-launch` names remain as compatibility aliases for launchpad dispatch and existing scripts. The most recent arc collapsed routing into the lens — `consolidate` now places each council into its nearest lens basin and tallies the chairman-winner there, so the learned routing can never drift into a stale embedding space. Earlier work tightened the launch path: extension auto-wiring, schema migrations, real ModernBERT embeddings, TF-IDF abstain-gates for semantic flows, corpus-purity guards, personal eval integrity, no-PII telemetry gates, and install-wrapper Python fallback.
+Current repo state: v1.7 line, exact package `v<!-- canonical:version -->1.7.396<!-- /canonical -->`. The shipped surface is MCP-first: `lens`, `council`, `status`, and `install` are the advertised CLI verbs; the older `lens-build` / `council-launch` / `dream` names remain as compatibility aliases (`dream` folded into `lens --deep` 2026-07-04 — one concept) for launchpad dispatch and existing scripts. The most recent arc collapsed routing into the lens — `consolidate` now places each council into its nearest lens basin and tallies the chairman-winner there, so the learned routing can never drift into a stale embedding space. Earlier work tightened the launch path: extension auto-wiring, schema migrations, real ModernBERT embeddings, TF-IDF abstain-gates for semantic flows, corpus-purity guards, personal eval integrity, no-PII telemetry gates, and install-wrapper Python fallback.
 
 ## Help
 
@@ -251,7 +251,7 @@ Current repo state: v1.7 line, exact package `v<!-- canonical:version -->1.7.396
 | `trinity-local status` | Health + scoreboard + recent councils (absorbed `doctor`) |
 | `trinity-local council --task "..."` | Run a council from the terminal |
 | `trinity-local lens` | Build your lens from prompt history |
-| `trinity-local dream` | Rebuild the broader local memory layer |
+| `trinity-local lens --deep` | Mine your history + rebuild the whole memory layer |
 | `trinity-local install` | Install or repair MCP / extension wiring |
 | `trinity-local me-card` | Render your strongest lens as a PNG |
 | `trinity-local portal-html --open-browser` | Open the launchpad |

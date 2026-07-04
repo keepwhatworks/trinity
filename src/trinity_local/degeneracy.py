@@ -61,7 +61,7 @@ def _check_vocab() -> list[str]:
         if multi:
             return [
                 f"B/vocab: {len(multi)} multi-underscore code-identifier token(s) in "
-                f"served vocabulary.md ({multi[:4]}) — re-run `trinity-local dream`"
+                f"served vocabulary.md ({multi[:4]}) — re-run `trinity-local lens`"
             ]
         return []
     except Exception as e:  # noqa: BLE001

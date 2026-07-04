@@ -372,7 +372,7 @@ def handle_status(args):
         marker = "⚠️ stale" if stale else "✅ fresh"
         print(f"    {marker} core.md       {core.stat().st_size:>8,} bytes — chairman reads this first")
     else:
-        print("    · core.md       not distilled — run `trinity-local dream` (Phase 5 distills core.md)")
+        print("    · core.md       not distilled — run `trinity-local lens --only-distill` (~20s)")
     # Lens-build freshness (ground truth: built_at vs live corpus fingerprint —
     # NOT the refresh marker, which false-greened "done" while the lens sat 18
     # days / 677 prompts stale on a real install). A persistent "stale" means the

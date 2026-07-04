@@ -379,3 +379,45 @@ class TestVocabularyFoldHooks:
                                sample_size=80, k_basins=20)
         handle_me_build(args)
         assert not fired, "dry-run must not touch vocabulary.md"
+
+
+class TestDeepFlagDelegation:
+    """`lens --deep` == the six-phase deep-mine engine; `dream` is only a
+    compatibility alias for it (one concept, 2026-07-04)."""
+
+    def test_lens_deep_delegates_to_the_deep_engine(self, isolated_home, monkeypatch):
+        from types import SimpleNamespace
+        from trinity_local.commands import dream as dream_cmd
+        from trinity_local.commands.me import handle_me_build
+        called = []
+        monkeypatch.setattr(dream_cmd, "handle_dream",
+                            lambda a: called.append(a) or 0)
+        args = SimpleNamespace(deep=True, dry_run=False, legacy=False,
+                               sample_size=80, k_basins=None, only_distill=False)
+        handle_me_build(args)
+        assert len(called) == 1, "lens --deep must delegate to the deep engine"
+        ns = called[0]
+        assert ns.skip_me_build is False and ns.only_distill is False
+
+    def test_lens_only_distill_delegates(self, isolated_home, monkeypatch):
+        from types import SimpleNamespace
+        from trinity_local.commands import dream as dream_cmd
+        from trinity_local.commands.me import handle_me_build
+        called = []
+        monkeypatch.setattr(dream_cmd, "handle_dream",
+                            lambda a: called.append(a) or 0)
+        args = SimpleNamespace(deep=False, only_distill=True, dry_run=False,
+                               legacy=False, sample_size=80, k_basins=None)
+        handle_me_build(args)
+        assert len(called) == 1 and called[0].only_distill is True
+
+    def test_dream_alias_help_names_lens_deep(self):
+        """The alias must SAY it's an alias — one concept in every surface."""
+        from trinity_local import main as main_module
+        import argparse
+        parser = main_module.build_parser()
+        sub = next(a for a in parser._actions
+                   if isinstance(a, argparse._SubParsersAction))
+        dream_help = next(ca.help for ca in sub._choices_actions
+                          if ca.dest == "dream")
+        assert "lens --deep" in dream_help and "alias" in dream_help.lower()

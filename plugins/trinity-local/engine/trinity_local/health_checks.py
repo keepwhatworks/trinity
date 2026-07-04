@@ -458,7 +458,7 @@ def _check_core_distilled() -> CheckResult:
             name="core_distilled",
             ok=True,
             detail="core.md not distilled yet (chairman falls through to full lens)",
-            fix="trinity-local dream   # rebuild memories; Phase 5 writes ~/.trinity/core.md (distill CLI was hidden 2026-05-17 — dream is the live path)",
+            fix="trinity-local lens   # rebuild memories; the post-build distill writes ~/.trinity/core.md (distill CLI was hidden 2026-05-17)",
         )
     size = core.stat().st_size
     return CheckResult(
@@ -717,8 +717,8 @@ def _check_lens_freshness() -> CheckResult:
         return CheckResult(
             name="lens_freshness",
             ok=True,
-            detail="lens vocab + topics not built yet — run `trinity-local dream`",
-            fix="trinity-local dream",
+            detail="lens vocab + topics not built yet — run `trinity-local lens --deep` (the one-command cold start)",
+            fix="trinity-local lens --deep",
         )
     newest = 0.0
     outcomes = council_outcomes_dir()
@@ -734,7 +734,7 @@ def _check_lens_freshness() -> CheckResult:
         return CheckResult(name="lens_freshness", ok=True, detail="lens artifacts present")
     # 1-day grace so a single fresh council an hour after a rebuild doesn't nag —
     # only flag a MEANINGFULLY stale lens. (lens.md auto-refreshes; this is for
-    # vocab/topics which only a full `dream` rebuilds.) Name only the artifacts
+    # vocab/topics which `lens` now also rebuilds.) Name only the artifacts
     # that are ACTUALLY stale — rebuilding just the vocab shouldn't make the
     # message keep blaming vocabulary.md (verified live 2026-06-01).
     stale = [a for a in existing if (newest - mtimes[a]) >= 86400]
@@ -748,7 +748,7 @@ def _check_lens_freshness() -> CheckResult:
     # its own advice (the 2026-07-03 seam: `lens` didn't write vocabulary.md,
     # so the nag survived the fix it recommended). `trinity-local lens` now
     # rewrites topics.json (pipeline) AND vocabulary.md (the folded numpy
-    # scan); `dream` also works but costs discovery/synthesis chairman calls.
+    # scan); `lens --deep` also works but adds discovery/synthesis chairman calls.
     return CheckResult(
         name="lens_freshness",
         ok=True,  # soft — stale, not broken
