@@ -237,8 +237,21 @@ def handle_me_build(args):
         ))
 
     if getattr(args, "deep", False):
+        import sys as _sys
         from types import SimpleNamespace
         from .dream import handle_dream
+        # Spend pre-flight (blindspot fix 2026-07-04): a first deep build
+        # synthesizes one virtual council per cross-provider cluster on the
+        # USER'S subscription — print the honest cost shape up front instead
+        # of surprising them minutes in. Print-only (no prompt) so launchpad
+        # dispatch and scripts stay non-interactive.
+        print(
+            "lens --deep mines your history: ~1 chairman call per cross-provider "
+            "cluster (typically 10-100 on a first run — minutes of wall time and "
+            "a real slice of your subscription quota) + the standard lens build. "
+            "Re-runs only pay for NEW clusters.",
+            file=_sys.stderr,
+        )
         return handle_dream(SimpleNamespace(
             similarity_threshold=0.85, max_clusters=None,
             skip_consolidate=False, skip_me_build=False,

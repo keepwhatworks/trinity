@@ -578,3 +578,45 @@ class TestActionAllowlist:
         payload = json.loads(capsys.readouterr().out)
         assert payload["ok"] is True
         assert payload["mode"] == "dry-run"
+
+
+class TestExportVerb:
+    """`export` backs up the DERIVED taste state (blindspot fix 2026-07-04) —
+    the lens registry's evolution isn't a pure projection of raw corpora, so
+    disk loss was unrecoverable. Raw stores stay excluded by design."""
+
+    def test_export_zips_derived_state_and_excludes_raw(self, tmp_path, monkeypatch, capsys):
+        import json as _json
+        import zipfile
+        from types import SimpleNamespace
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path / "home"))
+        home = tmp_path / "home"
+        (home / "memories").mkdir(parents=True)
+        (home / "memories" / "lens.md").write_text("# Lens\n", encoding="utf-8")
+        (home / "me").mkdir()
+        (home / "me" / "preference_acts.jsonl").write_text("{}\n", encoding="utf-8")
+        (home / "scoreboard").mkdir()
+        (home / "scoreboard" / "picks.json").write_text("{}", encoding="utf-8")
+        (home / "core.md").write_text("core", encoding="utf-8")
+        (home / "prompts").mkdir()
+        (home / "prompts" / "prompt_nodes.jsonl").write_text("{}\n", encoding="utf-8")
+
+        out = tmp_path / "backup.zip"
+        rc = import_export.handle_export(SimpleNamespace(out=str(out)))
+        payload = _json.loads(capsys.readouterr().out)
+        assert rc == 0 and payload["ok"] is True and payload["files"] == 4
+        names = set(zipfile.ZipFile(out).namelist())
+        assert {"memories/lens.md", "me/preference_acts.jsonl",
+                "scoreboard/picks.json", "core.md"} <= names
+        assert not any(n.startswith("prompts/") for n in names), (
+            "raw corpora must stay excluded — rebuildable and huge"
+        )
+
+    def test_export_empty_home_refuses_ok(self, tmp_path, monkeypatch, capsys):
+        import json as _json
+        from types import SimpleNamespace
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path / "home"))
+        (tmp_path / "home").mkdir()
+        rc = import_export.handle_export(SimpleNamespace(out=str(tmp_path / "b.zip")))
+        out = capsys.readouterr().out
+        assert rc == 1 and _json.loads(out.split("\n  Nothing")[0])["ok"] is False

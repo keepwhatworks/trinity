@@ -84,6 +84,24 @@ def register(subparsers):
     )
     parser.set_defaults(handler=handle_import_export)
 
+    # ── export: the backup sibling (blindspot fix 2026-07-04) ──────────────
+    # import-export IMPORTS raw histories; nothing exported the DERIVED taste
+    # state (lens registry evolution, ledger, scoreboards) — unrecoverable on
+    # disk loss because it isn't a pure projection of the raw corpus (it
+    # accumulates chairman namings + registry support over time).
+    ex = subparsers.add_parser(
+        "export",
+        help="Back up your derived taste state (memories/, core.md, me/, "
+             "scoreboard/, evals/) to a zip. Raw corpora (prompts/, "
+             "conversations/) are excluded — rebuildable via ingest. "
+             "Restore = unzip into ~/.trinity.",
+    )
+    ex.add_argument(
+        "--out", default=None,
+        help="Output zip path (default: ./trinity-taste-export-<UTC timestamp>.zip).",
+    )
+    ex.set_defaults(handler=handle_export)
+
 
 def detect_exports(root: Path) -> list[dict[str, Any]]:
     """Probe ``root`` for known export shapes.
@@ -369,3 +387,50 @@ def handle_import_export(args):
     if warnings:
         result["warnings"] = warnings
     print(json.dumps(result, indent=2))
+
+
+def handle_export(args):
+    """Zip the derived taste state. Deterministic membership: the four derived
+    roots + core.md; raw corpora excluded by design (rebuildable, huge)."""
+    import zipfile
+    from pathlib import Path
+    from ..state_paths import trinity_home
+    from ..utils import now_iso
+
+    home = trinity_home()
+    roots = ["memories", "me", "scoreboard", "evals"]
+    single_files = ["core.md"]
+    out = args.out or f"trinity-taste-export-{now_iso().replace(':', '').replace('+0000', 'Z')}.zip"
+    out_path = Path(out).expanduser().resolve()
+    n_files = 0
+    total = 0
+    with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as z:
+        for root in roots:
+            base = home / root
+            if not base.exists():
+                continue
+            for f in sorted(base.rglob("*")):
+                if not f.is_file():
+                    continue
+                z.write(f, f.relative_to(home).as_posix())
+                n_files += 1
+                total += f.stat().st_size
+        for name in single_files:
+            f = home / name
+            if f.is_file():
+                z.write(f, name)
+                n_files += 1
+                total += f.stat().st_size
+    print(json.dumps({
+        "ok": n_files > 0,
+        "path": str(out_path),
+        "files": n_files,
+        "bytes_uncompressed": total,
+        "included": roots + single_files,
+        "excluded": ["prompts/", "conversations/", "council_outcomes/ (rebuild via ingest + councils)"],
+        "restore": "unzip into ~/.trinity (files land under the same relative paths)",
+    }, indent=2))
+    if n_files == 0:
+        print("  Nothing to export yet — build the lens first (`trinity-local lens`).")
+        return 1
+    return 0
