@@ -701,12 +701,13 @@ def _check_cortex_basin_density() -> CheckResult:
 def _check_lens_freshness() -> CheckResult:
     """Soft check: are the lens artifacts (vocabulary.md / topics.json) current?
 
-    lens.md auto-refreshes via the activity-gated MCP lens-build, but
-    vocabulary.md + topics.json only rebuild on a full `dream` — so they drift
-    stale as new prompts/councils arrive AND as code fixes land. Live 2026-06-01:
-    the served vocabulary.md still carried the test-file homonym that v1.7.152
+    lens.md auto-refreshes via the activity-gated MCP lens-build; since the
+    2026-07-04 vocabulary fold, `trinity-local lens` also rewrites
+    vocabulary.md (and topics.json via the pipeline) — so the recommended fix
+    below actually clears this check (advice-closure). Live 2026-06-01: the
+    served vocabulary.md still carried the test-file homonym that v1.7.152
     drops, because the file predated the fix. Soft (ok=True) with
-    fix='trinity-local dream' so status' soft-warning loop surfaces it.
+    fix='trinity-local lens' so status' soft-warning loop surfaces it.
     """
     from .state_paths import memories_dir, council_outcomes_dir
 
@@ -742,14 +743,20 @@ def _check_lens_freshness() -> CheckResult:
     days = (newest - min(mtimes[a] for a in stale)) / 86400.0
     names = " + ".join(a.name for a in stale)
     verb = "predate" if len(stale) > 1 else "predates"
+    # Advice-closure invariant (2026-07-04): the recommended command MUST
+    # refresh every file this check reads, or the warning can never clear via
+    # its own advice (the 2026-07-03 seam: `lens` didn't write vocabulary.md,
+    # so the nag survived the fix it recommended). `trinity-local lens` now
+    # rewrites topics.json (pipeline) AND vocabulary.md (the folded numpy
+    # scan); `dream` also works but costs discovery/synthesis chairman calls.
     return CheckResult(
         name="lens_freshness",
         ok=True,  # soft — stale, not broken
         detail=(
             f"{names} {verb} your newest council by ~{days:.0f}d "
-            f"— re-run dream to refresh the lens"
+            f"— run `trinity-local lens` to refresh the thinking memories"
         ),
-        fix="trinity-local dream",
+        fix="trinity-local lens",
     )
 
 

@@ -318,3 +318,64 @@ class TestMigration:
         memories_dir()
 
         assert lens_path().read_text(encoding="utf-8") == "fresh content"
+
+
+class TestVocabularyFoldHooks:
+    """The 2026-07-04 vocabulary fold: `lens` refreshes EVERY thinking memory.
+
+    Closes the verb-coverage seam hit live 2026-07-03 — only dream's
+    vocabulary phase wrote vocabulary.md, so a user who ran the recommended
+    `lens --force` still saw the vocabulary-staleness nag (the warning's own
+    advice couldn't clear it — the same shape as the ingest-marker false-stale
+    fixed the same day)."""
+
+    def test_lens_build_refreshes_vocabulary_before_distill(self, isolated_home, monkeypatch):
+        from trinity_local.commands.me import handle_me_build
+        from trinity_local.state_paths import lens_path
+        from types import SimpleNamespace
+
+        def _stub_lens_pipeline(**kwargs):
+            lens_path().parent.mkdir(parents=True, exist_ok=True)
+            lens_path().write_text("# Lens\n", encoding="utf-8")
+            return (lens_path(), {"stages_run": "stub"})
+        monkeypatch.setattr(
+            "trinity_local.commands.me.build_me_via_lens_pipeline",
+            _stub_lens_pipeline,
+        )
+        order: list[str] = []
+        monkeypatch.setattr(
+            "trinity_local.vocabulary.distill_vocabulary",
+            lambda **kw: (order.append("vocabulary"), {"ok": True, "anchors_emitted": 3})[1],
+        )
+        monkeypatch.setattr(
+            "trinity_local.distill.distill_via_chairman",
+            lambda **kw: (order.append("distill"), {"ok": True})[1],
+        )
+        args = SimpleNamespace(legacy=False, dry_run=False, budget_chars=2000,
+                               sample_size=80, k_basins=20)
+        handle_me_build(args)
+        assert "vocabulary" in order, (
+            "lens-build no longer refreshes vocabulary.md — the 2026-07-03 "
+            "verb-coverage seam is back (the staleness nag recommends `lens` "
+            "but `lens` wouldn't clear it)"
+        )
+        assert order.index("vocabulary") < order.index("distill"), (
+            "vocabulary must refresh BEFORE distill so core.md reads fresh anchors"
+        )
+
+    def test_dry_run_skips_vocabulary(self, isolated_home, monkeypatch):
+        from trinity_local.commands.me import handle_me_build
+        from types import SimpleNamespace
+        monkeypatch.setattr(
+            "trinity_local.commands.me.build_me_via_lens_pipeline",
+            lambda **kw: ("/tmp/x", {"stages_run": "stage-1-only"}),
+        )
+        fired = []
+        monkeypatch.setattr(
+            "trinity_local.vocabulary.distill_vocabulary",
+            lambda **kw: (fired.append(True), {"ok": True})[1],
+        )
+        args = SimpleNamespace(legacy=False, dry_run=True, budget_chars=2000,
+                               sample_size=80, k_basins=20)
+        handle_me_build(args)
+        assert not fired, "dry-run must not touch vocabulary.md"

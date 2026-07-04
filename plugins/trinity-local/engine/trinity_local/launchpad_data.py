@@ -2189,14 +2189,14 @@ def _core_status() -> dict:
 def _vocabulary_status() -> dict:
     """Report whether vocabulary.md lags behind the lens it co-builds with.
 
-    `trinity-local lens` rebuilds lens.md + topics.json but NOT
-    vocabulary.md — only `dream`'s Phase 2.5 (re)writes vocab. So after a
-    bare `lens` run the vocab sits stale: older than the lens, still
-    carrying whatever anchors the corpus had at its last build. `dream`
-    always writes vocab AFTER lens/topics, so `vocab.mtime < max(lens,
-    topics).mtime` is a threshold-free staleness signal that fires ONLY on
-    the `lens`-without-`dream` path — never on a normal dream (where vocab
-    is the newest of the three).
+    Since the 2026-07-04 vocabulary fold, BOTH `trinity-local lens` and
+    `dream` rewrite vocabulary.md after lens/topics (the fold closed the
+    verb-coverage seam where a bare `lens` run left vocab stale and the
+    staleness advice couldn't clear itself). `vocab.mtime < max(lens,
+    topics).mtime` remains the threshold-free staleness signal — it now
+    fires only on legacy pre-fold installs, a failed vocab write inside a
+    lens run, or a hand-touched lens.md — never on a healthy build (where
+    vocab is newer than both).
 
     Found 2026-05-31: a real install's memory viewer showed template-header
     anchors (AREA / ROOMS / CURRENT FLOOR PLAN) that the #250 filter already

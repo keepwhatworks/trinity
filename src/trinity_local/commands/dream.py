@@ -125,7 +125,7 @@ def handle_dream(args):
                 file=sys.stderr,
             )
             sys.exit(2)
-        print("dream phase 5/5: distilling memories → core.md (only-distill mode)…",
+        print("dream phase 6/6: distilling memories → core.md (only-distill mode)…",
               file=sys.stderr)
         distill_report = _distill(args.primary_provider or "claude")
         elapsed_ms = int((time.monotonic() - started) * 1000)
@@ -157,7 +157,7 @@ def handle_dream(args):
     }
 
     # ── Phase 1: discover ──────────────────────────────────────────────
-    print("dream phase 1/4: scanning embeddings for cross-provider pairs…", file=sys.stderr)
+    print("dream phase 1/6 (discover): scanning embeddings for cross-provider pairs…", file=sys.stderr)
     nodes = _all_prompt_nodes_uncapped()
     with_emb = sum(1 for n in nodes if n.embedding)
     clusters = find_cross_provider_clusters(
@@ -201,7 +201,7 @@ def handle_dream(args):
     # ── Phase 2: synthesize each cluster as a virtual council ──────────
     if clusters:
         print(
-            f"dream phase 2/4: synthesizing {len(clusters)} virtual council(s)…",
+            f"dream phase 2/6 (synthesize): {len(clusters)} virtual council(s)…",
             file=sys.stderr,
         )
         synthesized, failed = _synthesize_all(clusters, args.primary_provider)
@@ -222,19 +222,19 @@ def handle_dream(args):
 
     # ── Phase 3: re-consolidate cortex ─────────────────────────────────
     if args.skip_consolidate:
-        print("dream phase 3/4: SKIPPED (--skip-consolidate)", file=sys.stderr)
+        print("dream phase 3/6 (consolidate): SKIPPED (--skip-consolidate)", file=sys.stderr)
         report["phases"]["consolidate"] = {"skipped": True}
     else:
-        print("dream phase 3/4: consolidating cortex rules…", file=sys.stderr)
+        print("dream phase 3/6 (consolidate): consolidating routing rules…", file=sys.stderr)
         consolidate_report = _consolidate(args.primary_provider or "claude")
         report["phases"]["consolidate"] = consolidate_report
 
     # ── Phase 4: rebuild lenses + freeze routing to disk ───────────────
     if args.skip_me_build:
-        print("dream phase 4/5: SKIPPED (--skip-lens-build)", file=sys.stderr)
+        print("dream phase 4/6 (lens-build): SKIPPED (--skip-lens-build)", file=sys.stderr)
         report["phases"]["me_build"] = {"skipped": True}
     else:
-        print("dream phase 4/5: rebuilding lenses + freezing routing…", file=sys.stderr)
+        print("dream phase 4/6 (lens-build): rebuilding lenses + freezing routing…", file=sys.stderr)
         me_report = _me_build(args.primary_provider or "claude")
         # Freeze the empirical-memory entry to scoreboard/routing.json so the
         # chairman context loader (and Phase 5 distill) sees the routing
@@ -253,10 +253,10 @@ def handle_dream(args):
     # Pure-geometric scan; zero LLM calls. Builds the language-memory
     # entry in the core-memories set.
     if getattr(args, "skip_vocabulary", False):
-        print("dream phase 2.5/5: SKIPPED (--skip-vocabulary)", file=sys.stderr)
+        print("dream phase 5/6 (vocabulary): SKIPPED (--skip-vocabulary)", file=sys.stderr)
         report["phases"]["vocabulary"] = {"skipped": True}
     else:
-        print("dream phase 2.5/5: scanning vocabulary for overloads…", file=sys.stderr)
+        print("dream phase 5/6 (vocabulary): scanning for overloads + anchors…", file=sys.stderr)
         report["phases"]["vocabulary"] = _vocabulary_scan()
 
     # ── Phase 5: distill the three thinking memories (lens, topics,
@@ -265,10 +265,10 @@ def handle_dream(args):
     # were skipped, distill emits a core.md from whatever memories DO
     # exist on disk.
     if getattr(args, "skip_distill", False):
-        print("dream phase 5/6: SKIPPED (--skip-distill)", file=sys.stderr)
+        print("dream phase 6/6 (distill): SKIPPED (--skip-distill)", file=sys.stderr)
         report["phases"]["distill"] = {"skipped": True}
     else:
-        print("dream phase 5/6: distilling memories → core.md…", file=sys.stderr)
+        print("dream phase 6/6 (distill): distilling memories → core.md…", file=sys.stderr)
         distill_report = _distill(args.primary_provider or "claude")
         report["phases"]["distill"] = distill_report
 

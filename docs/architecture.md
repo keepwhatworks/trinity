@@ -42,12 +42,14 @@ the remaining launch risks are not core council mechanics: Chrome Web Store
 publish + extension-ID pinning, native Windows beyond WSL2, fresh-machine
 install honesty, and the gated real-Chrome smoke.
 
-Two verbs share one engine: `lens` runs the tension pipeline directly (plus
-the routing freeze and the `core.md` distill) for the common "refresh my
-taste" case; `dream` wraps that same pipeline as its Phase 4, adding the
-quota-heavier halo — discover cross-provider question pairs in your history,
-synthesize each as a virtual council, re-consolidate routing basins, and
-refresh `vocabulary.md`.
+Two verbs share one engine. `lens` runs the tension pipeline directly and
+then refreshes every thinking memory — the routing freeze, the LLM-free
+`vocabulary.md` scan (folded in 2026-07-04 so the staleness warning's own
+advice can clear it), and the `core.md` distill. `dream` wraps that same
+pipeline as one phase, adding the quota-heavier halo: discover cross-provider
+question pairs in your history, synthesize each as a virtual council, and
+re-consolidate routing basins. Rule of thumb: `lens` = refresh what you have;
+`dream` = also mine new signal from your history.
 
 ## Councils are a GPS — broad when you need coverage, deep when you need conviction
 
@@ -101,6 +103,29 @@ a live lens, with the stage-4 verdict distribution logged before every guarded
 write. Real ModernBERT embeddings power semantic geometry when available;
 TF-IDF is kept as a lexical fallback and semantic flows abstain when real
 embeddings are not loaded.
+
+## Deliberately absent
+
+Three subsystems are missing on purpose; treat proposals to add them as
+regressions until the evidence changes. **User ratings** — retired 2026-05-21
+(residual veto 2026-06-05); the chairman's pick is the entire supervision
+signal, and the user just chats. **Council→lens learning loops** — the lens
+learns from raw transcripts only; feeding the optimizer's outcomes into its
+own objective converges taste to a flattering mirror (founder-locked
+2026-07-02). **A goals/OKR layer** — considered and declined 2026-07-04: the
+coupling pattern it would formalize (fast proxies, slow truth, a loop that
+audits whether they still agree) is already instantiated where it earns rent —
+the provenance-gated ledger, the lens/routing wall, the preference-collapse
+meter, judge-alignment — and the retirement log (moves substrate, handoff,
+decision-log) shows what happens to substrates built before their signal
+exists. The operating discipline stays manual until the manual loop
+demonstrably hurts.
+
+The audit discipline that keeps this document honest: every staleness or
+health warning that recommends a command carries an **advice-closure guard**
+(`tests/test_advice_closure.py`) — the recommended command's writers must
+touch the signal the checker reads, so no warning can outlive its own advice
+(two live instances of that bug shipped and were fixed 2026-07-03/04).
 
 Cross-provider continuity flows via MCP Resources — agents read
 `trinity://memories/lens.md` at session handshake, so any harness can pick up

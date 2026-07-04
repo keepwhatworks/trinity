@@ -252,12 +252,23 @@ def handle_me_build(args):
             print(json.dumps({"ok": False, "canceled": True}, indent=2))
             sys.stderr.write("\n→ Lens build stopped.\n")
             sys.exit(130)
-    # Lens was just rewritten → freeze the routing table to disk +
-    # auto-fire distill. Both are no-ops if the data hasn't changed
-    # (routing is empty without rated councils; distill skips if
-    # core.md is already newer than every source memory). Skipped
-    # in dry-run since no real changes hit disk.
+    # Lens was just rewritten → freeze the routing table to disk,
+    # refresh vocabulary.md, then auto-fire distill. All are no-ops /
+    # cheap when the data hasn't changed (routing is empty without
+    # rated councils; the vocabulary scan is pure numpy, no LLM;
+    # distill skips if core.md is already newer than every source
+    # memory). Skipped in dry-run since no real changes hit disk.
+    #
+    # The vocabulary fold (2026-07-04) closes a verb-coverage seam hit
+    # live on 2026-07-03: only dream's Phase 2.5 wrote vocabulary.md,
+    # so a user who ran the recommended `lens --force` still saw the
+    # vocabulary-staleness nag — the warning's own advice couldn't
+    # clear it. `lens` now refreshes every thinking memory; `dream`
+    # keeps its halo (discover cross-provider pairs + synthesize
+    # virtual councils + consolidate). Vocabulary runs BEFORE distill
+    # so the distillation reads fresh anchors.
     routing_summary: dict | None = None
+    vocab_summary: dict | None = None
     distill_summary: dict | None = None
     if not getattr(args, "dry_run", False):
         try:
@@ -267,6 +278,11 @@ def handle_me_build(args):
         except Exception as exc:
             routing_summary = {"error": f"{type(exc).__name__}: {exc}"}
         try:
+            from ..vocabulary import distill_vocabulary
+            vocab_summary = distill_vocabulary()
+        except Exception as exc:
+            vocab_summary = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+        try:
             from ..distill import distill_via_chairman
             distill_summary = distill_via_chairman()
         except Exception as exc:
@@ -274,6 +290,11 @@ def handle_me_build(args):
     payload = {"ok": True, "path": str(path), **summary}
     if routing_summary is not None:
         payload["routing_frozen"] = routing_summary
+    if vocab_summary is not None:
+        payload["vocabulary"] = {
+            k: v for k, v in vocab_summary.items()
+            if k in ("ok", "anchors_emitted", "homonyms_emitted", "error")
+        }
     if distill_summary is not None:
         payload["distill"] = distill_summary
     print(json.dumps(payload, indent=2))
