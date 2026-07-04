@@ -22,8 +22,8 @@ Shortcuts / local-helper execution model.
 
 Trinity is not building a hosted app shell. It is generating local artifacts:
 
-- **Launchpad** (`portal_pages/launchpad.html`) — autofill, personal routing table card, **pair-wise `lens` cardses card with copy buttons**, recent councils, settings modal
-- **Unified council page** (`portal_pages/status/...`) — single page handling both in-flight (`?status_token=`) and post-hoc (`?council_id=`) views. Member streaming, chairman synthesis, structured Routing label section, **rating buttons inline** (no separate Signal/Rating page)
+- **Launchpad** (`portal_pages/launchpad.html`) — autofill, personal routing table card, pair-wise `lens` tensions card with copy buttons, recent councils, settings modal (also served inside the extension side panel via the sandboxed iframe bridge)
+- **Live council page** (`review_pages/live_council.html`) — single page handling both in-flight (`?status_token=`) and post-hoc (`?council_id=`) views. Member streaming, chairman synthesis, structured Routing label section, and Refine / Continue / Auto-chain controls. There is **no rating UI anywhere** — the chairman's pick is the supervision signal; the user-rating layer was retired 2026-05-21 and the residual veto 2026-06-05 (never re-add one). The old static-with-data renderer (`render_unified_council_page`) was removed 2026-07-02 — the write path emits a redirect plus this live page
 - Future surfaces (deferred): weekly Elo report, leaderboard view, radar/battle/taste-profile social cards. The shipped social object is the `lens` card (see DESIGN.md Social Artifact Guidance)
 
 Those pages need:
@@ -254,7 +254,7 @@ Show the council result:
 
 ## Council Review (inline, not a separate page)
 
-The review UI lives in the **unified council review page**, not a separate Signal page. After members finish and the chairman synthesises, the same page surfaces the chairman's verdict (winner, agreed/disagreed claims with `why_matters`) and refinement affordances.
+The review UI lives in the **live council page** (`review_pages/live_council.html`), not a separate Signal page. After members finish and the chairman synthesises, the same page surfaces the chairman's verdict (winner, agreed/disagreed claims with `why_matters`) and refinement affordances.
 
 **Post-2026-05-21/22 supervision signal:** the chairman's `routing_label.winner` is the supervision signal — fed automatically into `compute_personal_routing_table()` via `~/.trinity/council_outcomes/<id>.json`. No agent-side rating call is needed. The rating UX (`record_outcome` MCP tool, `council-rate` CLI, `rate_council` dispatch action, the launchpad "Preferred" click affordance) was retired alongside "we are sunsetting user ratings"; the chairman pick is the entire signal now.
 
@@ -378,9 +378,9 @@ Keep generated-page code close to the page type. Current shipped modules:
 - `launchpad_data.py` — assembles the JSON payload the launchpad reads
 - `launchpad_runtime.py` — refresh + open-in-browser plumbing
 - `memory_viewer.py` — generic memory.html viewer (renders lens.md / picks.json / routing.json / topics.json / vocabulary.md / core.md with inlined contents)
-- `council_review.py` — unified council page (handles both `?status_token=` in-flight and `?council_id=` post-hoc views; rating UI is inline)
+- `council_review.py` — the live council page (`render_live_council_page`, handling both `?status_token=` in-flight and `?council_id=` post-hoc views; no rating UI — chairman pick is the signal). The static `render_unified_council_page` was removed 2026-07-02; `write_unified_council_page` survives as the redirect-plus-live-page writer
 - `me_lenses.py` — parses `~/.trinity/memories/lens.md` into structured taste lenses for the launchpad card
-- `council_share.py` — was deleted along with the `--safe` Privacy-Safe Share Card. (The `council-share` CLI command is still in `commands/council.py` and copies the unified review HTML to Desktop.)
+- `council_share.py` — was deleted along with the `--safe` Privacy-Safe Share Card. (The `council-share` CLI command lives in `commands/council.py` and renders a 1200×630 PNG share card into `~/.trinity/share/` — same visual language as `me-card` / `eval-share`; the old copy-redirect-HTML-to-Desktop behavior was killed 2026-05-17 as useless off-machine.)
 
 Future surfaces (deferred): `digest_page.py`, `radar_page.py`, `battle_card_page.py`. The your `lens` cards subsume the social-artifact role for now.
 

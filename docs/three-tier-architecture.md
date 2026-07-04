@@ -76,6 +76,14 @@ terminal. Once installed:
   shell payload, no `run_command` — so spoofed Native-Messaging
   payloads can't trigger arbitrary commands. Cross-platform —
   replaces the macOS Shortcut dispatcher retired 2026-05-17.
+* **Side-panel launchpad** (2026-06): the launchpad + live-council UI
+  render inside the extension's side panel — a sandboxed iframe
+  (MV3 bans inline scripts, so the runtime ships as external JS)
+  fed by the capture host's `launchpad_data` read action and
+  navigated through the `sidepanel-bridge` postMessage broker
+  (a sandboxed opaque-origin frame can't navigate itself; the shell
+  swaps `frame.src` against an allowlist). No server anywhere — the
+  same static artifacts, hosted by the extension.
 * **Auto-update channel** (2026-05-19): planned to bundle the Python
   source inside the extension package so Chrome's ~5h Web Store
   update cadence delivers Python updates too. Today: curl-bash users
