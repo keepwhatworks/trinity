@@ -60,6 +60,26 @@ def config_path(explicit: str | None = None) -> Path:
     return project_root() / "config.json"
 
 
+def _reconcile_effort_arg(args: list, effort):
+    """Lift an inline `-c model_reasoning_effort=X` out of args into the effort
+    field (the dispatched value wins — args override the field at dispatch, so
+    load-time reconciliation makes them agree). Returns (effort, args)."""
+    out = []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "-c" and i + 1 < len(args) and "model_reasoning_effort" in str(args[i + 1]):
+            _, _, value = str(args[i + 1]).partition("=")
+            value = value.strip().strip('"').strip("'")
+            if value:
+                effort = value
+            i += 2
+            continue
+        out.append(a)
+        i += 1
+    return effort, out
+
+
 def _reconcile_model_arg(
     command: list[str], args: list[str], model: str | None
 ) -> tuple[str | None, list[str], list[str]]:
@@ -153,6 +173,13 @@ def load_config(explicit: str | None = None, *, required: bool = True) -> AppCon
         model, command, args = _reconcile_model_arg(
             command, args, provider.get("model")
         )
+        # Same one-source-of-truth rule for EFFORT (Ousterhout closure,
+        # 2026-07-05): an inline `-c model_reasoning_effort=X` in args WINS at
+        # dispatch (CodexProvider skips its own append), so a config carrying
+        # both mechanisms dispatched X while surfaces read `effort` — the
+        # 2026-07-04 stamp bug. Lift the inline value into config.effort and
+        # strip it, so downstream sees exactly one mechanism.
+        effort, args = _reconcile_effort_arg(args, provider.get("effort"))
         providers[name] = ProviderConfig(
             name=name,
             type=provider["type"],
@@ -162,7 +189,7 @@ def load_config(explicit: str | None = None, *, required: bool = True) -> AppCon
             args=args,
             task_types=set(provider.get("task_types", [])),
             model=model,
-            effort=provider.get("effort"),
+            effort=effort,
         )
 
     return AppConfig(

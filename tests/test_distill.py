@@ -421,3 +421,85 @@ class TestDeepFlagDelegation:
         dream_help = next(ca.help for ca in sub._choices_actions
                           if ca.dest == "dream")
         assert "lens --deep" in dream_help and "alias" in dream_help.lower()
+
+
+class TestLensSatelliteFlags:
+    """One deep verb (Ousterhout closure, 2026-07-05): the satellite actions
+    ride `lens` as flags; the standalone verbs are compat aliases."""
+
+    def _spy(self, monkeypatch, name):
+        from trinity_local.commands import me as me_cmd
+        calls = []
+        monkeypatch.setattr(me_cmd, name, lambda a: calls.append(True) or 0)
+        return calls
+
+    def test_each_flag_delegates(self, isolated_home, monkeypatch):
+        from types import SimpleNamespace
+        from trinity_local.commands.me import handle_me_build
+        for flag, handler in [
+            ("lens_acts", "handle_lens_acts"),
+            ("lens_resync", "handle_lens_resync"),
+            ("lens_stop", "handle_lens_stop"),
+            ("lens_setup", "handle_lens_setup"),
+            ("lens_generators", "handle_lens_generators"),
+        ]:
+            calls = self._spy(monkeypatch, handler)
+            args = SimpleNamespace(deep=False, only_distill=False, dry_run=False,
+                                   legacy=False, sample_size=80, k_basins=None,
+                                   **{flag: True})
+            handle_me_build(args)
+            assert calls == [True], f"lens --{flag} did not delegate to {handler}"
+
+    def test_alias_helps_name_the_flag(self):
+        """Source guard (main.py collapses top-level help, so pseudo-actions
+        aren't inspectable for module verbs): each satellite parser's help must
+        declare itself an alias of the lens flag."""
+        import inspect
+        from trinity_local.commands import me as me_cmd
+        src = inspect.getsource(me_cmd.register)
+        for flag in ("--stop", "--setup", "--generators", "--resync", "--acts"):
+            assert f"(Alias for `lens {flag}`.)" in src, (
+                f"satellite verb for {flag} no longer declares itself an alias"
+            )
+        # and the lens parser itself must register every satellite flag
+        for flag in ("--stop", "--setup", "--generators", "--resync", "--acts"):
+            assert f'"{flag}"' in src, f"lens lost the {flag} flag"
+
+
+class TestEffortReconciledAtLoad:
+    """One mechanism for effort (Ousterhout closure): an inline
+    `-c model_reasoning_effort=X` is lifted into config.effort at load and
+    stripped from args — the 2026-07-04 stamp-bug class defined out of
+    existence at the source."""
+
+    def test_inline_effort_lifted_and_stripped(self, tmp_path, monkeypatch):
+        import json
+        cfg = {
+            "providers": {
+                "codex": {
+                    "type": "codex", "command": ["codex", "exec"],
+                    "args": ["--sandbox", "workspace-write", "-c",
+                             'model_reasoning_effort="xhigh"'],
+                    "model": "gpt-5.5", "effort": "high",
+                },
+            },
+        }
+        p = tmp_path / "config.json"
+        p.write_text(json.dumps(cfg), encoding="utf-8")
+        from trinity_local.config import load_config
+        loaded = load_config(str(p))
+        prov = loaded.providers["codex"]
+        assert prov.effort == "xhigh", "inline args value must win (it wins at dispatch)"
+        assert not any("model_reasoning_effort" in str(a) for a in prov.args), (
+            "the inline mechanism must be stripped — one source of truth"
+        )
+
+    def test_effort_field_alone_passes_through(self, tmp_path):
+        import json
+        cfg = {"providers": {"claude": {
+            "type": "cli", "command": ["claude", "-p"], "args": [],
+            "model": "claude-opus-4-8", "effort": "high"}}}
+        p = tmp_path / "config.json"
+        p.write_text(json.dumps(cfg), encoding="utf-8")
+        from trinity_local.config import load_config
+        assert load_config(str(p)).providers["claude"].effort == "high"

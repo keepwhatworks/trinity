@@ -69,11 +69,18 @@ class TestLensFreshnessAdviceClosure:
             "whose post-build hooks write vocabulary.md + topics.json, or the "
             "advice can never clear the warning"
         )
-        # (b) source-coupling: the advised handler invokes the vocabulary writer.
+        # (b) source-coupling: the advised handler invokes the vocabulary
+        # writer — via the extracted _post_build_hooks (Ousterhout closure,
+        # 2026-07-05), so follow the chain: handler → hooks → writer.
         from trinity_local.commands import me as me_cmd
-        src = inspect.getsource(me_cmd.handle_me_build)
-        assert "distill_vocabulary" in src, (
-            "handle_me_build no longer calls distill_vocabulary — the "
+        handler_src = inspect.getsource(me_cmd.handle_me_build)
+        assert "_post_build_hooks" in handler_src, (
+            "handle_me_build no longer runs the post-build hooks — the "
+            "lens_freshness fix advice points at a command that can't clear it"
+        )
+        hooks_src = inspect.getsource(me_cmd._post_build_hooks)
+        assert "distill_vocabulary" in hooks_src, (
+            "_post_build_hooks no longer calls distill_vocabulary — the "
             "lens_freshness fix advice points at a command that can't clear it"
         )
 

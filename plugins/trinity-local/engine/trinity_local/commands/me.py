@@ -70,6 +70,33 @@ def register(subparsers):
         help="Rebuild even if the corpus is unchanged since the last build "
              "(skips the no-corpus-change shortcut).",
     )
+    # One deep verb (Ousterhout closure, 2026-07-05): the satellite actions
+    # ride `lens` as flags; the old standalone verbs stay registered as
+    # compatibility aliases (launchpad dispatch + scripts), same pattern as
+    # `dream`/`lens-build`.
+    build_parser.add_argument(
+        "--stop", action="store_true", dest="lens_stop",
+        help="Stop a running lens build cleanly (alias verb: lens-stop).",
+    )
+    build_parser.add_argument(
+        "--setup", action="store_true", dest="lens_setup",
+        help="Guided lens activation: opt in, ensure embedder, ingest, build "
+             "(alias verb: lens-setup).",
+    )
+    build_parser.add_argument(
+        "--generators", action="store_true", dest="lens_generators",
+        help="Run the generators pass — cross-domain invariants (alias verb: "
+             "lens-generators).",
+    )
+    build_parser.add_argument(
+        "--resync", action="store_true", dest="lens_resync",
+        help="Re-render lens.md from the existing registry, no chairman calls "
+             "(alias verb: lens-resync).",
+    )
+    build_parser.add_argument(
+        "--acts", action="store_true", dest="lens_acts",
+        help="Show the preference-act ledger counts (alias verb: lens-acts).",
+    )
     build_parser.set_defaults(handler=handle_me_build)
 
     show_parser = subparsers.add_parser(
@@ -80,21 +107,21 @@ def register(subparsers):
 
     resync_parser = subparsers.add_parser(
         "lens-resync",
-        help="Seed the tension registry from existing lenses.json + re-render "
+        help="(Alias for `lens --resync`.) Seed the tension registry from existing lenses.json + re-render "
              "lens.md with support/stability — no chairman calls.",
     )
     resync_parser.set_defaults(handler=handle_lens_resync)
 
     acts_parser = subparsers.add_parser(
         "lens-acts",
-        help="Show the unified preference-act ledger (model-miss corrections "
+        help="(Alias for `lens --acts`.) Show the unified preference-act ledger (model-miss corrections "
              "+ self-expressed trade-offs) — counts by trigger / kind / basin.",
     )
     acts_parser.set_defaults(handler=handle_lens_acts)
 
     stop_parser = subparsers.add_parser(
         "lens-stop",
-        help="Stop a running lens build (#242a) — drops a cancel flag the build "
+        help="(Alias for `lens --stop`.) Stop a running lens build (#242a) — drops a cancel flag the build "
              "checks between stages, so it aborts cleanly without interrupting a "
              "chairman call mid-flight. The launchpad 'Stop' button dispatches this.",
     )
@@ -102,7 +129,7 @@ def register(subparsers):
 
     gen_parser = subparsers.add_parser(
         "lens-generators",
-        help="Run the generators pass (the lens 'lift') — abstract the task-level "
+        help="(Alias for `lens --generators`.) Run the generators pass (the lens 'lift') — abstract the task-level "
              "tensions into the cross-domain GENERATING invariants they project "
              "from. Writes ~/.trinity/memories/generators.md (does NOT touch "
              "lens.md). On-demand; prefers MCP-sampling.",
@@ -133,7 +160,7 @@ def register(subparsers):
 
     setup_parser = subparsers.add_parser(
         "lens-setup",
-        help="Create your lens — the guided 'lens add-on' activation. Opts in, "
+        help="(Alias for `lens --setup`.) Create your lens — the guided 'lens add-on' activation. Opts in, "
              "ensures the embedder, ingests your CLI history, and builds the lens. "
              "Free fusion (the council) needs none of this; the lens is the add-on.",
     )
@@ -222,7 +249,53 @@ def handle_lens_skill(args):
     return 0 if result.get("ok") else 1
 
 
+def _post_build_hooks(dry_run: bool) -> dict:
+    """The post-build refresh chain (Ousterhout closure, 2026-07-05 — extracted
+    from the growing handle_me_build orchestrator). Lens was just rewritten →
+    freeze the routing table, refresh vocabulary.md (LLM-free, BEFORE distill
+    so core.md reads fresh anchors — the 2026-07-04 fold), then auto-fire the
+    distill. All no-ops/cheap when data hasn't changed; skipped on dry-run.
+    Returns the payload fragments keyed by output field."""
+    out: dict = {}
+    if dry_run:
+        return out
+    try:
+        from ..personal_routing import freeze_routing_to_disk
+        table = freeze_routing_to_disk()
+        out["routing_frozen"] = {"task_types": len((table or {}).get("by_task_type") or {})}
+    except Exception as exc:
+        out["routing_frozen"] = {"error": f"{type(exc).__name__}: {exc}"}
+    try:
+        from ..vocabulary import distill_vocabulary
+        vocab = distill_vocabulary()
+        out["vocabulary"] = {
+            k: v for k, v in vocab.items()
+            if k in ("ok", "anchors_emitted", "homonyms_emitted", "error")
+        }
+    except Exception as exc:
+        out["vocabulary"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    try:
+        from ..distill import distill_via_chairman
+        out["distill"] = distill_via_chairman()
+    except Exception as exc:
+        out["distill"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    return out
+
+
 def handle_me_build(args):
+    # Satellite-action flags → their handlers (one deep verb; the standalone
+    # verbs are compat aliases). Order: read-only/utility actions first.
+    if getattr(args, "lens_acts", False):
+        return handle_lens_acts(args)
+    if getattr(args, "lens_resync", False):
+        return handle_lens_resync(args)
+    if getattr(args, "lens_stop", False):
+        return handle_lens_stop(args)
+    if getattr(args, "lens_setup", False):
+        return handle_lens_setup(args)
+    if getattr(args, "lens_generators", False):
+        return handle_lens_generators(args)
+
     # --deep: mine history first (discover cross-provider pairs → synthesize
     # virtual councils → consolidate), then the full lens rebuild. Delegates to
     # the six-phase engine in commands/dream.py — `dream` itself survives only
@@ -297,51 +370,8 @@ def handle_me_build(args):
             print(json.dumps({"ok": False, "canceled": True}, indent=2))
             sys.stderr.write("\n→ Lens build stopped.\n")
             sys.exit(130)
-    # Lens was just rewritten → freeze the routing table to disk,
-    # refresh vocabulary.md, then auto-fire distill. All are no-ops /
-    # cheap when the data hasn't changed (routing is empty without
-    # rated councils; the vocabulary scan is pure numpy, no LLM;
-    # distill skips if core.md is already newer than every source
-    # memory). Skipped in dry-run since no real changes hit disk.
-    #
-    # The vocabulary fold (2026-07-04) closes a verb-coverage seam hit
-    # live on 2026-07-03: only dream's Phase 2.5 wrote vocabulary.md,
-    # so a user who ran the recommended `lens --force` still saw the
-    # vocabulary-staleness nag — the warning's own advice couldn't
-    # clear it. `lens` now refreshes every thinking memory; `dream`
-    # keeps its halo (discover cross-provider pairs + synthesize
-    # virtual councils + consolidate). Vocabulary runs BEFORE distill
-    # so the distillation reads fresh anchors.
-    routing_summary: dict | None = None
-    vocab_summary: dict | None = None
-    distill_summary: dict | None = None
-    if not getattr(args, "dry_run", False):
-        try:
-            from ..personal_routing import freeze_routing_to_disk
-            table = freeze_routing_to_disk()
-            routing_summary = {"task_types": len((table or {}).get("by_task_type") or {})}
-        except Exception as exc:
-            routing_summary = {"error": f"{type(exc).__name__}: {exc}"}
-        try:
-            from ..vocabulary import distill_vocabulary
-            vocab_summary = distill_vocabulary()
-        except Exception as exc:
-            vocab_summary = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-        try:
-            from ..distill import distill_via_chairman
-            distill_summary = distill_via_chairman()
-        except Exception as exc:
-            distill_summary = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-    payload = {"ok": True, "path": str(path), **summary}
-    if routing_summary is not None:
-        payload["routing_frozen"] = routing_summary
-    if vocab_summary is not None:
-        payload["vocabulary"] = {
-            k: v for k, v in vocab_summary.items()
-            if k in ("ok", "anchors_emitted", "homonyms_emitted", "error")
-        }
-    if distill_summary is not None:
-        payload["distill"] = distill_summary
+    hooks = _post_build_hooks(bool(getattr(args, "dry_run", False)))
+    payload = {"ok": True, "path": str(path), **summary, **hooks}
     print(json.dumps(payload, indent=2))
     # 100-persona audit P51 fix: tell the user where to go next.
     import sys as _sys
