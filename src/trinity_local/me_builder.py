@@ -30,6 +30,8 @@ Council stage (one chairman call):
 """
 from __future__ import annotations
 
+import sys as _sys
+
 import dataclasses
 import json
 import re
@@ -646,7 +648,7 @@ def build_me_via_lens_pipeline(
         _recovered = _migrate_legacy_preference_stores()
         if _recovered:
             print(f"  Recovered {_recovered} preference act(s) from legacy "
-                  f"stores into the unified ledger.", flush=True)
+                  f"stores into the unified ledger.", flush=True, file=_sys.stderr)
     except Exception:
         pass
 
@@ -666,7 +668,7 @@ def build_me_via_lens_pipeline(
                 prior = None
             if prior and prior == fingerprint:
                 print("  Skipped — corpus unchanged since last build "
-                      "(use --force to rebuild anyway).", flush=True)
+                      "(use --force to rebuild anyway).", flush=True, file=_sys.stderr)
                 return me_path(), {
                     "ok": True,
                     "skipped": True,
@@ -761,7 +763,7 @@ def build_me_via_lens_pipeline(
     # Progress messages added per persona audit P51 (silent for 30-60s).
     raise_if_canceled()
     write_progress("stage0")
-    print(f"  Stage 0: turn-pair rejection extraction (chairman: {chairman})…", flush=True)
+    print(f"  Stage 0: turn-pair rejection extraction (chairman: {chairman})…", flush=True, file=_sys.stderr)
     turn_pairs, pair_index = collect_turn_pairs(limit=max(200, sample_size * 2))
     rejections: list = []
     rejected_records: list = []
@@ -813,8 +815,7 @@ def build_me_via_lens_pipeline(
             print(
                 f"           → delta: {len(new_pairs)} new pair(s), "
                 f"{skipped_seen} already extracted (reusing ledger)",
-                flush=True,
-            )
+                flush=True, file=_sys.stderr)
 
         # Chunk the batch (#195) — packing all 200 turn-pairs into ONE
         # prompt produced a ~37K-token call claude -p returned EMPTY for.
@@ -853,8 +854,7 @@ def build_me_via_lens_pipeline(
                     f"  Stage 0 ABORTED — batch {idx + 1}/{len(batches)} failed "
                     f"(returncode={res.returncode}, empty={not (res.stdout or '').strip()}); "
                     f"refusing partial save",
-                    flush=True,
-                )
+                    flush=True, file=_sys.stderr)
                 return me_path(), {
                     "ok": False,
                     "aborted": "stage0_batch_failed",
@@ -895,8 +895,7 @@ def build_me_via_lens_pipeline(
                 f"  Stage 0 ABORTED — degenerate extraction: {len(rejections)} "
                 f"rejections vs {existing_mm} existing (cliff-drop below {floor}); "
                 f"preserving the ledger",
-                flush=True,
-            )
+                flush=True, file=_sys.stderr)
             return me_path(), {
                 "ok": False,
                 "aborted": "degenerate_stage0",
@@ -907,10 +906,9 @@ def build_me_via_lens_pipeline(
             f"           → {len(rejections)} rejection signals "
             f"({len(new_rejections)} new, {len(existing_rejections)} carried), "
             f"{len(rejected_records)} dropped by validators",
-            flush=True,
-        )
+            flush=True, file=_sys.stderr)
     else:
-        print("           → no turn pairs yet, skipping", flush=True)
+        print("           → no turn pairs yet, skipping", flush=True, file=_sys.stderr)
 
     # Stage 2: decision extraction (one chairman call). Rejections
     # produced by Stage 0 are mixed into the sampled corpus as
@@ -929,7 +927,7 @@ def build_me_via_lens_pipeline(
     raise_if_canceled()
     write_progress("stage2")
     print(f"  Stage 2: decision extraction (chairman: {chairman}, "
-          f"{len(augmented_samples)} samples)…", flush=True)
+          f"{len(augmented_samples)} samples)…", flush=True, file=_sys.stderr)
     stage2_prompt = stage2_extraction_prompt(augmented_samples, basins)
     # Mechanical extraction → low effort (same rationale as Stage 0 above).
     stage2_result = _stage_run_with_fallback(stage2_prompt, config, chairman, Path.cwd(), low_effort=True)
@@ -975,10 +973,10 @@ def build_me_via_lens_pipeline(
             summary_parts.append(f"+ {len(edited)} from lens_edits.jsonl (weight=3.0)")
         if logged:
             summary_parts.append(f"+ {len(logged)} from decision_log.jsonl (weight=2.0)")
-        print("           → " + ", ".join(summary_parts), flush=True)
+        print("           → " + ", ".join(summary_parts), flush=True, file=_sys.stderr)
         decisions = deduped
     else:
-        print(f"           → {len(decisions)} decisions extracted", flush=True)
+        print(f"           → {len(decisions)} decisions extracted", flush=True, file=_sys.stderr)
 
     if not decisions:
         return me_path(), {
@@ -993,11 +991,11 @@ def build_me_via_lens_pipeline(
     # single pass through chairman over decisions.jsonl).
     raise_if_canceled()
     write_progress("stage3")
-    print(f"  Stage 3: pair mining (chairman: {chairman})…", flush=True)
+    print(f"  Stage 3: pair mining (chairman: {chairman})…", flush=True, file=_sys.stderr)
     stage3_prompt = stage3_pair_mining_prompt(decisions)
     stage3_result = _stage_run_with_fallback(stage3_prompt, config, chairman, Path.cwd())
     pairs = stage3_parse(stage3_result.stdout or "")
-    print(f"           → {len(pairs)} candidate pairs proposed", flush=True)
+    print(f"           → {len(pairs)} candidate pairs proposed", flush=True, file=_sys.stderr)
 
     # Stage 4: deterministic basin post-filter. The report callback prints the
     # verdict distribution BEFORE the guarded write, so when the cliff-drop
@@ -1005,7 +1003,7 @@ def build_me_via_lens_pipeline(
     # log records which gate killed the candidates instead of just the refusal.
     accepted, orderings = stage4_post_filter(
         pairs, decisions,
-        report=lambda line: print(f"           → stage 4 {line}", flush=True),
+        report=lambda line: print(f"           → stage 4 {line}", flush=True, file=_sys.stderr),
     )
 
     # Stage 4b (the literal same-axis-opposite-pole contradiction detector, #141)
@@ -1090,7 +1088,7 @@ def build_me_via_lens_pipeline(
                 # intersection) returns a list and seeds.
                 if seed_ids is not None:
                     save_blast_cap_seed(seed_ids)
-                    print(f"  Blast-cap flush: pinned {len(seed_ids)} drift-stable tension(s)", flush=True)
+                    print(f"  Blast-cap flush: pinned {len(seed_ids)} drift-stable tension(s)", flush=True, file=_sys.stderr)
             except Exception:
                 pass  # unseeded → retried next build; the lens build is untouched
         if active:
@@ -1100,8 +1098,7 @@ def build_me_via_lens_pipeline(
             print(
                 f"  Stage 4.5: registry has {active_count} active tension(s); "
                 f"rendering by support",
-                flush=True,
-            )
+                flush=True, file=_sys.stderr)
         # #254: cache the taste signature (the embedding-derived adjectives) so
         # the cold-open can read it cheaply at every paint instead of
         # re-embedding. Best-effort — the embedder is already loaded here.
@@ -1118,8 +1115,7 @@ def build_me_via_lens_pipeline(
     except Exception as exc:
         print(
             f"  Stage 4.5: registry skipped ({exc}); rendering raw accepted",
-            flush=True,
-        )
+            flush=True, file=_sys.stderr)
 
     write_progress("registry")
 
@@ -1171,10 +1167,9 @@ def build_me_via_lens_pipeline(
                 print(
                     f"  Constitution (shadow): q-labeled {_n_labeled} act(s) → "
                     f"{len(_bundle.fix_clusters)} fix-cluster(s)",
-                    flush=True,
-                )
+                    flush=True, file=_sys.stderr)
     except Exception as exc:
-        print(f"  Constitution miner skipped ({exc})", flush=True)
+        print(f"  Constitution miner skipped ({exc})", flush=True, file=_sys.stderr)
     # Refresh the unified ledger (canonical export of every preference
     # act). Best-effort — never let the export break a build.
     try:
@@ -1208,10 +1203,9 @@ def build_me_via_lens_pipeline(
             print(
                 f"  Trajectory lens: {len(arcs)} arc(s) → "
                 f"{len(trajectories)} directional preference(s)",
-                flush=True,
-            )
+                flush=True, file=_sys.stderr)
     except Exception as exc:
-        print(f"  Trajectory lens skipped ({exc})", flush=True)
+        print(f"  Trajectory lens skipped ({exc})", flush=True, file=_sys.stderr)
         trajectories = []
     me_doc = render_me_markdown(
         render_pairs, orderings, rejections, tension_support, preference_acts,
@@ -1231,8 +1225,7 @@ def build_me_via_lens_pipeline(
         print(
             "  ⚠ lens-build produced a tension-less lens (empty Stage 3 + tension "
             "registry unavailable); existing lens.md preserved. Re-run lens-build.",
-            flush=True,
-        )
+            flush=True, file=_sys.stderr)
         # Deliberately skip the corpus-fingerprint write too: a degenerate build
         # must NOT mark this corpus state "done", or a retry would skip the
         # pipeline and the lens would stay stuck on the preserved-but-stale copy.
@@ -1288,7 +1281,7 @@ def build_me_via_lens_pipeline(
             if generators_enabled():
                 from .state_paths import generators_path
 
-                print("  Generators: lifting task tensions to cross-domain invariants…", flush=True)
+                print("  Generators: lifting task tensions to cross-domain invariants…", flush=True, file=_sys.stderr)
                 _gen = build_generators()
                 if _gen.get("ok"):
                     _gp = generators_path()
@@ -1297,10 +1290,9 @@ def build_me_via_lens_pipeline(
                     print(
                         f"  Generators: {len(_gen['generators'])} cross-domain "
                         f"invariant(s) → {_gp.name}",
-                        flush=True,
-                    )
+                        flush=True, file=_sys.stderr)
         except Exception as exc:
-            print(f"  Generators: skipped ({exc})", flush=True)
+            print(f"  Generators: skipped ({exc})", flush=True, file=_sys.stderr)
 
     # Lens-skill auto-emit (the "lens = ambient" closure): render the freshly-
     # built lens as an agent-loadable SKILL.md so a harness that symlinked
@@ -1315,9 +1307,9 @@ def build_me_via_lens_pipeline(
             if lens_skill_enabled():
                 _sk = write_lens_skill()
                 if _sk.get("ok"):
-                    print(f"  Lens-skill: refreshed → {_sk['path']}", flush=True)
+                    print(f"  Lens-skill: refreshed → {_sk['path']}", flush=True, file=_sys.stderr)
         except Exception as exc:
-            print(f"  Lens-skill: skipped ({exc})", flush=True)
+            print(f"  Lens-skill: skipped ({exc})", flush=True, file=_sys.stderr)
 
     # #242: the build proper is done. A caller may still distill core.md (fast);
     # it bumps to "distill" then "done" itself. Marking "done" here keeps a

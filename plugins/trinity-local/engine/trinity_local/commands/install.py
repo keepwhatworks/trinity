@@ -63,6 +63,33 @@ def register(subparsers):
     )
     ilp.set_defaults(handler=handle_install_launcher)
 
+    # install-reflex — the activation layer (council_de2451dca3203cf1,
+    # 2026-07-04): MCP docstrings alone don't make agents USE the tools
+    # (observed: an instructed agent ignored them for a week until a
+    # CLAUDE.md-level rule forced the reflex). Writes a versioned managed
+    # block into the USER-GLOBAL ~/.claude/CLAUDE.md — loaded into every
+    # Claude Code session — teaching the cheap-first ladder. Explicit
+    # opt-in (running this command IS the consent), idempotent rewrite,
+    # --remove for clean uninstall. The AskUserQuestion hook variant is
+    # deliberately NOT installed by default (council 2-1: advanced option;
+    # a hook firing on every question risks trust-eroding noise).
+    irx = subparsers.add_parser(
+        "install-reflex",
+        help="Teach YOUR Claude Code to actually use Trinity: writes a short "
+             "managed rule into the user-global ~/.claude/CLAUDE.md (route=free "
+             "→ ask≈1 call → run_council when contested). Idempotent; "
+             "--remove uninstalls the block cleanly.",
+    )
+    irx.add_argument(
+        "--remove", action="store_true",
+        help="Remove the managed reflex block from ~/.claude/CLAUDE.md.",
+    )
+    irx.add_argument(
+        "--path", default=None,
+        help="Override the CLAUDE.md path (default: ~/.claude/CLAUDE.md).",
+    )
+    irx.set_defaults(handler=handle_install_reflex)
+
     # uninstall — inverse of install-mcp + install-extension + install-launcher.
     # The "own your data" wedge cuts the wrong way if removing Trinity
     # requires hand-editing 4 MCP configs + the Chrome manifest + the
@@ -1050,4 +1077,77 @@ def handle_uninstall(args) -> int:
             print("Add --include-data to also remove ~/.trinity/ (your corpus + memories).")
         if not getattr(args, "include_hf_cache", False):
             print("Add --include-hf-cache to also remove the nomic embed model.")
+    return 0
+
+
+# ── install-reflex (council_de2451dca3203cf1) ──────────────────────────────
+
+REFLEX_BEGIN = "<!-- trinity-local reflex v1 BEGIN (managed — edit via `trinity-local install-reflex`) -->"
+REFLEX_END = "<!-- trinity-local reflex v1 END -->"
+
+# ≤80 words, cheap-first ladder, chairman verdict as source of truth.
+REFLEX_TEXT = """## Trinity reflex
+
+Trinity Local is installed (MCP server `trinity-local`). Before presenting
+multi-option product/architectural choices, or committing a contested or
+hard-to-reverse call: `ask(mode="route")` is FREE and says which model to
+trust; `ask` (~1 call) returns a routed answer; `run_council` (~4 calls)
+returns a multi-model verdict through the user's own taste lens. Skip for
+trivial bugs, syntax, retrieval. Treat `agreed_claims`/`disagreed_claims`
+as the source of truth."""
+
+
+def handle_install_reflex(args):
+    """Write/remove the managed reflex block in the user-global CLAUDE.md.
+
+    Surgical by construction: everything outside the BEGIN/END markers is
+    byte-preserved; re-runs replace only the managed block (idempotent);
+    --remove deletes the block and any blank-line padding it added."""
+    import json as _json
+    from pathlib import Path
+
+    path = Path(args.path).expanduser() if getattr(args, "path", None) else (
+        Path.home() / ".claude" / "CLAUDE.md"
+    )
+    existing = path.read_text(encoding="utf-8") if path.exists() else ""
+    has_block = REFLEX_BEGIN in existing and REFLEX_END in existing
+
+    if getattr(args, "remove", False):
+        if not has_block:
+            print(_json.dumps({"ok": True, "removed": False,
+                               "detail": "no managed reflex block present",
+                               "path": str(path)}, indent=2))
+            return 0
+        pre, rest = existing.split(REFLEX_BEGIN, 1)
+        _, post = rest.split(REFLEX_END, 1)
+        new = pre.rstrip() + ("\n" if post.strip() else "") + post.lstrip("\n")
+        if not new.strip():
+            path.write_text("", encoding="utf-8")
+        else:
+            path.write_text(new if new.endswith("\n") else new + "\n", encoding="utf-8")
+        print(_json.dumps({"ok": True, "removed": True, "path": str(path)}, indent=2))
+        return 0
+
+    block = f"{REFLEX_BEGIN}\n{REFLEX_TEXT}\n{REFLEX_END}"
+    if has_block:
+        pre, rest = existing.split(REFLEX_BEGIN, 1)
+        _, post = rest.split(REFLEX_END, 1)
+        new = pre + block + post
+        action = "updated"
+    elif existing.strip():
+        new = existing.rstrip() + "\n\n" + block + "\n"
+        action = "appended"
+    else:
+        new = block + "\n"
+        action = "created"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(new, encoding="utf-8")
+    print(_json.dumps({
+        "ok": True, "action": action, "path": str(path),
+        "detail": "Every Claude Code session now loads the Trinity reflex "
+                  "(route=free → ask → council). Remove anytime: "
+                  "trinity-local install-reflex --remove",
+        "reinforce": "Also run `trinity-local install-skill` to make your "
+                     "taste lens agent-loadable (the council's C-mechanism).",
+    }, indent=2))
     return 0
