@@ -375,6 +375,43 @@ def render_primary_council_prompt(
                 )
     except Exception:
         pass
+        # Named tensions + the two-stage winner rule
+    # (council_33f3f375c82f03b1, 2026-07-05). The ablation proved the
+    # latent core.md read alone moves only 1/12 picks; all three council
+    # members agreed on explicit tension-scoring inside a quality gate —
+    # taste decides only among quality-equivalent answers, evidence-
+    # weighted, with citations — and rejected blended scoring (taste
+    # leaks into quality) and category-counting (drops evidence
+    # weights). Compact block (~600 chars), never the 25KB lens.md.
+    try:
+        from .me.pipeline import _TENSION_HEADING  # canonical predicate
+        from .state_paths import lens_path
+
+        lens_md = lens_path().read_text(encoding="utf-8") if lens_path().exists() else ""
+        tensions = _TENSION_HEADING.findall(lens_md)[:6]
+        if tensions:
+            tension_lines = "\n".join(
+                f"  {i}. {a} ↔ {b}" for i, (a, b) in enumerate(tensions, 1)
+            )
+            sections.append(
+                "The user's named taste tensions (mined from their real "
+                "decisions; each ranks one pole above the other for THIS "
+                "user):\n"
+                f"{tension_lines}\n\n"
+                "WINNER RULE — two stages, in order:\n"
+                "Stage 1 (quality gate): if one answer is CLEARLY stronger "
+                "on correctness and completeness, it wins — taste never "
+                "overrides a clearly better answer.\n"
+                "Stage 2 (taste decides close calls): when two or more "
+                "answers are quality-equivalent, score EACH of them "
+                "against EACH numbered tension above with a one-line "
+                "citation from the answer's own text, and pick the winner "
+                "by lens fit. When Stage 2 decided the winner, add a "
+                "'## Lens fit' section to PART 1 showing those citations."
+            )
+    except Exception:
+        pass
+
     # Horizon hint (#139): classify the query and tell chairman which
     # lens-card resolution to weight. lens.md emits `[tactical]` /
     # `[strategic]` / `[philosophical]` tags on abstract lenses; without
