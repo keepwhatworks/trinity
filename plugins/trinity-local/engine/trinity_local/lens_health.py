@@ -37,6 +37,7 @@ COVERAGE_MIN_NODES = 500         # below this, ingest is still ramping — don't
 BASIN_COLLAPSE_FLOOR = 0.40      # one basin holding ≥40% of turn-mass → collapsed topology
 CONTAMINATION_WEAK_FLOOR = 0.25  # ≥25% of ledger acts agent-loop-shaped → the mirror reflects the machine
 CONTAMINATION_MIN_ACTS = 20      # below this the fraction is noise → abstain
+PALATE_WEAK_FLOOR = 0.60         # live stand-in accuracy below this (n≥10) → the palate claim isn't holding
 BASIN_CONCENTRATION_WARN = 0.25  # ≥25% in one basin → concentration warning (weak)
 TEMPLATE_POLLUTION_DEGRADE_FRAC = 0.15  # ≥15% of basins template-concentrated → widespread (blocks trust)
 NOISE_FRACTION_FLOOR = 0.35      # >35% of the corpus near the noise prototype → learning from junk
@@ -498,6 +499,57 @@ def _ledger_contamination() -> LensCheck:
     )
 
 
+def _palate_prospective(backend_ok: bool) -> LensCheck:
+    """Prospective palate accuracy (the stand-in claim, scored on LIVE choices).
+    Each correction act arriving AFTER the direction was frozen is a real user
+    choice the direction never saw; the registry scores them as they accumulate
+    (me/palate_registry.py — train-on-test walled by the fit-id set, abstains
+    below the noise gap). Pre-registered: WEAK below PALATE_WEAK_FLOOR once
+    n >= EARLY_N decided trials; early counts read as accumulating, not as a
+    number. Scoring here is 2 local embeds per new act — cheap."""
+    if not backend_ok:
+        return LensCheck("palate_prospective", "Palate (prospective)", ABSTAIN,
+                         "Not measurable on the TF-IDF fallback — needs real embeddings.")
+    try:
+        from .me.palate_registry import EARLY_N, score_prospective
+        sig = score_prospective()
+    except Exception as exc:  # noqa: BLE001
+        return LensCheck("palate_prospective", "Palate (prospective)", ABSTAIN,
+                         f"Couldn't score this run — {type(exc).__name__}.")
+    if not sig.get("ready"):
+        return LensCheck("palate_prospective", "Palate (prospective)", ABSTAIN,
+                         f"Not measurable yet ({sig.get('reason', 'no snapshot')}).")
+    metric = {k: sig.get(k) for k in ("trials", "decided", "correct", "incorrect",
+                                      "abstained", "accuracy")}
+    acc = sig.get("accuracy")
+    if sig.get("early"):
+        return LensCheck(
+            "palate_prospective", "Palate (prospective)", OK,
+            f"accumulating — {sig.get('decided', 0)} decided live trial(s) so far "
+            f"(needs {EARLY_N} before the accuracy reads as a number); "
+            f"{sig.get('abstained', 0)} honest abstain(s).",
+            metric=metric,
+        )
+    if acc is not None and acc < PALATE_WEAK_FLOOR:
+        return LensCheck(
+            "palate_prospective", "Palate (prospective)", WEAK,
+            f"live stand-in accuracy {acc*100:.0f}% over {sig['decided']} decided "
+            f"trials — below the {PALATE_WEAK_FLOOR*100:.0f}% floor. The palate "
+            "claim isn't holding on live choices; the divergent acts are the "
+            "next build's blind-spot signal.",
+            metric=metric,
+            fix="Re-run `trinity-local lens` after the ledger grows — the "
+                "mis-ranked corrections become their own tension.",
+        )
+    return LensCheck(
+        "palate_prospective", "Palate (prospective)", OK,
+        f"live stand-in accuracy {acc*100:.0f}% over {sig['decided']} decided "
+        f"prospective trials ({sig.get('abstained', 0)} abstained) — scored on "
+        "choices the frozen direction never saw.",
+        metric=metric,
+    )
+
+
 def run_lens_health() -> LensHealthReport:
     """Run every dimension against the live ~/.trinity and return an honest verdict.
     Read-only; never raises."""
@@ -523,6 +575,7 @@ def run_lens_health() -> LensHealthReport:
         _semantic_noise(backend.status == OK),
         _preference_collapse(backend.status == OK),
         _ledger_contamination(),
+        _palate_prospective(backend.status == OK),
         _lens_structure(lens_f),
         _freshness(),
         _known_issues(other_f),

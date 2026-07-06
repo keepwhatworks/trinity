@@ -80,6 +80,7 @@ with its classification and gate.
 | `auto_iterate_recommended` | `mcp_server.py` | heuristic hint (task *shape*, no data floor) | `polish` — polish-shaped task detection; offers iteration, no data-quality claim |
 | `should_auto_council` | `mcp_server.py` | heuristic hint (route *mode*, no data floor) | `mode == "council"` — derived from the routing decision, no data-quality claim |
 | `judge_validated` | `evals/runner.py` + `commands/eval.py` | **data-directive** (trust the leaderboard ranking) | `judge_agreement >= JUDGE_VALIDITY_FLOOR (0.70, pre-registered above the best measured judge)`; None = unmeasured; every ranking surface stamps the caveat when not True; degenerate tests in `test_judge_validity_gate.py` |
+| `palate accuracy` (prospective) | `me/palate_registry.py` + `lens_health._palate_prospective` | **data-directive** (backs the "lens picks what you'd pick" stand-in claim) | accuracy over DECIDED trials only (abstains disclosed, never counted); reads as a number only at n ≥ EARLY_N (10); WEAK below PALATE_WEAK_FLOOR (0.60); train-on-test walled by the snapshot fit-id set; mutation-proven in `test_palate_registry.py` |
 
 "Heuristic hint" greens gate on task/route *shape*, not on a *data distribution*,
 so they need no degeneracy floor — but they must be classified here (the ratchet

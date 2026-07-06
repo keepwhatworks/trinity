@@ -279,6 +279,11 @@ def _post_build_hooks(dry_run: bool) -> dict:
         out["distill"] = distill_via_chairman()
     except Exception as exc:
         out["distill"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    try:
+        from ..me.palate_registry import record_direction_snapshot
+        out["palate_snapshot"] = record_direction_snapshot()
+    except Exception as exc:
+        out["palate_snapshot"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
     return out
 
 
