@@ -543,6 +543,44 @@ re-deriving. 35 principles total.
 
 ---
 
+36. **Extend before believing — a promising small-n result is noise until the
+    extension holds.** Earned 2026-07-05, the generation ablation: batch 1 read
+    7/10 for the lens arm — a believer ships the claim there. The pre-committed
+    n=30 extension collapsed it to 16/30, p=0.43, exactly chance; the first ten
+    were sampling luck. The pattern generalizes: whenever a measurement will
+    back a CLAIM (copy, a default flag, a marketing number), decide the full n
+    and the significance bar BEFORE seeing any results, and treat an early
+    lead as a reason to keep measuring, never as a reason to stop. Corollary
+    from the same day: sample windows drift between runs ("newest 12" means
+    different councils tomorrow) — compare per-ID, not rate-vs-rate.
+    Established names: **optional stopping / peeking** (the garden of forking
+    paths); sequential-testing discipline.
+
+37. **The falsifier binds — a feature that fails its pre-registered kill
+    condition ships DORMANT with the number in its docstring.** Earned
+    2026-07-05: the member-lens block (council-designed, mutation-proven,
+    fully implemented) measured null, so it shipped default-OFF with the
+    measurement documented where the next engineer will look
+    (`_member_lens_constraints`, council_7e031d6e431bcceb's kill condition).
+    The alternative timeline — quietly keeping it ON because the work was
+    done — is how products accrete unmeasured machinery and unearned claims.
+    Registering the kill condition with a third party (the council outcome)
+    BEFORE implementation is what made honoring it cheap: there was nothing
+    to argue about. Pair with #32 (retract when measurement contradicts) —
+    this is #32 applied to your OWN feature before anyone else sees it.
+
+38. **Copy is a projection of the measured-claims ledger — when a measurement
+    dies, sweep every surface the same day.** Earned 2026-07-05 (28ecf22f):
+    the "answers come back in your voice" claim died with the generation
+    null, and the honest response was a single-commit sweep of ~10 surfaces
+    (README, health nags, cold-open, MCP resource descriptions, CLI help,
+    both SKILL.md copies, umbrella installer) replacing the outcome-claim
+    with the measured claims (tie-breaks 1/12 real; palate 90% held-out;
+    evals). The generalization: maintain an explicit claim→instrument table
+    (the trinity-discipline skill carries it) so "what may the copy say?"
+    is a lookup, not a debate — and a claim with no instrument is not copy,
+    it's a hypothesis.
+
 ## Prior art — most of these are rediscoveries, and that's reassuring
 
 Asked (2026-06-02) whether established frameworks already give us these principles:
@@ -567,6 +605,9 @@ instead of re-deriving it. The mapping:
 | #33 verification pins an invariant | **Characterization / Golden-Master / Approval testing** (Michael Feathers, *Working Effectively with Legacy Code*) |
 | #34 the tool ingests its own output | **Model collapse / "the curse of recursion"** (Shumailov et al., *Nature* 2024) |
 | #35 pre-register the floor; abstention is a result | **Pre-registration** (Open Science Framework; Nosek et al.) vs p-hacking / the garden of forking paths; **exact small-sample tests** (sign test / Fisher-exact) over asymptotic approximations |
+| #36 extend before believing | **Optional stopping / peeking**; sequential analysis (Wald); the garden of forking paths (Gelman & Loken) |
+| #37 the falsifier binds; ship dormant with the number | **Pre-registered kill criteria** (clinical-trial stopping rules); Popperian falsification applied to one's own feature |
+| #38 copy projects the measured-claims ledger | **Single Source of Truth** applied to marketing; claims-as-code |
 
 The handful with NO clean external name are the genuinely Trinity-specific ones:
 **#1** (truncate in the renderer, not the serializer), **#2** (`file://` is the
