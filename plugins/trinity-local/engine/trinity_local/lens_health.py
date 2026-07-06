@@ -35,6 +35,8 @@ CORPUS_WEAK_FLOOR = 200          # < this many text-bearing prompts → too thin
 COVERAGE_FLOOR = 0.70            # mirror health_checks._EMBED_COVERAGE_FLOOR
 COVERAGE_MIN_NODES = 500         # below this, ingest is still ramping — don't flag coverage
 BASIN_COLLAPSE_FLOOR = 0.40      # one basin holding ≥40% of turn-mass → collapsed topology
+CONTAMINATION_WEAK_FLOOR = 0.25  # ≥25% of ledger acts agent-loop-shaped → the mirror reflects the machine
+CONTAMINATION_MIN_ACTS = 20      # below this the fraction is noise → abstain
 BASIN_CONCENTRATION_WARN = 0.25  # ≥25% in one basin → concentration warning (weak)
 TEMPLATE_POLLUTION_DEGRADE_FRAC = 0.15  # ≥15% of basins template-concentrated → widespread (blocks trust)
 NOISE_FRACTION_FLOOR = 0.35      # >35% of the corpus near the noise prototype → learning from junk
@@ -440,6 +442,62 @@ def _freshness() -> LensCheck:
                      "the lens reflects your latest transcripts.")
 
 
+def _ledger_contamination() -> LensCheck:
+    """Self-reflection meter (architecture council 2026-07-04, item 4 — the
+    THIRD wall). The provenance gate certifies an act anchors to a REAL
+    transcript turn — but Trinity's own agent-loop output IS a real transcript
+    turn, so self-generated interactions pass that wall untouched and the
+    model-collapse vector the founder-lock exists to block walks in through
+    re-ingestion. This meter measures the fraction of ledger acts whose text
+    is agent-loop-shaped (Trinity/council/harness vocabulary — the generated
+    SHAPE, not the founder's words). Pre-registered: WEAK at
+    CONTAMINATION_WEAK_FLOOR; abstains below CONTAMINATION_MIN_ACTS.
+    Founder-corpus baseline 2026-07-04: 9% — comfortably under the floor."""
+    import re
+
+    try:
+        from .me.preference_acts import load_preference_acts
+        acts = load_preference_acts()
+    except Exception as exc:  # noqa: BLE001
+        return LensCheck("ledger_contamination", "Ledger self-reflection", ABSTAIN,
+                         f"Couldn't read the ledger — {type(exc).__name__}.")
+    if len(acts) < CONTAMINATION_MIN_ACTS:
+        return LensCheck("ledger_contamination", "Ledger self-reflection", ABSTAIN,
+                         f"Only {len(acts)} ledger act(s) — fraction is noise below "
+                         f"{CONTAMINATION_MIN_ACTS}.")
+    agent_shape = re.compile(
+        r"trinity|council|chairman|\blens\b|basin|eval[- _]run|routing|picks\.json|"
+        r"pytest|mutation|CHANGELOG|sync_public|launchpad|capture[-_]host|"
+        r"claude code|subagent|CLAUDE\.md|\bMCP\b", re.I)
+    def _shaped(act) -> bool:
+        text = " ".join(
+            str(getattr(act, f, "") or "")[:400]
+            for f in ("question_text", "privileged", "sacrificed", "prompt_text")
+        )
+        return bool(agent_shape.search(text))
+    n = len(acts)
+    hits = sum(1 for a in acts if _shaped(a))
+    frac = hits / n
+    metric = {"contaminated": hits, "total": n, "fraction": round(frac, 3)}
+    if frac >= CONTAMINATION_WEAK_FLOOR:
+        return LensCheck(
+            "ledger_contamination", "Ledger self-reflection", WEAK,
+            f"{frac*100:.0f}% of ledger acts ({hits}/{n}) are agent-loop-shaped — the lens "
+            "is partly reflecting the machine's own output back at itself. The tensions "
+            "may encode Trinity's working vocabulary, not your taste.",
+            metric=metric,
+            fix="Review recent agent-heavy sessions; the ingest generated-shape filter "
+                "should catch these — if the fraction keeps rising, that filter needs "
+                "new patterns for your loop's vocabulary.",
+        )
+    return LensCheck(
+        "ledger_contamination", "Ledger self-reflection", OK,
+        f"{frac*100:.0f}% of ledger acts agent-loop-shaped ({hits}/{n}) — under the "
+        f"{CONTAMINATION_WEAK_FLOOR*100:.0f}% floor; the signal is the user's.",
+        metric=metric,
+    )
+
+
 def run_lens_health() -> LensHealthReport:
     """Run every dimension against the live ~/.trinity and return an honest verdict.
     Read-only; never raises."""
@@ -464,6 +522,7 @@ def run_lens_health() -> LensHealthReport:
         _basins(basin_f),
         _semantic_noise(backend.status == OK),
         _preference_collapse(backend.status == OK),
+        _ledger_contamination(),
         _lens_structure(lens_f),
         _freshness(),
         _known_issues(other_f),

@@ -96,13 +96,18 @@ The `lens` pipeline now centers on the unified
 (REFRAME / COMPRESSION / REDIRECT / SHARPENING), explicit decisions and
 provider imports join the same store, and later stages build basins, paired
 tensions, trajectories, correction vectors, and recency-aware registry support.
-Two walls hold the loop honest. Every ledger write passes a provenance gate —
-an act must anchor to a real transcript turn, so the ledger stays a projection
-of ground truth (councils, evals, and chairman outcomes never feed the lens;
-that edge is deliberately unwired). And lens writes are clobber-guarded — a
-degenerate extraction quarantines to a `.degenerate` sidecar instead of wiping
-a live lens, with the stage-4 verdict distribution logged before every guarded
-write. Real ModernBERT embeddings power semantic geometry when available;
+Three walls hold the loop honest. Every ledger write passes a provenance
+gate — an act must anchor to a real transcript turn, so the ledger stays a
+projection of ground truth (councils, evals, and chairman outcomes never feed
+the lens; that edge is deliberately unwired). Lens writes are clobber-guarded
+— a degenerate extraction quarantines to a `.degenerate` sidecar instead of
+wiping a live lens, with the stage-4 verdict distribution logged before every
+guarded write. And because Trinity's own agent-loop output is itself a real
+transcript turn — provenance guards fabrication, not reflection — a
+self-reflection meter (`lens-health`'s ledger-contamination check,
+pre-registered floor 25%) measures the fraction of ledger acts that are
+agent-loop-shaped, so a lens quietly converging on the machine's own
+vocabulary reads WEAK instead of green (founder-corpus baseline: 9%). Real ModernBERT embeddings power semantic geometry when available;
 TF-IDF is kept as a lexical fallback and semantic flows abstain when real
 embeddings are not loaded.
 
