@@ -143,38 +143,37 @@ def append_launch_event(event: LaunchEvent) -> None:
 
 
 def render_member_prompt(bundle: PromptBundle) -> str:
-    """Build the council-member prompt (currently identical across providers).
+    """Build the council-member prompt (shared across providers) — now
+    lens-conditioned at GENERATION.
 
-    DESIGN HOLE (digital-twin vision, 2026-05-16): this function returns
-    the SAME prompt for every member. The chairman is lens-conditioned
-    (reads core.md before synthesis) but the dispatch is not — each
-    model receives the raw user prompt with no taste-derived twist.
+    The 2026-05-16 "digital-twin" DESIGN HOLE that used to live here was
+    closed 2026-07-05 by council_7e031d6e431bcceb (unanimous): the lens's
+    own axes (REFRAME/REDIRECT/SHARPENING/COMPRESSION) are generation
+    acts, and the causal ablation showed the selection-side read moves
+    only 1/12 chairman picks — a generation signal was wired into a
+    selection slot. So the tensions now condition the MEMBER prompt:
+    every answer arrives taste-shaped before synthesis, and the chairman's
+    two-stage rule still guarantees correctness outranks taste.
 
-    The vision (per the user's persona-twin framing): each member's
-    prompt should be twisted the way the user would twist it, derived
-    from the lens + scoreboards. Example shape when adopted:
+    Read-side only: this reads lens.md; it never writes anything —
+    no council→lens edge (the founder lock).
 
-        render_member_prompt(bundle, provider_name="claude", lens=...)
-        → prepends "User has historically rejected over-engineered
-           answers (COMPRESSION rejection signal n=8, mean 0.50 on
-           your corpus). Prefer the tightest answer that lands."
-        render_member_prompt(bundle, provider_name="antigravity", lens=...)
-        → prepends "User's REFRAME rejection rate on your corpus is
-           low — don't pivot the question, answer it."
-
-    Inputs already on disk: ~/.trinity/me/preference_acts.jsonl (per-axis
-    rejection signal — the unified preference ledger), ~/.trinity/memories/lens.md
-    (paired tensions — cognitive-lens artifact the chairman reads),
-    ~/.trinity/scoreboard/picks.json (per-task_type winner rules).
-
-    Not implemented yet. When implemented, callers in council_runner.py
-    must pass provider_name + lens; today they call this with bundle
-    alone and get a shared prompt.
+    MEASURED NULL → default OFF (2026-07-05): the pre-registered generation
+    ablation came back at chance — combined n=30 paired contests, the
+    lens-conditioned answer aligned better on the validated lens direction
+    only 16/30 (one-sided p=0.43; the first batch's 7/10 was small-n noise
+    the n=30 extension corrected). Per the council's own kill condition the
+    block is dormant: TRINITY_LENS_MEMBERS=1 opts in (the experiment lever);
+    default renders no lens block. The selection-side two-stage rule stays —
+    its 1/12 tie-break effect is real (0/6 noise floor) and correct-by-design.
     """
     sections = [
         "You are one member of a multi-model council.",
         f"Task:\n{bundle.task_text}",
     ]
+    lens_block = _member_lens_constraints()
+    if lens_block:
+        sections.append(lens_block)
     if bundle.goal:
         sections.append(f"Goal:\n{bundle.goal}")
     if bundle.context_excerpt:
@@ -185,6 +184,43 @@ def render_member_prompt(bundle: PromptBundle) -> str:
         "Respond directly to the task. Do not mention the council. Be concise but complete."
     )
     return "\n\n".join(sections)
+
+
+def _member_lens_constraints() -> str:
+    """The user's named tensions as GENERATION constraints (compact, ≤6,
+    never the 25KB lens.md — same budget as the chairman's block).
+
+    Framing per the council: shape the answer's approach and form toward
+    the user's leans; never sacrifice correctness or completeness for
+    them — the chairman's quality gate would (rightly) punish that.
+    pole_a is canonically the user's optimized-for pole (pair-mining
+    schema: "the optimized-for axis"; lens.md renders privileged > sacrificed).
+    """
+    import os
+
+    if os.environ.get("TRINITY_LENS_MEMBERS", "0").strip().lower() not in ("1", "true"):
+        return ""  # dormant by measurement — see render_member_prompt docstring
+    try:
+        from .me.pipeline import _TENSION_HEADING
+        from .state_paths import lens_path
+
+        lp = lens_path()
+        lens_md = lp.read_text(encoding="utf-8") if lp.exists() else ""
+        tensions = _TENSION_HEADING.findall(lens_md)[:6]
+        if not tensions:
+            return ""
+        lines = "\n".join(
+            f"  {i}. prefer {a} over {b}" for i, (a, b) in enumerate(tensions, 1)
+        )
+        return (
+            "Shape your answer for THIS user (tensions mined from their real "
+            "decisions — the FIRST pole is the one they consistently choose):\n"
+            f"{lines}\n"
+            "Honor these in form and approach. Never sacrifice correctness or "
+            "completeness to satisfy them."
+        )
+    except Exception:
+        return ""
 
 
 def chairman_says_converged(routing_label: CouncilRoutingLabel | None) -> bool:

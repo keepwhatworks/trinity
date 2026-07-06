@@ -145,7 +145,7 @@ def register(subparsers):
         aliases=["lens-skill"],
         help="Register your lens as an agent-loadable SKILL.md — your TASTE skill, "
              "the artifact other agents (Claude Code, Cursor, Codex) load to "
-             "answer in your voice. Sibling of install-mcp / install-agent; the "
+             "write toward your leans. Sibling of install-mcp / install-agent; the "
              "artifact ships as 'your-taste' (the name foreign agents see). Writes "
              "~/.trinity/skills/your-taste/SKILL.md and prints the one-line symlink "
              "to make it ambient in ~/.claude/skills/. The private lens is generated "
@@ -448,7 +448,7 @@ def handle_lens_setup(args):
         return 1
 
     print(f"\n✓ Your lens is ready: {path}")
-    print("  The chairman now reads it on every council — answers come back in your voice.\n")
+    print("  The chairman now reads it on every council — when answers tie on quality, your lens picks the winner.\n")
     print("Make it richer — add your web AI history (the all-six-surfaces moat):")
     print("  • ChatGPT / Gemini / claude.ai exports:  trinity-local import-export <takeout>")
     print("  • live capture:                          trinity-local install-extension")

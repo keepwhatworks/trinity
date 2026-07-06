@@ -75,3 +75,52 @@ def test_tension_cap_six(tmp_path, monkeypatch):
     prompt = render_primary_council_prompt(bundle, members)
     assert "pole-6a ↔ pole-6b" in prompt
     assert "pole-7a ↔ pole-7b" not in prompt
+
+
+class TestMemberLensConditioning:
+    """Move B (council_7e031d6e431bcceb, 2026-07-05): the lens conditions
+    GENERATION — member prompts carry the tensions as constraints, with the
+    correctness guard, a kill switch, and the same compact budget as the
+    chairman block. Closes the 2026-05-16 digital-twin design hole."""
+
+    def test_member_prompt_carries_generation_constraints_when_opted_in(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        monkeypatch.setenv("TRINITY_LENS_MEMBERS", "1")
+        _seed_lens(tmp_path)
+        from trinity_local.council_runtime import render_member_prompt
+        bundle, _ = _bundle_and_members()
+        prompt = render_member_prompt(bundle)
+        assert "prefer pole-1a over pole-1b" in prompt  # lean direction: pole_a wins
+        assert "FIRST pole" in prompt
+        assert "Never sacrifice correctness" in prompt  # the generation-side quality guard
+        assert "Evidence for tension" not in prompt      # compact block, not raw lens.md
+
+    def test_default_is_dormant(self, tmp_path, monkeypatch):
+        """Measured null (n=30, p=0.43) → the generation block defaults OFF;
+        it must not render without explicit opt-in."""
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        monkeypatch.delenv("TRINITY_LENS_MEMBERS", raising=False)
+        _seed_lens(tmp_path)
+        from trinity_local.council_runtime import render_member_prompt
+        bundle, _ = _bundle_and_members()
+        prompt = render_member_prompt(bundle)
+        assert "prefer pole-1a" not in prompt and "FIRST pole" not in prompt
+
+    def test_no_lens_keeps_prompt_clean(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        monkeypatch.delenv("TRINITY_LENS_MEMBERS", raising=False)
+        from trinity_local.council_runtime import render_member_prompt
+        bundle, _ = _bundle_and_members()
+        prompt = render_member_prompt(bundle)
+        assert "FIRST pole" not in prompt
+        assert "Task:" in prompt
+
+    def test_tension_cap_six_members(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        monkeypatch.setenv("TRINITY_LENS_MEMBERS", "1")
+        _seed_lens(tmp_path, n_tensions=9)
+        from trinity_local.council_runtime import render_member_prompt
+        bundle, _ = _bundle_and_members()
+        prompt = render_member_prompt(bundle)
+        assert "prefer pole-6a over pole-6b" in prompt
+        assert "pole-7a" not in prompt

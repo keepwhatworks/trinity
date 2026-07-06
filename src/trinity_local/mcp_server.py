@@ -631,7 +631,7 @@ def _resource_catalog() -> list[tuple[str, str, str, str, Any]]:
         (
             "trinity://memories/core.md",
             "Trinity Core Memory",
-            "Your one-paragraph manifesto — chairman reads this first to ground every council in your voice.",
+            "Your one-paragraph manifesto — chairman reads this first; your lens decides quality-ties on every council.",
             "text/markdown",
             # core.md lives at the TOP LEVEL (~/.trinity/core.md via core_path()),
             # NOT under memories/ like lens/topics/vocabulary. The URI keeps the

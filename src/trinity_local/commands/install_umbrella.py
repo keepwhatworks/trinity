@@ -29,7 +29,7 @@ _INSTALL_VERBS: list[tuple[str, str]] = [
     (
         "install-skill",
         "Register your lens as an agent-loadable SKILL.md — the artifact other "
-        "agents load to answer in your voice (~/.trinity/skills/your-taste/).",
+        "agents load to write toward your leans (~/.trinity/skills/your-taste/).",
     ),
     (
         "install-agent",

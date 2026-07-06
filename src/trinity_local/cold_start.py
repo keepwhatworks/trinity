@@ -791,7 +791,7 @@ def cold_open_tension() -> str | None:
                     proof = (
                         f"Across {n} decisions you keep navigating “{t.pole_a}” "
                         f"vs “{t.pole_b}” — the chairman reads that tension on "
-                        f"every council, so answers come back in your voice."
+                        f"every council — when answers tie on quality, your lens picks the winner."
                     )
                 else:
                     proof = (

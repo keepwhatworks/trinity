@@ -1276,7 +1276,7 @@ def _next_step_hint(report: DoctorReport) -> str | None:
     zero-setup win — the lens is the opt-in add-on, never a prerequisite):
       - <2 providers green: nothing to try yet (need two for a council)
       - ≥2 providers green, no lens: run a council NOW, then offer the lens
-      - ≥2 providers green AND lens built: run a council in your voice
+      - ≥2 providers green AND lens built: run a council where your lens breaks the ties
     """
     provider_checks = [c for c in report.checks if c.name.startswith("provider:")]
     green_providers = [c for c in provider_checks if c.ok]
@@ -1290,12 +1290,12 @@ def _next_step_hint(report: DoctorReport) -> str | None:
             "From inside Claude Code / Codex CLI / Cursor, ask the agent to "
             "'run a Trinity council on …', or from the CLI: "
             "`trinity-local council-launch --task 'your hard question'`. "
-            "Want the answer in your voice? Add the lens: `trinity-local lens-setup`."
+            "Want your taste in the loop? Add the lens: `trinity-local lens-setup`."
         )
     return (
         "Try this next: from inside Claude Code / Codex CLI / Cursor, ask "
         "the agent to 'run a Trinity council on …' — the MCP tools surface "
-        "inline and the chairman synthesizes in your voice via the lens."
+        "inline and the chairman lets your lens decide close calls."
     )
 
 

@@ -92,7 +92,7 @@ Requirements: Python 3.10+ and at least one of the `claude` / `codex` / `agy` CL
 
 ## How it works
 
-When you ask a hard question, Trinity runs it through Claude, ChatGPT, and Gemini in parallel and the chairman synthesizes one verdict — agreed claims, where they split, and why. That works the moment you install. In the background, Trinity reads the transcripts on your machine — CLI sessions on disk (Claude Code, Codex CLI, Antigravity), web chats the Chrome extension auto-captures locally (claude.ai, chatgpt.com, gemini.google.com), and any manual exports you've imported (claude.ai exports, ChatGPT exports, Gemini Takeout) — and distills the pattern in **how you rephrase, push back, and decide** into a taste lens. Over your first handful of councils, the chairman starts reading that lens, so the synthesis comes back in your voice, not in the voice of a generic model.
+When you ask a hard question, Trinity runs it through Claude, ChatGPT, and Gemini in parallel and the chairman synthesizes one verdict — agreed claims, where they split, and why. That works the moment you install. In the background, Trinity reads the transcripts on your machine — CLI sessions on disk (Claude Code, Codex CLI, Antigravity), web chats the Chrome extension auto-captures locally (claude.ai, chatgpt.com, gemini.google.com), and any manual exports you've imported (claude.ai exports, ChatGPT exports, Gemini Takeout) — and distills the pattern in **how you rephrase, push back, and decide** into a taste lens. Over your first handful of councils, the chairman starts reading that lens: when answers tie on quality, it scores them against your named tensions and your taste picks the winner. The same lens powers personal evals — score any model against your own past corrections.
 
 > **Anthropic can't recommend ChatGPT. OpenAI can't recommend Claude. Google can't recommend either. The competitive constraint is structural, not technical.** The labs that built the models you trust are commercially blocked from helping you use a competitor — so the cross-provider memory layer has to come from outside the labs. That's what Trinity is.
 
@@ -201,7 +201,7 @@ The folder is the API. `~/.trinity/memories/lens.md` is Markdown; council outcom
 | Privacy | **Corpus stays on disk** | n/a | n/a | Prompts route through their servers | Hosted |
 | Personalization | **Personal routing table improves with use** | One global ranking | Per-test-suite | None | None |
 | Personal benchmarks | **`eval-run` scores any model against YOUR actual rejections** | Synthetic prompts | Static fixtures | n/a | n/a |
-| Council reads through your lens | **Chairman synthesizes in your voice — distilled from past transcripts** | n/a | n/a | n/a | Generic synthesis |
+| Council reads through your lens | **Your lens (mined from your transcripts) breaks the chairman's quality-ties + powers personal evals** | n/a | n/a | n/a | Generic synthesis |
 | Shareable artifact | **`lens` PNG card** | Leaderboard link | Eval report | n/a | Per-prompt summary |
 
 If you want "which model is best in general," LMArena. If you want "which model handles **this

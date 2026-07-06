@@ -196,7 +196,8 @@ class TestColdOpenSignature:
         line = cold_open_tension()
         assert line.startswith("Your taste in three words: terse, decisive, action.")
         assert "executable artifact" in line and "17 decisions" in line
-        assert "comes back in your voice" in line or "your voice" in line
+        # measured claim only (generation null n=30 p=0.43, tie-break real 1/12):
+        assert "your lens picks the winner" in line
 
     def test_falls_back_to_tension_line_without_signature(self):
         from trinity_local.cold_start import cold_open_tension

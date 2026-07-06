@@ -141,7 +141,7 @@ The personal ledger (`~/.trinity/council_outcomes/`) never uploads. If the user 
 Suggest these to the user after section 5 succeeds:
 
 > Trinity is set up. Next steps:
-> - `/council <a hard question>` — dispatch through all three providers, synthesized in your voice
+> - `/council <a hard question>` — dispatch through all three providers — your lens breaks the chairman's quality-ties
 > - `trinity-local portal-html --open-browser` — the launchpad: recent councils, lens preview, eval leaderboard, topic graph
 > - `trinity-local me-card --open` — render your strongest lens as a sharable PNG
 
