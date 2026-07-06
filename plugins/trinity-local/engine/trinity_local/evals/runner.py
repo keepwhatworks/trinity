@@ -74,6 +74,15 @@ class EvalItemRun:
         return asdict(self)
 
 
+# Pre-registered (2026-07-06): a judge must agree with the user's own past
+# corrections at least this often before its rankings read as decisive.
+# Today's measured judges sit at 0.50-0.65 (claude coin-flip; antigravity
+# length-confounded) — so nothing clears the floor yet, and every leaderboard
+# carries the caveat until a judge earns it. Lowering this to make a green
+# appear is the exact #35 failure this gate exists to prevent.
+JUDGE_VALIDITY_FLOOR = 0.70
+
+
 @dataclass
 class EvalRunResult:
     eval_id: str
@@ -122,6 +131,14 @@ class EvalRunResult:
     # the aggregate is a valid ranking like any other judge's. Re-validate per
     # model change; codex/GPT family was untested (credit outage that run).
     self_judge: bool = False
+    # Judge-validity gate (architecture council 2026-07-04, item 3 — "the
+    # loudest green with the weakest invariant"): a leaderboard ranking is
+    # only as trustworthy as the judge's measured agreement with the user's
+    # OWN corrections. True = agreement >= JUDGE_VALIDITY_FLOOR; False =
+    # measured below it (rankings are directional, not decisive); None =
+    # never measured (run `trinity-local eval-judge-check`). Surfaces stamp
+    # the caveat from this field — the disqualifier lives IN the gate.
+    judge_validated: bool | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -144,6 +161,7 @@ class EvalRunResult:
             "judge_agreement": self.judge_agreement,
             "judge_alignment_n": self.judge_alignment_n,
             "self_judge": self.self_judge,
+            "judge_validated": self.judge_validated,
         }
 
     def result_path(self) -> Path:

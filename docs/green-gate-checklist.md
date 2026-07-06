@@ -79,6 +79,7 @@ with its classification and gate.
 | `flip_recommended` | `me/holdout_scorer.py` | **data-directive** (promote geometry to spine) | `wins_all AND coverage ≥ COVERAGE_FLOOR (0.5)` + `N_C_FLOOR=5` + `MIN_DISCORDANT_PAIRS=10`, all pre-registered |
 | `auto_iterate_recommended` | `mcp_server.py` | heuristic hint (task *shape*, no data floor) | `polish` — polish-shaped task detection; offers iteration, no data-quality claim |
 | `should_auto_council` | `mcp_server.py` | heuristic hint (route *mode*, no data floor) | `mode == "council"` — derived from the routing decision, no data-quality claim |
+| `judge_validated` | `evals/runner.py` + `commands/eval.py` | **data-directive** (trust the leaderboard ranking) | `judge_agreement >= JUDGE_VALIDITY_FLOOR (0.70, pre-registered above the best measured judge)`; None = unmeasured; every ranking surface stamps the caveat when not True; degenerate tests in `test_judge_validity_gate.py` |
 
 "Heuristic hint" greens gate on task/route *shape*, not on a *data distribution*,
 so they need no degeneracy floor — but they must be classified here (the ratchet

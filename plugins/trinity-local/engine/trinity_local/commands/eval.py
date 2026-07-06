@@ -514,11 +514,21 @@ def _record_judge_alignment(run_result, judge: str, report: dict | None) -> None
     run result, so the card can show 'judged by X — agrees with your corrections Y%'.
     Best-effort; a missing report just leaves the fields None."""
     if not report:
-        return
+        return  # judge_validated stays None — unmeasured, surfaces say so
     entry = (report.get("judges") or {}).get(judge)
     if isinstance(entry, dict):
         run_result.judge_agreement = entry.get("agreement")
         run_result.judge_alignment_n = entry.get("n_parsed")
+        # The validity gate (pre-registered floor; see runner.py): measured
+        # below the floor → rankings stamp as directional-not-decisive.
+        try:
+            from ..evals.runner import JUDGE_VALIDITY_FLOOR
+            ag = run_result.judge_agreement
+            run_result.judge_validated = (
+                float(ag) >= JUDGE_VALIDITY_FLOOR if ag is not None else None
+            )
+        except (TypeError, ValueError):
+            run_result.judge_validated = None
 
 
 def handle_eval_judge_check(args):
@@ -930,6 +940,21 @@ def handle_eval_run(args):
                   f"{run_result.items_failed} dispatch failure(s) excluded. If failures "
                   f"cluster on hard prompts the score is inflated; re-run before comparing "
                   f"against a full run.")
+        # Judge-validity stamp (council item 3): the ranking is only as
+        # trustworthy as the judge's measured agreement with the user's own
+        # corrections. Below the pre-registered floor (or unmeasured), the
+        # number reads as directional — say so where it's read.
+        jv = getattr(run_result, "judge_validated", None)
+        if jv is False:
+            from ..evals.runner import JUDGE_VALIDITY_FLOOR
+            ag = run_result.judge_agreement
+            print(f"  ⚠ judge validity: measured agreement with your corrections is "
+                  f"{ag:.0%} — below the {JUDGE_VALIDITY_FLOOR:.0%} floor. Treat this "
+                  f"score as directional, not a decisive ranking.")
+        elif jv is None:
+            print("  ⚠ judge validity: unmeasured — run `trinity-local eval-judge-check` "
+                  "to validate the judge against your own corrections before comparing "
+                  "models on this number.")
         if run_result.by_rejection_type:
             from ..evals.scorer import AXIS_ONELINER
             print("  By rejection axis (what the user wanted that the rejected response missed):")
@@ -1160,6 +1185,7 @@ def _collect_leaderboard_rows(eval_id: str | None) -> tuple[list[dict], set[str]
             "items_total": data.get("items_total", 0),
             "items_failed": data.get("items_failed", 0),
             "judge": judge,
+            "judge_validated": data.get("judge_validated"),
             "eval_id": eid,
             "ran_at": data.get("completed_at") or data.get("started_at"),
             "by_axis": by_axis,
@@ -1171,6 +1197,20 @@ def _collect_leaderboard_rows(eval_id: str | None) -> tuple[list[dict], set[str]
         reverse=True,
     )
     return rows, eval_ids_seen
+
+
+def _print_judge_validity_note(rows: list[dict]) -> None:
+    """The leaderboard-level judge-validity stamp (council item 3): a ranking
+    whose judge never cleared the pre-registered agreement floor (or was never
+    measured) is directional, not decisive — say it ON the ranking surface."""
+    unval = [r["target"] for r in rows if r.get("judge_validated") is not True]
+    if not unval:
+        return
+    from ..evals.runner import JUDGE_VALIDITY_FLOOR
+    print(f"  ⚠ judge validity: {', '.join(unval)} scored by a judge below the "
+          f"{JUDGE_VALIDITY_FLOOR:.0%} agreement floor with your own corrections "
+          f"(or unmeasured). Treat this ranking as directional; run "
+          f"`trinity-local eval-judge-check` to (re)validate.")
 
 
 def _print_exclusion_note(rows: list[dict]) -> None:
@@ -1315,6 +1355,7 @@ def _handle_eval_compare(args):
                 print("  Per-axis leader:  " + "  |  ".join(leader_lines))
         print()
         _print_exclusion_note(rows)
+        _print_judge_validity_note(rows)
         return None
 
     print(f"    {'rank':<5} {'target':<14} {'n':<5} {'aggregate':>10}   {'judge':<14} {'ran'}")
@@ -1329,6 +1370,7 @@ def _handle_eval_compare(args):
         )
     print()
     _print_exclusion_note(rows)
+    _print_judge_validity_note(rows)
     # Suppress the "X leads Y by ±Z" head-to-head when rows span
     # different eval sets — same consistency rule shipped to the
     # per-axis leader synthesis (commits 83b9e99, 02f354d). The

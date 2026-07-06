@@ -649,13 +649,39 @@ def _check_cortex_basin_density() -> CheckResult:
     import statistics
 
     median_eps = statistics.median(eps)
+    # Routing-liveness disclosure (architecture council 2026-07-04, item 5 —
+    # measured 6/48 basins live on current-model evidence): report how many
+    # basins actually ROUTE under the shared gate (pick_routes: margin AND
+    # post-churn effective_n) and how many carry >=3 FRESH-model episodes,
+    # so `picks → ask` reads as what it is — dormant-until-densified (the
+    # trajectory-lens honesty) — instead of a silently-live personalization
+    # path. Best-effort: a legacy picks.json without churn fields still
+    # renders density alone.
+    liveness = ""
+    try:
+        from .lens_routing import load_topics_basins, pick_routes
+
+        n_basins = len(load_topics_basins() or []) or None
+        routed = sum(1 for v in data.values() if isinstance(v, dict) and pick_routes(v))
+        fresh_live = sum(
+            1 for v in data.values()
+            if isinstance(v, dict) and isinstance(v.get("fresh_n"), int) and v["fresh_n"] >= 3
+        )
+        denom = f"/{n_basins}" if n_basins else ""
+        liveness = (
+            f" Liveness: {routed}{denom} basins route under the margin+effective_n gate; "
+            f"{fresh_live} have >=3 current-model episodes — routing activates as fresh "
+            "councils accumulate."
+        )
+    except Exception:
+        liveness = ""
     # Pre-registered: stable centroids want ~10+ episodes; below 8 = sparse enough
     # that query alignment is weak and the margin gate abstains broadly.
     DENSE_EPISODE_FLOOR = 8
     if median_eps >= DENSE_EPISODE_FLOOR:
         return CheckResult(
             name="cortex_basin_density", ok=True,
-            detail=f"{len(eps)} routing basins, median n_episodes={median_eps:.0f} — dense enough to route confidently",
+            detail=f"{len(eps)} routing basins, median n_episodes={median_eps:.0f} — dense enough to route confidently.{liveness}",
         )
     # Sparse — but WHY? Two causes with OPPOSITE fixes:
     #   (a) STALE consolidation: councils exist on disk that aren't folded into any
@@ -680,6 +706,7 @@ def _check_cortex_basin_density() -> CheckResult:
                 "consolidated into basins yet — the sparsity is a STALE consolidation, not a "
                 "small corpus. Re-consolidate to fold them in and densify; the margin gate "
                 "sharpens as density rises — NOT a lower margin floor."
+                + liveness
             ),
             fix="trinity-local consolidate",
         )
@@ -693,6 +720,7 @@ def _check_cortex_basin_density() -> CheckResult:
             "until centroids densify, so cortex routing fires on fewer queries than a "
             "fuller corpus would — the fix is more rated councils per basin, NOT a lower "
             "margin floor."
+            + liveness
         ),
         fix="trinity-local consolidate   # after more rated councils accumulate, to densify basins",
     )
