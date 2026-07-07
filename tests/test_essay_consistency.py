@@ -1,0 +1,150 @@
+"""Essay-corpus consistency ratchet (2026-07-07).
+
+The founder's standing bar: the only direction essay quality may move is UP.
+Prose quality can't be tested, but every mechanical way an edit degrades the
+corpus CAN be — and each check below pins something the full manual audit of
+2026-07-07 verified true across all essays. An edit that breaks one of these
+reds the build before it reaches a reader.
+
+Companion skill (how to edit without tripping these):
+.claude/skills/essay-discipline/SKILL.md
+"""
+from __future__ import annotations
+
+import pathlib
+import re
+
+DOCS = pathlib.Path(__file__).resolve().parent.parent / "docs"
+ARTICLES = DOCS / "articles"
+
+
+def _essays() -> dict[str, str]:
+    return {p.name: p.read_text(encoding="utf-8")
+            for p in sorted(ARTICLES.glob("*.html"))}
+
+
+class TestStructuralAnatomy:
+    """Every essay carries the full template anatomy — a standalone-styled or
+    half-converted upload (the raw-draft shape both founder essays arrived in)
+    must not reach the site."""
+
+    def test_every_essay_has_the_template_anatomy(self):
+        for name, t in _essays().items():
+            assert f'articles/{name}' in t, f"{name}: canonical URL missing/wrong"
+            assert '../style.css' in t, f"{name}: not on the shared stylesheet (standalone-styled upload?)"
+            assert '<style>' not in t, f"{name}: inline <style> block — converted uploads must drop their own CSS"
+            assert 'class="topbar"' in t, f"{name}: site topbar missing"
+            assert 'trinity-callout' in t, f"{name}: Trinity callout missing"
+            assert 'class="references"' in t, f"{name}: lineage/references block missing"
+            assert re.search(r'class="meta">Essay · [A-Z][a-z]{2} \d{1,2}, \d{4}</div>', t), \
+                f"{name}: essay date meta missing or malformed"
+
+    def test_every_referenced_image_exists(self):
+        for name, t in _essays().items():
+            for m in re.finditer(r'(?:og:image" content="https://keepwhatworks\.com/articles/|<img src=")(img/[^"]+)"', t):
+                assert (ARTICLES / m.group(1)).exists(), \
+                    f"{name}: references {m.group(1)} which does not exist on disk"
+
+    def test_hero_and_og_image_agree(self):
+        """An essay with a hero must advertise it to social cards and vice
+        versa — the half-wired state (hero without og:image, or og:image
+        pointing at art the page doesn't show) ships broken previews."""
+        for name, t in _essays().items():
+            has_hero = '<figure class="hero">' in t
+            has_og = 'property="og:image"' in t
+            assert has_hero == has_og, (
+                f"{name}: hero figure and og:image disagree "
+                f"(hero={has_hero}, og:image={has_og})"
+            )
+
+
+class TestSiteIntegration:
+    def test_every_essay_has_an_index_card(self):
+        idx = (DOCS / "index.html").read_text(encoding="utf-8")
+        for name in _essays():
+            assert f'href="articles/{name}"' in idx, f"{name}: no index card"
+
+    def test_every_essay_is_in_the_sitemap(self):
+        sm = (DOCS / "sitemap.xml").read_text(encoding="utf-8")
+        for name in _essays():
+            assert f"articles/{name}" in sm, f"{name}: missing from sitemap.xml (the canary class)"
+
+    def test_index_card_dates_and_titles_match_the_essays(self):
+        idx = (DOCS / "index.html").read_text(encoding="utf-8")
+        cards = re.findall(
+            r'article-card" href="articles/([^"]+)">\s*<div class="meta">([^<]+)</div>\s*<h3>([^<]+)</h3>',
+            idx)
+        essays = _essays()
+        for href, meta, title in cards:
+            t = essays.get(href)
+            assert t is not None, f"index card points at missing essay {href}"
+            edate = re.search(r'class="meta">Essay · ([^<]+)</div>', t).group(1)
+            etitle = re.search(r'<h1>([^<]+)</h1>', t).group(1)
+            assert meta.split("·")[0].strip() == edate, \
+                f"{href}: card date {meta.split('·')[0].strip()!r} != essay date {edate!r}"
+            assert title == etitle, f"{href}: card title {title!r} != essay h1 {etitle!r}"
+
+    def test_internal_cross_links_resolve(self):
+        essays = _essays()
+        for name, t in essays.items():
+            for m in re.finditer(r'href="([a-z0-9-]+\.html)"', t):
+                assert m.group(1) in essays, \
+                    f"{name}: links to {m.group(1)} which does not exist"
+
+
+class TestStandaloneRule:
+    """The 2026-07-07 sweep: essays stand alone. No corpus-counting, no
+    'this site' framing that dates the piece and assumes the reader arrived
+    through the front door. you-are-the-specimen is the ALLOWLISTED
+    exception — its thesis IS turning the site's walls on their builder
+    (founder-authored framing, adjudicated 2026-07-07)."""
+
+    ALLOWLIST = {"you-are-the-specimen.html"}
+    BANNED = [
+        r"this (?:whole )?site has",
+        r"oldest claim on this site",
+        r"circling for \w+ essays",
+        r"\b(?:eight|nine|ten|eleven|twelve) essays\b",
+        r"as I (?:put it|argued) (?:elsewhere|in)",
+        r"in a previous essay",
+        r"an earlier essay",
+    ]
+
+    def test_no_corpus_dependent_framing(self):
+        for name, t in _essays().items():
+            if name in self.ALLOWLIST:
+                continue
+            prose = re.sub(r"<[^>]+>", "", t)
+            for pat in self.BANNED:
+                m = re.search(pat, prose, re.I)
+                assert not m, (
+                    f"{name}: corpus-dependent framing {m.group(0)!r} — essays must "
+                    "stand alone (keep the idea, cut the pointer; see the "
+                    "essay-discipline skill)"
+                )
+
+
+class TestClaimHygiene:
+    """Copy never outruns measurement — the essay-side edge of the
+    measured-claims ledger (trinity-discipline skill)."""
+
+    def test_dead_claims_stay_dead(self):
+        """'In your voice' died with the generation null (16/30, p=0.43,
+        2026-07-05). It must not creep back into any essay's prose."""
+        for name, t in _essays().items():
+            prose = re.sub(r"<[^>]+>", "", t)
+            assert "in your voice" not in prose.lower(), (
+                f"{name}: resurrects the dead generation claim — the palate "
+                "chooses (measured); it does not speak (measured null)"
+            )
+
+    def test_external_links_are_https_and_annotated(self):
+        """Every external link opens safely (target+noopener) — the pattern
+        the whole corpus follows; a bare externallink is an edit smell."""
+        for name, t in _essays().items():
+            for m in re.finditer(r'<a href="(https?://[^"]+)"([^>]*)>', t):
+                url, attrs = m.groups()
+                if "keepwhatworks.com" in url:
+                    continue
+                assert 'rel="noopener"' in attrs, \
+                    f"{name}: external link missing rel=noopener → {url[:60]}"
