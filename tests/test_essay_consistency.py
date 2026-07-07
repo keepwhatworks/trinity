@@ -148,3 +148,48 @@ class TestClaimHygiene:
                     continue
                 assert 'rel="noopener"' in attrs, \
                     f"{name}: external link missing rel=noopener → {url[:60]}"
+
+
+class TestDecalogue:
+    """The masthead (founder-authored 2026-07-07): the axiom bare at top,
+    nine because-derivations, shape 1-2-2-2-2-1, last word 'free'. The card
+    order IS the decalogue order — deliberate, not chronological."""
+
+    HEADLINES = [
+        "Design, don&rsquo;t predict.",
+        "Find errors, not goals.",
+        "Loop, don&rsquo;t ask.",
+        "Build the affordance, not the policy.",
+        "Pull, don&rsquo;t push.",
+        "Anchor fast proxies to slow truths.",
+        "Build for endurance, not speed.",
+        "Measure the shape, not the assumptions.",
+        "Judge with veracity, not ferocity.",
+        "Free your attention to learn fast, not to slow down.",
+    ]
+
+    def test_masthead_carries_all_ten_in_order(self):
+        idx = (DOCS / "index.html").read_text(encoding="utf-8")
+        assert 'class="decalogue"' in idx, "the masthead section is gone"
+        pos = -1
+        for h in self.HEADLINES:
+            i = idx.find(h)
+            assert i > pos, f"decalogue headline out of order or missing: {h!r}"
+            pos = i
+
+    def test_becauses_have_no_terminal_periods(self):
+        """Founder typography spec: no terminal periods on the because-lines."""
+        idx = (DOCS / "index.html").read_text(encoding="utf-8")
+        for m in re.finditer(r'class="decalogue-because[^"]*">([^<]+)</p>', idx):
+            line = m.group(1).strip()
+            assert not line.endswith("."), f"because-line grew a period: …{line[-60:]!r}"
+            assert line.startswith("because"), f"because-line lost its because: {line[:40]!r}"
+
+    def test_card_order_matches_the_decalogue(self):
+        idx = (DOCS / "index.html").read_text(encoding="utf-8")
+        cards = re.findall(r'article-card" href="articles/([a-z0-9-]+)\.html"', idx)
+        expected = ["architecture-of-becoming", "utopia-is-a-mechanism", "ai-native-way",
+                    "design-the-affordance", "gravity-of-becoming", "coupling-problem",
+                    "architecture-of-endurance", "you-are-the-specimen",
+                    "everyone-a-critic", "free-you-more"]
+        assert cards == expected, f"card order diverged from the decalogue: {cards}"

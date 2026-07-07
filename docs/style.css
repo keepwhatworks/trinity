@@ -204,3 +204,19 @@ footer a:hover { color: var(--accent-deep); }
   .product-card { padding: 28px 22px; }
   .product-card .features { grid-template-columns: 1fr; }
 }
+
+
+/* ── The decalogue masthead (2026-07-07): the axiom bare at top (the frozen
+   core), nine derivations each hanging a because from the line above.
+   Headlines full-weight ink; becauses muted at ~80%, no terminal periods.
+   Shape 1-2-2-2-2-1: solo open, four couplets, solo close. */
+.decalogue { max-width: 640px; margin: 0 auto; padding: 56px 24px 40px; border-top: 1px solid var(--border); }
+.decalogue-axiom { font-weight: 700; font-size: 26px; color: var(--text-primary); margin: 0 0 40px; letter-spacing: -0.01em; }
+.decalogue-group { margin: 0 0 32px; }
+.decalogue-item { margin: 0 0 18px; }
+.decalogue-item:last-child { margin-bottom: 0; }
+.decalogue-line { font-weight: 600; font-size: 18px; color: var(--text-primary); margin: 0 0 3px; }
+.decalogue-because { font-size: 14.5px; line-height: 1.55; color: var(--text-muted); margin: 0; }
+.decalogue-close { margin-top: 40px; }
+.decalogue-close-because { margin-bottom: 0; }
+@media (max-width: 560px) { .decalogue { padding: 44px 20px 32px; } .decalogue-axiom { font-size: 22px; } }
