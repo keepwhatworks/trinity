@@ -36,8 +36,8 @@ class TestStructuralAnatomy:
             assert 'class="topbar"' in t, f"{name}: site topbar missing"
             assert 'trinity-callout' in t, f"{name}: Trinity callout missing"
             assert 'class="references"' in t, f"{name}: lineage/references block missing"
-            assert re.search(r'class="meta">Essay · [A-Z][a-z]{2} \d{1,2}, \d{4}</div>', t), \
-                f"{name}: essay date meta missing or malformed"
+            assert re.search(r'class="meta">Essay · [A-Z][a-z]{2} \d{1,2}, \d{4} · [^<]+</div>', t), \
+                f"{name}: essay meta must carry date + its principle line (the ten-principle spine, 2026-07-07)"
 
     def test_every_referenced_image_exists(self):
         for name, t in _essays().items():
@@ -78,7 +78,7 @@ class TestSiteIntegration:
         for href, meta, title in cards:
             t = essays.get(href)
             assert t is not None, f"index card points at missing essay {href}"
-            edate = re.search(r'class="meta">Essay · ([^<]+)</div>', t).group(1)
+            edate = re.search(r'class="meta">Essay · ([^<]+)</div>', t).group(1).split("·")[0].strip()
             etitle = re.search(r'<h1>([^<]+)</h1>', t).group(1)
             assert meta.split("·")[0].strip() == edate, \
                 f"{href}: card date {meta.split('·')[0].strip()!r} != essay date {edate!r}"

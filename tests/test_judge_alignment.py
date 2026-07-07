@@ -285,3 +285,27 @@ def test_floor_rejects_alignment_from_too_little_signal(monkeypatch):
     )
     assert chosen is None
     assert results["claude"].agreement == 1.0  # measured, but not enough to trust
+
+
+class TestAxisPrimerInValidationPrompt:
+    """The n=39 calibration (2026-07-07) found COMPRESSION at 0/4 across ALL
+    THREE judges — judges systematically refuse to believe the shorter answer
+    won, even though compression is one of the user's four measured correction
+    axes. Fix: the validation prompt teaches the AXES (the ledger's measured
+    pattern), never the items (#35). This pins the primer."""
+
+    def test_prompt_teaches_all_four_axes_and_the_compression_rule(self):
+        from trinity_local.evals.judge_alignment import JUDGE_VALIDATION_PROMPT as P
+        for axis in ("REFRAME", "REDIRECT", "SHARPENING", "COMPRESSION"):
+            assert axis in P, f"validation prompt lost the {axis} axis"
+        assert "verbosity is a defect" in P, (
+            "the counter-intuitive COMPRESSION rule is the whole fix — "
+            "judges failed 0/4 without it"
+        )
+        assert "would KEEP" in P
+
+    def test_generic_prompt_stays_generic(self):
+        """The public-dataset prompt must NOT carry the personal axes — its
+        ground truth is generic human preference by design."""
+        from trinity_local.evals.judge_alignment import GENERIC_PREFERENCE_PROMPT as G
+        assert "COMPRESSION" not in G and "verbosity is a defect" not in G

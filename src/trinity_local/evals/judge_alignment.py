@@ -184,6 +184,16 @@ The user's taste (excerpt):
 Two responses were given to the same request. Decide which one BETTER matches
 THIS user's taste — the framing, length, shape, and precision they prefer.
 
+This user's corrections cluster on four axes, and the judge must honor all
+four: REFRAME (they substitute a truer framing for the offered one), REDIRECT
+(they follow the one load-bearing thread and drop the rest), SHARPENING (they
+fix an imprecise premise), and COMPRESSION (they deliver the same substance in
+fewer words). The COMPRESSION axis is the counter-intuitive one: for this
+user, verbosity is a defect, never a virtue. When two responses carry the same
+substance, this user reliably keeps the shorter one — do not equate
+thoroughness, coverage, or elaboration with quality. Judge by which response
+this user would KEEP, not which looks more complete.
+
 Response A:
 ---
 {option_a}
