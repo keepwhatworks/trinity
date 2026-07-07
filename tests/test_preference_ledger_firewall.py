@@ -82,6 +82,10 @@ SANCTIONED_LEDGER_WRITERS = {
     "me/preference_acts.py",
     "me_builder.py",
     "commands/eval_import.py",
+    # Quarantine promotion (council_5ab2854092bcf68f): appends provider
+    # imports to the ledger ONLY after their anchors verify against real
+    # transcripts — an observer promoting observed signal, not a synthesizer.
+    "me/import_verification.py",
 }
 
 # Modules whose job is to SYNTHESIZE content (chairman synthesis, virtual councils,
@@ -420,6 +424,15 @@ class TestImportBoundaryGatedByProvenance:
 
     def test_anchored_provider_rejection_is_admitted(self, patch_trinity_home: Path):
         assert str(patch_trinity_home) in str(preference_acts_path())  # isolated to temp home
+        # Seam closure: the anchor must now RESOLVE, not just exist — seed it
+        # as a real ingested prompt (the fabricated path lives in
+        # test_import_quarantine.py).
+        import json as _json
+        d = patch_trinity_home / "prompts"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "prompt_nodes.jsonl").write_text(
+            _json.dumps({"id": "n0", "text": "which index type for this table?"}) + "\n",
+            encoding="utf-8")
         res = self._import({
             "type": "REFRAME",
             "model_quote": "let me first explain the tradeoffs",

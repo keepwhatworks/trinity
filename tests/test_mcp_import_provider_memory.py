@@ -20,6 +20,18 @@ import pytest
 
 @pytest.fixture
 def home(patch_trinity_home: Path) -> Path:
+    # Seam closure: seed the fixtures' anchors/evidence as real prompts.
+    import json as _json
+    d = patch_trinity_home / "prompts"
+    d.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {"id": "n0", "text": "fix the failing migration"},
+        {"id": "n1", "text": "that debug session where we traced the flaky test together"},
+        {"id": "n2", "text": "the spec walkthrough before the rewrite started"},
+        {"id": "n3", "text": "which index type for this table?"},
+    ]
+    (d / "prompt_nodes.jsonl").write_text(
+        "\n".join(_json.dumps(r) for r in rows) + "\n", encoding="utf-8")
     return patch_trinity_home
 
 

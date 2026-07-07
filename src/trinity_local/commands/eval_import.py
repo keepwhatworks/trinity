@@ -286,6 +286,33 @@ def handle_eval_import(args) -> int:
     admitted, rejected = _gate_by_provenance(new_signals)
     rejected_no_provenance = len(rejected)
 
+    # Verification (council_5ab2854092bcf68f, 2026-07-07): the shape gate above
+    # proves an anchor is PRESENT; this proves it's TRUE. The claimed
+    # original_prompt must resolve against the local prompt index — the user's
+    # real ingested prompts. Well-formed but unresolvable → the quarantine
+    # sidecar (never the ledger); the next ingest re-checks and promotes.
+    from ..me.import_verification import (
+        MIN_ANCHOR_CHARS,
+        anchor_resolves,
+        load_corpus_texts,
+        quarantine_rows,
+    )
+    corpus = load_corpus_texts()
+    verified, unverified = [], []
+    for s in admitted:
+        txt = getattr(s, "prompt_text", "") or ""
+        if getattr(s, "prompt_id", None) or anchor_resolves(txt, corpus, min_chars=MIN_ANCHOR_CHARS):
+            verified.append(s)
+        else:
+            unverified.append(s)
+    admitted = verified
+    quarantined_n = 0
+    if unverified and not args.dry_run:
+        from ..me.preference_acts import from_rejection
+        quarantined_n = quarantine_rows("eval", [from_rejection(s).to_dict() for s in unverified])
+    elif unverified:
+        quarantined_n = len(unverified)
+
     # Per-axis breakdown over the ADMITTED signals (what actually lands).
     axis_counts: dict[str, int] = {}
     for s in admitted:
@@ -310,6 +337,7 @@ def handle_eval_import(args) -> int:
             "duplicates": duplicates,
             "skipped_malformed": skipped,
             "rejected_no_provenance": rejected_no_provenance,
+            "quarantined_unverified": quarantined_n,
             "by_axis": axis_counts,
         },
         "dry_run": bool(args.dry_run),

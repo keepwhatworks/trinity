@@ -480,6 +480,16 @@ def _ledger_contamination() -> LensCheck:
     hits = sum(1 for a in acts if _shaped(a))
     frac = hits / n
     metric = {"contaminated": hits, "total": n, "fraction": round(frac, 3)}
+    # Quarantine visibility (council falsifier): unverified provider imports
+    # wait in a sidecar until ingest proves them — a sidecar that only grows
+    # means legitimate imports never verify (the black-hole failure mode).
+    try:
+        from .me.import_verification import quarantine_counts
+        q = quarantine_counts()
+        if q.get("eval") or q.get("lens"):
+            metric["quarantined_pending"] = q
+    except Exception:
+        pass
     if frac >= CONTAMINATION_WEAK_FLOOR:
         return LensCheck(
             "ledger_contamination", "Ledger self-reflection", WEAK,

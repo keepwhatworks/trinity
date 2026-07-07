@@ -23,6 +23,17 @@ from trinity_local.me.preference_acts import preference_acts_path
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+    # Seam closure (council_5ab2854092bcf68f): imports now VERIFY the claimed
+    # original_prompt against the local prompt index — seed the fixtures'
+    # anchor prompt as a real ingested prompt, so these tests exercise the
+    # legitimate-import path. test_import_quarantine.py owns the
+    # fabricated/unverifiable paths.
+    import json as _json
+    d = tmp_path / "prompts"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "prompt_nodes.jsonl").write_text(_json.dumps(
+        {"id": "n0", "text": "write the SQL to join orders and customers"}) + "\n",
+        encoding="utf-8")
     return tmp_path
 
 
@@ -414,6 +425,11 @@ class TestOriginalPromptScoreable:
         from argparse import Namespace
         scoreable = _good_rejection(axis="REFRAME")
         scoreable["original_prompt"] = "explain quantum entanglement simply"
+        # seam closure: the anchor must resolve — make it a real ingested prompt
+        import json as _json
+        (home / "prompts" / "prompt_nodes.jsonl").write_text(
+            _json.dumps({"id": "nq", "text": "explain quantum entanglement simply"}) + "\n",
+            encoding="utf-8")
         unscoreable = {
             "type": "REDIRECT",
             "model_quote": "here is a tangent about history",

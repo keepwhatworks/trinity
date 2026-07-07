@@ -25,6 +25,19 @@ from trinity_local.me.pair_mining import LensPair, load_lenses, load_orderings
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+    # Seam closure: evidence must resolve against real prompts — seed the
+    # fixtures' evidence fragments (test_import_quarantine.py owns the
+    # unverifiable paths).
+    import json as _json
+    d = tmp_path / "prompts"
+    d.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {"id": "n0", "text": "we sized the parquet table by hand before writing any code"},
+        {"id": "n1", "text": "i drew the basin diagram first and then we argued about it"},
+        {"id": "n2", "text": "the MVP shipped Fri and we skipped redesign before launch on purpose"},
+    ]
+    (d / "prompt_nodes.jsonl").write_text(
+        "\n".join(_json.dumps(r) for r in rows) + "\n", encoding="utf-8")
     return tmp_path
 
 

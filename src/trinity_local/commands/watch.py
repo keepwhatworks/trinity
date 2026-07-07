@@ -30,4 +30,15 @@ def handle_ingest_recent(args):
 
     sources = args.sources or list(DEFAULT_SOURCES)
     result = ingest_recent(sources=sources, deadline_s=args.deadline)
-    print(json.dumps(result.to_dict(), indent=2))
+    out = result.to_dict()
+    # Quarantine promotion (council_5ab2854092bcf68f): the corpus just grew —
+    # re-verify quarantined provider imports against it and promote the rows
+    # whose anchors now resolve. Best-effort; never blocks ingest.
+    try:
+        from ..me.import_verification import promote_quarantined
+        promo = promote_quarantined()
+        if any(v.get("promoted") or v.get("pending") for v in promo.values()):
+            out["quarantine_promotion"] = promo
+    except Exception:
+        pass
+    print(json.dumps(out, indent=2))

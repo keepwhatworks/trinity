@@ -315,6 +315,41 @@ def handle_lens_import(args) -> int:
             continue
         incoming_orderings.append(mapped)
 
+    # Verification (council_5ab2854092bcf68f, 2026-07-07): a tension or
+    # ordering enters the registry only if at least one evidence quote
+    # resolves against the local prompt index — otherwise it's a provider
+    # ASSERTING taste history, and it waits in quarantine until an ingest
+    # proves it. Raw payload rows (not LensPairs) quarantine, so promotion
+    # replays the same mapping+merge path.
+    from ..me.import_verification import (
+        MIN_EVIDENCE_CHARS,
+        anchor_resolves,
+        load_corpus_texts,
+        quarantine_rows,
+    )
+    _corpus = load_corpus_texts()
+
+    def _row_verifies(raw: dict) -> bool:
+        ev = [str(e) for e in (raw.get("evidence") or []) if str(e).strip()]
+        return any(anchor_resolves(e, _corpus, min_chars=MIN_EVIDENCE_CHARS) for e in ev)
+
+    unverified_rows = [r for r in raw_tensions if isinstance(r, dict) and not _row_verifies(r)]
+    unverified_rows += [{"__ordering__": True, **r} for r in raw_orderings
+                        if isinstance(r, dict) and not _row_verifies(r)]
+    verified_t_ids = {id(r) for r in raw_tensions if isinstance(r, dict) and _row_verifies(r)}
+    verified_o_ids = {id(r) for r in raw_orderings if isinstance(r, dict) and _row_verifies(r)}
+    # Re-map ONLY the verified rows (the earlier mapping loop ran on all rows
+    # for the malformed count; admission re-derives from the verified subset).
+    incoming_tensions = [m for r in raw_tensions if isinstance(r, dict) and id(r) in verified_t_ids
+                         for m in [_provider_dict_to_lens_pair(r, source_provider)] if m is not None]
+    incoming_orderings = [m for r in raw_orderings if isinstance(r, dict) and id(r) in verified_o_ids
+                          for m in [_provider_dict_to_ordering_pair(r, source_provider)] if m is not None]
+    quarantined_n = 0
+    if unverified_rows and not args.dry_run:
+        quarantined_n = quarantine_rows("lens", [{**r, "source_provider": source_provider} for r in unverified_rows])
+    elif unverified_rows:
+        quarantined_n = len(unverified_rows)
+
     # Load existing local state, merge, save.
     existing_lenses = load_lenses()
     existing_orderings = load_orderings()
@@ -331,6 +366,7 @@ def handle_lens_import(args) -> int:
             "new": lens_new,
             "augmented": lens_aug,
             "skipped_malformed": skipped_tensions,
+            "quarantined_unverified": quarantined_n,
         },
         "orderings": {
             "incoming": len(incoming_orderings),
@@ -367,3 +403,26 @@ def handle_lens_import(args) -> int:
             print(f"  → {result['lenses_path']}")
             print(f"  → {result['orderings_path']}")
     return 0
+
+
+def admit_verified_lens_rows(rows: list) -> None:
+    """Promotion path (me/import_verification.promote_quarantined): replay the
+    SAME mapping+merge admission for quarantined rows whose evidence now
+    resolves. Rows tagged __ordering__ came from the orderings list."""
+    tensions, orderings = [], []
+    for r in rows:
+        r = {k: v for k, v in r.items() if k not in ("quarantined_at",)}
+        provider = r.pop("source_provider", "provider")
+        if r.pop("__ordering__", False):
+            m = _provider_dict_to_ordering_pair(r, provider)
+            if m is not None:
+                orderings.append(m)
+        else:
+            m = _provider_dict_to_lens_pair(r, provider)
+            if m is not None:
+                tensions.append(m)
+    if not tensions and not orderings:
+        return
+    merged_lenses, _, _ = _merge(list(load_lenses()), tensions)
+    merged_orderings, _, _ = _merge(list(load_orderings()), orderings)
+    save_lenses(merged_lenses, merged_orderings)
