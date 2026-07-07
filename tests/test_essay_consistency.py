@@ -185,6 +185,18 @@ class TestDecalogue:
             assert not line.endswith("."), f"because-line grew a period: …{line[-60:]!r}"
             assert line.startswith("because"), f"because-line lost its because: {line[:40]!r}"
 
+    def test_every_decalogue_line_links_to_its_owner_essay(self):
+        """Invisible provenance links (2026-07-07): each line is an <a> to the
+        essay where it was earned — the decalogue is the derived layer, the
+        essays are its transcripts. Links must resolve."""
+        idx = (DOCS / "index.html").read_text(encoding="utf-8")
+        i = idx.index('class="decalogue"'); j = idx.index("</section>", i)
+        block = idx[i:j]
+        links = re.findall(r'href="articles/([a-z0-9-]+\.html)"', block)
+        assert len(links) == 10, f"decalogue must carry exactly 10 essay links, got {len(links)}"
+        for name in links:
+            assert (ARTICLES / name).exists(), f"decalogue links to missing essay {name}"
+
     def test_card_order_matches_the_decalogue(self):
         idx = (DOCS / "index.html").read_text(encoding="utf-8")
         cards = re.findall(r'article-card" href="articles/([a-z0-9-]+)\.html"', idx)
