@@ -225,3 +225,10 @@ footer a:hover { color: var(--accent-deep); }
    no accent at rest; hover warms the gold ribbon. A litany, not a nav menu. */
 .decalogue a { color: inherit; text-decoration: none; border-bottom: 2px solid transparent; transition: border-color .15s ease; }
 .decalogue a:hover { border-bottom-color: var(--accent); }
+
+/* The fable link under the decalogue, and the fable's own gentle typography. */
+.decalogue-story { margin: 36px 0 0; font-size: 15px; }
+.decalogue-story a { color: var(--accent-deep); text-decoration: none; border-bottom: 1px solid var(--border); }
+.decalogue-story a:hover { border-bottom-color: var(--accent-deep); }
+article.essay.fable p { font-size: 20px; line-height: 1.7; margin: 0 0 26px; }
+article.essay.fable header { margin-bottom: 36px; }
