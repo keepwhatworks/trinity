@@ -193,6 +193,7 @@ class TestDecalogue:
         "Find errors, not goals.",
         "Loop, don&rsquo;t ask.",
         "Build the affordance, not the policy.",
+        "Pull, don&rsquo;t push.",
         "Anchor fast proxies to slow truths.",
         "Build for endurance, not speed.",
         "Oscillate locally, stabilize globally.",
@@ -200,6 +201,12 @@ class TestDecalogue:
         "Judge with veracity, not ferocity.",
         "Free your attention to learn fast, not to slow down.",
     ]
+    # 2026-07-08: with Discovery admitted the corpus is 11 essays, so 11 lines
+    # restores 1:1 — "Pull, don't push" returns as Gravity's own line, beside
+    # "Build the affordance" as the structure couplet (the same wall from
+    # opposite directions: Affordance removes resistance in the steady state,
+    # Gravity engineers attraction at the threshold). Anchor is now the solo
+    # pivot at center. Shape 1-2-2-1-2-2-1.
     # Amendment 2026-07-08: "Pull, don't push" DEMOTED from line to statute —
     # its clause lives in line 4's because; the full statute in Design the
     # Affordance; the application in Gravity. "Oscillate locally, stabilize
@@ -223,6 +230,17 @@ class TestDecalogue:
             assert not line.endswith("."), f"because-line grew a period: …{line[-60:]!r}"
             assert line.startswith("because"), f"because-line lost its because: {line[:40]!r}"
 
+    def test_eleven_lines_one_per_essay(self):
+        """1:1 restored 2026-07-08: 11 lines, 11 essays, each line its own
+        owner. No line shares an essay; no essay lacks a line."""
+        idx = (DOCS / "index.html").read_text(encoding="utf-8")
+        i = idx.index('class="decalogue"'); j = idx.index("</section>", i)
+        links = re.findall(r'href="articles/([a-z0-9-]+\.html)"', idx[i:j])
+        assert len(links) == len(set(links)) == 11, \
+            f"decalogue must be 11 unique essay links (1:1), got {len(links)}"
+        assert set(links) == set(_essays().keys()), \
+            "every essay owns exactly one line and vice versa"
+
     def test_every_decalogue_line_links_to_its_owner_essay(self):
         """Invisible provenance links (2026-07-07): each line is an <a> to the
         essay where it was earned — the decalogue is the derived layer, the
@@ -231,20 +249,9 @@ class TestDecalogue:
         i = idx.index('class="decalogue"'); j = idx.index("</section>", i)
         block = idx[i:j]
         links = re.findall(r'href="articles/([a-z0-9-]+\.html)"', block)
-        assert len(links) == 10, f"decalogue must carry exactly 10 essay links, got {len(links)}"
+        assert len(links) == 11, f"decalogue must carry exactly 11 essay links, got {len(links)}"
         for name in links:
             assert (ARTICLES / name).exists(), f"decalogue links to missing essay {name}"
-
-    def test_demoted_statute_survives_as_prose(self):
-        """Demoted, not erased: 'pull, don't push' left the decalogue
-        2026-07-08 but must survive as the named statute in Affordance and
-        the application in Gravity — a system that prunes, not forgets."""
-        aff = (ARTICLES / "design-the-affordance.html").read_text(encoding="utf-8")
-        grav = (ARTICLES / "gravity-of-becoming.html").read_text(encoding="utf-8")
-        aff_flat = re.sub(r"\s+", " ", aff)
-        assert "pull, don't push." in aff_flat, \
-            "the pull statute vanished from Design the Affordance"
-        assert "pull, not push" in grav, "the pull application vanished from Gravity"
 
     def test_card_order_matches_the_decalogue(self):
         idx = (DOCS / "index.html").read_text(encoding="utf-8")
