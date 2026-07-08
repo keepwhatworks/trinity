@@ -232,3 +232,5 @@ footer a:hover { color: var(--accent-deep); }
 .decalogue-story a:hover { border-bottom-color: var(--accent-deep); }
 article.essay.fable p { font-size: 20px; line-height: 1.7; margin: 0 0 26px; }
 article.essay.fable header { margin-bottom: 36px; }
+
+article.essay.fable blockquote { font-size: 21px; line-height: 1.55; margin: 34px 0; }
