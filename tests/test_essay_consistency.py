@@ -84,6 +84,17 @@ class TestSiteIntegration:
                 f"{href}: card date {meta.split('·')[0].strip()!r} != essay date {edate!r}"
             assert title == etitle, f"{href}: card title {title!r} != essay h1 {etitle!r}"
 
+    def test_the_story_is_reachable_from_every_essay(self):
+        """The fable (The Little Boat That Learned) is part of the site, not
+        an orphan — every essay's topbar links to it (founder, 2026-07-08)."""
+        for name, t in _essays().items():
+            assert 'the-little-boat-that-learned.html' in t, \
+                f"{name}: topbar lost the link to the story"
+        fable = DOCS / "the-little-boat-that-learned.html"
+        assert fable.exists(), "the fable page is missing"
+        assert '#principles' in fable.read_text(encoding="utf-8"), \
+            "the fable must link back to the decalogue"
+
     def test_internal_cross_links_resolve(self):
         essays = _essays()
         for name, t in essays.items():

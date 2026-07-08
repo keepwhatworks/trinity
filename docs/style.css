@@ -234,3 +234,14 @@ article.essay.fable p { font-size: 20px; line-height: 1.7; margin: 0 0 26px; }
 article.essay.fable header { margin-bottom: 36px; }
 
 article.essay.fable blockquote { font-size: 21px; line-height: 1.55; margin: 34px 0; }
+
+/* The fable invitation under the decalogue — a warm card, not a footnote:
+   the law's plain-language face, offered as a proper destination. */
+.decalogue-story-cta {
+  display: block; margin: 40px 0 0; padding: 20px 24px;
+  background: var(--accent-soft); border: 1px solid var(--border);
+  border-radius: 14px; text-decoration: none; transition: border-color .15s ease, background .15s ease;
+}
+.decalogue-story-cta:hover { border-color: var(--accent); background: #fbf3dd; }
+.decalogue-story-label { display: block; font-weight: 600; font-size: 17px; color: var(--text-primary); margin: 0 0 3px; }
+.decalogue-story-sub { display: block; font-size: 14.5px; color: var(--text-muted); }
