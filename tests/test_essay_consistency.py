@@ -124,6 +124,39 @@ class TestStandaloneRule:
                 )
 
 
+class TestBodyPurity:
+    """Founder rules (2026-07-08): essays are generic principles for future
+    apps — the product lives ONLY in the trinity-callout; formal research
+    lives ONLY in the references blocks (lineage/appendix), woven clauses in
+    prose stay but never as links."""
+
+    def _body(self, t):
+        body = t[t.index("</header>"):]
+        if '<section class="references"' in body:
+            body = body[:body.index('<section class="references"')]
+        body = re.sub(r'<div class="trinity-callout".*', "", body, flags=re.S)
+        return body
+
+    def test_bodies_are_product_free(self):
+        for name, t in _essays().items():
+            prose = re.sub(r"<[^>]+>", " ", self._body(t))
+            # "the Builder's Trinity" (grit/curiosity/simplicity) is the
+            # Becoming essay's own concept, not the product — exempt.
+            prose = prose.replace("Builder's\n      Trinity", "").replace("Builder's Trinity", "")
+            assert "Trinity" not in prose, (
+                f"{name}: 'Trinity' in body prose — the product lives only in "
+                "the callout; essays stand as generic principles"
+            )
+
+    def test_research_links_live_only_in_references(self):
+        for name, t in _essays().items():
+            ext = re.findall(r'href="(https?://[^"]+)"', self._body(t))
+            assert not ext, (
+                f"{name}: external link in body prose ({ext[0][:50]}…) — formal "
+                "citations belong in the lineage/appendix blocks"
+            )
+
+
 class TestClaimHygiene:
     """Copy never outruns measurement — the essay-side edge of the
     measured-claims ledger (trinity-discipline skill)."""
@@ -160,13 +193,18 @@ class TestDecalogue:
         "Find errors, not goals.",
         "Loop, don&rsquo;t ask.",
         "Build the affordance, not the policy.",
-        "Pull, don&rsquo;t push.",
         "Anchor fast proxies to slow truths.",
         "Build for endurance, not speed.",
+        "Oscillate locally, stabilize globally.",
         "Measure the shape, not the assumptions.",
         "Judge with veracity, not ferocity.",
         "Free your attention to learn fast, not to slow down.",
     ]
+    # Amendment 2026-07-08: "Pull, don't push" DEMOTED from line to statute —
+    # its clause lives in line 4's because; the full statute in Design the
+    # Affordance; the application in Gravity. "Oscillate locally, stabilize
+    # globally" admitted (passed the admission test: the chain had no
+    # exploration organ; changes what you build; arrives with #184's numbers).
 
     def test_masthead_carries_all_ten_in_order(self):
         idx = (DOCS / "index.html").read_text(encoding="utf-8")
@@ -197,11 +235,22 @@ class TestDecalogue:
         for name in links:
             assert (ARTICLES / name).exists(), f"decalogue links to missing essay {name}"
 
+    def test_demoted_statute_survives_as_prose(self):
+        """Demoted, not erased: 'pull, don't push' left the decalogue
+        2026-07-08 but must survive as the named statute in Affordance and
+        the application in Gravity — a system that prunes, not forgets."""
+        aff = (ARTICLES / "design-the-affordance.html").read_text(encoding="utf-8")
+        grav = (ARTICLES / "gravity-of-becoming.html").read_text(encoding="utf-8")
+        aff_flat = re.sub(r"\s+", " ", aff)
+        assert "pull, don't push." in aff_flat, \
+            "the pull statute vanished from Design the Affordance"
+        assert "pull, not push" in grav, "the pull application vanished from Gravity"
+
     def test_card_order_matches_the_decalogue(self):
         idx = (DOCS / "index.html").read_text(encoding="utf-8")
         cards = re.findall(r'article-card" href="articles/([a-z0-9-]+)\.html"', idx)
         expected = ["architecture-of-becoming", "utopia-is-a-mechanism", "ai-native-way",
                     "design-the-affordance", "gravity-of-becoming", "coupling-problem",
-                    "architecture-of-endurance", "you-are-the-specimen",
-                    "everyone-a-critic", "free-you-more"]
+                    "architecture-of-endurance", "architecture-of-discovery",
+                    "you-are-the-specimen", "everyone-a-critic", "free-you-more"]
         assert cards == expected, f"card order diverged from the decalogue: {cards}"
