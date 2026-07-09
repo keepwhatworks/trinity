@@ -86,7 +86,7 @@ The folder is the API. Everything in it is human-readable Markdown or JSON. Trin
 
 ## Runtime, using Trinity
 
-You drop a hard question into any harness (Claude Code, Codex, Cursor, Antigravity). The agent there sees Trinity registered as an MCP server and calls one of <!-- canonical:mcp_tool_count -->8<!-- /canonical --> MCP tools. The three that matter most, council first, routing later:
+You drop a hard question into any harness (Claude Code, Codex, Cursor, Antigravity). The agent there sees Trinity registered as an MCP server and calls one of <!-- canonical:mcp_tool_count -->9<!-- /canonical --> MCP tools. The three that matter most, council first, routing later:
 
 - **`run_council(task)`**, the flagship and the day-one lead. Dispatches the question to Claude + ChatGPT + Gemini in parallel, collects three responses, runs chairman synthesis. The chairman emits a Routing JSON: agreed claims, disagreed claims, winner, why. It reads `core.md` first and drills to `lens.md` only if a lens exists yet, so the council is full-fidelity on minute one. Once a lens has warmed up, the chairman synthesizes toward the answer you would have picked. **The council is the value; the lens makes it yours.**
 - **`ask(query)`**, the cheap 90% path that *emerges* once you have a track record of councils. Pulls a high-trust extracted pick if one exists ("looks like a COMPRESSION task → codex wins on those for you") and returns a single answer instead of running a full council. With no council history yet it falls back to a heuristic, so routing is the layer that accrues after the council, not a prerequisite for it.

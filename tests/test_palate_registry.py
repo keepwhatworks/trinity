@@ -154,3 +154,59 @@ class TestLensHealthSurface:
         monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
         from trinity_local.lens_health import _palate_prospective, ABSTAIN
         assert _palate_prospective(False).status == ABSTAIN
+
+
+class TestChoiceOracle:
+    """The choice oracle (task #11): rank on the SAME frozen direction the
+    registry scores, same abstain floor, live accuracy traveling with every
+    answer. The SELECTION half of the stand-in claim, productized."""
+
+    def _snap(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        _write_acts(tmp_path, FIT_ROWS)
+        from trinity_local.me.palate_registry import record_direction_snapshot
+        assert record_direction_snapshot(embed_fn=_embed)["ok"]
+
+    def test_ranks_by_lens_fit(self, tmp_path, monkeypatch):
+        self._snap(tmp_path, monkeypatch)
+        from trinity_local.me.palate_registry import rank_options
+        r = rank_options(["a verbose elaborate treatment", "a terse direct fix"],
+                         embed_fn=_embed)
+        assert r["ready"] and not r["abstain"]
+        assert r["ranked"][0]["option"] == "a terse direct fix"
+        assert r["ranked"][0]["score"] > r["ranked"][1]["score"]
+        assert "live_accuracy" in r and "decided_trials" in r
+
+    def test_near_tie_abstains(self, tmp_path, monkeypatch):
+        """A gap under the pre-registered floor is a coin flip the oracle
+        must not dress up — abstain: true means ask the human."""
+        self._snap(tmp_path, monkeypatch)
+        from trinity_local.me.palate_registry import rank_options
+        r = rank_options(["neutral thing one", "neutral thing two"], embed_fn=_embed)
+        assert r["ready"] and r["abstain"] is True
+
+    def test_no_snapshot_not_ready(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        from trinity_local.me.palate_registry import rank_options
+        r = rank_options(["a", "b"], embed_fn=_embed)
+        assert not r["ready"]
+
+    def test_single_option_refused(self, tmp_path, monkeypatch):
+        self._snap(tmp_path, monkeypatch)
+        from trinity_local.me.palate_registry import rank_options
+        assert not rank_options(["only one"], embed_fn=_embed)["ready"]
+
+    def test_low_live_accuracy_stamps_advisory(self, tmp_path, monkeypatch):
+        """Kill-condition coupling: at n>=10 decided trials under 60%, every
+        answer self-demotes to advisory_only — the oracle cannot outrun the
+        registry that measures it."""
+        import json as _json
+        self._snap(tmp_path, monkeypatch)
+        rows = [{"act_id": f"t{i}", "verdict": "correct" if i < 4 else "incorrect",
+                 "gap": 0.1, "scored_at": "x", "snapshot_built_at": "y"} for i in range(10)]
+        (tmp_path / "me" / "palate_trials.jsonl").write_text(
+            "\n".join(_json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+        from trinity_local.me.palate_registry import rank_options
+        r = rank_options(["a verbose elaborate treatment", "a terse direct fix"],
+                         embed_fn=_embed)
+        assert r["ready"] and r["advisory_only"] is True and r["live_accuracy"] == 0.4

@@ -55,7 +55,7 @@ If any required check fails, walk the user through the surfaced fix. Don't proce
 
 The installer in section 2 already ran this. If MCP needs re-registration (after a `trinity-local update`, or to wire a newly-installed harness), run:
 
-Trinity ships <!-- canonical:mcp_tool_count -->8<!-- /canonical --> MCP tools:
+Trinity ships <!-- canonical:mcp_tool_count -->9<!-- /canonical --> MCP tools:
 - **canonical three** — `run_council`, `get_persona`, `get_council_status`
 - **v1.5 pair** — `ask` (cheap default), `get_picks` (introspection)
 - **in-protocol provider loop** — `import_provider_memory` (write-back path: agent pipes its own extracted lens tensions / rejection signals into Trinity)

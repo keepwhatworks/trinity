@@ -78,7 +78,7 @@ class TestMcpToolDrift:
         `mark_pick_wrong` retired with the user-pick layer 2026-06-05;
         down to 7 when `route` was cut in the loop-primitive pass 2026-06-08;
         back to 8 when `run_eval` added in-session eval-judging 2026-06-11.)"""
-        assert len(MCP_TOOL_NAMES) == 8
+        assert len(MCP_TOOL_NAMES) == 9
 
 
 class TestRegistryAdoption:

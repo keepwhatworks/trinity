@@ -444,6 +444,36 @@ async def handle_list_tools() -> list[Tool]:
                 "required": ["target"],
             },
         ),
+        Tool(
+            name="choose",
+            description=(
+                "THE CHOICE ORACLE: when you face a decision between concrete "
+                "options (designs, tradeoffs, ship-or-hold), the USER's lens "
+                "ranks them — LLM-free, instant, on the same frozen taste "
+                "direction whose live prospective accuracy is measured on the "
+                "user's own real choices (currently reported in every answer "
+                "as live_accuracy over decided_trials). Returns options ranked "
+                "by lens fit with a confidence_gap; `abstain: true` means the "
+                "gap is under the pre-registered noise floor — ask the human "
+                "instead of dressing up a coin flip. `advisory_only: true` "
+                "means the live accuracy has fallen below its 60% floor and "
+                "rankings are directional, not decisive. Use for SELECTION "
+                "among given options — never to generate answers (that claim "
+                "measured null and ships dormant)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "options": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 2,
+                        "description": "The candidate options, as self-contained descriptions (a sentence to a paragraph each).",
+                    },
+                },
+                "required": ["options"],
+            },
+        ),
     ]
 
 
@@ -579,12 +609,26 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[Any]:
             return await _lens_generators(arguments)
         if name == "run_eval":
             return await _run_eval(arguments)
+        if name == "choose":
+            return _choose(arguments)
         return [ErrorData(code=404, message=f"Tool not found: {name}")]
     except Exception as exc:
         return [ErrorData(code=500, message=f"{type(exc).__name__}: {exc}")]
     finally:
         clear_active_session()
         clear_request_context()
+
+
+def _choose(arguments: dict) -> list:
+    """The choice oracle (task #11): rank the given options on the user's
+    frozen taste direction. LLM-free (two local embeddings per option), so
+    it's synchronous and instant. The live prospective accuracy travels with
+    every answer — the consumer sees the instrument's measured trust."""
+    from .me.palate_registry import rank_options
+
+    options = arguments.get("options") or []
+    result = rank_options([str(o) for o in options])
+    return [_text(result)]
 
 
 # ─── MCP Resources — read-only context surfaces ────────────────────

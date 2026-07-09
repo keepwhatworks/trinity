@@ -23,7 +23,7 @@ is the set used by a specific Trinity subsystem:
   Different from CANONICAL_LAB_PROVIDERS — ``chatgpt`` here maps to
   the OpenAI consumer app; ``codex`` is the CLI sibling and lives in
   the CANONICAL_LAB_PROVIDERS set.
-- ``MCP_TOOL_NAMES`` — the 8 tools registered in ``mcp_server.py``.
+- ``MCP_TOOL_NAMES`` — the 9 tools registered in ``mcp_server.py``.
   Tested for drift against the actual ``handle_list_tools()`` output.
 """
 from __future__ import annotations
@@ -113,6 +113,7 @@ MCP_TOOL_NAMES: tuple[str, ...] = (
     "ask",
     "run_council",
     "run_eval",
+    "choose",
     "get_persona",
     "get_picks",
     "get_council_status",

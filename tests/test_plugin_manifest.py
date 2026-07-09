@@ -226,7 +226,7 @@ def test_launcher_actually_boots_a_working_mcp_server(tmp_path):
         names = sorted(t["name"] for t in tools["result"]["tools"])
         assert names == sorted([
             "ask", "get_council_status", "get_persona", "get_picks",
-            "import_provider_memory", "lens_generators", "run_council", "run_eval",
+            "import_provider_memory", "lens_generators", "run_council", "run_eval", "choose",
         ]), f"launcher booted, but the tool surface is wrong: {names}"
     finally:
         try:

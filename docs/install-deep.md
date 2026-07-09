@@ -45,7 +45,7 @@ your lens. MLX-on-mac models are also detected (provider name
 graceful-degrade — if the Ollama daemon isn't running, Trinity silently
 skips them and the council runs with the cloud members alone.
 
-The MCP surface stays at <!-- canonical:mcp_tool_count -->8<!-- /canonical --> tools regardless of how many local models
+The MCP surface stays at <!-- canonical:mcp_tool_count -->9<!-- /canonical --> tools regardless of how many local models
 you pull. Providers are *parameters* to `ask` / `run_council`, not
 their own tools — the architecture scales to dozens of locals without
 bloating the agent's tool list.

@@ -189,3 +189,68 @@ def summarize_trials() -> dict[str, Any]:
         "accuracy": round(correct / decided, 3) if decided else None,
         "early": decided < EARLY_N,
     }
+
+
+# ── The choice-oracle (task #11, 2026-07-09) ────────────────────────────────
+# The SELECTION half of the stand-in claim, productized. Pre-registered
+# contract: rank_options ranks on the SAME frozen direction the prospective
+# registry scores (live accuracy travels with every answer — the consumer
+# sees the instrument's measured trust, not an implied one); the gap floor
+# is the SAME ABSTAIN_GAP the registry uses; below it the oracle says "ask
+# the human" instead of manufacturing a preference. Kill condition (shared
+# with the registry, already registered): live accuracy < 0.60 at n>=10 →
+# lens-health fires WEAK and the oracle stamps itself advisory-only.
+
+def rank_options(options: list[str], embed_fn=None) -> dict:
+    """Rank candidate options by the user's frozen taste direction.
+
+    Returns {ready, ranked: [{option, score}...], confidence_gap, abstain,
+    advisory_only, live_accuracy, decided_trials, reason?}. LLM-free: two
+    local embeddings per option. Never raises."""
+    try:
+        import json as _json
+
+        import numpy as np
+
+        if not options or len(options) < 2:
+            return {"ready": False, "reason": "need at least two options to rank"}
+        snap_p = _snapshot_path()
+        if not snap_p.exists():
+            return {"ready": False, "reason": "no direction snapshot yet (build the lens)"}
+        if embed_fn is None:
+            from .constitution import _default_embed
+            embed_fn = _default_embed()
+        if embed_fn is None:
+            return {"ready": False, "reason": "needs real embeddings"}
+        snap = _json.loads(snap_p.read_text(encoding="utf-8"))
+        d = np.array(snap.get("direction") or [], dtype=float)
+        if d.size == 0:
+            return {"ready": False, "reason": "snapshot missing direction"}
+
+        vecs = embed_fn([str(o)[:2000] for o in options])
+        scored = []
+        for o, v in zip(options, vecs):
+            v = np.array(v, dtype=float)
+            n = np.linalg.norm(v)
+            scored.append({"option": str(o),
+                           "score": round(float(np.dot(v, d) / n), 4) if n else 0.0})
+        ranked = sorted(scored, key=lambda r: -r["score"])
+        gap = round(ranked[0]["score"] - ranked[1]["score"], 4)
+
+        trials = summarize_trials()
+        acc = trials.get("accuracy")
+        n_dec = trials.get("decided", 0)
+        advisory = bool(acc is not None and n_dec >= EARLY_N and acc < 0.60)
+        return {
+            "ready": True,
+            "ranked": ranked,
+            "confidence_gap": gap,
+            # The same pre-registered floor the registry abstains under: a
+            # near-zero gap is a coin flip the oracle must not dress up.
+            "abstain": gap < ABSTAIN_GAP,
+            "advisory_only": advisory,
+            "live_accuracy": acc,
+            "decided_trials": n_dec,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"ready": False, "reason": f"{type(exc).__name__}: {exc}"}
