@@ -46,6 +46,9 @@ def register(subparsers):
 
 
 def handle_me_card(args):
+    from ..share_card_base import require_pil
+    if not require_pil():
+        return 1
     data = collect_card_data()
     png = render_me_card(data)
 

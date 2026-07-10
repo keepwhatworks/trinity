@@ -22,7 +22,6 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
-    "Pillow>=10",
     "mcp>=1.0",  # MCP-default install — Trinity is exposed as an MCP server to Claude Code / Codex CLI / Antigravity
     "numpy>=1.26",  # Embedding matmul fast-path, k-means clustering, vocabulary stats — used across src/trinity_local/{embeddings,memory,me/basins,knn_analytics,vocabulary}
 ]
@@ -60,7 +59,12 @@ trinity_local = [
 # TestNoUnusedImportsInTests). It MUST be a declared test dep: without it the
 # guard shells out to a missing `python -m pyflakes`, gets empty stdout, and
 # passes VACUOUSLY — a false green exactly in CI, which installs only `.[test]`.
-test = ["pytest>=7", "pyflakes>=3"]
+test = ["pytest>=7", "pyflakes>=3", "Pillow>=10"]  # Pillow: the share-card tests still exercise the [share] path in CI
+# Share cards (me-card / eval-share / council-share PNGs) — demoted from core
+# 2026-07-10 per council_25c534c5f1bf826c: measured-dormant (2 PNGs ever, both
+# pre-launch experiments), so the image dependency doesn't belong in every
+# install. The commands degrade with a clear install hint when PIL is absent.
+share = ["Pillow>=10"]
 mlx = [
     # Real Apple-MLX path (#244): mlx + mlx-embeddings run modernbert-embed-base
     # natively on Apple Silicon (~6300 nodes/s). Markers gate them to arm64 macOS

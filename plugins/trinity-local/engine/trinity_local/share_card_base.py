@@ -14,6 +14,20 @@ no chartjunk — without re-rendering the brand contract surface.
 """
 from __future__ import annotations
 
+def require_pil() -> bool:
+    """The share cards were demoted from core deps 2026-07-10
+    (council_25c534c5f1bf826c: measured-dormant — 2 PNGs ever, both
+    pre-launch experiments). Pillow now ships in the [share] extra; every
+    card command calls this first and degrades with the install hint
+    instead of a raw ImportError."""
+    try:
+        import PIL  # noqa: F401
+        return True
+    except ImportError:
+        print("share cards need the [share] extra:  pip install 'trinity-local[share]'")
+        return False
+
+
 import re
 
 

@@ -396,6 +396,9 @@ def handle_council_stop(args):
 
 
 def handle_council_share(args):
+    from ..share_card_base import require_pil
+    if not require_pil():
+        return 1
     """Render a council outcome as a 1200×630 PNG share card.
 
     Rewritten 2026-05-17 (iteration 5 of the share-workflow audit).

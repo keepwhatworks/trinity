@@ -1522,6 +1522,9 @@ def _open_if_requested(open_after: bool, path) -> bool:
 
 
 def handle_eval_share(args):
+    from ..share_card_base import require_pil
+    if not require_pil():
+        return 1
     """Render the latest (or filtered) eval run result as a 1200×630
     PNG share card. The artifact the user's pitch produces — "I ran my
     evals on Gemini, here's where it landed."
