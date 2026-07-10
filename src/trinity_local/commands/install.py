@@ -1092,41 +1092,61 @@ Trinity Local is installed (MCP server `trinity-local`). Before presenting
 multi-option product/architectural choices, or committing a contested or
 hard-to-reverse call: `ask(mode="route")` is FREE and says which model to
 trust; `ask` (~1 call) returns a routed answer; `run_council` (~4 calls)
-returns a multi-model verdict through the user's own taste lens. Skip for
-trivial bugs, syntax, retrieval. Treat `agreed_claims`/`disagreed_claims`
-as the source of truth."""
+returns a multi-model verdict through the user's own taste lens; `choose`
+(free, instant) ranks concrete options by the user's measured taste — use
+it before presenting any option list. Skip for trivial bugs, syntax,
+retrieval. Treat `agreed_claims`/`disagreed_claims` as the source of truth."""
 
 
 def handle_install_reflex(args):
-    """Write/remove the managed reflex block in the user-global CLAUDE.md.
-
-    Surgical by construction: everything outside the BEGIN/END markers is
-    byte-preserved; re-runs replace only the managed block (idempotent);
-    --remove deletes the block and any blank-line padding it added."""
-    import json as _json
+    """Write/remove the managed reflex block in every DETECTED harness's
+    user-global instruction file (Claude Code CLAUDE.md, Codex AGENTS.md,
+    Gemini GEMINI.md — council_8b5c845792aa1d1e cross-harness parity).
+    Surgical markers, idempotent re-runs, --remove cleans every target."""
+    import json
     from pathlib import Path
 
-    path = Path(args.path).expanduser() if getattr(args, "path", None) else (
-        Path.home() / ".claude" / "CLAUDE.md"
-    )
+    # Cross-harness parity (council_8b5c845792aa1d1e, 2026-07-10): the reflex
+    # that fixed installed-but-unused for Claude Code now writes to every
+    # DETECTED harness's global instruction file. Detection = the harness's
+    # config dir exists (no file is created for a harness the user doesn't
+    # run). Cursor is deliberately absent: it has no reliable user-global
+    # instruction file to write (rules live in app settings).
+    if getattr(args, "path", None):
+        targets = [Path(args.path).expanduser()]
+    else:
+        home = Path.home()
+        candidates = [
+            (home / ".claude", home / ".claude" / "CLAUDE.md"),
+            (home / ".codex", home / ".codex" / "AGENTS.md"),
+            (home / ".gemini", home / ".gemini" / "GEMINI.md"),
+        ]
+        targets = [f for d, f in candidates if d.exists()]
+        if not targets:
+            targets = [home / ".claude" / "CLAUDE.md"]
+    results = []
+    for path in targets:
+        results.append(_reflex_one_file(path, remove=bool(getattr(args, "remove", False))))
+    print(json.dumps({"ok": True, "targets": results,
+                      "reinforce": "Also run `trinity-local install-skill` to make your "
+                                   "taste lens agent-loadable."}, indent=2))
+    return 0
+
+
+def _reflex_one_file(path, *, remove: bool) -> dict:
+    """Write/remove the managed reflex block in ONE harness instruction file.
+    Surgical markers, idempotent, byte-preserves surrounding content."""
     existing = path.read_text(encoding="utf-8") if path.exists() else ""
     has_block = REFLEX_BEGIN in existing and REFLEX_END in existing
 
-    if getattr(args, "remove", False):
+    if remove:
         if not has_block:
-            print(_json.dumps({"ok": True, "removed": False,
-                               "detail": "no managed reflex block present",
-                               "path": str(path)}, indent=2))
-            return 0
+            return {"path": str(path), "removed": False}
         pre, rest = existing.split(REFLEX_BEGIN, 1)
         _, post = rest.split(REFLEX_END, 1)
         new = pre.rstrip() + ("\n" if post.strip() else "") + post.lstrip("\n")
-        if not new.strip():
-            path.write_text("", encoding="utf-8")
-        else:
-            path.write_text(new if new.endswith("\n") else new + "\n", encoding="utf-8")
-        print(_json.dumps({"ok": True, "removed": True, "path": str(path)}, indent=2))
-        return 0
+        path.write_text(("" if not new.strip() else (new if new.endswith("\n") else new + "\n")), encoding="utf-8")
+        return {"path": str(path), "removed": True}
 
     block = f"{REFLEX_BEGIN}\n{REFLEX_TEXT}\n{REFLEX_END}"
     if has_block:
@@ -1142,12 +1162,4 @@ def handle_install_reflex(args):
         action = "created"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(new, encoding="utf-8")
-    print(_json.dumps({
-        "ok": True, "action": action, "path": str(path),
-        "detail": "Every Claude Code session now loads the Trinity reflex "
-                  "(route=free → ask → council). Remove anytime: "
-                  "trinity-local install-reflex --remove",
-        "reinforce": "Also run `trinity-local install-skill` to make your "
-                     "taste lens agent-loadable (the council's C-mechanism).",
-    }, indent=2))
-    return 0
+    return {"path": str(path), "action": action}

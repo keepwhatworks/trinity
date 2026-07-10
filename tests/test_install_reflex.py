@@ -26,7 +26,7 @@ def _args(tmp_path, **kw):
 def test_creates_file_with_block_when_missing(tmp_path, capsys):
     rc = handle_install_reflex(_args(tmp_path))
     out = json.loads(capsys.readouterr().out)
-    assert rc == 0 and out["action"] == "created"
+    assert rc == 0 and out["targets"][0]["action"] == "created"
     body = (tmp_path / "CLAUDE.md").read_text()
     assert REFLEX_BEGIN in body and REFLEX_END in body
     # the cheap-first ladder is the whole lesson — all three rungs present
@@ -65,7 +65,7 @@ def test_remove_restores_user_content_exactly(tmp_path, capsys):
 def test_remove_when_absent_is_a_clean_noop(tmp_path, capsys):
     rc = handle_install_reflex(_args(tmp_path, remove=True))
     out = json.loads(capsys.readouterr().out)
-    assert rc == 0 and out["removed"] is False
+    assert rc == 0 and out["targets"][0]["removed"] is False
 
 
 def test_reflex_text_stays_within_the_council_word_budget():
@@ -74,3 +74,29 @@ def test_reflex_text_stays_within_the_council_word_budget():
     from trinity_local.commands.install import REFLEX_TEXT
     words = len(REFLEX_TEXT.replace("## Trinity reflex", "").split())
     assert words <= 80, f"reflex text is {words} words (council budget: 80)"
+
+
+def test_multi_harness_detection_and_choose_in_ladder(tmp_path, monkeypatch, capsys):
+    """Cross-harness parity (council_8b5c845792aa1d1e): the reflex writes to
+    every DETECTED harness (config dir exists) — Claude Code, Codex, Gemini —
+    and never creates files for harnesses the user doesn't run. The taught
+    ladder now includes choose()."""
+    import json
+    from types import SimpleNamespace
+    from trinity_local.commands.install import handle_install_reflex
+    monkeypatch.setenv("HOME", str(tmp_path))
+    import pathlib as _pl
+    monkeypatch.setattr(_pl.Path, "home", classmethod(lambda cls: tmp_path))
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".codex").mkdir()   # detected
+    # NO .gemini dir → must not be created
+    rc = handle_install_reflex(SimpleNamespace(path=None, remove=False))
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0 and len(out["targets"]) == 2
+    claude_f = tmp_path / ".claude" / "CLAUDE.md"
+    codex_f = tmp_path / ".codex" / "AGENTS.md"
+    assert claude_f.exists() and codex_f.exists()
+    assert not (tmp_path / ".gemini").exists(), "undetected harness must not be created"
+    body = codex_f.read_text()
+    assert "`choose`" in body and "ranks concrete options" in body
+    assert body.count("trinity-local reflex") >= 1
