@@ -267,6 +267,11 @@ class MemberExecutionResult:
     error_payload: dict[str, object] | None = None
 
 
+# PARKED DORMANT (2026-07-10): chain-mode measured at ZERO real council uses
+# ever across the full outcomes corpus — the instrument-first evidence
+# council_25c534c5f1bf826c required before any cut. Kept for wire-compat
+# (the MCP mode param still accepts "chain"); de-advertised everywhere.
+# Deletion is eligible per the demotion ladder if it stays at zero.
 def _run_chain(
     *,
     config: AppConfig,

@@ -990,6 +990,12 @@ def _query_launchpad_data(payload: dict[str, Any]) -> dict[str, Any]:
     render LIVE over Native Messaging instead of reading a generated
     `launchpad.html` file (which a plugin-only / no-`serve` user never gets).
 
+    Usage instrumentation (council_25c534c5f1bf826c: browser surfaces may not
+    be cut without measurement): every serve appends one line to
+    ~/.trinity/analytics/surface_opens.jsonl — a timestamp and the surface
+    name, nothing else. LLM-free, PII-free, best-effort; read it in a few
+    weeks before any launchpad/stats/viewer simplification decision.
+
     Read-only: assembles the SAME data `write_portal_html` bakes into the page,
     from ~/.trinity only — no subprocess, no model call, no Hub. Passes through
     the host's existing query path (the read-only tier; no allowlist subprocess,
@@ -1002,6 +1008,17 @@ def _query_launchpad_data(payload: dict[str, Any]) -> dict[str, Any]:
     file:// launchpad) rather than letting Chrome silently drop an oversized
     frame.
     """
+    try:
+        import json as _json
+        from .state_paths import trinity_home
+        from .utils import now_iso
+        d = trinity_home() / "analytics"
+        d.mkdir(parents=True, exist_ok=True)
+        with (d / "surface_opens.jsonl").open("a", encoding="utf-8") as f:
+            f.write(_json.dumps({"surface": "launchpad", "at": now_iso()}) + "\n")
+    except Exception:
+        pass
+
     from .launchpad_page import build_launchpad_payload_cached
 
     # mtime-gated cache: a repeated panel open is a file read, not a ~6.5s full

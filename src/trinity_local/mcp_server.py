@@ -161,7 +161,8 @@ async def handle_list_tools() -> list[Tool]:
                         "items": {"type": "string"},
                         "description": "Provider names (e.g. ['claude', 'antigravity', 'codex']). Omit to use the default 3-member lineup.",
                     },
-                    "mode": {"type": "string", "enum": ["parallel", "chain"], "default": "parallel"},
+                    "mode": {"type": "string", "enum": ["parallel", "chain"], "default": "parallel",
+                             "description": "parallel (the product). chain is PARKED dormant — measured at zero real uses ever (2026-07-10, council_25c534c5f1bf826c); accepted for wire-compat, not recommended."},
                     "sequence": {
                         "type": "array",
                         "items": {"type": "string"},

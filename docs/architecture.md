@@ -85,8 +85,8 @@ context across them. Someone outside them has to.
 ## One-paragraph wire diagram
 
 The chairman model synthesizes member outputs, emitting structured Routing JSON
-over every council. Members run in parallel or in `chain` mode for sequential
-refinement. The personal routing table is computed on demand from
+over every council. Members run in parallel (`chain` mode is parked dormant — measured at zero
+real uses ever; wire-compat only). The personal routing table is computed on demand from
 `~/.trinity/council_outcomes/*.json` — the chairman's pick per council is the
 supervision signal (the user-verdict override layer, `council_feedback.jsonl`,
 was retired 2026-06-05; the user never picks, rates, or vetoes). `consolidate`
