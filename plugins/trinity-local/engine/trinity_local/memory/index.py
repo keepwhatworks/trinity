@@ -30,7 +30,7 @@ from .replay_value import (
     theme_score,
 )
 from .schemas import PromptNode
-from .store import iter_prompt_nodes, iter_prompt_nodes_no_embedding
+from .store import iter_prompt_nodes_no_embedding
 
 
 @dataclass

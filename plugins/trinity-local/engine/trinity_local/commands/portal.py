@@ -18,11 +18,11 @@ from pathlib import Path
 from urllib.parse import quote
 
 from ..council_review import write_unified_council_page
-from ..council_runtime import load_council_outcome, load_council_outcome_or_exit, load_prompt_bundle, load_prompt_bundle_or_exit
+from ..council_runtime import load_council_outcome_or_exit, load_prompt_bundle_or_exit
 from ..notifications import open_path
 from ..refresh import refresh_launchpad
 from ..state_paths import review_pages_dir, trinity_home
-from ..task_runtime import load_task_record, load_task_record_or_exit
+from ..task_runtime import load_task_record_or_exit
 
 
 def register(subparsers):

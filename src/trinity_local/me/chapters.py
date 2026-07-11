@@ -15,9 +15,8 @@ old chapter is a phase that passed (decay).
 from __future__ import annotations
 
 import collections
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Iterable
+from dataclasses import dataclass
+from typing import Any
 
 # A month needs at least this many prompts before we trust its share numbers
 # (a 3-prompt month at 100% share is noise, not a chapter).

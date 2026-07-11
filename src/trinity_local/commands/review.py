@@ -6,7 +6,7 @@ import json
 from ..config import load_config
 from ..notifications import open_path
 from ..review import render_review_html, run_review, save_review
-from ..task_runtime import load_task_record, load_task_record_or_exit
+from ..task_runtime import load_task_record_or_exit
 
 
 DEFAULT_REVIEWER_COMMANDS = {

@@ -18,7 +18,6 @@ from .council_schema import normalize_provider_slug, provider_model_brand
 from .council_status import load_council_status
 from .dispatch_registry import make_dispatch_action
 from .global_benchmarks import get_global_benchmarks, get_reference_evals_meta
-from .memory.store import iter_prompt_nodes
 # The macOS-Shortcut dispatch tier retired 2026-05-17 (Native Messaging
 # via the Chrome extension's capture_host took over). These constants
 # stay as harmless data-attr defaults the JS dispatch knows to skip

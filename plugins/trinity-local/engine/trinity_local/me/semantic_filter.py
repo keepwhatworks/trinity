@@ -25,7 +25,7 @@ This is one of three geometric axes that replace hand-tuned heuristics:
 from __future__ import annotations
 
 import math
-from typing import Iterable, Sequence
+from typing import Sequence
 
 # Universal noise prototypes — the same harness/agent-ops/extraction shapes
 # show up for every user, so these are not user-specific. Add an EXAMPLE here,

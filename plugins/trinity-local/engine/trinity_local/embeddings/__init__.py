@@ -350,7 +350,6 @@ def require_embedder_ready() -> None:
     card (launchpad_data._embedder_status). The check is a single
     directory probe — no torch / transformers import, no network call.
     """
-    from pathlib import Path
 
     # Probe the canonical HF cache layout. SentenceTransformer caches
     # models under ~/.cache/huggingface/hub/models--<org>--<name>/snapshots/<hash>/.
