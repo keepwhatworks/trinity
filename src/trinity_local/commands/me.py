@@ -99,6 +99,23 @@ def register(subparsers):
     )
     build_parser.set_defaults(handler=handle_me_build)
 
+    choose_parser = subparsers.add_parser(
+        "choose",
+        help="Rank options by YOUR taste: the frozen palate direction scores "
+             "each option (LLM-free, instant) with the registry's live "
+             "accuracy attached. CLI mirror of the `choose` MCP tool. "
+             "Example: trinity-local choose \"ship now\" \"wait for n=30\"",
+    )
+    choose_parser.add_argument(
+        "options", nargs="+",
+        help="Two or more options, each a self-contained description.",
+    )
+    choose_parser.add_argument(
+        "--json", dest="as_json", action="store_true",
+        help="Print the raw rank_options payload.",
+    )
+    choose_parser.set_defaults(handler=handle_choose)
+
     show_parser = subparsers.add_parser(
         "lens-show",
         help="Print the current ~/.trinity/memories/lens.md content.",
@@ -572,3 +589,34 @@ def handle_lens_resync(args):
         f"lens.md re-rendered with support. View it:\n"
         "    trinity-local lens-show\n"
     )
+
+
+def handle_choose(args) -> int:
+    """CLI mirror of the `choose` MCP tool (task #11). Same core
+    (me/palate_registry.rank_options), same honesty: abstain under the gap
+    floor, advisory when the live accuracy is under its kill-floor."""
+    import json as _json
+
+    from ..me.palate_registry import rank_options
+
+    result = rank_options([str(o) for o in args.options])
+    if getattr(args, "as_json", False):
+        print(_json.dumps(result, indent=2))
+        return 0 if result.get("ready") else 1
+    if not result.get("ready"):
+        print(f"can't rank: {result.get('reason', 'unknown')}")
+        return 1
+    for i, r in enumerate(result["ranked"], 1):
+        print(f"  {i}. [{r['score']:+.4f}] {r['option']}")
+    acc = result.get("live_accuracy")
+    n = result.get("decided_trials", 0)
+    trust = f"live accuracy {acc:.0%} over {n} of your real choices" if acc is not None else \
+            f"accuracy still accumulating ({n} decided trials)"
+    print(f"  — ranked by your frozen taste direction; {trust}.")
+    if result.get("abstain"):
+        print("  ⚠ ABSTAIN: the gap between the top two is under the noise floor — "
+              "this is a coin flip, not a preference. Ask the human.")
+    if result.get("advisory_only"):
+        print("  ⚠ ADVISORY ONLY: live accuracy is below its 60% floor — "
+              "treat this ranking as directional, not decisive.")
+    return 0

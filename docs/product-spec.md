@@ -122,7 +122,7 @@ The chairman reads `lens` (composed by `lens-build` from sampled diverse prompts
 
 ### CLI dispatcher
 
-`src/trinity_local/main.py` is a thin dispatcher. Command modules live under `commands/`. Selected commands shown below — the complete live surface (<!-- canonical:cli_command_count -->59<!-- /canonical --> subcommands across <!-- canonical:command_module_count -->23<!-- /canonical --> command modules) is enumerated by `trinity-local --help`.
+`src/trinity_local/main.py` is a thin dispatcher. Command modules live under `commands/`. Selected commands shown below — the complete live surface (<!-- canonical:cli_command_count -->60<!-- /canonical --> subcommands across <!-- canonical:command_module_count -->23<!-- /canonical --> command modules) is enumerated by `trinity-local --help`.
 
 | Module | Key commands |
 |--------|-------------|

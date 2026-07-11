@@ -210,3 +210,40 @@ class TestChoiceOracle:
         r = rank_options(["a verbose elaborate treatment", "a terse direct fix"],
                          embed_fn=_embed)
         assert r["ready"] and r["advisory_only"] is True and r["live_accuracy"] == 0.4
+
+
+class TestChooseCli:
+    """CLI mirror of the choose MCP tool — same core, same honesty banners."""
+
+    def test_ready_path_ranks_and_reports_trust(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        from trinity_local.commands import me as me_cmd
+        monkeypatch.setattr("trinity_local.me.palate_registry.rank_options",
+            lambda opts, embed_fn=None: {"ready": True,
+                "ranked": [{"option": "terse fix", "score": 0.4},
+                           {"option": "verbose tour", "score": -0.2}],
+                "confidence_gap": 0.6, "abstain": False, "advisory_only": False,
+                "live_accuracy": 0.73, "decided_trials": 22})
+        from types import SimpleNamespace
+        rc = me_cmd.handle_choose(SimpleNamespace(options=["terse fix", "verbose tour"], as_json=False))
+        out = capsys.readouterr().out
+        assert rc == 0 and "1. [+0.4000] terse fix" in out and "73%" in out and "22" in out
+
+    def test_not_ready_exits_nonzero(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        from trinity_local.commands import me as me_cmd
+        from types import SimpleNamespace
+        rc = me_cmd.handle_choose(SimpleNamespace(options=["a", "b"], as_json=False))
+        assert rc == 1 and "can't rank" in capsys.readouterr().out
+
+    def test_abstain_banner(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        from trinity_local.commands import me as me_cmd
+        monkeypatch.setattr("trinity_local.me.palate_registry.rank_options",
+            lambda opts, embed_fn=None: {"ready": True,
+                "ranked": [{"option": "a", "score": 0.01}, {"option": "b", "score": 0.0}],
+                "confidence_gap": 0.01, "abstain": True, "advisory_only": False,
+                "live_accuracy": 0.73, "decided_trials": 22})
+        from types import SimpleNamespace
+        me_cmd.handle_choose(SimpleNamespace(options=["a", "b"], as_json=False))
+        assert "ABSTAIN" in capsys.readouterr().out
