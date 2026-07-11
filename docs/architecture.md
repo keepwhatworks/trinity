@@ -31,8 +31,11 @@ advertised CLI verbs, while older names stay registered for compatibility with
 launchpad dispatch and existing scripts. The core mechanics are in place:
 <!-- canonical:mcp_tool_count -->9<!-- /canonical --> MCP tools, MCP Resources,
 schema migrations, Chrome Native Messaging dispatch, provider-side memory
-imports, real ModernBERT embeddings when installed, and abstain-gates when only
-the TF-IDF fallback is available.
+imports (verify-at-import with a quarantine sidecar — see the four walls
+below), real ModernBERT embeddings when installed, and abstain-gates when only
+the TF-IDF fallback is available. The runtime footprint is two dependencies
+(mcp, numpy); PNG share cards live in the optional `[share]` extra
+(council-ratified demotion of measured-dormant machinery, 2026-07-10).
 
 The verification surface holds a comprehensive passing test suite,
 <!-- canonical:doc_consistency_guards -->113<!-- /canonical --> doc-consistency
@@ -96,10 +99,15 @@ The `lens` pipeline now centers on the unified
 (REFRAME / COMPRESSION / REDIRECT / SHARPENING), explicit decisions and
 provider imports join the same store, and later stages build basins, paired
 tensions, trajectories, correction vectors, and recency-aware registry support.
-Three walls hold the loop honest. Every ledger write passes a provenance
+Four walls hold the loop honest. Every ledger write passes a provenance
 gate — an act must anchor to a real transcript turn, so the ledger stays a
 projection of ground truth (councils, evals, and chairman outcomes never feed
-the lens; that edge is deliberately unwired). Lens writes are clobber-guarded
+the lens; that edge is deliberately unwired). Provider imports go further:
+an anchor must not merely exist but RESOLVE against the local prompt index —
+a claimed prompt that doesn't match anything the user actually typed waits in
+a quarantine sidecar (never touching acts, lenses, orderings, routing, or
+lens-build) until a later ingest lands its transcript and promotes it; the
+health meter counts what's waiting. Lens writes are clobber-guarded
 — a degenerate extraction quarantines to a `.degenerate` sidecar instead of
 wiping a live lens, with the stage-4 verdict distribution logged before every
 guarded write. And because Trinity's own agent-loop output is itself a real
@@ -107,9 +115,24 @@ transcript turn — provenance guards fabrication, not reflection — a
 self-reflection meter (`lens-health`'s ledger-contamination check,
 pre-registered floor 25%) measures the fraction of ledger acts that are
 agent-loop-shaped, so a lens quietly converging on the machine's own
-vocabulary reads WEAK instead of green (founder-corpus baseline: 9%). Real ModernBERT embeddings power semantic geometry when available;
+vocabulary reads WEAK instead of green (founder-corpus baseline: 4–9%). Real ModernBERT embeddings power semantic geometry when available;
 TF-IDF is kept as a lexical fallback and semantic flows abstain when real
 embeddings are not loaded.
+
+The lens's stand-in claim is measured, continuously. At every build the taste
+direction freezes with the exact set of acts it was fit on; every correction
+that arrives afterward is a prospective trial the direction never saw
+(`me/palate_registry.py` — train-on-test structurally impossible, honest
+abstains disclosed). The running number lives in `lens-health` (73% over the
+first 22 live trials; kill-floor 60%). `choose(options)` — the ninth MCP
+tool — productizes the validated half: it ranks any concrete options on the
+frozen direction, LLM-free and instant, with the live accuracy in every
+payload and an abstain under the same noise floor. Generation-side
+conditioning measured null (16/30, pre-registered) and ships dormant. Eval
+leaderboards are gated by a judge-validity floor: a judge must agree with the
+user's own held-out corrections at ≥70% before rankings read as decisive
+(cleared 2026-07-07 by the axis-instruction fix — antigravity 77%); below it,
+every surface stamps "directional, not decisive".
 
 ## Deliberately absent
 

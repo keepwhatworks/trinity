@@ -15,6 +15,8 @@ Public tools, in lifecycle order:
 
 v1.5 pair: ask / get_picks.
 In-protocol provider loop: import_provider_memory.
+Choice oracle: choose (rank options on the frozen palate direction,
+live measured accuracy in every payload).
 
 Plus MCP Resources (v2 substrate, 2026-05-26) for read-only context:
 ~/.trinity/memories/*, ~/.trinity/scoreboard/* exposed as
