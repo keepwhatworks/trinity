@@ -47,7 +47,11 @@ ALLOWED_FILES: list[dict[str, str]] = [
     {"name": "topics.json", "brain": "semantic memory",
      "tagline": "Subject basins + evidence map for lens. Written by lens (Stage 1)."},
     {"name": "vocabulary.md", "brain": "linguistic memory",
-     "tagline": "Anchors (proper nouns) + homonyms + synonyms. Refreshed on every `lens` build."},
+     # Both provenance clauses are true post-fold (3e0dcb8b): every `lens` build
+     # refreshes this file, AND `vocabulary` is its dedicated standalone scan —
+     # the tagline must name the dedicated verb (advice-closure: the user can
+     # act on it) without dropping the lens-refresh truth.
+     "tagline": "Anchors (proper nouns) + homonyms + synonyms. Refreshed on every `lens` build; rescan standalone with `vocabulary`."},
     # The OPTIONAL generators tier (the lens "lift") — the cross-domain invariants
     # the task tensions project from. On-demand (`lens-generators` verb); the
     # viewer shows this tab only when ~/.trinity/memories/generators.md exists.

@@ -21,7 +21,6 @@ This page is written for the platform owner, eng leader, and security reviewer.
 The README and the website lead with the audience-neutral benefit — *proof of
 which model wins **your** kind of work* — because that benefit reads identically
 for an individual choosing a model and a platform team routing per-token spend.
-This page is for the platform owner, the eng leader, and the security reviewer.
 
 ---
 

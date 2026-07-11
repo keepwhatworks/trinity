@@ -174,7 +174,7 @@ Trinity dispatches via your existing `claude` / `codex` / `agy` CLIs — using t
 That's the whole point. Every council runs all three in parallel from one prompt.
 
 **"I want to know if a new model release is actually better for me."**
-`trinity-local eval-run --target <provider>` (claude / codex / antigravity — the provider you want to benchmark; the underlying model is whatever that provider currently ships) scores it against the prompts you've already rejected — your actual taste, not a synthetic benchmark.
+`trinity-local eval-run --target <provider>` (claude / codex / antigravity — the provider you want to benchmark; the underlying model is whatever that provider currently ships) scores it against the prompts you've already rejected — your actual taste, not a synthetic benchmark. The score defends itself before it prints: every run probes its own judge and eval set with control candidates (can the judge tell your correction from the answer you rejected? does the model actually beat "echo the question back"?) and **refuses the headline** if a dumb baseline matches it — a refused number never ranks on the leaderboard or ships on a share card.
 
 **"I want the right model picked for the right task, automatically."**
 Every council teaches Trinity which model wins for which kind of question — automatically. The chairman's pick (lens-governed) is the signal; `compute_personal_routing_table()` aggregates it per task type. No human rating step. The launchpad surfaces the personal routing table; a deterministic pass places each council into its nearest **lens basin** and tallies the chairman-winner there (`scoreboard/picks.json`), so the next call routes on the model that's been winning *your* questions in that basin.
