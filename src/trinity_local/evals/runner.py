@@ -177,6 +177,7 @@ def run_eval(
     limit: int | None = None,
     cwd: Path | None = None,
     progress_callback=None,
+    include_context_bound: bool = False,
 ) -> EvalRunResult:
     """Dispatch each eval item's prompt to the target provider.
 
@@ -200,7 +201,30 @@ def run_eval(
         provider.clean_completion = True
     cwd = cwd or Path.cwd()
 
-    items_to_run = eval_set.items[:limit] if limit else eval_set.items
+    # Cold-answerable filter (#316 productized): a head-to-head that cold-
+    # dispatches context-bound prompts ("take a look at this photo") measures
+    # models' apologies, not their taste — ~65% of a conversational corpus
+    # was degenerate this way (measured 2026-06-11). Default: dispatch only
+    # cold-answerable items and DISCLOSE the exclusion; include_context_bound
+    # restores the old behavior. Legacy sets without the field classify at
+    # load, so old eval files keep working.
+    all_items = list(eval_set.items)
+    if not include_context_bound:
+        from .builder import classify_cold_answerable
+        def _cold(it):
+            v = getattr(it, "cold_answerable", None)
+            if v is None:
+                v = classify_cold_answerable(getattr(it, "prompt", "") or "")[0]
+            return bool(v)
+        answerable = [it for it in all_items if _cold(it)]
+        excluded = len(all_items) - len(answerable)
+        if excluded:
+            print(f"  cold-answerable filter: dispatching {len(answerable)}/{len(all_items)} items "
+                  f"({excluded} context-bound excluded — fragments, image-grounded, or "
+                  f"conversation-dependent; a cold dispatch of those scores apologies, not taste). "
+                  f"Pass --include-context-bound to run everything.")
+        all_items = answerable
+    items_to_run = all_items[:limit] if limit else all_items
     started = datetime.now(timezone.utc).isoformat(timespec="seconds")
     runs: list[EvalItemRun] = []
     failed = 0

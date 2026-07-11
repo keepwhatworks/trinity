@@ -67,6 +67,12 @@ def register(subparsers):
         help="Provider that grades responses against the rejection axis. Defaults to a different provider than --target so the model isn't grading itself.",
     )
     run_p.add_argument(
+        "--include-context-bound", action="store_true",
+        help="Also dispatch items the cold-answerable filter would exclude "
+             "(fragments / image-grounded / conversation-dependent). Default "
+             "runs only cold-answerable items — the honest head-to-head.",
+    )
+    run_p.add_argument(
         "--eval-id", default=None,
         help="Eval set to run. Defaults to the most-recent eval set on disk.",
     )
@@ -882,6 +888,7 @@ def handle_eval_run(args):
             provider_configs,
             limit=args.limit,
             progress_callback=_progress,
+            include_context_bound=bool(getattr(args, "include_context_bound", False)),
         )
 
     if not args.skip_score:

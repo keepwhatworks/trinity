@@ -67,6 +67,41 @@ def results_dir() -> Path:
     return path
 
 
+# ── Cold-answerable classifier (#316 productized, 2026-07-11) ──────────────
+# The June finding: the founder's corpus is conversational and image-grounded,
+# so only ~13/70 eval prompts could be answered COLD — a head-to-head that
+# dispatches "is this gold? take a look" to a model with no image collapses
+# the leaderboard to noise (~65% degenerate). The fix chosen then was a
+# hand-curated subset; this is the productized deterministic version every
+# user gets at eval-build. LLM-free, reasons attached, degenerate-tested.
+import re as _re
+
+_MIN_COLD_CHARS = 25          # fragments ("continue") can't be answered cold
+_IMAGE_MARKERS = _re.compile(
+    r"\b(photo|image|picture|pic|screenshot|attached|attachment|"
+    r"take a look|look at (this|these|the)|can you see|in my view|in view)\b", _re.I)
+_DEICTIC_OPENERS = _re.compile(
+    r"^(and|also|same|again|continue|what about|how about|ok but|now do|"
+    r"why not|then|next|more|another)\b", _re.I)
+_BARE_DEIXIS = _re.compile(r"^(this|that|these|those|it|they)\b", _re.I)
+
+
+def classify_cold_answerable(prompt_text: str) -> tuple[bool, str]:
+    """Can a model answer this prompt COLD — no conversation, no image?
+    Returns (answerable, reason). Deterministic; the reason ships on the
+    item so a filtered leaderboard can say exactly why each exclusion."""
+    p = (prompt_text or "").strip()
+    if len(p) < _MIN_COLD_CHARS:
+        return False, f"fragment (<{_MIN_COLD_CHARS} chars)"
+    if _IMAGE_MARKERS.search(p):
+        return False, "image/artifact-grounded (references something not in the text)"
+    if _DEICTIC_OPENERS.match(p):
+        return False, "conversational continuation (leans on prior turns)"
+    if _BARE_DEIXIS.match(p):
+        return False, "opens on a bare deictic (antecedent lives in lost context)"
+    return True, "self-contained"
+
+
 @dataclass(frozen=True)
 class EvalItem:
     """One eval item: an empirically-rejected (prompt, response) pair
@@ -82,6 +117,8 @@ class EvalItem:
     source_id: str
     prompt_id: str | None
     provider_of_rejected_response: str | None
+    cold_answerable: bool = True
+    cold_reason: str = "self-contained"
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -315,6 +352,8 @@ def build_eval_set(*, source: str = "rejections", limit: int | None = None) -> E
             source_id=source_id,
             prompt_id=prompt_id,
             provider_of_rejected_response=provider,
+            cold_answerable=classify_cold_answerable(prompt_text)[0],
+            cold_reason=classify_cold_answerable(prompt_text)[1],
         ))
     # #281: derive the fully-dropped axes BEFORE limit truncation, so the signal
     # means "this axis had model_miss acts but ZERO survived the degeneracy /
@@ -451,6 +490,11 @@ def load_eval_set(eval_id: str) -> EvalSet | None:
             source_id=it.get("source_id", ""),
             prompt_id=it.get("prompt_id"),
             provider_of_rejected_response=it.get("provider_of_rejected_response"),
+            # legacy sets predate the cold-answerable stamp — classify at load
+            cold_answerable=it["cold_answerable"] if "cold_answerable" in it
+                else classify_cold_answerable(it.get("prompt", ""))[0],
+            cold_reason=it.get("cold_reason")
+                or classify_cold_answerable(it.get("prompt", ""))[1],
         )
         for it in raw.get("items", [])
     ]
