@@ -390,3 +390,18 @@ class TestFloorMirrorsOnOtherClaimSurfaces:
             "floor_refused did not change the rendered card — the withdrawn "
             "headline would ship on the PNG"
         )
+
+
+class TestFloorInnerFieldCorruption:
+    def test_pass_line_survives_wrong_typed_baselines(self, tmp_path, monkeypatch, capsys):
+        """#304 vein, found by the hour-6 corrupt-state audit: a verdict dict
+        whose `baselines` is a STRING (hand-edit / drift) crashed the pass-line
+        (`'str'.values()`) — killing eval-run AT THE REPORT, after the full
+        judge spend. The guard degrades to 0 items; the line still prints.
+        Mutation: drop the isinstance guard on _floor_baselines → RED."""
+        cli = TestFloorGateCliSurface()
+        bad = _verdict(True)
+        bad.baselines = "not a dict"  # wrong-typed inner field
+        out = cli._run_cli(tmp_path, monkeypatch, capsys, gate=lambda *a, **k: bad)
+        assert "Baseline floor: passed" in out
+        assert "controls on 0 items" in out

@@ -247,3 +247,53 @@ class TestChooseCli:
         from types import SimpleNamespace
         me_cmd.handle_choose(SimpleNamespace(options=["a", "b"], as_json=False))
         assert "ABSTAIN" in capsys.readouterr().out
+
+
+import pytest
+
+
+class TestCorruptSnapshotResilience:
+    """Corrupt-state resilience (#304 vein) on the palate files — found by the
+    hour-6 flight audit: a wrong-typed palate_snapshot.json leaked a raw
+    AttributeError through `choose` and stamped it as score_prospective's
+    `reason`. The read boundary (_load_snapshot) now shape-guards; every
+    caller degrades to the honest rebuild hint. Mutation: bypass
+    _load_snapshot (restore the bare json.loads) → these red."""
+
+    def _corrupt_home(self, tmp_path, monkeypatch, snapshot_text: str):
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        me = tmp_path / "me"
+        me.mkdir(parents=True, exist_ok=True)
+        (me / "palate_snapshot.json").write_text(snapshot_text, encoding="utf-8")
+
+    @pytest.mark.parametrize("bad", [
+        '["not","a","dict"]',       # wrong type
+        '{"direction": [0.1',        # truncated JSON
+        '42',                        # scalar
+    ])
+    def test_rank_options_degrades_honestly(self, tmp_path, monkeypatch, bad):
+        from trinity_local.me import palate_registry as pr
+        self._corrupt_home(tmp_path, monkeypatch, bad)
+        out = pr.rank_options(["a", "b"], embed_fn=lambda ts: [[0.0] * 8 for _ in ts])
+        assert out["ready"] is False
+        assert "AttributeError" not in str(out.get("reason", ""))
+        assert "unreadable" in out["reason"] or "snapshot" in out["reason"]
+
+    def test_score_prospective_degrades_honestly(self, tmp_path, monkeypatch):
+        from trinity_local.me import palate_registry as pr
+        self._corrupt_home(tmp_path, monkeypatch, '["not","a","dict"]')
+        out = pr.score_prospective(embed_fn=lambda ts: [[0.0] * 8 for _ in ts])
+        assert out["ready"] is False
+        assert "AttributeError" not in str(out.get("reason", ""))
+
+    def test_corrupt_trials_lines_are_skipped_not_fatal(self, tmp_path, monkeypatch):
+        from trinity_local.me import palate_registry as pr
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        me = tmp_path / "me"
+        me.mkdir(parents=True, exist_ok=True)
+        (me / "palate_trials.jsonl").write_text(
+            'not json\n{"trial": 42}\n{"verdict": "correct", "act_id": "r_1"}\n',
+            encoding="utf-8",
+        )
+        s = pr.summarize_trials()
+        assert s["trials"] >= 0  # no raise is the contract; corrupt rows don't count

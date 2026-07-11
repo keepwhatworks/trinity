@@ -108,6 +108,21 @@ def _load_scored_ids() -> set[str]:
     return out
 
 
+def _load_snapshot() -> dict | None:
+    """Shape-guarded snapshot read (#304 corrupt-state vein): a hand-edited /
+    truncated / wrong-typed palate_snapshot.json returns None — every caller
+    degrades to an honest "snapshot unreadable" instead of leaking an
+    AttributeError through choose / lens-health / score_prospective."""
+    p = _snapshot_path()
+    if not p.exists():
+        return None
+    try:
+        snap = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return snap if isinstance(snap, dict) else None
+
+
 def score_prospective(embed_fn: Callable | None = None) -> dict[str, Any]:
     """Score every not-yet-scored act that postdates the frozen direction.
     Appends verdicts (numbers + ids only) and returns the running summary.
@@ -124,7 +139,9 @@ def score_prospective(embed_fn: Callable | None = None) -> dict[str, Any]:
             embed_fn = _default_embed()
         if embed_fn is None:
             return {"ready": False, "reason": "needs real embeddings"}
-        snap = json.loads(snap_p.read_text(encoding="utf-8"))
+        snap = _load_snapshot()
+        if snap is None:
+            return {"ready": False, "reason": "palate snapshot unreadable — rebuild with `trinity-local lens`"}
         fit_ids = set(snap.get("fit_act_ids") or [])
         d = np.array(snap.get("direction") or [], dtype=float)
         if d.size == 0:
@@ -222,7 +239,9 @@ def rank_options(options: list[str], embed_fn=None) -> dict:
             embed_fn = _default_embed()
         if embed_fn is None:
             return {"ready": False, "reason": "needs real embeddings"}
-        snap = _json.loads(snap_p.read_text(encoding="utf-8"))
+        snap = _load_snapshot()
+        if snap is None:
+            return {"ready": False, "reason": "palate snapshot unreadable — rebuild with `trinity-local lens`"}
         d = np.array(snap.get("direction") or [], dtype=float)
         if d.size == 0:
             return {"ready": False, "reason": "snapshot missing direction"}

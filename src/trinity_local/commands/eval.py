@@ -978,8 +978,11 @@ def handle_eval_run(args):
         if _floor and _floor.get("trustworthy"):
             # Item count comes from the verdict itself (each control's n_scored),
             # not a re-derivation — no hand-mirror of FLOOR_GATE_MAX_ITEMS here.
+            _floor_baselines = _floor.get("baselines")
+            if not isinstance(_floor_baselines, dict):
+                _floor_baselines = {}  # wrong-typed inner field (hand-edit) — degrade, don't crash the report
             _floor_n = max(
-                (b.get("n_scored", 0) for b in (_floor.get("baselines") or {}).values()
+                (b.get("n_scored", 0) for b in _floor_baselines.values()
                  if isinstance(b, dict)),
                 default=0,
             )

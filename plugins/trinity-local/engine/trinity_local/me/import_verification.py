@@ -102,14 +102,13 @@ def quarantine_rows(kind: str, rows: list[dict]) -> int:
 
 def quarantine_counts() -> dict[str, int]:
     """Pending sidecar sizes — surfaced by lens-health so a black-hole
-    sidecar (the council's falsifier) is visible."""
+    sidecar (the council's falsifier) is visible. Counts PARSEABLE rows
+    (the same rows promotion can ever consider), not raw lines — a corrupt
+    line would otherwise inflate the pending meter forever while being
+    invisible to promote_quarantined."""
     out = {}
     for kind in ("eval", "lens"):
-        p = _quarantine_path(kind)
-        n = 0
-        if p.exists():
-            n = sum(1 for line in p.read_text(encoding="utf-8").splitlines() if line.strip())
-        out[kind] = n
+        out[kind] = len(_load_quarantine(kind))
     return out
 
 

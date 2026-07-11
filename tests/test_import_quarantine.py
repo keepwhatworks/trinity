@@ -148,3 +148,23 @@ class TestFloors:
         from trinity_local.me.import_verification import MIN_ANCHOR_CHARS, anchor_resolves
         corpus = ["the fix"]
         assert not anchor_resolves("the fix", corpus, min_chars=MIN_ANCHOR_CHARS)
+
+
+class TestQuarantineCountsHonesty:
+    """quarantine_counts is the black-hole meter (the council's pre-registered
+    falsifier surface) — it must count PARSEABLE rows, the same universe
+    promote_quarantined can ever act on. A corrupt line counted as 'pending'
+    would inflate the meter forever while being invisible to promotion.
+    Mutation: revert counts to raw line-counting → reds."""
+
+    def test_unparseable_lines_do_not_count_as_pending(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        from trinity_local.me.import_verification import quarantine_counts
+        me = tmp_path / "me"
+        me.mkdir(parents=True, exist_ok=True)
+        (me / "quarantine_acts.jsonl").write_text(
+            'garbage\n{"kind": 123}\n[]\n', encoding="utf-8",
+        )
+        counts = quarantine_counts()
+        # 'garbage' unparseable, '[]' non-dict → only {"kind":123} is a row
+        assert counts["eval"] == 1
