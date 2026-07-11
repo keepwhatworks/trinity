@@ -58,8 +58,8 @@ trinity-local status
 # (auto-discovers ~/.claude/projects/, ~/.codex/sessions/, ~/.gemini/antigravity-cli/brain/)
 trinity-local ingest-recent
 
-# Dream the core memories (~5-15 min)
-trinity-local dream
+# Deep-build the core memories (~5-15 min)
+trinity-local lens --deep
 
 # Run a council on a single question
 trinity-local council --task "what is the right caching strategy"

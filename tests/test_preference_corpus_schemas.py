@@ -280,31 +280,53 @@ class TestRealCorpusSchemaCompliance:
                 msg += f"  {p.name}: {err}\n"
             pytest.fail(msg)
 
-    def test_real_rejections_validate(self, jsonschema_mod):
+    def test_real_preference_ledger_validates(self, jsonschema_mod):
+        """Real-corpus guard on the UNIFIED ledger (me/preference_acts.jsonl —
+        the sole store since #209). This REPLACED test_real_rejections_validate
+        (2026-07-11, lens-6 audit): that test validated the retired
+        me/rejections.jsonl, a file nothing has written since May — so it
+        skipped unconditionally on every machine forever, a permanently-vacuous
+        test. The ledger is what all four provenance walls protect; validate it
+        via the loader round-trip (the same pattern the council-outcomes test
+        above uses): every row must parse into a PreferenceAct, carry the
+        namespaced id + a known trigger, and to_dict must round-trip without
+        dropping identity fields."""
         home = self._real_trinity_home()
         if home is None:
             pytest.skip("no real ~/.trinity/ on this machine")
-        rej_path = home / "me" / "rejections.jsonl"
-        if not rej_path.exists():
-            pytest.skip("no rejections.jsonl on real home")
-        schema = _load_schema("rejection_signal.schema.json")
+        led_path = home / "me" / "preference_acts.jsonl"
+        if not led_path.exists():
+            pytest.skip("no preference_acts.jsonl on real home")
+        from trinity_local.me.preference_acts import PreferenceAct
+        known_triggers = {"model_miss", "self_expressed"}
         failures: list[tuple[int, str]] = []
-        with rej_path.open(encoding="utf-8") as fh:
+        n = 0
+        seen_ids: set[str] = set()
+        with led_path.open(encoding="utf-8") as fh:
             for idx, line in enumerate(fh, start=1):
                 line = line.strip()
                 if not line:
                     continue
+                n += 1
                 try:
                     record = json.loads(line)
-                except json.JSONDecodeError as exc:
-                    failures.append((idx, f"json: {exc}"))
+                    act = PreferenceAct.from_dict(record)
+                except (json.JSONDecodeError, TypeError, KeyError) as exc:
+                    failures.append((idx, f"unparseable: {exc}"))
                     continue
-                try:
-                    jsonschema_mod.validate(record, schema)
-                except jsonschema_mod.ValidationError as exc:
-                    failures.append((idx, str(exc)[:300]))
+                if not act.id or not act.id.startswith(("r_", "d_")):
+                    failures.append((idx, f"id {act.id!r} outside the r_/d_ namespace"))
+                if act.id in seen_ids:
+                    failures.append((idx, f"duplicate id {act.id!r} — append-only ledger must not repeat"))
+                seen_ids.add(act.id)
+                if act.trigger.lower() not in known_triggers:
+                    failures.append((idx, f"unknown trigger {act.trigger!r}"))
+                rt = act.to_dict()
+                if rt.get("id") != act.id or not rt.get("privileged"):
+                    failures.append((idx, "to_dict round-trip dropped identity fields"))
+        assert n > 0, "ledger exists but is empty — the walls are guarding nothing"
         if failures:
-            msg = "Real rejections.jsonl failed validation:\n"
+            msg = f"Real preference_acts.jsonl failed validation ({len(failures)}/{n} rows):\n"
             for ln, err in failures[:10]:
                 msg += f"  line {ln}: {err}\n"
             pytest.fail(msg)

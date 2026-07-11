@@ -2,7 +2,7 @@
 class: live
 ---
 
-# Your lens — what `dream` generates from your prompts
+# Your lens — what `lens` builds from your prompts
 
 > Long-form companion to the README. The README leads with the fusion
 > council; the **lens** is the opt-in upsell — this file says **what's in
@@ -10,7 +10,7 @@ class: live
 
 ## Four levels of cognitive shape
 
-`trinity-local dream` synthesizes your prompts into your lens — one
+`trinity-local lens` synthesizes your prompts into your lens — one
 hierarchical artifact the chairman reads top-down on every council. Four
 levels, generated bottom-up from your prompt corpus:
 

@@ -42,7 +42,7 @@ Every node gets passed through `modernbert-embed-base` when a real embedding run
 
 ## Dream, the offline synthesis pass
 
-`trinity-local dream` walks six phases:
+`trinity-local lens --deep` (the deep build — the former `dream` verb, folded 2026-07-04) walks six phases:
 
 **Phase 1, Discover.** Find pairs of nodes across providers that are semantically the SAME question (cosine ≥ 0.85). That's how Trinity knows you asked "the same thing" of Claude AND Codex AND Gemini.
 
@@ -66,7 +66,7 @@ This shipped in v1.7.55. Detection is deterministic: group model-miss preference
 
 ## What you end up with
 
-After a few dream cycles, your `~/.trinity/` looks like:
+After a few deep builds, your `~/.trinity/` looks like:
 
 ```
 ~/.trinity/
@@ -117,9 +117,9 @@ When Claude 5 or GPT-5.5 lands, the question isn't "how does it score on MMLU." 
 
 The eval is **structurally asymmetric** in your favor. Only Trinity sees your cross-provider rejection signal. A public benchmark can rank models on average user behavior. Trinity's eval ranks them on *you*. The same architecture that makes the corpus impossible for a single lab to reproduce also makes the eval personal.
 
-## When does dream run
+## When does the deep build run
 
-**Today: manual.** You run `trinity-local dream` when you want a refresh. The launchpad surfaces a "lens is stale" indicator when the rejection-corpus delta vs the last dream crosses a threshold.
+**Today: manual.** You run `trinity-local lens --deep` when you want a full refresh (`lens` alone is the fast rebuild). The launchpad surfaces a "lens is stale" indicator when the rejection-corpus delta vs the last deep build crosses a threshold.
 
 **Roadmap: auto-trigger.** Mirroring Anthropic's Auto-Dream cadence (24h + 5-sessions) plus a rejection-corpus-delta trigger. Trinity and Auto-Dream share the same primitive (offline synthesis from session transcripts) but differ in scope: Trinity is cross-provider, Auto-Dream is single-provider. Same idea, asymmetric data access.
 
@@ -129,7 +129,7 @@ The eval is **structurally asymmetric** in your favor. Only Trinity sees your cr
 
 ## The closed loop, how Trinity gets better
 
-The chairman reads your `lens.md` during every synthesis. Each council emits a `routing_label` (winner, agreed/disagreed claims, why). Those outcomes feed the per-basin **routing** tally: `cortex consolidate` places each council into its nearest lens basin and records the recency-weighted winner in `picks.json`, so the next `ask` can route a similar question on that basin's track record. The lens *itself* refreshes separately. Each dream re-reads new turn-pair signal from your raw prompts (not from how councils turned out; that council→lens re-extraction edge isn't wired). The lens isn't static. It's the slow-changing layer your fast-changing conversations refine.
+The chairman reads your `lens.md` during every synthesis. Each council emits a `routing_label` (winner, agreed/disagreed claims, why). Those outcomes feed the per-basin **routing** tally: `cortex consolidate` places each council into its nearest lens basin and records the recency-weighted winner in `picks.json`, so the next `ask` can route a similar question on that basin's track record. The lens *itself* refreshes separately. Each deep build re-reads new turn-pair signal from your raw prompts (not from how councils turned out; that council→lens re-extraction edge isn't wired). The lens isn't static. It's the slow-changing layer your fast-changing conversations refine.
 
 The taste you build with Trinity is the persistent thing across model generations. When the next frontier model ships, your lens still grades it. That's the layer this thing is.
 
