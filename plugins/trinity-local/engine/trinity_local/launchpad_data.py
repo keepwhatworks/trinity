@@ -1458,6 +1458,15 @@ def _eval_summary() -> dict:
             continue
         if not _usable_score(data.get("aggregate_score")):
             continue  # None OR non-finite NaN/Inf (corrupt file) — not a score
+        # Baseline-floor refusal (2026-07-11, the wired #316 gate) — mirror of
+        # the CLI leaderboard skip in commands/eval._collect_leaderboard_rows:
+        # trustworthy=False means the headline was REFUSED at eval-run time (a
+        # control candidate matched the model, or the judge failed the
+        # recognition contrast). The launchpad hero/leaderboard must not
+        # resurrect a withdrawn claim the terminal refused to print.
+        _fl = data.get("baseline_floor")
+        if isinstance(_fl, dict) and _fl.get("trustworthy") is False:
+            continue
         scored.append((cand, data))
         # Most-recent scored run per provider (candidates is mtime-desc). Mirror
         # the leaderboard's canonicalize-then-dedup so headline == comparison[0].

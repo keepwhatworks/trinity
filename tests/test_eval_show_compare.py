@@ -125,7 +125,7 @@ class TestCompareLeaderboard:
         # PRECONDITION B (render-independent): assert the seeded state IS a tie
         # at display precision BEFORE trusting the printed output — so the
         # symptom assertion below is non-vacuous.
-        rows, _ = _collect_leaderboard_rows(None)
+        rows, _, _ = _collect_leaderboard_rows(None)
         assert top_two_tied(rows), "fixture must be a real aggregate tie"
         handle_eval_show(_compare_args())
         out = capsys.readouterr().out

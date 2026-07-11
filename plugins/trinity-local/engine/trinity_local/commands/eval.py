@@ -85,6 +85,13 @@ def register(subparsers):
         help="Skip the scorer step. Useful when you want to inspect raw responses before paying the judge dispatch cost.",
     )
     run_p.add_argument(
+        "--skip-floor", action="store_true",
+        help="Skip the baseline-floor pre-report gate (control candidates judged on a "
+             "capped item subset — up to ~24 extra judge calls — which REFUSES the "
+             "headline when a dumb baseline isn't beaten or the judge can't recognize "
+             "your own corrections). Skipping saves judge quota but ships an unprobed number.",
+    )
+    run_p.add_argument(
         "--regrade", action="store_true",
         help="Re-score the newest SAVED result for (--eval-id, --target) with the chosen "
              "--judge — zero target re-dispatch. Use after a judge failure (empty/unparseable "
@@ -917,12 +924,44 @@ def handle_eval_run(args):
                   progress_callback=lambda i, t, _: print(f"  judged {i}/{t}"))
         _record_judge_alignment(run_result, judge, alignment)
 
+        # Baseline-floor pre-report gate (the wired #316 follow-up, 2026-07-11):
+        # probe the judge + eval set with control candidates BEFORE the headline
+        # ships. This is the check that caught the broken-judge and reaction-as-
+        # prompt bugs (2026-06-11) — a green aggregate on degenerate data. Runs
+        # only when there is an aggregate to defend; --skip-floor opts out.
+        if (run_result.aggregate_score is not None
+                and not getattr(args, "skip_floor", False)):
+            from ..evals.baseline_floor import (
+                FLOOR_GATE_CANDIDATES,
+                FLOOR_GATE_MAX_ITEMS,
+                run_floor_gate,
+            )
+            n_gate = min(run_result.n_scored or 0, FLOOR_GATE_MAX_ITEMS)
+            print(f"Baseline floor: judging {len(FLOOR_GATE_CANDIDATES)} control "
+                  f"candidates × {n_gate} items (~{len(FLOOR_GATE_CANDIDATES) * n_gate} "
+                  f"extra judge calls; --skip-floor to skip)...")
+            verdict = run_floor_gate(run_result, lens_text, judge, provider_configs)
+            if verdict is not None:
+                run_result.baseline_floor = verdict.to_dict()
+
     path = save_run_result(run_result)
 
     print()
     print(f"  Eval run complete: {run_result.items_completed}/{run_result.items_total} dispatched, "
           f"{run_result.items_failed} failed")
-    if run_result.aggregate_score is not None:
+    _floor = run_result.baseline_floor if isinstance(run_result.baseline_floor, dict) else {}
+    if run_result.aggregate_score is not None and _floor and _floor.get("trustworthy") is False:
+        # The gate's whole point: a headline a dumb baseline matches (or a judge
+        # that can't recognize the user's own corrections graded) is NOISE — print
+        # the refusal INSTEAD of the score. The aggregate stays in the result file
+        # (data preserved) but every claim surface withdraws it: this print here,
+        # and the eval-show leaderboard (which excludes floor-refused runs).
+        print(f"  ✗ HEADLINE REFUSED (baseline floor): {_floor.get('reason')}")
+        print(f"    Raw per-item scores are kept in {path.name}; the aggregate is "
+              f"not printed because it is not distinguishable from noise on this "
+              f"eval set + judge. Fix the set (eval-build) or the judge "
+              f"(eval-judge-check / --judge) and re-run.")
+    elif run_result.aggregate_score is not None:
         if getattr(run_result, "self_judge", False):
             # self-judge = judge is the same provider family as the target.
             # Measured 2026-06-09 (self-preference experiment, n=30 paired deltas):
@@ -936,6 +975,24 @@ def handle_eval_run(args):
                   f"measured non-self-preferential)")
         else:
             print(f"  Aggregate score:  {run_result.aggregate_score:.3f}  ({args.target} vs rejected_responses)")
+        if _floor and _floor.get("trustworthy"):
+            # Item count comes from the verdict itself (each control's n_scored),
+            # not a re-derivation — no hand-mirror of FLOOR_GATE_MAX_ITEMS here.
+            _floor_n = max(
+                (b.get("n_scored", 0) for b in (_floor.get("baselines") or {}).values()
+                 if isinstance(b, dict)),
+                default=0,
+            )
+            print(f"  Baseline floor: passed — beats '{_floor.get('worst_negative')}' "
+                  f"by {_floor.get('margin')}; judge recognition {_floor.get('recognition')} "
+                  f"(controls on {_floor_n} items).")
+        elif not _floor and not getattr(args, "skip_floor", False) and not args.skip_score:
+            # Gate intended but didn't produce a verdict (nothing genuinely
+            # scored to probe) — say so rather than silently shipping unprobed.
+            print("  ⚠ baseline floor: not run (no genuinely scored items to probe).")
+        elif getattr(args, "skip_floor", False):
+            print("  ⚠ baseline floor: SKIPPED (--skip-floor) — this number was not "
+                  "probed against control candidates.")
         if run_result.items_failed:
             # Survivorship warning (2026-07-03): 8/33 codex dispatches died on
             # rate limits and the aggregate silently covered only the 25
@@ -1077,22 +1134,26 @@ def _latest_result_path(target: str | None, eval_id: str | None):
     return candidates[0]
 
 
-def _collect_leaderboard_rows(eval_id: str | None) -> tuple[list[dict], set[str]]:
-    """Return (rows-sorted-desc, eval_ids_seen).
+def _collect_leaderboard_rows(eval_id: str | None) -> tuple[list[dict], set[str], list[str]]:
+    """Return (rows-sorted-desc, eval_ids_seen, floor_refused_targets).
 
     Shared by eval-show --compare and eval-share --compare; same per-target
     dedup policy the launchpad uses (launchpad_data._compute_eval_summary).
-    Returns ([], set()) when no candidates match.
+    floor_refused_targets lists providers whose newest run was excluded by the
+    baseline-floor gate (headline refused) — callers print the disclosure via
+    `_print_floor_refusal_note` so an excluded model reads as "refused", not
+    silently absent. Returns ([], set(), []) when no candidates match.
     """
     import json
     from ..evals.builder import results_dir
     from ..utils import finite_float_or_none
 
+    floor_refused: list[str] = []
     candidates = list(results_dir().glob("eval_*__model_*.json"))
     if eval_id:
         candidates = [p for p in candidates if p.name.startswith(f"eval_{eval_id}__")]
     if not candidates:
-        return [], set()
+        return [], set(), floor_refused
     # (-mtime, stem) total order so the per-target dedup below (newest run wins
     # the merged leaderboard slot) is deterministic when two of a provider's
     # runs share an st_mtime — otherwise the leaderboard WINNER + per-target
@@ -1142,6 +1203,16 @@ def _collect_leaderboard_rows(eval_id: str | None) -> tuple[list[dict], set[str]
         # row — same rule as the launchpad leaderboard (launchpad_data
         # ._eval_summary), which this function's docstring promises to mirror.
         if data.get("aggregate_score") is None:
+            continue
+        # Floor-refused runs are excluded like null-score runs (2026-07-11, the
+        # wired #316 gate): trustworthy=False means the baseline floor REFUSED
+        # the headline — a dumb control matched the model, or the judge failed
+        # the recognition contrast — so ranking it would launder a withdrawn
+        # claim back onto the leaderboard. None/missing = gate not run (legacy
+        # results keep ranking; the judge-validity note still stamps them).
+        _fl = data.get("baseline_floor")
+        if isinstance(_fl, dict) and _fl.get("trustworthy") is False:
+            floor_refused.append(target)
             continue
         items = data.get("items") or []
         judge = None
@@ -1203,7 +1274,26 @@ def _collect_leaderboard_rows(eval_id: str | None) -> tuple[list[dict], set[str]
         key=lambda r: r.get("aggregate_score") if r.get("aggregate_score") is not None else -1.0,
         reverse=True,
     )
-    return rows, eval_ids_seen
+    return rows, eval_ids_seen, sorted(set(floor_refused))
+
+
+def _print_floor_refusal_note(rows: list[dict], floor_refused: list[str]) -> None:
+    """Disclose baseline-floor exclusions ON the ranking surface (2026-07-11).
+
+    A floor-refused run is excluded from the leaderboard, but silence would
+    read as "never benchmarked" — say which providers had a headline refused,
+    and whether an older passing run is standing in for the newest one (the
+    same newest-wins fallthrough the null-score placeholder rule uses)."""
+    if not floor_refused:
+        return
+    showing = {r.get("target") for r in rows}
+    parts = [
+        t + (" (older passing run shown)" if t in showing else "")
+        for t in floor_refused
+    ]
+    print(f"  ✗ baseline floor: headline refused for {', '.join(parts)} — a control "
+          f"candidate matched the model or the judge failed the recognition "
+          f"contrast on that run. See the run file's baseline_floor.reason.")
 
 
 def _print_judge_validity_note(rows: list[dict]) -> None:
@@ -1254,7 +1344,7 @@ def _handle_eval_compare(args):
     different items, so unfiltered comparison is suggestive only —
     surface a warning).
     """
-    rows, eval_ids_seen = _collect_leaderboard_rows(args.eval_id)
+    rows, eval_ids_seen, floor_refused = _collect_leaderboard_rows(args.eval_id)
     if not rows:
         msg = "  No eval results found on disk."
         if args.eval_id:
@@ -1363,6 +1453,7 @@ def _handle_eval_compare(args):
         print()
         _print_exclusion_note(rows)
         _print_judge_validity_note(rows)
+        _print_floor_refusal_note(rows, floor_refused)
         return None
 
     print(f"    {'rank':<5} {'target':<14} {'n':<5} {'aggregate':>10}   {'judge':<14} {'ran'}")
@@ -1378,6 +1469,7 @@ def _handle_eval_compare(args):
     print()
     _print_exclusion_note(rows)
     _print_judge_validity_note(rows)
+    _print_floor_refusal_note(rows, floor_refused)
     # Suppress the "X leads Y by ±Z" head-to-head when rows span
     # different eval sets — same consistency rule shipped to the
     # per-axis leader synthesis (commits 83b9e99, 02f354d). The
@@ -1454,7 +1546,14 @@ def handle_eval_show(args):
     print(f"  {result.items_completed}/{result.items_total} dispatched"
           f"{f', {result.items_failed} failed' if result.items_failed else ''}")
 
-    if result.aggregate_score is not None:
+    _show_floor = result.baseline_floor if isinstance(result.baseline_floor, dict) else {}
+    if result.aggregate_score is not None and _show_floor.get("trustworthy") is False:
+        # Mirror the eval-run refusal on the drill-in surface: the detail view
+        # must not re-print a headline the run itself refused (this run is also
+        # excluded from the --compare leaderboard).
+        print()
+        print(f"  ✗ HEADLINE REFUSED (baseline floor): {_show_floor.get('reason')}")
+    elif result.aggregate_score is not None:
         print()
         print(f"  Aggregate score: {result.aggregate_score:.3f}  "
               f"(vs the rejected_responses the original prompts elicited)")
@@ -1563,7 +1662,10 @@ def handle_eval_share(args):
     # canvas. The wedge artifact for #116 ("Trinity scored Claude,
     # Codex, and Gemini against my taste").
     if getattr(args, "compare", False):
-        rows, eval_ids_seen = _collect_leaderboard_rows(args.eval_id)
+        # eval-share renders a PNG, so the floor-refused disclosure can't print —
+        # exclusion alone is the honest floor here (a refused headline simply
+        # doesn't ship on the public card).
+        rows, eval_ids_seen, _floor_refused = _collect_leaderboard_rows(args.eval_id)
         if not rows:
             msg = "  No eval results found on disk."
             if args.eval_id:

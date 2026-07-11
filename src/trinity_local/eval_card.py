@@ -140,6 +140,12 @@ class EvalCardData:
     # a result written without that nulling would headline a degraded score on a
     # public share card.
     scoring_degraded: bool = False
+    # Baseline-floor refusal (2026-07-11, the wired #316 gate): the run's
+    # headline was REFUSED at eval-run time (control candidate matched the
+    # model / judge failed the recognition contrast). Distinct from
+    # scoring_degraded so the suppression carries the right CAUSE — but both
+    # gate the render the same way: a withdrawn claim never ships on a PNG.
+    floor_refused: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -151,6 +157,7 @@ class EvalCardData:
             "items_completed": self.items_completed,
             "by_axis": list(self.by_axis),
             "scoring_degraded": self.scoring_degraded,
+            "floor_refused": self.floor_refused,
         }
 
 
@@ -232,6 +239,10 @@ def collect_card_data_from_result(result) -> EvalCardData:
         items_completed=result.items_completed,
         by_axis=by_axis,
         scoring_degraded=bool(getattr(result, "scoring_degraded", False)),
+        floor_refused=(
+            isinstance(getattr(result, "baseline_floor", None), dict)
+            and result.baseline_floor.get("trustworthy") is False
+        ),
     )
 
 
@@ -335,11 +346,15 @@ def render_eval_card(data: EvalCardData) -> bytes:
               font=eyebrow, fill=COLOR_ACCENT)
     y += 50
 
-    # Empty-state fallback — no aggregate (or a degraded judge) means no
-    # card-worthy data. Checking `scoring_degraded` directly (not just the
-    # aggregate=None side-effect the scorer also sets) keeps a degraded score
-    # off a public share card even if some path forgets to null the aggregate.
-    if data.aggregate_score is None or data.scoring_degraded or not data.by_axis:
+    # Empty-state fallback — no aggregate (or a degraded judge, or a baseline-
+    # floor refusal) means no card-worthy data. Checking `scoring_degraded` /
+    # `floor_refused` directly (not just the aggregate=None side-effect the
+    # scorer also sets) keeps an untrustworthy score off a public share card
+    # even if some path forgets to null the aggregate — floor-refused runs
+    # KEEP their aggregate in the JSON by design, so this flag is the only
+    # thing standing between a withdrawn headline and a shareable PNG.
+    if (data.aggregate_score is None or data.scoring_degraded
+            or data.floor_refused or not data.by_axis):
         draw.text((margin, y), "Run trinity-local eval-run",
                   font=headline, fill=COLOR_INK)
         y += 80

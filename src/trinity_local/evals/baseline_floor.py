@@ -77,6 +77,22 @@ DEGENERATE_CANDIDATES: dict[str, Callable[[EvalItemRun], str]] = {
 _NEGATIVE_BASELINES = ("echo_rejected", "echo_prompt", "empty", "constant")
 _POSITIVE_BASELINE = "echo_gold"
 
+# Pre-report gate defaults (wired into eval-run 2026-07-11 — the deferred #316
+# follow-up; before that this module was a whitelisted orphan reachable only via
+# scratch proofs). Three candidates keep the gate's judge-cost proportionate:
+# echo_gold + echo_rejected carry the recognition contrast (judge_ok), and
+# echo_prompt is the historically-firing negative (the prompt≈gold degeneracy
+# this module was born from). `empty`/`constant` add cost without a distinct
+# failure mode — still available via evaluate_floor(candidates=...) for a full
+# audit.
+FLOOR_GATE_CANDIDATES = ("echo_gold", "echo_rejected", "echo_prompt")
+# Controls are judged per item, so gate cost = len(candidates) × items. Cap the
+# item subset: 8 × 3 = 24 judge calls worst case. Both pre-registered floors
+# are CONTRASTS (0.25 recognition, 0.15 discrimination) — a broken judge or a
+# degenerate set fails them at any n in this range; the cap trades a little
+# margin precision for not doubling a full run's judge bill.
+FLOOR_GATE_MAX_ITEMS = 8
+
 
 @dataclass
 class BaselineResult:
@@ -225,4 +241,46 @@ def evaluate_floor(
         discriminates=discriminates,
         trustworthy=trustworthy,
         reason=reason,
+    )
+
+
+def run_floor_gate(
+    run: EvalRunResult,
+    lens_text: str,
+    judge_provider: str,
+    provider_configs: dict,
+    *,
+    cwd: Path | None = None,
+    max_items: int = FLOOR_GATE_MAX_ITEMS,
+    candidates: tuple[str, ...] = FLOOR_GATE_CANDIDATES,
+) -> FloorVerdict | None:
+    """The eval-run pre-report gate: probe the judge + eval set with the default
+    control candidates on a capped item subset, and return the verdict eval-run
+    stamps into the saved result (`baseline_floor`).
+
+    Apples-to-apples: the margin compares the controls against the real model's
+    aggregate over the SAME item subset — not the full-run headline — so a capped
+    gate never mixes a 8-item baseline mean with a 33-item real mean. Items whose
+    judgement was a judge-failure 0.5 (the scorer's _DEGENERATE_REASONS fallback)
+    are excluded the same way the headline aggregate excludes them.
+
+    Returns None when there is nothing to gate (no genuinely scored items) — the
+    caller already refuses/annotates a scoreless run via scoring_degraded.
+    """
+    from .scorer import _DEGENERATE_REASONS
+
+    scored = [
+        it for it in run.items
+        if it.score is not None
+        and not it.target_error
+        and not (it.score == 0.5 and (it.score_reason or "").startswith(_DEGENERATE_REASONS))
+    ]
+    if not scored:
+        return None
+    subset = scored[:max_items]
+    sub_run = dataclasses.replace(run, items=list(subset))
+    real_sub = round(sum(float(it.score) for it in subset) / len(subset), 4)
+    return evaluate_floor(
+        sub_run, real_sub, lens_text, judge_provider, provider_configs,
+        cwd=cwd, candidates=candidates,
     )

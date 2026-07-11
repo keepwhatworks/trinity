@@ -16,5 +16,6 @@ src/trinity_local/me/correction_residual.py : The lens-as-seeker (basin_residual
 
 src/trinity_local/__main__.py : Package entry point — invoked as `python3 -m trinity_local [--mcp]`, never imported, so it has no in-tree callers by design (same as any __main__.py). Added v1.7.306 as a robust fallback tier for the Claude Code plugin's MCP launcher (plugins/trinity-local/bin/trinity-mcp): when the `trinity-local` console script isn't on PATH but the package is importable, the launcher runs `python3 -m trinity_local --mcp`. Re-exports main.main(). Reachable via the plugin launcher + `python -m`; guarded by tests/test_plugin_manifest.py (asserts the launcher names this invocation).
 
-
-src/trinity_local/evals/baseline_floor.py : Tier-1 eval-trust gate / the reliable bug-finder (echo_gold POSITIVE control + echo_rejected/echo_prompt/empty NEGATIVE controls run through the real judge; refuses the headline when a dumb candidate isn't beaten or the judge can't recognize the user's own answer). It is what CAUGHT the broken-judge + reaction-as-prompt bugs neither founder nor agent predicted (2026-06-11). Needs the judge, so it lives at eval-RUN time; wiring into handle_eval_run as a pre-report gate is deferred to the eval unification (#316) to avoid a risky scorer change mid-refactor. Validated on real data (judge=claude); reachable via /tmp scratch proofs documented in memory eval_lens_unification_and_accretion_audit.
+# (baseline_floor.py entry removed 2026-07-11: run_floor_gate is now wired into
+# handle_eval_run as the pre-report gate — the deferred #316 follow-up landed,
+# so the module is reachable from commands/eval.py and no longer an orphan.)

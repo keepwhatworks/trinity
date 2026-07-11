@@ -154,7 +154,7 @@ def test_collect_leaderboard_rows_is_deterministic_on_mtime_tie(tmp_path, monkey
     scores = {}
     for order in ("fwd", "rev"):
         monkeypatch.setattr(pathlib.Path, "glob", _ordered_glob(real_glob, order))
-        rows, _ = _collect_leaderboard_rows(None)
+        rows, _, _ = _collect_leaderboard_rows(None)
         scores[order] = [(r["target"], r["aggregate_score"]) for r in rows]
         monkeypatch.setattr(pathlib.Path, "glob", real_glob)
 

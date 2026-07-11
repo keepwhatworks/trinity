@@ -374,7 +374,7 @@ def test_compare_leaderboard_skips_degenerate_null_score_per_target(tmp_path, mo
     write("eval_set_a__model_codex__t1.json", "codex", 0.77, 1_500,
           {"REFRAME": {"count": 5, "mean_score": 0.77}})
 
-    rows, _ = _collect_leaderboard_rows(None)
+    rows, _, _ = _collect_leaderboard_rows(None)
     by_target = {r["target"]: r for r in rows}
     assert by_target["claude"]["aggregate_score"] == 0.82, (
         "claude's real score masked by the newer null-score placeholder"

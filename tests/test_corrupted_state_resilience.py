@@ -1142,7 +1142,7 @@ def test_cli_leaderboard_rows_survive_corrupt_axis(tmp_path, monkeypatch):
     }), encoding="utf-8")
 
     from trinity_local.commands.eval import _collect_leaderboard_rows
-    rows, _ = _collect_leaderboard_rows("e1")  # raises pre-fix
+    rows, _, _ = _collect_leaderboard_rows("e1")  # raises pre-fix
     assert len(rows) == 2
     for r in rows:
         agg = r.get("aggregate_score")
@@ -1275,7 +1275,7 @@ def test_eval_leaderboard_rows_survive_unhashable_provider(tmp_path, monkeypatch
         render_compare_matrix_card,
     )
 
-    rows, _ = _collect_leaderboard_rows("e1")  # raises 'unhashable type: dict' pre-fix
+    rows, _, _ = _collect_leaderboard_rows("e1")  # raises 'unhashable type: dict' pre-fix
     # The dict/int provider rows are dropped; only the clean claude row survives.
     assert [r["target"] for r in rows] == ["claude"], (
         "a non-str provider slug leaked into a leaderboard row — it would crash "

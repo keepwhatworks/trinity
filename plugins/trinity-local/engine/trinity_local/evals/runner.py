@@ -139,6 +139,14 @@ class EvalRunResult:
     # never measured (run `trinity-local eval-judge-check`). Surfaces stamp
     # the caveat from this field — the disqualifier lives IN the gate.
     judge_validated: bool | None = None
+    # Baseline-floor verdict (2026-07-11 — the wired #316 pre-report gate,
+    # baseline_floor.run_floor_gate): a FloorVerdict.to_dict() probing this
+    # run's judge + eval set with control candidates. trustworthy=False means
+    # the HEADLINE IS REFUSED — eval-run prints the refusal instead of the
+    # aggregate and the eval-show leaderboard excludes the run (the aggregate
+    # stays in the JSON so the raw data survives; only the claim is withdrawn).
+    # None = gate not run (--skip-floor / --no-score / nothing scored).
+    baseline_floor: dict | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -162,6 +170,7 @@ class EvalRunResult:
             "judge_alignment_n": self.judge_alignment_n,
             "self_judge": self.self_judge,
             "judge_validated": self.judge_validated,
+            "baseline_floor": self.baseline_floor,
         }
 
     def result_path(self) -> Path:
@@ -348,4 +357,12 @@ def load_run_result(path: Path) -> EvalRunResult | None:
         scoring_degraded=bool(raw.get("scoring_degraded", False)),
         target_effort=raw.get("target_effort"),
         self_judge=bool(raw.get("self_judge", False)),
+        # Shape-guard (#304): a non-dict baseline_floor (hand-edit / drift)
+        # degrades to None (= gate not run) instead of crashing every
+        # `.get("trustworthy")` reader downstream.
+        baseline_floor=(
+            raw["baseline_floor"]
+            if isinstance(raw.get("baseline_floor"), dict)
+            else None
+        ),
     )
