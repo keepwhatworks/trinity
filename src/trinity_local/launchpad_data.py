@@ -1631,6 +1631,16 @@ def _eval_summary() -> dict:
             continue  # keep the most recent (we walked mtime-desc)
         if not _usable_score(data.get("aggregate_score")):
             continue  # None OR non-finite NaN/Inf (corrupt file) — not a real result
+        # Baseline-floor refusal — the THIRD reader of eval results (hero loop
+        # above, CLI _collect_leaderboard_rows, and this comparison loop). The
+        # hour-7 DOM value-trace caught the leak: the hero skipped a refused
+        # run while this loop ranked its withdrawn 0.91 on the comparison
+        # leaderboard + per_axis_leader. Same rule everywhere: trustworthy is
+        # False → the run does not rank (an older passing run of the same
+        # provider fills the slot via the mtime-desc dedup).
+        _fl = data.get("baseline_floor")
+        if isinstance(_fl, dict) and _fl.get("trustworthy") is False:
+            continue
         # Judge provider is stored per-item (each item names its
         # judge). Take the first item's judge as the run's judge —
         # the harness uses one judge per run, so any item works.
