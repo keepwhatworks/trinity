@@ -25,7 +25,7 @@ council.
 
 ## Where the repo is now
 
-`v<!-- canonical:version -->1.7.396<!-- /canonical -->` is launch-hardened around
+`v<!-- canonical:version -->1.7.397<!-- /canonical -->` is launch-hardened around
 the MCP-first path: `lens`, `council`, `status`, and `install` are the
 advertised CLI verbs, while older names stay registered for compatibility with
 launchpad dispatch and existing scripts. The core mechanics are in place:

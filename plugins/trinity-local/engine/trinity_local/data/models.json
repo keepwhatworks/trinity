@@ -1,19 +1,19 @@
 {
   "schema": 1,
-  "updated": "2026-06-15",
-  "_comment": "Canonical current model per provider slug. Ships in the package and rides Trinity releases \u2014 the local-first 'how does the user learn a new model launched' signal (no server). When a lab ships, bump the entry + release a Trinity point version; the user receives it via `trinity-local update`, and `detect_new_models()` diffs it against the model they last evaluated to surface a 'score it against your taste' nudge. `model` MUST match the slug's config.model (what eval-run records as target_model) for the diff to fire.",
+  "updated": "2026-07-12",
+  "_comment": "Canonical current model per provider slug. Ships in the package and rides Trinity releases — the local-first 'how does the user learn a new model launched' signal (no server). When a lab ships, bump the entry + release a Trinity point version; the user receives it via `trinity-local update`, and `detect_new_models()` diffs it against the model they last evaluated to surface a 'score it against your taste' nudge. `model` MUST match the slug's config.model (what eval-run records as target_model) for the diff to fire.",
   "models": {
     "claude": {
       "model": "claude-opus-4-8",
       "display": "Claude Opus 4.8",
       "released": "2026-06-09",
-      "whats_new": "Anthropic's flagship Opus \u2014 Trinity's default Claude voice (universally available on every Claude subscription, so a fresh install dispatches cleanly)."
+      "whats_new": "Anthropic's flagship Opus — Trinity's default Claude voice (universally available on every Claude subscription, so a fresh install dispatches cleanly)."
     },
     "codex": {
-      "model": "gpt-5.3-codex",
-      "display": "GPT-5.5 (Codex)",
-      "released": "2026-04-01",
-      "whats_new": "OpenAI's codex-tuned GPT-5.5, dispatched via the Codex CLI."
+      "model": "gpt-5.6",
+      "display": "GPT-5.6 (Codex)",
+      "released": "2026-07-12",
+      "whats_new": "OpenAI's new flagship, dispatched via the Codex CLI. Day-one rollout is staged for ChatGPT-account users — if eval-run reports 'model not supported', your account hasn't been enabled yet; re-try in a day or two."
     },
     "antigravity": {
       "model": "Gemini 3.1 Pro (high)",

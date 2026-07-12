@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trinity-local"
-version = "1.7.396"
+version = "1.7.397"
 description = "Cross-provider memory layer for Claude, Codex, and Gemini — local-first councils and personal benchmarks. Rides on your existing subscriptions."
 readme = "README.md"
 license = "MIT"

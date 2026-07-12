@@ -75,7 +75,7 @@
         "workspace-write",
         "--skip-git-repo-check",
         "--model",
-        "gpt-5.3-codex"
+        "gpt-5.5"
       ],
       "task_types": [
         "coding",
