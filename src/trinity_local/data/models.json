@@ -10,10 +10,10 @@
       "whats_new": "Anthropic's flagship Opus — Trinity's default Claude voice (universally available on every Claude subscription, so a fresh install dispatches cleanly)."
     },
     "codex": {
-      "model": "gpt-5.6",
-      "display": "GPT-5.6 (Codex)",
+      "model": "gpt-5.6-sol",
+      "display": "GPT-5.6 Sol (Codex)",
       "released": "2026-07-12",
-      "whats_new": "OpenAI's new flagship, dispatched via the Codex CLI. Day-one rollout is staged for ChatGPT-account users — if eval-run reports 'model not supported', your account hasn't been enabled yet; re-try in a day or two."
+      "whats_new": "OpenAI's new flagship (the 5.6 family ships as terra/sol/luna variants; sol is the Codex-picker default), dispatched via the Codex CLI. Needs codex-cli ≥0.144 — older CLIs 400 on the slug."
     },
     "antigravity": {
       "model": "Gemini 3.1 Pro (high)",
