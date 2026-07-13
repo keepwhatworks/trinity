@@ -521,3 +521,54 @@ class TestLaunchpadEvalExclusion:
         assert all(e["items_failed"] > 0 for e in excluded), (
             "excluded_runs must list only providers that actually dropped items"
         )
+
+
+class TestPairedComparisonNote:
+    """The survivorship-comparison bug (2026-07-13, founder-caught): two runs
+    sharing an eval_id can cover DIFFERENT item universes (dispatch failures,
+    filter changes), and the aggregate table silently rewards the run that
+    failed its hardest items. Live case: gpt-5.5-high 0.352 over its 25
+    survivors vs gpt-5.6 answering the 6 items 5.5 never did — the apparent
+    5.5>5.6 gap inverted on paired items. The compare surface must disclose
+    coverage and print item-matched means. Mutation: drop the intersection /
+    the coverage check → these red."""
+
+    def _row(self, target, eval_id, scored: dict):
+        return {"target": target, "eval_id": eval_id, "scored_items": dict(scored),
+                "aggregate_score": (sum(scored.values()) / len(scored)) if scored else None}
+
+    def test_coverage_mismatch_prints_paired_means(self, capsys):
+        from trinity_local.commands.eval import _print_paired_note
+        # survivor run: skipped the two HARD items (h1, h2) it failed to answer
+        a = self._row("codex", "evP", {"e1": 1.0, "e2": 1.0})           # aggregate 1.0
+        # full-coverage run: answered everything incl. the hard items
+        b = self._row("claude", "evP", {"e1": 0.8, "e2": 0.8, "h1": 0.0, "h2": 0.0})  # aggregate 0.4
+        _print_paired_note([a, b])
+        out = capsys.readouterr().out
+        assert "coverage differs" in out and "codex 2" in out and "claude 4" in out
+        # paired means over {e1,e2}: codex 1.000, claude 0.800 — the honest gap,
+        # not the survivorship-inflated 1.0-vs-0.4
+        assert "2 items ALL runs scored" in out
+        assert "codex 1.000" in out and "claude 0.800" in out
+
+    def test_identical_coverage_prints_nothing(self, capsys):
+        from trinity_local.commands.eval import _print_paired_note
+        a = self._row("codex", "evP", {"e1": 1.0, "e2": 0.5})
+        b = self._row("claude", "evP", {"e1": 0.8, "e2": 0.6})
+        _print_paired_note([a, b])
+        assert capsys.readouterr().out == ""
+
+    def test_disjoint_coverage_says_no_paired_read(self, capsys):
+        from trinity_local.commands.eval import _print_paired_note
+        a = self._row("codex", "evP", {"e1": 1.0})
+        b = self._row("claude", "evP", {"e2": 0.8})
+        _print_paired_note([a, b])
+        out = capsys.readouterr().out
+        assert "No items were scored by every run" in out
+
+    def test_rows_on_different_sets_do_not_pair(self, capsys):
+        from trinity_local.commands.eval import _print_paired_note
+        a = self._row("codex", "evP", {"e1": 1.0})
+        b = self._row("claude", "evQ", {"e1": 0.2})
+        _print_paired_note([a, b])
+        assert capsys.readouterr().out == ""

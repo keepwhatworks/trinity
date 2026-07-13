@@ -1271,6 +1271,21 @@ def _collect_leaderboard_rows(eval_id: str | None) -> tuple[list[dict], set[str]
             "ran_at": data.get("completed_at") or data.get("started_at"),
             "by_axis": by_axis,
             "by_axis_n": by_axis_n,
+            # Genuinely-scored per-item scores (dispatch failures and judge
+            # failures excluded) — feeds the PAIRED comparison (2026-07-13):
+            # two runs can share an eval_id yet cover DIFFERENT item universes
+            # (dispatch failures, the cold-answerable filter changing between
+            # runs), and comparing their aggregates silently rewards the run
+            # that failed its hardest items. Live case: gpt-5.5-high's 0.352
+            # covered its 25 dispatch-survivors while gpt-5.6 answered the 6
+            # hard items 5.5 never did (scoring 0.08-0.22 there) — the whole
+            # apparent 5.5>5.6 gap was survivorship, inverted on paired items.
+            "scored_items": {
+                it["eval_item_id"]: it["score"]
+                for it in items
+                if isinstance(it, dict) and it.get("eval_item_id")
+                and it.get("score") is not None and not it.get("target_error")
+            },
         }
     rows = sorted(
         by_target.values(),
@@ -1278,6 +1293,40 @@ def _collect_leaderboard_rows(eval_id: str | None) -> tuple[list[dict], set[str]
         reverse=True,
     )
     return rows, eval_ids_seen, sorted(set(floor_refused))
+
+
+def _print_paired_note(rows: list[dict]) -> None:
+    """Item-matched comparison (2026-07-13): whenever >=2 rows share an
+    eval_id but their genuinely-scored item sets differ, the aggregate ranks
+    are NOT item-matched — dispatch failures and filter changes shrink each
+    run's universe differently, and the run that failed its hardest items
+    wins by survivorship. Disclose coverage per row and print means over the
+    items EVERY row scored (the honest head-to-head)."""
+    from collections import defaultdict
+    groups: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        if r.get("eval_id") and isinstance(r.get("scored_items"), dict):
+            groups[r["eval_id"]].append(r)
+    for eval_id, grp in groups.items():
+        if len(grp) < 2:
+            continue
+        sets = [set(r["scored_items"]) for r in grp]
+        if all(s == sets[0] for s in sets[1:]):
+            continue  # identical coverage — the aggregate table IS item-matched
+        common = set.intersection(*sets)
+        cov = ", ".join(f"{r['target']} {len(r['scored_items'])}" for r in grp)
+        print(f"  ⚠ coverage differs on {eval_id} ({cov} items scored) — aggregate "
+              f"ranks are not item-matched (a run that failed its hardest items "
+              f"wins by survivorship).")
+        if not common:
+            print("    No items were scored by every run — no paired read possible.")
+            continue
+        paired = sorted(
+            ((sum(r["scored_items"][i] for i in common) / len(common), r["target"]) for r in grp),
+            reverse=True,
+        )
+        line = "  |  ".join(f"{t} {m:.3f}" for m, t in paired)
+        print(f"    Paired means over the {len(common)} items ALL runs scored: {line}")
 
 
 def _print_floor_refusal_note(rows: list[dict], floor_refused: list[str]) -> None:
@@ -1457,6 +1506,7 @@ def _handle_eval_compare(args):
         _print_exclusion_note(rows)
         _print_judge_validity_note(rows)
         _print_floor_refusal_note(rows, floor_refused)
+        _print_paired_note(rows)
         return None
 
     print(f"    {'rank':<5} {'target':<14} {'n':<5} {'aggregate':>10}   {'judge':<14} {'ran'}")
@@ -1473,6 +1523,7 @@ def _handle_eval_compare(args):
     _print_exclusion_note(rows)
     _print_judge_validity_note(rows)
     _print_floor_refusal_note(rows, floor_refused)
+    _print_paired_note(rows)
     # Suppress the "X leads Y by ±Z" head-to-head when rows span
     # different eval sets — same consistency rule shipped to the
     # per-axis leader synthesis (commits 83b9e99, 02f354d). The
