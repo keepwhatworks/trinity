@@ -145,6 +145,14 @@
         "cold_reason": {
           "type": "string",
           "description": "Why the classifier decided (self-contained / fragment / image-grounded / conversational continuation / bare deictic)."
+        },
+        "baseline_resolution": {
+          "type": "string",
+          "enum": [
+            "full_turn",
+            "quote"
+          ],
+          "description": "Whether rejected_response is the FULL assistant turn resolved from the prompt index at build (full_turn) or the extraction's <=25-word provenance quote (quote — legacy sets and unresolvable items). Added 2026-07-14 (post-null eval roadmap)."
         }
       }
     }

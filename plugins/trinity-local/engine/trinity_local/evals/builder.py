@@ -119,6 +119,15 @@ class EvalItem:
     provider_of_rejected_response: str | None
     cold_answerable: bool = True
     cold_reason: str = "self-contained"
+    # Baseline provenance (council 2026-07-14, the post-null roadmap): the
+    # extraction stores the rejected answer as a <=25-word QUOTE (a pointer for
+    # provenance) — a strawman when used as the scoring baseline. At build time
+    # we resolve the act's prompt_id back to the FULL assistant turn and use it
+    # as rejected_response when the stored quote verifiably belongs to it
+    # (normalized containment); otherwise the quote stands. "full_turn" |
+    # "quote" — the baseline-integrity filter and any pair-based instrument
+    # read this to know what the baseline IS.
+    baseline_resolution: str = "quote"
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -215,6 +224,38 @@ def _prior_user_turn_map() -> dict[str, str]:
     return prior
 
 
+def _resolve_full_turns(prompt_ids: set[str]) -> dict[str, str]:
+    """prompt_id -> full assistant_text for the requested ids, one pass over
+    the uncapped turn-pair stream. The full answer exists at extraction time
+    (iter_turn_pairs yields it) but only the quote is persisted to the act —
+    this re-derives the full baseline at build. Missing ids simply absent."""
+    out: dict[str, str] = {}
+    if not prompt_ids:
+        return out
+    try:
+        from ..me.turn_pairs import _iter_turn_pairs_raw
+        for assistant_text, _user, prompt_id, _next in _iter_turn_pairs_raw():
+            if prompt_id in prompt_ids and prompt_id not in out:
+                t = (assistant_text or "").strip()
+                if t:
+                    out[prompt_id] = t
+                if len(out) == len(prompt_ids):
+                    break
+    except Exception:
+        return out  # resolution is best-effort; quotes remain the fallback
+    return out
+
+
+def _normalize_contains(fragment: str, full: str) -> bool:
+    """Does the stored quote verifiably belong to this full turn? Whitespace/
+    case-normalized containment, minimum 20 chars — below that a match is
+    coincidence (same floor as import verification)."""
+    import re as _re
+    norm = lambda t: _re.sub(r"\s+", " ", (t or "").strip().lower())
+    f = norm(fragment)
+    return len(f) >= 20 and f in norm(full)
+
+
 def build_eval_set(*, source: str = "rejections", limit: int | None = None) -> EvalSet:
     """Assemble an eval set from the current corpus.
 
@@ -277,9 +318,12 @@ def build_eval_set(*, source: str = "rejections", limit: int | None = None) -> E
     # #316: prompt = the recovered QUESTION (prior user turn), not the reaction.
     prior_question = _prior_user_turn_map()
 
-    for act in iter_preference_acts():
-        if act.trigger != MODEL_MISS:
-            continue
+    _mm_acts = [a for a in iter_preference_acts() if a.trigger == MODEL_MISS]
+    # One-pass full-turn resolution for every act with a prompt_id (council
+    # 2026-07-14): the quote is provenance; the full assistant turn is the
+    # baseline. Falls back to the quote per-item when unresolvable.
+    _full_turns = _resolve_full_turns({a.prompt_id for a in _mm_acts if a.prompt_id})
+    for act in _mm_acts:
         rej_type = act.kind
         model_quote = (act.sacrificed or "").strip()
         user_sub = (act.privileged or "").strip()
@@ -287,6 +331,13 @@ def build_eval_set(*, source: str = "rejections", limit: int | None = None) -> E
         prompt_id = act.prompt_id
         if not (rej_type and model_quote and source_id):
             continue
+        _full = _full_turns.get(prompt_id or "")
+        if _full and _normalize_contains(model_quote, _full):
+            _baseline_text = _full[:8000]
+            _baseline_resolution = "full_turn"
+        else:
+            _baseline_text = model_quote
+            _baseline_resolution = "quote"
         # This axis had at least one structurally-valid model_miss act; record it
         # so a later all-degenerate / all-unresolved collapse is detectable as a
         # FULLY-DROPPED axis (vs an axis that simply never appeared in the corpus).
@@ -344,7 +395,7 @@ def build_eval_set(*, source: str = "rejections", limit: int | None = None) -> E
             eval_item_id=_stable_id("ei", source_id, rej_type),
             prompt=prompt_text,
             rejection_type=rej_type,
-            rejected_response=model_quote,
+            rejected_response=_baseline_text,
             user_substitute=user_sub,
             rubric_signal=(act.why or "").strip(),
             basin_id=act.basin,
@@ -352,6 +403,7 @@ def build_eval_set(*, source: str = "rejections", limit: int | None = None) -> E
             source_id=source_id,
             prompt_id=prompt_id,
             provider_of_rejected_response=provider,
+            baseline_resolution=_baseline_resolution,
             cold_answerable=classify_cold_answerable(prompt_text)[0],
             cold_reason=classify_cold_answerable(prompt_text)[1],
         ))
@@ -400,7 +452,16 @@ def build_eval_set(*, source: str = "rejections", limit: int | None = None) -> E
     # the same corpus produces the same eval_id (idempotent), but adding
     # new rejections produces a new id (so historical eval results stay
     # pinned to the corpus state they were scored against).
-    fingerprint = "|".join(sorted(it.source_id for it in items))
+    # The fingerprint pins results to the corpus state they were scored
+    # against — which includes what the BASELINE IS (2026-07-14): an item whose
+    # rejected_response upgraded from the extraction quote to the full
+    # assistant turn is a different scoring surface, so it must mint a new
+    # eval_id (the council's static-set rule). Same acts + same resolutions →
+    # same id (idempotent); a resolution improvement → new id, old results
+    # stay pinned to the set content they actually ran against.
+    fingerprint = "|".join(sorted(
+        f"{it.source_id}:{it.baseline_resolution}" for it in items
+    ))
     eval_id = _stable_id("eval", source, fingerprint)
 
     stats = {
@@ -495,6 +556,9 @@ def load_eval_set(eval_id: str) -> EvalSet | None:
                 else classify_cold_answerable(it.get("prompt", ""))[0],
             cold_reason=it.get("cold_reason")
                 or classify_cold_answerable(it.get("prompt", ""))[1],
+            # legacy sets predate baseline resolution — their stored
+            # rejected_response IS the extraction quote
+            baseline_resolution=it.get("baseline_resolution", "quote"),
         )
         for it in raw.get("items", [])
     ]
