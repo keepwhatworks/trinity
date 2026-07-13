@@ -306,8 +306,8 @@ def test_lens_built_tagline_names_canonical_verb_not_stale_alias(fname):
     showed a user TWO different command names for the identical build operation: the
     `.meta` provenance line said `lens-build`, the chip + empty-state said `lens`.
 
-    Per CLAUDE.md the advertised CLI surface is `trinity-local lens` (+ council /
-    status / install); `lens-build` is an explicit *compatibility alias* kept for old
+    Per CLAUDE.md the advertised CLI surface is `trinity-local lens` (+ council / dream
+    / status / install); `lens-build` is an explicit *compatibility alias* kept for old
     scripts/launchpad-dispatch — not the name a first-time user should be taught. These
     two taglines (written 2026-05-15, before the #213 Q4 surface-collapse that made
     `lens` canonical) were the lone user-facing prose still teaching the alias. Same

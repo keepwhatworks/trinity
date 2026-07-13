@@ -4,7 +4,7 @@ CANONICAL `lens` verb, never the retired `lens-build` alias.
 Iter-218 stale-alias-tagline class fix. Per CLAUDE.md, `lens-build` is a
 COMPATIBILITY ALIAS that resolves to the canonical `lens` verb (`trinity-local
 lens-build --help` prints `usage: trinity-local lens …`); the advertised CLI
-surface is `lens` / `council` / `status` / `install`. A user-facing
+surface is `lens` / `council` / `dream` / `status` / `install`. A user-facing
 caption/tagline/chip that names the retired alias teaches the user a verb the
 product no longer advertises — the SAME class Iter-216 (picks.json "per task
 type" → lens basin) and Iter-217 (lens.md/topics.json taglines named

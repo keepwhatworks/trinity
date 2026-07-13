@@ -45,18 +45,16 @@ the remaining launch risks are not core council mechanics: Chrome Web Store
 publish + extension-ID pinning, native Windows beyond WSL2, fresh-machine
 install honesty, and the gated real-Chrome smoke.
 
-One verb owns the memory layer. `lens` runs the single Stage 0–4 tension
-pipeline and then refreshes every thinking memory — the routing freeze, the LLM-free
+One verb owns the memory layer. `lens` runs the tension pipeline and then
+refreshes every thinking memory — the routing freeze, the LLM-free
 `vocabulary.md` scan (folded in 2026-07-04 so the staleness warning's own
 advice can clear it), and the `core.md` distill. `lens --deep` first mines
 your history — discover cross-provider question pairs, synthesize each as a
 virtual council, re-consolidate routing basins — then runs the same build:
 the one-command cold start. (`dream` survives only as a compatibility alias
 for `--deep`, folded 2026-07-04; `lens --only-distill` is the ~20s core.md
-refresh.) The older single-chairman legacy lens builder was retired because it
-produced a thinner artifact than the pipeline and no longer carried a distinct
-fallback role. Rule of thumb: `lens` = refresh what you have; `lens --deep` =
-also mine new signal from your history.
+refresh.) Rule of thumb: `lens` = refresh what you have; `lens --deep` = also
+mine new signal from your history.
 
 ## Councils are a GPS — broad when you need coverage, deep when you need conviction
 
@@ -158,16 +156,6 @@ health warning that recommends a command carries an **advice-closure guard**
 (`tests/test_advice_closure.py`) — the recommended command's writers must
 touch the signal the checker reads, so no warning can outlive its own advice
 (two live instances of that bug shipped and were fixed 2026-07-03/04).
-The same discipline is how to find more simplifications: first run
-`python scripts/find_orphans.py --verbose` to expose unreachable modules, then
-trace each surviving surface from user action to artifact. Keep steps that write
-or gate live artifacts; cut compatibility paths or duplicate substrates whose
-signal is already measured elsewhere. Finish with the retirement/doc guards in
-the full test suite so a cut cannot quietly re-enter through a parser, import,
-or live document. The declined goals layer follows that rule: its useful loop
-shape already exists in the provenance ledger, palate trials, routing wall, and
-judge-alignment gates, so adding a named goals subsystem would increase surface
-area without new signal.
 
 Cross-provider continuity flows via MCP Resources — agents read
 `trinity://memories/lens.md` at session handshake, so any harness can pick up

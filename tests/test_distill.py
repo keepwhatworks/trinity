@@ -240,7 +240,10 @@ class TestAutoDistillHooks:
             "trinity_local.distill.distill_via_chairman", _fake_distill,
         )
 
-        args = SimpleNamespace(dry_run=False, sample_size=80, k_basins=20)
+        args = SimpleNamespace(
+            legacy=False, dry_run=False, budget_chars=2000,
+            sample_size=80, k_basins=20,
+        )
         handle_me_build(args)
         assert fired == [True], "lens-build must auto-trigger distill after writing lens.md"
 
@@ -264,7 +267,10 @@ class TestAutoDistillHooks:
             "trinity_local.distill.distill_via_chairman", _fake_distill,
         )
 
-        args = SimpleNamespace(dry_run=True, sample_size=80, k_basins=20)
+        args = SimpleNamespace(
+            legacy=False, dry_run=True, budget_chars=2000,
+            sample_size=80, k_basins=20,
+        )
         handle_me_build(args)
         assert fired == [], "dry-run must skip auto-distill"
 
@@ -345,7 +351,8 @@ class TestVocabularyFoldHooks:
             "trinity_local.distill.distill_via_chairman",
             lambda **kw: (order.append("distill"), {"ok": True})[1],
         )
-        args = SimpleNamespace(dry_run=False, sample_size=80, k_basins=20)
+        args = SimpleNamespace(legacy=False, dry_run=False, budget_chars=2000,
+                               sample_size=80, k_basins=20)
         handle_me_build(args)
         assert "vocabulary" in order, (
             "lens-build no longer refreshes vocabulary.md — the 2026-07-03 "
@@ -368,7 +375,8 @@ class TestVocabularyFoldHooks:
             "trinity_local.vocabulary.distill_vocabulary",
             lambda **kw: (fired.append(True), {"ok": True})[1],
         )
-        args = SimpleNamespace(dry_run=True, sample_size=80, k_basins=20)
+        args = SimpleNamespace(legacy=False, dry_run=True, budget_chars=2000,
+                               sample_size=80, k_basins=20)
         handle_me_build(args)
         assert not fired, "dry-run must not touch vocabulary.md"
 
@@ -384,8 +392,8 @@ class TestDeepFlagDelegation:
         called = []
         monkeypatch.setattr(dream_cmd, "handle_dream",
                             lambda a: called.append(a) or 0)
-        args = SimpleNamespace(deep=True, dry_run=False, sample_size=80,
-                               k_basins=None, only_distill=False)
+        args = SimpleNamespace(deep=True, dry_run=False, legacy=False,
+                               sample_size=80, k_basins=None, only_distill=False)
         handle_me_build(args)
         assert len(called) == 1, "lens --deep must delegate to the deep engine"
         ns = called[0]
@@ -399,21 +407,17 @@ class TestDeepFlagDelegation:
         monkeypatch.setattr(dream_cmd, "handle_dream",
                             lambda a: called.append(a) or 0)
         args = SimpleNamespace(deep=False, only_distill=True, dry_run=False,
-                               sample_size=80, k_basins=None)
+                               legacy=False, sample_size=80, k_basins=None)
         handle_me_build(args)
         assert len(called) == 1 and called[0].only_distill is True
 
     def test_dream_alias_help_names_lens_deep(self):
         """The alias must SAY it's an alias — one concept in every surface."""
+        from trinity_local import main as main_module
         import argparse
-        from trinity_local.commands import dream as dream_command
-
-        # `main.build_parser()` deliberately hides the compatibility alias from
-        # top-level discovery. Inspect its direct registration instead: `dream`
-        # remains callable for existing scripts and must point them to lens.
-        parser = argparse.ArgumentParser(prog="trinity-local")
-        sub = parser.add_subparsers(dest="command")
-        dream_command.register(sub)
+        parser = main_module.build_parser()
+        sub = next(a for a in parser._actions
+                   if isinstance(a, argparse._SubParsersAction))
         dream_help = next(ca.help for ca in sub._choices_actions
                           if ca.dest == "dream")
         assert "lens --deep" in dream_help and "alias" in dream_help.lower()
@@ -441,7 +445,7 @@ class TestLensSatelliteFlags:
         ]:
             calls = self._spy(monkeypatch, handler)
             args = SimpleNamespace(deep=False, only_distill=False, dry_run=False,
-                                   sample_size=80, k_basins=None,
+                                   legacy=False, sample_size=80, k_basins=None,
                                    **{flag: True})
             handle_me_build(args)
             assert calls == [True], f"lens --{flag} did not delegate to {handler}"

@@ -191,7 +191,7 @@ class TestDreamHandlerGateBehavior:
         args = SimpleNamespace(
             similarity_threshold=0.9, max_clusters=None,
             min_overlap=2, skip_lens_build=False, skip_consolidate=False,
-            sample_size=200, k_basins=12,
+            sample_size=200, k_basins=12, budget_chars=10000,
         )
         with pytest.raises(SystemExit) as exc_info:
             handle_dream(args)
@@ -208,7 +208,8 @@ class TestDreamHandlerGateBehavior:
 
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         args = SimpleNamespace(
-            sample_size=200, k_basins=12, dry_run=False,
+            legacy=False, sample_size=200, k_basins=12,
+            budget_chars=10000, dry_run=False,
         )
         with pytest.raises(SystemExit) as exc_info:
             handle_me_build(args)

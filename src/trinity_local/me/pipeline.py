@@ -7,7 +7,7 @@ Stage 3 — pair mining (caller fires it via 3-member council)
 Stage 4 — basin post-filter (deterministic; saves lenses.json + orderings.json
           + renders to memories/lens.md).
 
-The driver is split so the caller (me_builder.build_me_via_lens_pipeline)
+The driver is split so the caller (me_builder.build_me_via_council)
 controls the LLM dispatches — keeping our "no LLM outside councils"
 architectural commitment intact.
 """

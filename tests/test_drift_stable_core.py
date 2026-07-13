@@ -15,10 +15,7 @@ from __future__ import annotations
 
 import math
 
-from trinity_local.me.drift_stable_core import (
-    _DRIFT_STABLE_MATCH_MIN,
-    drift_stable_core,
-)
+from trinity_local.me.bounded_update import drift_stable_core, _DRIFT_STABLE_MATCH_MIN
 from trinity_local.me.lens_registry import RegistryEntry, persistent_registry_tensions
 
 
