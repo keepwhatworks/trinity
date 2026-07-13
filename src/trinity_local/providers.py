@@ -190,8 +190,13 @@ def dispatched_model(config: ProviderConfig) -> str | None:
 _CLEAN_COMPLETION_FLAGS = {
     "claude": ["--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
                "--disallowedTools", "*"],
-    # codex exec / agy -p are already non-interactive and didn't hang; add their
-    # no-tool flags here if a target ever does.
+    # codex: NON-INTERACTIVE IS NOT NON-AGENTIC (incident 2026-07-13). The
+    # config bakes `--sandbox workspace-write` into args for council work; an
+    # eval dispatch with cwd inside a git repo let `codex exec` REFACTOR the
+    # repo unprompted (22 files, committed by a downstream `git add -A`). A
+    # clean completion must be read-only; _run also scrubs any baked
+    # workspace-write from config.args when clean_completion is set.
+    "codex": ["--sandbox", "read-only"],
 }
 
 
@@ -268,7 +273,25 @@ class CLIProvider(BaseProvider):
         if tail is not None:
             command.append(tail)
         command.append(prompt)
-        command.extend(self.config.args)
+        config_args = list(self.config.args)
+        if self.clean_completion:
+            # Scrub a baked write-capable sandbox so the read-only clean flag
+            # can't be overridden by config order (codex: later flag wins).
+            scrubbed = []
+            skip_next = False
+            for a in config_args:
+                if skip_next:
+                    skip_next = False
+                    continue
+                if a == "--sandbox":
+                    skip_next = True
+                    continue
+                if a in ("workspace-write", "danger-full-access") and scrubbed and scrubbed[-1] == "--sandbox":
+                    scrubbed.pop()
+                    continue
+                scrubbed.append(a)
+            config_args = scrubbed
+        command.extend(config_args)
         return self._run_command(command, cwd)
 
     def _try_sampling(self, prompt: str) -> ProviderResult | None:
@@ -297,6 +320,16 @@ class CLIProvider(BaseProvider):
 
 
 class CodexProvider(BaseProvider):
+    # Incident 2026-07-13: this class had NO clean_completion support — the
+    # runner's `hasattr(provider, "clean_completion")` guard silently skipped
+    # codex, the ONE provider whose config bakes a write-capable sandbox
+    # (`--sandbox workspace-write`). An eval dispatch with cwd inside this
+    # repo let `codex exec` refactor 22 files unprompted. Clean completions
+    # (evals: ANSWER, don't execute — #270) now force read-only and scrub any
+    # baked write sandbox; councils (which legitimately read the project)
+    # keep the configured sandbox.
+    clean_completion: bool = False
+
     def run(self, prompt: str, cwd: Path) -> ProviderResult:
         # Same corpus self-pollution guard as CLIProvider.run — codex exec
         # writes ~/.codex session transcripts the ingest pipeline scans.
@@ -305,6 +338,18 @@ class CodexProvider(BaseProvider):
         record_dispatched_prompt(prompt)
         command = [*self.config.command]
         args = list(self.config.args)
+        if self.clean_completion:
+            scrubbed = []
+            skip_next = False
+            for a in args:
+                if skip_next:
+                    skip_next = False
+                    continue
+                if a == "--sandbox":
+                    skip_next = True
+                    continue
+                scrubbed.append(a)
+            args = ["--sandbox", "read-only", *scrubbed]
         if "--skip-git-repo-check" not in args:
             args.append("--skip-git-repo-check")
         model = _effective_model(self.config)

@@ -228,7 +228,16 @@ def score_run(
         )
     config = provider_configs[judge_provider]
     judge = make_provider(config)
-    cwd = cwd or Path.cwd()
+    # Judges are ANSWERED completions too (incident 2026-07-13): a codex judge
+    # would otherwise run agentically with any baked write sandbox. Same
+    # containment as the target dispatch.
+    if hasattr(judge, "clean_completion"):
+        judge.clean_completion = True
+    if cwd is None:
+        # Isolated scratch dir, never the caller's tree (incident 2026-07-13) —
+        # mirrors run_eval's dispatch containment.
+        import tempfile
+        cwd = Path(tempfile.mkdtemp(prefix="trinity-judge-"))
     lens_excerpt = _lens_excerpt(lens_text)
 
     scored_count = 0

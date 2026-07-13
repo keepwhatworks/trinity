@@ -1010,3 +1010,82 @@ class TestModelIdentityTriple:
         data = collect_card_data_from_result(_Result())
         assert data.target_effort == "high"
         assert data.to_dict()["target_effort"] == "high"
+
+
+class TestDispatchIsolation:
+    """Incident 2026-07-13: eval prompts dispatched with cwd = the caller's
+    repo and codex's baked workspace-write sandbox — an agentic eval run
+    REFACTORED the repo unprompted (22 files, swept into a commit). Two
+    structural guarantees, each mutation-proven:
+      (1) run_eval never dispatches from the caller's cwd — an isolated
+          scratch dir unless the caller passes one explicitly;
+      (2) a clean_completion codex command carries --sandbox read-only and
+          NEVER carries workspace-write, even when config args bake it in."""
+
+    def test_run_eval_defaults_to_scratch_dir_not_cwd(self, home):
+        from pathlib import Path
+        from trinity_local.evals.runner import run_eval
+        captured = {}
+
+        class CwdProbe(FakeProvider):
+            def run(self, prompt, cwd):
+                captured["cwd"] = Path(cwd)
+                return super().run(prompt, cwd)
+
+        probe = CwdProbe()
+        with patch("trinity_local.evals.runner.make_provider", return_value=probe):
+            run_eval(_make_eval_set(), "antigravity",
+                     {"antigravity": _make_provider_config("antigravity")})
+        assert "cwd" in captured
+        here = Path.cwd().resolve()
+        got = captured["cwd"].resolve()
+        assert got != here and here not in got.parents or "trinity-eval-dispatch" in str(got), (
+            f"eval dispatch ran from the caller's tree: {got}"
+        )
+        assert "trinity-eval-dispatch" in str(got)
+
+    def test_clean_completion_codex_is_read_only(self):
+        """Build the real command line for a codex clean completion whose
+        config bakes workspace-write; assert read-only wins and
+        workspace-write is scrubbed. Mutation: drop the scrub loop or the
+        codex entry in _CLEAN_COMPLETION_FLAGS → RED."""
+        from unittest.mock import patch as _patch
+        from trinity_local.config import ProviderConfig
+        from trinity_local.providers import make_provider
+
+        cfg = ProviderConfig(
+            name="codex", type="codex", enabled=True, label="Codex",
+            command=["codex", "exec"],
+            args=["--sandbox", "workspace-write", "--skip-git-repo-check"],
+            task_types=set(), model="gpt-5.5", effort="high",
+        )
+        provider = make_provider(cfg)
+        assert hasattr(provider, "clean_completion")
+        provider.clean_completion = True
+        captured = {}
+
+        def fake_run_command(self, command, cwd, **kw):
+            captured["command"] = list(command)
+            from trinity_local.providers import ProviderResult
+            return ProviderResult(provider="codex", stdout="ok", stderr="",
+                                  returncode=0, elapsed_seconds=0.0)
+
+        with _patch.object(type(provider), "_run_command", fake_run_command):
+            provider.run("q", cwd="/tmp")
+        cmd = captured["command"]
+        assert "workspace-write" not in cmd, cmd
+        assert "read-only" in cmd, cmd
+        assert "--skip-git-repo-check" in cmd  # unrelated args survive the scrub
+
+
+class TestJudgeDispatchIsolation:
+    """The judge path had the identical exposure (incident 2026-07-13):
+    make_provider without clean_completion + cwd defaulting to the caller's
+    tree. Mutation: drop either line in scorer.score_run → RED."""
+
+    def test_score_run_source_contains_both_guards(self):
+        import inspect
+        from trinity_local.evals import scorer
+        src = inspect.getsource(scorer.score_run)
+        assert "clean_completion" in src, "judge no longer forced to clean completion"
+        assert "trinity-judge-" in src, "judge cwd no longer isolated to a scratch dir"

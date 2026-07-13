@@ -208,7 +208,15 @@ def run_eval(
     # and trace…") doesn't make the model try to use the browser and hang.
     if hasattr(provider, "clean_completion"):
         provider.clean_completion = True
-    cwd = cwd or Path.cwd()
+    # Dispatch from an isolated scratch dir, NEVER the caller's cwd (incident
+    # 2026-07-13): eval prompts ran with cwd = the Trinity repo and a
+    # workspace-write codex refactored it unprompted. Eval items are ANSWERED,
+    # not executed in the user's project — an empty scratch dir removes both
+    # the write target and the context leak. Callers may still pass an
+    # explicit cwd (tests do); they own that choice.
+    if cwd is None:
+        import tempfile
+        cwd = Path(tempfile.mkdtemp(prefix="trinity-eval-dispatch-"))
 
     # Cold-answerable filter (#316 productized): a head-to-head that cold-
     # dispatches context-bound prompts ("take a look at this photo") measures
