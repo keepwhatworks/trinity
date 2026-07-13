@@ -2055,7 +2055,17 @@ async def _run_council(args: dict) -> list[Any]:
         try:
             raw = json.loads(captured)
         except json.JSONDecodeError:
-            return [_text({"ok": False, "error": "council launch produced unparseable output", "raw": captured})]
+            # Tolerate leading non-JSON noise (2026-07-13): a STALE long-lived
+            # server can carry pre-fix code whose progress prints still hit
+            # stdout ahead of the launch record (live case: a lens-kick's
+            # Stage-0 lines broke this parse while the council launched fine
+            # underneath). The record is the LAST {...} block in the buffer —
+            # recover it instead of failing a launch that succeeded.
+            tail = captured[captured.rfind("\n{") + 1:] if "\n{" in captured else captured
+            try:
+                raw = json.loads(tail)
+            except json.JSONDecodeError:
+                return [_text({"ok": False, "error": "council launch produced unparseable output", "raw": captured})]
 
     if not isinstance(raw, dict):
         return [_text({"ok": False, "error": "council launch produced a non-object", "raw": captured})]
