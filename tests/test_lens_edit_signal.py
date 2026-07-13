@@ -383,9 +383,8 @@ class TestMemoryHealthSurfacing:
 
 class TestBuildIntegration:
     def test_build_summary_reports_captured_edits_count(self, lens_edit_env, monkeypatch):
-        """build_me_via_council should include captured_edits in its
-        summary so the CLI can surface "we picked up N user edits this
-        build" — the closing-the-loop UX hint."""
+        """Captured lens edits are available for the live pipeline to fold into
+        decisions before it rewrites lens.md."""
         from trinity_local.state_paths import memories_dir
 
         # Pre-existing lens.md (the user's version with edits) + a stale
@@ -416,8 +415,7 @@ class TestBuildPathsPinSnapshot:
     Found 2026-05-31: build_me_via_lens_pipeline wrote lens.md + the build-state
     fingerprint but never called write_lens_snapshot, so a real install showed
     237 phantom 'hand-edits' (a whole-lens regen diff vs a 2-day-stale snapshot).
-    build_me_via_council already snapshotted; this guards the asymmetry from
-    coming back, and pins the invariant for any future build path.
+    This pins the invariant for every live path that writes lens.md.
     """
 
     def test_all_lens_md_build_paths_call_write_lens_snapshot(self):
@@ -433,9 +431,8 @@ class TestBuildPathsPinSnapshot:
             for n in ast.walk(tree)
             if isinstance(n, ast.FunctionDef)
         }
-        # The three functions that render + persist a real lens.md.
+        # The functions that render + persist a real lens.md.
         for fname in (
-            "build_me_via_council",
             "build_me_via_lens_pipeline",
             "resync_lens_from_disk",
         ):
@@ -444,6 +441,5 @@ class TestBuildPathsPinSnapshot:
             assert "write_lens_snapshot" in body, (
                 f"{fname} renders lens.md but never calls write_lens_snapshot. "
                 f"Its own regeneration will be miscounted as hand-edits (weight "
-                f"3.0). Pin a snapshot after writing lens.md (see "
-                f"build_me_via_council)."
+                f"3.0). Pin a snapshot after writing lens.md."
             )

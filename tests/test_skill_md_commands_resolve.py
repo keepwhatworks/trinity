@@ -30,7 +30,7 @@ def cli_subcommands() -> set[str]:
 
     Was: parsed `trinity-local --help` for the {cmd1,cmd2,...} metavar.
     That broke when CLI consolidation collapsed the help-visible
-    surface to 5 verbs (install, status, update, dream, debug). The
+    surface to 4 verbs (lens, council, status, install). The
     hidden subparsers (council-launch, install-mcp, ingest-recent,
     etc.) stay registered, stay callable, and are LEGITIMATELY
     referenced in SKILL.md and other docs.

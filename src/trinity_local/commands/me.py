@@ -1,26 +1,20 @@
-"""`lens-build` + `lens-show` — build / inspect the user's lens via a single
-chairman call over sampled prompt history. The chairman of every Trinity
-council reads `~/.trinity/memories/lens.md` to score council outputs
-against THIS user's taste, not the world's.
+"""`lens-build` + `lens-show` — build / inspect the user's lens via the
+5-stage transcript pipeline. The chairman of every Trinity council reads
+`~/.trinity/memories/lens.md` to score council outputs against THIS user's
+taste, not the world's.
 
 Tier 1 #2 rename history (task #91): the CLI + MCP + file paths renamed
-me/persona → lens pre-launch. Internal symbols (`me_builder`, `me_path`,
-`build_me_via_council`, `ME_BUDGET_CHARS`) kept their me_ prefix per the
-"code uses internal names; user-facing copy uses canonical name"
-convention (same shape as glossary entry for member vs seat). The LLM
-prompt that builds the lens (in `me_builder._render_me_build_prompt`)
-still instructs the chairman to produce a `/me document` with `# /me`
-heading — this gets rendered in the launchpad memory viewer; the
-prompt-template rewrite to use "lens" framing is a deferred content-shape
-change."""
+me/persona → lens pre-launch. Internal symbols (`me_builder`, `me_path`) kept
+their me_ prefix per the "code uses internal names; user-facing copy uses
+canonical name" convention (same shape as glossary entry for member vs seat).
+The retired single-chairman builder was removed after the current pipeline
+became the only user-facing build path."""
 from __future__ import annotations
 
 import json
 
 from ..me_builder import (
-    ME_BUDGET_CHARS,
     ME_SAMPLE_SIZE,
-    build_me_via_council,
     build_me_via_lens_pipeline,
     load_me,
     me_path,
@@ -266,7 +260,13 @@ def handle_lens_skill(args):
     return 0 if result.get("ok") else 1
 
 
-def _post_build_hooks(dry_run: bool) -> dict:
+def _post_build_hooks(
+    dry_run: bool,
+    *,
+    skip_vocabulary: bool = False,
+    skip_distill: bool = False,
+    distill_provider: str | None = None,
+) -> dict:
     """The post-build refresh chain (Ousterhout closure, 2026-07-05 — extracted
     from the growing handle_me_build orchestrator). Lens was just rewritten →
     freeze the routing table, refresh vocabulary.md (LLM-free, BEFORE distill
@@ -282,26 +282,65 @@ def _post_build_hooks(dry_run: bool) -> dict:
         out["routing_frozen"] = {"task_types": len((table or {}).get("by_task_type") or {})}
     except Exception as exc:
         out["routing_frozen"] = {"error": f"{type(exc).__name__}: {exc}"}
-    try:
-        from ..vocabulary import distill_vocabulary
-        vocab = distill_vocabulary()
-        out["vocabulary"] = {
-            k: v for k, v in vocab.items()
-            if k in ("ok", "anchors_emitted", "homonyms_emitted", "error")
-        }
-    except Exception as exc:
-        out["vocabulary"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-    try:
-        from ..distill import distill_via_chairman
-        out["distill"] = distill_via_chairman()
-    except Exception as exc:
-        out["distill"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    if skip_vocabulary:
+        out["vocabulary"] = {"skipped": True}
+    else:
+        try:
+            from ..vocabulary import distill_vocabulary
+            vocab = distill_vocabulary()
+            out["vocabulary"] = {
+                k: v for k, v in vocab.items()
+                if k in ("ok", "anchors_emitted", "homonyms_emitted", "error")
+            }
+        except Exception as exc:
+            out["vocabulary"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    if skip_distill:
+        out["distill"] = {"skipped": True}
+    else:
+        try:
+            from ..distill import distill_via_chairman
+            kwargs = {"provider": distill_provider} if distill_provider else {}
+            out["distill"] = distill_via_chairman(**kwargs)
+        except Exception as exc:
+            out["distill"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
     try:
         from ..me.palate_registry import record_direction_snapshot
         out["palate_snapshot"] = record_direction_snapshot()
     except Exception as exc:
         out["palate_snapshot"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
     return out
+
+
+def _run_lens_build(
+    *,
+    sample_size: int = ME_SAMPLE_SIZE,
+    k_basins: int | None = None,
+    dry_run: bool = False,
+    force: bool = False,
+    skip_vocabulary: bool = False,
+    skip_distill: bool = False,
+    distill_provider: str | None = None,
+):
+    """The one user-triggered Lens build orchestration boundary.
+
+    The Stage 0–4 library pipeline owns extraction and rendering. This wrapper
+    owns every post-build artifact refresh. The normal ``lens`` command,
+    ``lens --deep``, and guided ``lens --setup`` path all call this function so
+    none can silently omit routing, vocabulary, core, or palate refreshes.
+    """
+    path, summary = build_me_via_lens_pipeline(
+        sample_size=sample_size,
+        k_basins=k_basins,
+        dry_run=dry_run,
+        force=force,
+    )
+    hooks = _post_build_hooks(
+        dry_run,
+        skip_vocabulary=skip_vocabulary,
+        skip_distill=skip_distill,
+        distill_provider=distill_provider,
+    )
+    return path, {**summary, **hooks}
 
 
 def handle_me_build(args):
@@ -353,6 +392,9 @@ def handle_me_build(args):
             skip_vocabulary=False, skip_distill=False, only_distill=False,
             dry_run=getattr(args, "dry_run", False),
             primary_provider=None,
+            sample_size=getattr(args, "sample_size", ME_SAMPLE_SIZE),
+            k_basins=getattr(args, "k_basins", None),
+            force=getattr(args, "force", False),
         ))
 
     from ..lens_addon import enable_lens
@@ -369,31 +411,22 @@ def handle_me_build(args):
         print(str(exc), file=sys.stderr)
         sys.exit(1)
 
-    if getattr(args, "legacy", False):
-        # The --legacy CLI flag was removed 2026-07-04 (single build path);
-        # build_me_via_council survives for tests + programmatic callers.
-        path, summary = build_me_via_council(
-            budget_chars=getattr(args, "budget_chars", ME_BUDGET_CHARS),
+    from ..lens_progress import LensBuildCanceled, write_progress
+    try:
+        path, summary = _run_lens_build(
             sample_size=args.sample_size,
+            k_basins=args.k_basins,
+            dry_run=args.dry_run,
+            force=getattr(args, "force", False),
         )
-    else:
-        from ..lens_progress import LensBuildCanceled, write_progress
-        try:
-            path, summary = build_me_via_lens_pipeline(
-                sample_size=args.sample_size,
-                k_basins=args.k_basins,
-                dry_run=args.dry_run,
-                force=getattr(args, "force", False),
-            )
-        except LensBuildCanceled:
-            # #242a — clean stop (the launchpad/CLI cancel). Record the terminal
-            # progress state and exit non-zero without a traceback.
-            write_progress("canceled", status="canceled")
-            print(json.dumps({"ok": False, "canceled": True}, indent=2))
-            sys.stderr.write("\n→ Lens build stopped.\n")
-            sys.exit(130)
-    hooks = _post_build_hooks(bool(getattr(args, "dry_run", False)))
-    payload = {"ok": True, "path": str(path), **summary, **hooks}
+    except LensBuildCanceled:
+        # #242a — clean stop (the launchpad/CLI cancel). Record the terminal
+        # progress state and exit non-zero without a traceback.
+        write_progress("canceled", status="canceled")
+        print(json.dumps({"ok": False, "canceled": True}, indent=2))
+        sys.stderr.write("\n→ Lens build stopped.\n")
+        sys.exit(130)
+    payload = {"ok": True, "path": str(path), **summary}
     print(json.dumps(payload, indent=2))
     # 100-persona audit P51 fix: tell the user where to go next.
     import sys as _sys
@@ -464,7 +497,7 @@ def handle_lens_setup(args):
     # Step 3 — build the lens.
     print("→ Step 3/3: building the lens (a multi-minute chairman pass)…")
     try:
-        path, _summary = build_me_via_lens_pipeline()
+        path, _summary = _run_lens_build()
     except Exception as exc:  # noqa: BLE001
         print(f"✗ Lens build failed: {exc}", file=sys.stderr)
         return 1

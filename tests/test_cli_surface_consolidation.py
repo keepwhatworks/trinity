@@ -1,15 +1,14 @@
 """Tests for the Q4 surface-collapse (#213) — `trinity-local --help`
-shows exactly five verbs, led by the two product words:
+shows exactly four verbs, led by the two product words:
   - lens      (alias: lens-build)
   - council   (alias: council-launch)
-  - dream
   - status
   - install   (umbrella: install-mcp, install-extension, ...)
 
-Everything else stays registered (launchpad dispatch + Chrome ext
-action allowlist call subparsers by name; dropping the registrations
-breaks those flows) but disappears from `--help`'s discoverable
-surface. Power-user verbs remain reachable under `debug`.
+Everything else stays registered (including `dream` as the `lens --deep`
+compatibility alias; launchpad dispatch + Chrome extension actions call
+subparsers by name) but disappears from `--help`'s discoverable surface.
+Power-user verbs remain reachable under `debug`.
 """
 from __future__ import annotations
 
@@ -23,10 +22,10 @@ from trinity_local.main import (
 
 
 class TestUserFacingSurface:
-    _EXPECTED = ("lens", "council", "dream", "status", "install")
+    _EXPECTED = ("lens", "council", "status", "install")
 
-    def test_user_facing_set_is_exactly_five(self):
-        """Q4 surface-collapse: exactly 5 user-facing verbs, led by the
+    def test_user_facing_set_is_exactly_four(self):
+        """Q4 surface-collapse: exactly 4 user-facing verbs, led by the
         two product words. Drift here (a sixth, or a dropped one)
         silently changes the marketing claim 'two words: lens, council.'"""
         assert tuple(USER_FACING_COMMANDS) == self._EXPECTED, (
@@ -34,9 +33,9 @@ class TestUserFacingSurface:
             f"(product-first order); got {tuple(USER_FACING_COMMANDS)!r}."
         )
 
-    def test_help_lists_only_five_subparsers_in_descriptive_table(self):
+    def test_help_lists_only_four_subparsers_in_descriptive_table(self):
         """The descriptive table (the part below the usage line) must
-        show exactly the five user-facing verbs, in product-first order.
+        show exactly the four user-facing verbs, in product-first order.
         Non-canonical subparsers stay registered but should NOT appear."""
         parser = build_parser()
         # Find the subparsers action.
@@ -61,8 +60,8 @@ class TestUserFacingSurface:
             a for a in parser._actions
             if isinstance(a, argparse._SubParsersAction)
         )
-        assert sub_action.metavar == "{lens,council,dream,status,install}", (
-            f"Subparsers metavar must be the user-facing 5; got "
+        assert sub_action.metavar == "{lens,council,status,install}", (
+            f"Subparsers metavar must be the user-facing 4; got "
             f"{sub_action.metavar!r}."
         )
 
@@ -108,6 +107,39 @@ class TestHiddenCommandsStillCallable:
             "download-embedder must remain callable — the embedder "
             "gate's error message points users at it."
         )
+
+    def test_dream_compat_alias_still_callable_but_not_advertised(self):
+        assert self._can_parse("dream"), (
+            "dream remains callable for launchpad dispatch and existing scripts; "
+            "only its top-level discovery slot was retired in favor of lens --deep."
+        )
+
+
+class TestLensSingleBuildSpine:
+    def test_retired_single_chairman_builder_is_not_importable(self):
+        import trinity_local.me_builder as builder
+
+        for symbol in (
+            "build_me_via_council",
+            "_render_me_build_prompt",
+            "ME_BUDGET_CHARS",
+        ):
+            assert not hasattr(builder, symbol), (
+                f"{symbol} resurrects the retired single-chairman lens path. "
+                "Use build_me_via_lens_pipeline instead."
+            )
+
+    def test_retired_legacy_arguments_are_not_parseable(self):
+        parser = build_parser()
+        for flag in ("--legacy", "--budget-chars"):
+            try:
+                parser.parse_args(["lens", flag, "100"] if flag == "--budget-chars" else ["lens", flag])
+            except SystemExit as exc:
+                assert exc.code == 2
+            else:
+                raise AssertionError(
+                    f"lens accepted retired {flag}; the five-stage pipeline is the only build spine"
+                )
 
     # `test_replay_history_still_callable` retired 2026-05-27 alongside
     # the `replay-history` CLI verb itself — the personal routing table

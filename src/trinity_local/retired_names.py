@@ -27,7 +27,9 @@ from dataclasses import dataclass
 from typing import Literal
 
 
-RetirementKind = Literal["cli", "mcp_tool", "module", "file", "config_field", "concept"]
+RetirementKind = Literal[
+    "cli", "mcp_tool", "module", "file", "config_field", "concept", "function"
+]
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,31 @@ class RetirementRecord:
 # Add entries in the SAME commit as the deletion. Sorted by retirement
 # date (most recent first) for ease of audit.
 RETIRED: dict[str, RetirementRecord] = {
+    # ── 2026-07-13 Dream/Lens single-spine simplification ──
+    "build_me_via_council": RetirementRecord(
+        name="build_me_via_council",
+        retired_at="2026-07-13",
+        commit="",
+        replacement="build_me_via_lens_pipeline",
+        reason="The single-chairman lens builder was thinner than the Stage 0-4 transcript pipeline (no preference-act ledger, trajectories, correction signature, registry support, or post-build memory refresh) and no longer exposed by the CLI. Keeping it as a programmatic/test-only path preserved stale prompt vocabulary and a second clobber/snapshot contract. All explicit lens builds now use the single pipeline spine.",
+        kind="function",
+    ),
+    "_render_me_build_prompt": RetirementRecord(
+        name="_render_me_build_prompt",
+        retired_at="2026-07-13",
+        commit="",
+        replacement="stage0_turn_pair_prompt / stage2_extraction_prompt / stage3_pair_mining_prompt",
+        reason="Prompt template for the retired single-chairman lens builder. The live pipeline owns stage-specific prompts in me/pipeline.py and its stage modules.",
+        kind="function",
+    ),
+    "ME_BUDGET_CHARS": RetirementRecord(
+        name="ME_BUDGET_CHARS",
+        retired_at="2026-07-13",
+        commit="",
+        replacement="(none — live lens output is deterministic renderer output, not one raw chairman document)",
+        reason="Budget knob only constrained the retired single-chairman lens prompt. The live Stage 0-4 pipeline constrains each stage separately and renders lens.md deterministically.",
+        kind="config_field",
+    ),
     # ── 2026-06-05 Stage 4b conflicts retirement (pipeline simplification) ──
     "src/trinity_local/me/conflicts.py": RetirementRecord(
         name="src/trinity_local/me/conflicts.py",

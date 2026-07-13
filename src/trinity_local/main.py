@@ -121,11 +121,13 @@ def build_parser() -> argparse.ArgumentParser:
     # would print all 40+ registered subparsers in both the usage line
     # AND the descriptive table heading). Q4 surface-collapse (#213) leads
     # with the two product words — `lens` and `council` — then the setup +
-    # cold-start essentials.
+    # setup essentials. `dream` is deliberately omitted: it remains callable
+    # as the compatibility alias for `lens --deep`, but the deep path belongs
+    # under the one canonical Lens concept rather than competing in discovery.
     subparsers = parser.add_subparsers(
         dest="command",
         required=False,
-        metavar="{lens,council,dream,status,install}",
+        metavar="{lens,council,status,install}",
     )
 
     for module in _iter_command_modules():
@@ -136,7 +138,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 # Area 5 → Q4 surface-collapse (#213). The user-visible surface is exactly
-# these five verbs, led by the two product words (`lens`, `council`);
+# these four verbs, led by the two product words (`lens`, `council`);
 # everything else stays registered (the launchpad's Native Messaging
 # dispatch and the Chrome extension's action allowlist both call subparsers
 # by name — dropping the registrations would break real flows) but is
@@ -146,7 +148,6 @@ def build_parser() -> argparse.ArgumentParser:
 USER_FACING_COMMANDS = (
     "lens",
     "council",
-    "dream",
     "status",
     "install",
 )

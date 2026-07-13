@@ -1,13 +1,9 @@
 """Guard: the 5-stage lens-build path must not DOWNGRADE a populated lens.
 
-Earned 2026-06-02. `build_me_via_council` (the old path) refuses to overwrite
-the persisted lens when the chairman returns empty/poisoned output ("existing
-/me preserved. Re-run lens-build.", me_builder.py L466-488). The current default
-path `build_me_via_lens_pipeline` lost that protection: it renders the lens
-DETERMINISTICALLY via `render_me_markdown`, so the old structural
-`_REQUIRED_ME_SECTIONS` check is both the wrong header vocabulary (renderer now
-emits `# Lens`, not `# /me`) AND a permanent no-op (the renderer always emits
-well-formed headers). Its real corruption mode is a *content-less downgrade*:
+Earned 2026-06-02. The live path `build_me_via_lens_pipeline` renders the lens
+DETERMINISTICALLY via `render_me_markdown`, so structural header checks cannot
+catch an empty-but-well-formed render. Its real corruption mode is a
+*content-less downgrade*:
 
     empty Stage 3 (chairman timeout/quota) → stage3_parse([]) → accepted == []
     + tension-registry read raises (e.g. schema skew after upgrade)

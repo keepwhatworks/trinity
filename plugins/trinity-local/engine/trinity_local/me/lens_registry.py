@@ -117,7 +117,7 @@ def registry_path() -> Path:
 # Bounds how far one dream cycle can move the lens, by PROTECTING a drift-stable
 # core from recency-decay. The core is seeded once, at the "flush" (the first
 # clean rebuild after the de-weight) — seed = (persistent in the old trajectory)
-# ∩ (present in the clean rebuild), via `bounded_update.drift_stable_core` (the
+# ∩ (present in the clean rebuild), via `drift_stable_core.drift_stable_core` (the
 # intersection the founder's catch demands: persistence over a CONTAMINATED
 # history is a degenerate green; only the intersection is both stable AND clean).
 # In this append-only registry "protect" means EXEMPT-FROM-DECAY: a seed tension
@@ -192,7 +192,7 @@ def compute_flush_seed(
     rebuild, so there is nothing durable to protect yet)."""
     if not clean_probes:
         return None
-    from .bounded_update import drift_stable_core
+    from .drift_stable_core import drift_stable_core
 
     seed = drift_stable_core(
         persistent_old, clean_probes, key=lambda e: e.probe_text, embed_fn=embed_fn
@@ -550,7 +550,7 @@ def persistent_registry_tensions(
     NOTE this is necessary-not-sufficient for protection: over a CONTAMINATED history the
     drivers were re-confirmed every build, so contamination is maximally 'persistent' here.
     Persistence alone is a degenerate green; only its INTERSECTION with the clean rebuild
-    (``bounded_update.drift_stable_core``) is safe to protect. This function deliberately
+    (``drift_stable_core.drift_stable_core``) is safe to protect. This function deliberately
     returns the over-broad persistent set so the intersection can do the narrowing."""
     reg = entries if entries is not None else load_registry()
     return [e for e in reg if e.first_seen and e.last_confirmed and e.first_seen < e.last_confirmed]
