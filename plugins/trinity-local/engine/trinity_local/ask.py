@@ -277,9 +277,24 @@ def _log_exploration_route(basin_id: str, sampled: str, rule: dict) -> None:
         from .utils import now_iso
         d = trinity_home() / "analytics"
         d.mkdir(parents=True, exist_ok=True)
+        # Identity triple on every exploration row (2026-07-14): the sampled
+        # SLUG alone can't answer "which codex won the exploration" a month
+        # later — stamp what that provider currently dispatches.
+        model = effort = None
+        try:
+            from .config import load_config
+            from .providers import _effective_effort, dispatched_model
+            cfg = load_config(None, required=False)
+            pc = (cfg.providers or {}).get(sampled) if cfg else None
+            if pc is not None:
+                model = dispatched_model(pc)
+                effort = _effective_effort(pc)
+        except Exception:
+            pass
         with (d / "exploration_routes.jsonl").open("a", encoding="utf-8") as f:
             f.write(_json.dumps({
                 "at": now_iso(), "basin": basin_id, "sampled": sampled,
+                "model": model, "effort": effort,
                 "margin": rule.get("margin"), "effective_n": rule.get("effective_n"),
             }) + "\n")
     except Exception:

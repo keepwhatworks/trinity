@@ -70,6 +70,10 @@ class TestAskWiring:
         assert log.exists(), "exploration route was not logged — the instrument is dark"
         row = json.loads(log.read_text().splitlines()[0])
         assert row["basin"] == "b07" and row["sampled"] == "codex"
+        # identity-triple stamping (2026-07-14): the row must CARRY the model/
+        # effort fields (None allowed when config is absent in the isolated
+        # home) — a slug-only row can't answer "which codex" a month later
+        assert "model" in row and "effort" in row
 
     def test_decisive_basin_still_routes_the_winner(self, tmp_path, monkeypatch):
         monkeypatch.setenv("TRINITY_HOME", str(tmp_path))

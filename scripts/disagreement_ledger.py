@@ -82,6 +82,16 @@ def load_real_claims() -> list[dict]:
         if at is None:
             continue
         rl = d.get("routing_label") or {}
+        # Identity-triple join (2026-07-14): claims attribute at SLUG level,
+        # but the same record carries each member's model (+ effort for
+        # councils dispatched after the stamping landed) — carry it so the
+        # report can slice by model when n allows.
+        member_models = {}
+        for m in d.get("member_results") or []:
+            if isinstance(m, dict) and m.get("provider"):
+                ident = m.get("model") or ""
+                eff = (m.get("metadata") or {}).get("effort")
+                member_models[m["provider"]] = f"{ident} ({eff})" if eff and eff not in str(ident) else str(ident)
         for idx, c in enumerate(rl.get("disagreed_claims") or []):
             if not (isinstance(c, dict) and c.get("claim") and c.get("providers_for")):
                 continue
@@ -94,6 +104,7 @@ def load_real_claims() -> list[dict]:
                 "providers_for": list(c.get("providers_for") or []),
                 "providers_against": list(c.get("providers_against") or []),
                 "chairman_winner": (rl.get("winner") or ""),
+                "member_models": member_models,
                 "task_excerpt": str(md.get("task_text") or "")[:200],
             })
     return claims
@@ -315,6 +326,28 @@ def phase_c() -> None:
                                 "evidence": c["evidence"],
                                 "extractor_said": resolved[cid]["resolution"],
                                 "your_label": ""}, ensure_ascii=False) + "\n")
+    # Model-level slice (identity-triple join) — printed with its own
+    # honesty line: cells shatter fast at this n, so model rows are
+    # DESCRIPTIVE until a cell independently clears CI-excludes-0.5.
+    model_tally: dict[str, dict[str, int]] = {}
+    for cid, r in resolved.items():
+        c = ev.get(cid) or {}
+        mm = c.get("member_models") or {}
+        winners = c.get("providers_for") if r["resolution"] == "followed" else c.get("providers_against")
+        losers = c.get("providers_against") if r["resolution"] == "followed" else c.get("providers_for")
+        for slug in winners or []:
+            key = mm.get(slug) or f"{slug} (model unknown)"
+            model_tally.setdefault(key, {"w": 0, "l": 0})["w"] += 1
+        for slug in losers or []:
+            key = mm.get(slug) or f"{slug} (model unknown)"
+            model_tally.setdefault(key, {"w": 0, "l": 0})["l"] += 1
+    if model_tally:
+        print("\nmodel-level slice (descriptive below per-cell significance):")
+        for mdl, t in sorted(model_tally.items(), key=lambda kv: -(kv[1]["w"] / max(1, kv[1]["w"] + kv[1]["l"]))):
+            n = t["w"] + t["l"]
+            lo, hi = wilson_ci(t["w"], n)
+            print(f"  {mdl:<32} {t['w']:>3}W {t['l']:>3}L  wr {t['w']/n if n else 0:.3f}  CI [{lo:.2f},{hi:.2f}]")
+
     print(f"\nkill summary -> {OUT_DIR / 'summary.json'}")
     print(f"kappa sheet (30 claims, founder labels 'your_label') -> {OUT_DIR / 'kappa_sheet.jsonl'}")
 

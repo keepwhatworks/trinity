@@ -768,6 +768,11 @@ def run_council(
             member_failures.append(execution.error_payload)
             continue
         assert execution.provider_config is not None
+        # Identity-triple stamping (#239 extended to the behavioral stream,
+        # 2026-07-14): the disagreement ledger joins claims to member models,
+        # and effort was the missing leg — every unstamped council is
+        # behavioral data that can never gain effort fidelity later.
+        from .providers import _effective_effort
         member = CouncilMemberResult(
             provider=provider_name,
             model=_provider_model(execution.provider_config, member_model_overrides.get(provider_name)),
@@ -777,6 +782,7 @@ def run_council(
                 "returncode": execution.returncode,
                 "stderr": execution.stderr,
                 "stdout": execution.stdout,
+                "effort": _effective_effort(execution.provider_config),
             },
         )
         member_results.append(member)

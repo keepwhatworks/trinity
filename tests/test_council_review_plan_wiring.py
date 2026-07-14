@@ -41,3 +41,24 @@ class TestCouncilReviewPlanWiring:
     def test_trinity_discipline_points_here(self):
         s = (REPO / ".claude/skills/trinity-discipline/SKILL.md").read_text(encoding="utf-8")
         assert "council-review-plan" in s
+
+
+class TestIdentityTripleStamping:
+    """The behavioral stream stamps the #239 identity triple forward
+    (2026-07-14): council members carry effort in metadata; the disagreement
+    ledger joins member models per claim. Source-level pins (the scorer-guard
+    pattern): deleting either stamp reds."""
+
+    def test_council_runner_stamps_member_effort(self):
+        src = (REPO / "src/trinity_local/council_runner.py").read_text(encoding="utf-8")
+        idx = src.find('"stdout": execution.stdout,')
+        assert idx != -1
+        window = src[idx:idx + 300]
+        assert '"effort"' in window and "_effective_effort" in window, (
+            "council members no longer stamp effort — behavioral data loses "
+            "the third identity leg from here on"
+        )
+
+    def test_ledger_joins_member_models(self):
+        src = (REPO / "scripts/disagreement_ledger.py").read_text(encoding="utf-8")
+        assert "member_models" in src, "the ledger dropped the model join"
