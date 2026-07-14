@@ -293,10 +293,20 @@ def compute_basin_routing(
             continue
         tally: dict[str, float] = {}
         models: dict[str, int] = {}
+        # Identity-keyed weight mass (2026-07-14 — the founder's model x size x
+        # effort fidelity requirement, additive: the slug `tally` above still
+        # drives winner/margin so the routing gate is byte-unchanged; this only
+        # ADDS a finer breakdown for the identity-aware surfaces + a future
+        # Thompson-over-identity). Effort is "?" on councils dispatched before
+        # the member-effort stamp, so cells accrue full fidelity forward.
+        from .model_identity import parse_identity
+        ident_weights: dict[str, float] = {}
         fresh_n = stale_n = 0
         for w, wt, _, wm, fresh in rows:
             tally[w] = tally.get(w, 0.0) + wt
             models[wm] = models.get(wm, 0) + 1
+            ik = parse_identity(wm).label("family", "tier", "version", "effort")
+            ident_weights[ik] = ident_weights.get(ik, 0.0) + wt
             if fresh:
                 fresh_n += 1
             else:
@@ -325,6 +335,10 @@ def compute_basin_routing(
             "fresh_n": fresh_n,
             "stale_n": stale_n,
             "models": models,
+            # Identity-keyed masses (family·tier·version·effort) — the fidelity
+            # breakdown for get_picks / the disagreement card / future
+            # Thompson-over-identity. Additive; winner/margin unaffected.
+            "identity_weights": {k: round(v, 3) for k, v in ident_weights.items()},
             # Per-provider post-decay masses (2026-07-14): the Thompson
             # exploration path samples these on coin-flip basins — the tally
             # computed them all along and used to discard them.

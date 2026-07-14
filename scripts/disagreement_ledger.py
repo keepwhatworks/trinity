@@ -326,27 +326,51 @@ def phase_c() -> None:
                                 "evidence": c["evidence"],
                                 "extractor_said": resolved[cid]["resolution"],
                                 "your_label": ""}, ensure_ascii=False) + "\n")
-    # Model-level slice (identity-triple join) — printed with its own
-    # honesty line: cells shatter fast at this n, so model rows are
-    # DESCRIPTIVE until a cell independently clears CI-excludes-0.5.
-    model_tally: dict[str, dict[str, int]] = {}
-    for cid, r in resolved.items():
-        c = ev.get(cid) or {}
-        mm = c.get("member_models") or {}
-        winners = c.get("providers_for") if r["resolution"] == "followed" else c.get("providers_against")
-        losers = c.get("providers_against") if r["resolution"] == "followed" else c.get("providers_for")
-        for slug in winners or []:
-            key = mm.get(slug) or f"{slug} (model unknown)"
-            model_tally.setdefault(key, {"w": 0, "l": 0})["w"] += 1
-        for slug in losers or []:
-            key = mm.get(slug) or f"{slug} (model unknown)"
-            model_tally.setdefault(key, {"w": 0, "l": 0})["l"] += 1
-    if model_tally:
-        print("\nmodel-level slice (descriptive below per-cell significance):")
-        for mdl, t in sorted(model_tally.items(), key=lambda kv: -(kv[1]["w"] / max(1, kv[1]["w"] + kv[1]["l"]))):
+    # Identity-triple slices (founder fidelity requirement 2026-07-14): the
+    # same resolved claims tallied at family / family+tier(size) / full-triple.
+    # member_models carries "model (effort)"; parse_identity decomposes it. A
+    # cell that can't reach a fidelity (effort "?" on pre-stamp councils) is
+    # dropped from THAT slice and its coverage disclosed, never faked.
+    from trinity_local.model_identity import parse_identity
+    import re as _re
+
+    def _tally_at(dims):
+        tally: dict[tuple, dict[str, int]] = {}
+        covered = missing = 0
+        for cid, r in resolved.items():
+            c = ev.get(cid) or {}
+            mm = c.get("member_models") or {}
+            winners = c.get("providers_for") if r["resolution"] == "followed" else c.get("providers_against")
+            losers = c.get("providers_against") if r["resolution"] == "followed" else c.get("providers_for")
+            for slug, outcome in [(s, "w") for s in (winners or [])] + [(s, "l") for s in (losers or [])]:
+                raw = mm.get(slug) or ""
+                em = _re.search(r"\(([a-z]+)\)$", raw.strip())
+                ident = parse_identity(raw.split("(")[0].strip() or slug, em.group(1) if em else None)
+                key = ident.project(*dims)
+                if any(v == "?" for v in key):
+                    missing += 1
+                    continue
+                covered += 1
+                tally.setdefault(key, {"w": 0, "l": 0})[outcome] += 1
+        return tally, covered, missing
+
+    for dims, label in [
+        (("family",), "FAMILY"),
+        (("family", "tier"), "FAMILY x SIZE (tier)"),
+        (("family", "tier", "version"), "FAMILY x SIZE x VERSION"),
+        (("family", "tier", "version", "effort"), "FULL TRIPLE (x EFFORT)"),
+    ]:
+        tally, cov, miss = _tally_at(dims)
+        tot = cov + miss
+        print(f"\n{label} slice — coverage {cov}/{tot} attributions ({miss} dropped: a leg was unknown):")
+        if not tally:
+            print("  (no cell reaches this fidelity — the data doesn't support the claim here)")
+            continue
+        for key, t in sorted(tally.items(), key=lambda kv: -(kv[1]["w"] / max(1, kv[1]["w"] + kv[1]["l"]))):
             n = t["w"] + t["l"]
             lo, hi = wilson_ci(t["w"], n)
-            print(f"  {mdl:<32} {t['w']:>3}W {t['l']:>3}L  wr {t['w']/n if n else 0:.3f}  CI [{lo:.2f},{hi:.2f}]")
+            mark = "  <-- CI excludes 0.5" if n >= 8 and (lo > 0.5 or hi < 0.5) else ""
+            print(f"  {' · '.join(key):<30} {t['w']:>3}W {t['l']:>3}L  wr {t['w']/n if n else 0:.3f}  CI [{lo:.2f},{hi:.2f}]{mark}")
 
     print(f"\nkill summary -> {OUT_DIR / 'summary.json'}")
     print(f"kappa sheet (30 claims, founder labels 'your_label') -> {OUT_DIR / 'kappa_sheet.jsonl'}")
