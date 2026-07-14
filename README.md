@@ -13,7 +13,7 @@ class: live
 
 ## Ask all three. Keep what works.
 
-Send one prompt to Claude, ChatGPT, and Gemini in parallel. A chairman synthesizes the verdict — what they agreed on, where they split, which answer wins — free, local, on the subscriptions you already pay for. No API key. Your transcripts never leave your machine.
+Send one prompt to Claude, ChatGPT, and Gemini at once. A chairman shows you what they agreed on and exactly where they split — the cross-provider read no single lab can give you, because none of them can see the others. Then, from your own history, it learns **which model to trust on your kind of question**. Free, local, on the subscriptions you already pay for. No API key. Your transcripts never leave your machine.
 
 **Install** — just an MCP and a Chrome extension. No new app, no cloud, no API key.
 

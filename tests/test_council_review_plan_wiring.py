@@ -36,7 +36,7 @@ class TestCouncilReviewPlanWiring:
             for field in ("id", "council_id", "amendment", "adopted",
                           "prediction", "resolution"):
                 assert field in r, f"ledger row {r.get('id')} missing {field!r}"
-        assert all(r["resolution"] in ("pending", "held", "failed") for r in rows)
+        assert all(r["resolution"] in ("pending", "held", "failed", "dropped") for r in rows)
 
     def test_trinity_discipline_points_here(self):
         s = (REPO / ".claude/skills/trinity-discipline/SKILL.md").read_text(encoding="utf-8")
