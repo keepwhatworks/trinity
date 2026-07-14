@@ -164,9 +164,7 @@ def _try_cortex_route(query: str, available_providers: list[str] | None) -> AskD
         from .cortex import load_routing_patterns
         from .embeddings import embed, mlx_actually_loaded
         from .lens_routing import (
-            MIN_COUNT,
             load_topics_basins,
-            pick_routes,
             place_query,
         )
     except ImportError:
@@ -210,6 +208,15 @@ def _try_cortex_route(query: str, available_providers: list[str] | None) -> AskD
     rule = routing.get(basin_id)
     if not isinstance(rule, dict):
         return None  # query landed in a basin with no winner tally → kNN handles it
+    return _decide_from_rule(basin_id, rule, available_providers)
+
+
+def _decide_from_rule(basin_id: str, rule: dict,
+                      available_providers: list[str] | None) -> AskDecision | None:
+    """The pure decision half of the cortex route (extracted 2026-07-14 so the
+    gate + Thompson path are testable without placement I/O): given a basin's
+    picks entry, return the routing decision or None (→ kNN)."""
+    from .lens_routing import MIN_COUNT, pick_routes
     # isinstance(..., str) shape-guards the STRING field: a corrupt non-string
     # `winner` (a NUMBER in a hand-edited picks.json) would hit `.strip()` on an int
     # and crash the ask-route decision (the launchpad-render sibling, Iter 257).
@@ -226,6 +233,25 @@ def _try_cortex_route(query: str, available_providers: list[str] | None) -> AskD
     # is dead; that must fall to kNN, not route confidently). One predicate so
     # ask() and get_picks can never disagree on what routes.
     if not pick_routes(rule):
+        # Thompson exploration (council 2026-07-14): a MARGIN refusal means the
+        # basin is a measured near-tie — sample the Beta posterior on the
+        # basin's weight masses instead of dropping straight to kNN. Explores
+        # exactly where any pick is defensible; stale/thin basins return None
+        # here and still fall to kNN. Every exploration route is logged so the
+        # exploration itself is measurable.
+        from .lens_routing import thompson_route
+        sampled = thompson_route(rule)
+        if sampled and (not available_providers or sampled in available_providers):
+            _log_exploration_route(basin_id, sampled, rule)
+            return AskDecision(
+                routed_to=sampled,
+                trust_score=float(rule.get("margin", 0.0) or 0.0),
+                runner_up=None,
+                vote_counts={sampled: count},
+                evidence_prompt_ids=list(rule.get("evidence") or [])[:5],
+                reason=(f"lens basin {basin_id} is a measured near-tie → Thompson "
+                        f"sample over its posterior → {sampled} (exploration, logged)"),
+            )
         return None
     if available_providers and winner not in available_providers:
         return None  # the basin's chairman-winner isn't available → let kNN handle it
@@ -240,6 +266,24 @@ def _try_cortex_route(query: str, available_providers: list[str] | None) -> AskD
         evidence_prompt_ids=list(rule.get("evidence") or [])[:5],
         reason=f"lens basin {basin_id} → {winner} (n={count}, margin={margin:.2f})",
     )
+
+
+def _log_exploration_route(basin_id: str, sampled: str, rule: dict) -> None:
+    """One PII-free line per Thompson route (analytics never crash) — the
+    exploration is itself an instrument and must be measurable."""
+    try:
+        import json as _json
+        from .state_paths import trinity_home
+        from .utils import now_iso
+        d = trinity_home() / "analytics"
+        d.mkdir(parents=True, exist_ok=True)
+        with (d / "exploration_routes.jsonl").open("a", encoding="utf-8") as f:
+            f.write(_json.dumps({
+                "at": now_iso(), "basin": basin_id, "sampled": sampled,
+                "margin": rule.get("margin"), "effective_n": rule.get("effective_n"),
+            }) + "\n")
+    except Exception:
+        pass
 
 
 def _decide_from_hits(

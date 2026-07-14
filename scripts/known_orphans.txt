@@ -23,3 +23,5 @@ src/trinity_local/__main__.py : Package entry point — invoked as `python3 -m t
 # (pairwise_stats.py entry removed 2026-07-13: the Phase-0 falsifier
 # returned FAIL with adequate power — module deleted per its own lifecycle;
 # the experiment record lives in internal/experiments/pairwise-falsifier-2026-07-13/.)
+
+src/trinity_local/me/exposures.py : The behavioral tier's exposure lane (council_9f4b3ab0a9b640c2, built 2026-07-14 post-K4-pass): honest per-family denominators — exposures (substantive provider-attributed at-bats from the prompt index) + ledger losses -> rejection rates with Wilson CIs. No approval inference (silence != evidence, council-banned). Live read: codex 0.039%, claude 0.157%, antigravity 0.334% per at-bat (routing-mix confound disclosed). Production wiring is GATED on K2 (founder kappa labels for the disagreement-ledger extractor) — when K2 clears, this surfaces on the launchpad/status as the Tier-1 readout and this line is removed; tests tests/test_exposures.py (4 green). Same annotated-orphan lifecycle baseline_floor/pairwise_stats had.

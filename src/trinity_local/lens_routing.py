@@ -62,6 +62,59 @@ STALE_MODEL_DECAY = 0.5
 MIN_EFFECTIVE_N = 3.0
 
 
+def thompson_route(entry: dict, rng=None) -> str | None:
+    """Exploration on coin-flip basins (council_9f4b3ab0a9b640c2, 2026-07-14).
+
+    When `pick_routes` refuses a basin for MARGIN (a measured near-tie — the
+    models are indistinguishable there), don't drop straight to kNN: sample
+    each provider's Beta posterior on the basin's post-decay weight masses and
+    route on the sample's argmax. This explores exactly where exploration is
+    free (any pick is defensible where the posterior is flat) and exploits
+    where it's sharp — no epsilon to tune, no user-visible cost. It NEVER
+    fires where the evidence is stale or thin (effective_n below the same
+    floor pick_routes uses): stale coin flips stay with kNN, because sampling
+    dead evidence is exploration theater.
+
+    Returns the sampled provider, or None when this path shouldn't decide
+    (decisive basin, thin/stale evidence, no weights recorded yet — legacy
+    entries gain `weights` on the next consolidate).
+    """
+    import random
+    if not isinstance(entry, dict):
+        return None
+    weights = entry.get("weights")
+    if not isinstance(weights, dict) or len(weights) < 2:
+        return None
+    try:
+        margin = float(entry.get("margin") or 0.0)
+        eff = float(entry.get("effective_n") or 0.0)
+    except (TypeError, ValueError):
+        return None
+    if margin >= WINNER_MARGIN_FLOOR:
+        return None  # decisive basin — the winner routes, not a sample
+    if eff < MIN_EFFECTIVE_N:
+        return None  # stale/thin — kNN, not exploration theater
+    total = 0.0
+    clean: dict[str, float] = {}
+    for prov, w in weights.items():
+        try:
+            w = float(w)
+        except (TypeError, ValueError):
+            continue
+        if w > 0 and isinstance(prov, str) and prov:
+            clean[prov] = w
+            total += w
+    if len(clean) < 2 or total <= 0:
+        return None
+    rng = rng or random
+    # deterministic tie-break on slug so equal samples can't flip on dict order
+    best = max(
+        sorted(clean.items()),
+        key=lambda kv: rng.betavariate(kv[1] + 1.0, max(total - kv[1], 0.0) + 1.0),
+    )
+    return best[0]
+
+
 _TOPICS_BASINS_CACHE: tuple[str, float, list[dict]] | None = None
 
 
@@ -272,6 +325,10 @@ def compute_basin_routing(
             "fresh_n": fresh_n,
             "stale_n": stale_n,
             "models": models,
+            # Per-provider post-decay masses (2026-07-14): the Thompson
+            # exploration path samples these on coin-flip basins — the tally
+            # computed them all along and used to discard them.
+            "weights": {prov: round(w, 3) for prov, w in ranked},
             "evidence": [cid for _, _, cid, _, _ in rows if cid][:20],
         }
     return out
