@@ -1,13 +1,13 @@
 ---
 name: trinity
-description: Ask all three. Install Trinity Local — the free, local cross-provider council that runs your prompt through Claude, ChatGPT, and Gemini on your existing subscriptions (no API key) and synthesizes the best answer, right inside Claude Code, Codex CLI, Antigravity, and Cursor. Use when the user types /trinity, asks how to set up Trinity, wants their lens / picks / routing built from existing transcripts, or wants a hard question dispatched to multiple models with synthesis in their voice.
+description: Ask all three. Install Trinity Local — the free, local cross-provider council that runs your prompt through Claude, ChatGPT, and Gemini on your existing subscriptions (no API key) and synthesizes the best answer, right inside Claude Code, Codex CLI, Antigravity, and Cursor. Use when the user types /trinity, asks how to set up Trinity, wants their lens / picks / routing built from existing transcripts, or wants a hard question dispatched to multiple models with a synthesized verdict.
 argument-hint: [optional first-council prompt]
 allowed-tools: Bash(curl *) Bash(bash *) Bash(trinity-local *) Bash(command -v *) Bash(which *) Bash(open *) Read
 ---
 
 # Trinity Local — your taste, ported
 
-Trinity reads transcripts already on the user's machine (Claude Code, Codex CLI, Antigravity, claude.ai, chatgpt.com, gemini takeout — Cursor is an install target, not yet an ingest source), learns the pattern in how the user rephrases / judges / decides, then runs hard questions through all three frontier providers in their voice and picks the answer they would have picked.
+Trinity reads transcripts already on the user's machine (Claude Code, Codex CLI, Antigravity, claude.ai, chatgpt.com, gemini takeout — Cursor is an install target, not yet an ingest source), learns the pattern in how the user rephrases / judges / decides, then runs hard questions through all three frontier providers and synthesizes a verdict weighted by that lens — showing which model to trust on their kind of question.
 
 This skill is the orchestration layer that drives the `trinity-local` CLI from inside Claude Code via the bash tool. The CLI is the engine; this file is the user-facing contract. Every command below can be run by hand — the skill is a transparent driver, not a hidden one.
 
@@ -170,7 +170,7 @@ Four trigger conditions — call `import_provider_memory(kind, payload, dry_run?
 
 When you (the agent) hit a decision you'd normally surface to the user — a product / architectural / tooling choice between options (which database, which approach, how to structure this), NOT a personal or irreversible one — **consult Trinity first instead of interrupting them**:
 
-- **Quick choice** → call `mcp__trinity-local__ask`. It routes on what the user's own councils have shown wins their kind of question and answers in their voice — one provider, one call.
+- **Quick choice** → call `mcp__trinity-local__ask`. It routes on what the user's own councils have shown wins their kind of question — one provider, one call.
 - **Genuinely hard / high-stakes** → call `mcp__trinity-local__run_council` and act on the chairman's `agreed_claims` / `disagreed_claims`.
 
 Then proceed on Trinity's answer. **Escalate to the user only when** Trinity has no signal (cold lens), the call is genuinely novel with no precedent in their history, it's irreversible / high-stakes, or it's a *personal* preference that's theirs to make (not inferable from taste). Reserve `AskUserQuestion` for exactly those.

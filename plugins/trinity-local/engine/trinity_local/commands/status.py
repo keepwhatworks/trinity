@@ -458,13 +458,13 @@ def handle_status(args):
             # Cold-home gate (#316 journey-audit): ev.nudge() says "run eval-run
             # --target X", but eval-run → eval-build raises FileNotFoundError
             # without a rejection ledger, so a fresh user is sent into a failing
-            # 3-hop chain. Mirror the launchpad's _eval_set_available() gate: only
-            # surface the eval-run CTA when there's an eval set to run; otherwise
-            # point at the real prerequisite (build the lens first).
+            # 3-hop chain. Gate on eval_set_available(): only surface the eval-run
+            # CTA when there's an eval set to run; otherwise point at the real
+            # prerequisite (build the lens first).
             try:
-                from ..launchpad_data import _eval_set_available
+                from ..evals.builder import eval_set_available
 
-                have_eval = _eval_set_available()
+                have_eval = eval_set_available()
             except Exception:
                 have_eval = True  # never let the gate itself suppress the news
             print("  New models:")

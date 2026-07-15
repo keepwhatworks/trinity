@@ -12,7 +12,7 @@ true to what ships. The narrative across all three is the same one the
 
 | Post | Angle | The one line |
 |---|---|---|
-| [I asked three AIs at once](i-asked-three-ais-at-once.md) | The council — the action | Ask Claude, GPT, and Gemini in parallel; a fourth model hands you the answer you'd have picked. |
+| [I asked three AIs at once](i-asked-three-ais-at-once.md) | The council — the action | Ask Claude, GPT, and Gemini in parallel; a chairman shows you where they split and which one to trust. |
 | [I benchmarked the models on my own corrections](i-benchmarked-the-models-on-my-own-corrections.md) | The eval moat — the proof | The labs can't say which competitor wins; this scores them on the answers *you* rewrote, with a judge measured against your own corrections. |
 | [Your AI chats are training data](your-ai-chats-are-training-data.md) | Data sovereignty — the why | They get a model of you for free; this keeps it local and makes it yours. |
 

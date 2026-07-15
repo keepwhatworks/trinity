@@ -2,7 +2,7 @@
 STILL RUNNING, each "Full Responses" member row must paint the status the sidecar
 ACTUALLY carries — a ``done`` member shows its real answer, a ``running`` member
 reads "Running" / "Working…", and a ``pending`` member reads "Queued". And NO
-winner verdict (the 🏆 "the answer you'd have picked" trophy / "No clear winner")
+winner verdict (the 🏆 "the one to trust here" trophy / "No clear winner")
 may appear while the run is in flight.
 
 THE GAP this closes (found 2026-06-21 driving the genuine in-flight RUNNING poll
@@ -229,7 +229,7 @@ def test_running_council_member_rows_match_seed_and_no_premature_verdict(tmp_pat
         "while members are still working. The verdict must stay suppressed until "
         "seg.completed."
     )
-    assert "the answer you'd have picked" not in body and "No clear winner" not in body, (
-        "a verdict line ('… the answer you'd have picked' / 'No clear winner') leaked "
+    assert "the one to trust here" not in body and "No clear winner" not in body, (
+        "a verdict line ('… the one to trust here' / 'No clear winner') leaked "
         "onto the in-flight RUNNING council before synthesis completed."
     )

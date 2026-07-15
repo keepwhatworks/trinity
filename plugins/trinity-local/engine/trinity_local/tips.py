@@ -92,7 +92,8 @@ LADDER: tuple[Tip, ...] = (
         key="create-lens",
         kind="elicit",
         message=("You just fused Claude, GPT, and Gemini — free, on your own subscriptions. "
-                 "Want the answers in YOUR voice? Build your taste lens from your history."),
+                 "Want it to learn which model to trust on YOUR kind of question? "
+                 "Build your taste lens from your history."),
         cta="trinity-local lens-setup",
         # First win landed, and they haven't started a lens yet.
         prereq=lambda s: s.councils_run >= 1 and not s.lens_enabled and not s.lens_built,

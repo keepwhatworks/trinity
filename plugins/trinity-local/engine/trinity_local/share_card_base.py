@@ -1,6 +1,7 @@
 """Shared infrastructure for 1200×630 OG share cards.
 
-Three card renderers (`me_card`, `eval_card`, `council_card`) used to
+The card renderers (`me_card`, `council_card`; `eval_card` removed
+2026-07-14 with eval-share) used to
 inline their own copies of the canvas dimensions, color palette, font
 loader, wrap helper, and footer/CTA renderer. The doc-consistency tests
 actively enforce that *"all three carry the same install CTA + same

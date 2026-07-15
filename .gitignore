@@ -23,6 +23,7 @@ state/
 !docs/og-card.png
 !docs/launch_assets/*.png
 !browser-extension/icons/*.png
+!internal/launch-copy/*.png
 mock_gen.py
 pylint_report.txt
 

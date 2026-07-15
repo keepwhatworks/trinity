@@ -1293,10 +1293,10 @@ def main() -> int:
         rebuild_targets = [
             ("lens.md", "trinity-local lens"),
             ("picks.json", "trinity-local consolidate"),
-            # core.md previously suggested `distill` but the CLI was
-            # hidden in commit c9b1f9d; the rebuild chip now points at
-            # the live path (dream Phase 5 handles distillation).
-            ("core.md", "trinity-local dream"),
+            # core.md previously suggested `distill` (hidden in c9b1f9d),
+            # then `dream` (folded into `lens --deep` 2026-07-04); the
+            # rebuild chip now points at the fast core.md refresh.
+            ("core.md", "trinity-local lens --only-distill"),
         ]
         rebuild_results = []
         for file_name, expected_cmd in rebuild_targets:
@@ -1966,89 +1966,12 @@ def main() -> int:
             print(f"[ ✗ ] Surface 29 handoff nudge: {reason}")
             fails.append((29, "handoff nudge banner", reason))
 
-        # ─── Surface 30: Personalized benchmark (eval summary) card ──────────
-        # The launchpad-side surface for the eval harness (#122 / #116).
-        # Card is ALWAYS rendered (empty state OR populated). When no
-        # eval results exist on disk, the card shows the CTA — flavored
-        # depending on whether the user has built an eval set yet:
-        #   no set     → "trinity-local eval-build" + "trinity-local eval-run --target antigravity"
-        #   set exists → "trinity-local eval-run --target antigravity"
-        # (Slug `gemini` was the pre-task-#127 target name; the rebrand
-        # flipped it to `antigravity` to match config.json's provider
-        # dict. The card text now uses pageData.evalSummary.target which
-        # comes from the live results, so example provider in this
-        # comment is illustrative, not load-bearing.)
-        # When results exist, the card shows the per-axis breakdown with
-        # tabular-numeric bars.
-        eval_state = page.evaluate(
-            """() => {
-              const script = document.getElementById('page-data');
-              const data = script ? JSON.parse(script.textContent || '{}') : {};
-              const summary = data.evalSummary || {};
-              // When evalSummary.has_results, the template emits TWO
-              // "Personalized benchmark" eyebrow chips — one in the
-              // <details><summary> collapsed-pill header, one inside
-              // the wrapped <section.card>. The summary chip has no
-              // section.card ancestor (it's a sibling within details),
-              // so the old eyebrow-then-closest() approach picked the
-              // first match and got null. Query the card directly by
-              // its dedicated class — added precisely for this anchor.
-              const card = document.querySelector('section.eval-summary-card');
-              const eyebrow = card ? card.querySelector('.eyebrow') : null;
-              const headline = card ? card.querySelector('h2') : null;
-              const codes = card ? Array.from(card.querySelectorAll('code')).map(c => c.textContent) : [];
-              return {
-                has_results: !!summary.has_results,
-                eval_set_available: !!summary.eval_set_available,
-                target: summary.target || null,
-                // Headline renders `target_display || target` (#275 branding:
-                // antigravity→Gemini, codex→GPT). The smoke must check the
-                // SAME branded string the template shows, not the raw slug.
-                target_display: summary.target_display || null,
-                axes_count: (summary.axes || []).length,
-                card_rendered: !!card,
-                headline: headline ? headline.textContent.replace(/\\s+/g, ' ').trim().slice(0, 80) : null,
-                cta_commands: codes,
-              };
-            }"""
-        )
-        page.screenshot(path=str(SHOTS_DIR / "30-eval-summary.png"))
-        if eval_state.get("has_results"):
-            # Populated branch: axes rendered + the BRANDED target visible in
-            # the headline. The h2 renders `target_display || target` (#275:
-            # antigravity→Gemini, codex→GPT, claude→Claude), so assert against
-            # the same fallback chain — asserting the raw slug would falsely
-            # fail whenever the brand display name differs from the slug.
-            target = eval_state.get("target")
-            expected_label = eval_state.get("target_display") or target
-            target_ok = bool(expected_label) and expected_label in (eval_state.get("headline") or "")
-            axes_ok = eval_state.get("axes_count", 0) > 0
-            if not eval_state.get("card_rendered"):
-                reason = "eval summary card missing despite has_results=true"
-                print(f"[ ✗ ] Surface 30 eval summary: {reason}")
-                fails.append((30, "eval summary card", reason))
-            elif target_ok and axes_ok:
-                print(
-                    f"[ ✓ ] Surface 30 eval summary: populated · target={target!r} "
-                    f"axes={eval_state['axes_count']}"
-                )
-            else:
-                reason = f"populated but target_ok={target_ok} axes_ok={axes_ok}"
-                print(f"[ ✗ ] Surface 30 eval summary: {reason}")
-                fails.append((30, "eval summary card", reason))
-        else:
-            # No eval results yet — card is intentionally silent (the empty-
-            # state CTA branch was killed; users discover eval-run via README).
-            print(
-                "[ ✓ ] Surface 30 eval summary: silent (no results yet — "
-                "empty-state card retired)"
-            )
 
         # ─── (Surface 31 reserved — never shipped) ────────────────────────────
         # The IDs are stable across releases; nothing was numbered 31. Gap
         # preserved so existing references to Surface 32/33 don't shift.
         # `scripts/render_docs.canonical_smoke_surface_count()` counts what
-        # exists (34 distinct labels: 1, 1b, 2–13, 14a, 14b, 15–30, 32, 33),
+        # exists (33 distinct labels: 1, 1b, 2–13, 14a, 14b, 15–29, 32, 33),
         # which is correct — the count tracks reality, not ID density.
 
         # ─── Surface 32: Rate-limit-saves card (RETIRED — regression guard) ──

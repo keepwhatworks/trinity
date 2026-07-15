@@ -140,7 +140,7 @@ def test_completed_council_survives_missing_outcome_refresh(tmp_path, monkeypatc
     # The actual result must still be on screen (the status payload carried it).
     assert has_routing, "routing-label panel vanished — the completed result was clobbered"
     # The winner verdict only renders for a segment that stayed completed.
-    assert "the answer you'd have picked" in text, (
+    assert "the one to trust here" in text, (
         "winner verdict vanished — the completed segment was reset by the outcome-refresh 404"
     )
 

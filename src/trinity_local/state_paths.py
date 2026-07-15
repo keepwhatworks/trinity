@@ -269,8 +269,8 @@ def conversations_provider_dir(provider: str) -> Path:
 
 
 def share_dir() -> Path:
-    """PNG share-card outputs — `me-card`, `council-share --safe`,
-    `eval-share` defaults. Was inlined as `state_dir() / "share"` in
+    """PNG share-card outputs — `me-card`, `council-share --safe`
+    defaults (`eval-share` removed 2026-07-14). Was inlined as `state_dir() / "share"` in
     3 callers before tick 87 promoted it to a helper per principle
     #17 (three inline shapes = missing helper).
 

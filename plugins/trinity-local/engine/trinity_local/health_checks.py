@@ -951,6 +951,61 @@ def _dormant_nomic_lens_basins() -> int:
         return 0
 
 
+def authed_providers() -> list[str]:
+    """The canonical council providers that pass the full installed +
+    authenticated bar (the same per-provider `_check_provider` rows `status`
+    prints). Single source of truth for every council-breadth surface — the
+    `status` check, the MCP `run_council` reduced-mode guide, and the
+    launchpad tip card — so they can never disagree about how many voices a
+    council will actually have.
+    """
+    ready: list[str] = []
+    for provider, cli in (("claude", "claude"), ("codex", "codex"), ("antigravity", "agy")):
+        if _check_provider(provider, cli).ok:
+            ready.append(provider)
+    return ready
+
+
+def council_reduced_mode_guidance(ready: list[str] | None = None) -> dict[str, Any] | None:
+    """Onboarding guidance for the moment a council is launched with fewer than
+    two authenticated providers — the highest-intent moment to explain that the
+    asymmetric edge (cross-provider disagreement no single lab can see) is
+    exactly what's absent at n<2.
+
+    Returns ``None`` when ≥2 providers are ready: a real cross-provider council
+    is possible, so there is nothing to nag about — the guide self-dismisses
+    the instant the user authenticates a second CLI. Otherwise returns a
+    ``{authed, detail, fix}`` block naming the reduced state and the one action
+    that unlocks the real thing. Reused by `_check_council_breadth` (the
+    `status` row) and the MCP `run_council` handler so all breadth copy lives
+    in ONE place.
+
+    ``ready`` lets a caller that already probed pass its list through — one
+    filesystem read, no TOCTOU between the caller's check and this one (a
+    concurrent `codex --login` completing between two probes made the old
+    two-probe shape able to disagree with itself).
+    """
+    if ready is None:
+        ready = authed_providers()
+    if len(ready) >= 2:
+        return None
+    if len(ready) == 1:
+        return {
+            "authed": ready,
+            "detail": (
+                f"only 1 provider authed ({ready[0]}) — this council runs in "
+                "REDUCED mode (one voice + chairman, no cross-provider "
+                "disagreement). Trinity's asymmetric edge needs ≥2 providers."
+            ),
+            "fix": "auth a second CLI (e.g. `codex --login` or run any one-shot `agy`/`claude` command)",
+        }
+    return {
+        "authed": [],
+        "detail": "no providers authed — a council cannot run yet",
+        "fix": "install + authenticate at least one CLI: claude, codex, or agy",
+    }
+
+
 def _check_council_breadth() -> CheckResult:
     """Degraded-honesty (#238): a council needs ≥2 authed providers to be a
     *council* — one voice plus a chairman is just a single-model answer with
@@ -964,41 +1019,32 @@ def _check_council_breadth() -> CheckResult:
     The asymmetric value (cross-provider disagreement no single lab can see)
     is exactly what's missing at n=1. This check names it.
 
-    Counts the same provider-auth indicators `_check_provider` uses, so the
-    breadth verdict matches the per-provider rows.
+    Delegates the reduced-state copy to `council_reduced_mode_guidance()` so
+    the `status` row and the MCP run-time guide read from ONE detector.
 
     ok=True when ≥2 are ready (real council possible). ok=False (soft gap,
-    not a hard blocker) when exactly 1 is ready — honest "reduced" signal.
-    Returns a distinct detail for the 0-ready case so the message isn't a
-    lie about a council that can't run at all.
+    not a hard blocker) when <2 are ready — honest "reduced" signal, with a
+    distinct detail for the 0-ready case so the message isn't a lie about a
+    council that can't run at all.
     """
-    ready: list[str] = []
-    for provider, cli in (("claude", "claude"), ("codex", "codex"), ("antigravity", "agy")):
-        if _check_provider(provider, cli).ok:
-            ready.append(provider)
-
+    ready = authed_providers()
     if len(ready) >= 2:
         return CheckResult(
             name="council_breadth",
             ok=True,
             detail=f"{len(ready)} providers authed ({', '.join(ready)}) — full cross-provider council available",
         )
-    if len(ready) == 1:
-        return CheckResult(
-            name="council_breadth",
-            ok=False,  # soft gap — councils run, but in reduced single-voice mode
-            detail=(
-                f"only 1 provider authed ({ready[0]}) — councils run in REDUCED mode "
-                "(one voice + chairman, no cross-provider disagreement). Trinity's "
-                "asymmetric edge needs ≥2 providers."
-            ),
-            fix="auth a second CLI (e.g. `codex --login` or run any one-shot `agy`/`claude` command)",
-        )
+    # Pass `ready` through — ONE probe, so the guidance can never disagree with
+    # the branch above (the old second probe raced a concurrent `codex --login`
+    # and an assert here could crash `status` — 2026-07-14 review catch).
+    guidance = council_reduced_mode_guidance(ready=ready)
+    if guidance is None:  # unreachable with ready<2 passed in; degrade, never crash
+        return CheckResult(name="council_breadth", ok=True, detail=f"{len(ready)} provider(s) authed")
     return CheckResult(
         name="council_breadth",
-        ok=False,
-        detail="no providers authed — councils cannot run yet",
-        fix="install + authenticate at least one CLI: claude, codex, or agy",
+        ok=False,  # soft gap — councils run, but in reduced single-voice mode
+        detail=guidance["detail"],
+        fix=guidance["fix"],
     )
 
 

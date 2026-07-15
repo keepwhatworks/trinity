@@ -90,13 +90,29 @@ def build_council() -> str:
     """Return the sandboxed live council page. Its data loaders already use the
     host bridge when __TRINITY_HOST_FETCH__ is set (sandbox/_bridge.js), so this
     just repoints vendor to ../vendor/ and injects the bridge shim. Inline scripts
-    stay inline — the sandbox CSP allows them, unlike the extension-page CSP."""
+    stay inline — the sandbox CSP allows them, unlike the extension-page CSP.
+
+    Renders under a NEUTRAL throwaway TRINITY_HOME: render_live_council_page()
+    bakes a page-data bootstrap that sniffs the local env (browserExtension
+    extensionId/configured), and building against the real home committed the
+    builder's machine-specific unpacked-extension id into git (caught 2026-07-14;
+    the runtime data arrives over the bridge anyway). Neutral home → deterministic
+    artifact → the sync test can pin it byte-for-byte."""
     import os
+    import tempfile
 
     os.environ.setdefault("TRINITY_AUTOSCAN_DISABLED", "1")
     from trinity_local.council_review import render_live_council_page
 
-    html = render_live_council_page()
+    prior_home = os.environ.get("TRINITY_HOME")
+    os.environ["TRINITY_HOME"] = tempfile.mkdtemp(prefix="trinity-sidepanel-build-")
+    try:
+        html = render_live_council_page()
+    finally:
+        if prior_home is None:
+            os.environ.pop("TRINITY_HOME", None)
+        else:
+            os.environ["TRINITY_HOME"] = prior_home
     # The page moves from review_pages/ to sandbox/; its vendor lives at the
     # extension root, so ../portal_pages/vendor/ → ../vendor/.
     html = html.replace("../portal_pages/vendor/", "../vendor/")

@@ -39,7 +39,7 @@ the TF-IDF fallback is available. The runtime footprint is two dependencies
 
 The verification surface holds a comprehensive passing test suite,
 <!-- canonical:doc_consistency_guards -->113<!-- /canonical --> doc-consistency
-guards, and a <!-- canonical:smoke_surface_count -->35<!-- /canonical -->-surface
+guards, and a <!-- canonical:smoke_surface_count -->34<!-- /canonical -->-surface
 browser smoke gate. The public repo and the v1.7 release shipped 2026-07-02;
 the remaining launch risks are not core council mechanics: Chrome Web Store
 publish + extension-ID pinning, native Windows beyond WSL2, fresh-machine

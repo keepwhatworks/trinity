@@ -1,6 +1,6 @@
 # Trinity Local
 
-> Own your taste. Trinity is a local, cross-provider AI council + memory layer. Ask once; it fans your question out to Claude, GPT, and Gemini, shows you where they split, and synthesizes the answer your taste would have picked — reading a "lens" distilled from your own transcripts. No new app, no cloud, no API key: an MCP server inside Claude Code / Codex CLI / Antigravity / Cursor, plus a Chrome extension that captures web chats locally. Your transcripts never leave your machine.
+> Ask all three. Keep what works. Trinity is a local, cross-provider AI council + memory layer. Ask once; it fans your question out to Claude, GPT, and Gemini, shows you where they split, and synthesizes a verdict — learning which model to trust on your kind of question from a "lens" distilled from your own transcripts. No new app, no cloud, no API key: an MCP server inside Claude Code / Codex CLI / Antigravity / Cursor, plus a Chrome extension that captures web chats locally. Your transcripts never leave your machine.
 
 The moat is cross-provider data sovereignty: Anthropic can't recommend ChatGPT, OpenAI can't recommend Claude, Google can't recommend either — so the layer that reads your transcripts across all three has to come from outside the labs. Free for individuals, MIT, local-first. Councils dispatch through the CLIs you already authenticated (your own subscriptions), so there's nothing to meter and nothing to bill.
 

@@ -36,6 +36,13 @@ ALLOWED_TRACKED_PNGS = (
     "docs/og-card.png",           # social-share OG card — brand art, no user data
     "docs/launch_assets/",        # synthetic eval-card brand examples
     "browser-extension/icons/",   # extension icons (no user data)
+    # Internal launch-copy draft cards. Provably PII-free: rendered from
+    # `internal/amendment-ledger.jsonl` (design decisions + HELD/DROPPED
+    # receipts — no prompts, lens, persona, or ~/.trinity user data; verified
+    # by eye 2026-07-14). `internal/` never exports to the public repo
+    # (sync_public.sh excludes it); tracked only to back up the draft to the
+    # private mirror.
+    "internal/launch-copy/",
 )
 
 # Render directories that hold screenshots of the REAL ~/.trinity — must stay

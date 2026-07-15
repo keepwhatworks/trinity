@@ -12,7 +12,7 @@ But the LIVE council page (``render_live_council_page``) — the surface 100% of
 launchpad-launched councils land on — rendered the FULL competition framing on a
 solo council:
 
-    🏆 Claude — the answer you'd have picked.        (winner-verdict)
+    🏆 Claude — the one to trust here.        (winner-verdict)
     Winner: Claude                                    (routing label)
     Agreed claims: • Ship it now  • Tests are green   (a single model can't agree
                                                        with itself)
@@ -344,9 +344,9 @@ def test_solo_council_suppresses_winner_overclaim(tmp_path, monkeypatch):
 
     # The page itself proves there's no contest: ONE member row.
     assert rows == 1, f"expected exactly 1 member row on a solo council, got {rows}"
-    # THE BUG: the trophy "the answer you'd have picked" verdict is a fabricated
+    # THE BUG: the trophy "the one to trust here" verdict is a fabricated
     # contest win on a council where one model answered.
-    assert "the answer you'd have picked" not in body, (
+    assert "the one to trust here" not in body, (
         "the LIVE page rendered the trophy winner-verdict ('X — the answer you'd "
         "have picked') on a SOLO 1-responder council — a fabricated contest win the "
         "share card already suppresses. Verdict text: " + repr(verdict)
@@ -383,7 +383,7 @@ def test_two_member_council_still_shows_winner_verdict(tmp_path, monkeypatch):
         httpd.shutdown()
 
     assert rows == 2, f"expected 2 member rows on a duo council, got {rows}"
-    assert "the answer you'd have picked" in verdict, (
+    assert "the one to trust here" in verdict, (
         "the winner-verdict vanished on a real 2-member council — the solo gate "
         f"over-suppressed. Verdict: {verdict!r}"
     )
@@ -449,7 +449,7 @@ def test_no_winner_multi_provider_council_states_the_verdict(tmp_path, monkeypat
         "the solo line leaked onto a real two-provider no-winner council — the "
         "no-winner branch must be distinct from the solo branch"
     )
-    assert "the answer you'd have picked" not in body, (
+    assert "the one to trust here" not in body, (
         "the trophy winner-verdict rendered on a council with no winner"
     )
     # The claims still render — the no-winner verdict POINTS the user at them.
@@ -462,7 +462,7 @@ def test_no_winner_multi_provider_council_states_the_verdict(tmp_path, monkeypat
 def test_same_provider_council_suppresses_winner_overclaim(tmp_path, monkeypatch):
     """The same-provider degenerate twin: a claude·claude·claude roster has three
     calls but ONE distinct voice, so the live page must read it as solo — NO
-    "Claude — the answer you'd have picked" verdict, NO "Winner: Claude ·
+    "Claude — the one to trust here" verdict, NO "Winner: Claude ·
     runner-up: Claude" line, NO self-agreement consensus block. The share card +
     static review page already guard this; this is the LIVE-page guard the static
     page's "the live page already collapses it" comment leans on but nothing
@@ -486,7 +486,7 @@ def test_same_provider_council_suppresses_winner_overclaim(tmp_path, monkeypatch
         f"council — the provider-keyed members map must collapse the roster, got {rows}"
     )
     # THE BUG: the trophy verdict on a council with one distinct voice.
-    assert "the answer you'd have picked" not in body, (
+    assert "the one to trust here" not in body, (
         "the LIVE page rendered the trophy winner-verdict on a same-provider "
         "(claude·claude·claude) council — a fabricated contest win the share card + "
         "static review page already suppress. Verdict text: " + repr(verdict)
@@ -629,7 +629,7 @@ def test_same_provider_OUTCOME_path_suppresses_winner_overclaim(tmp_path, monkey
     map by member-INDEX (``m.provider + '__' + i``) instead of ``m.provider`` — the
     refactor the poll-path test's docstring WARNS about — and the three claude rows
     stop collapsing → respondedMembers=3 → ``isSoloFor`` false → the page repaints
-    "🏆 Claude — the answer you'd have picked." + "Winner: Claude · runner-up: Claude"
+    "🏆 Claude — the one to trust here." + "Winner: Claude · runner-up: Claude"
     on a council with no contest. With provider-keying restored this stays green."""
     pytest.importorskip("playwright.sync_api")
     cid = _seed_outcome(tmp_path, monkeypatch, _same_provider_outcome())
@@ -646,7 +646,7 @@ def test_same_provider_OUTCOME_path_suppresses_winner_overclaim(tmp_path, monkey
         "(claude·claude·claude) council — outcomeToRunState must collapse the "
         f"member_results LIST by provider, got {rows}"
     )
-    assert "the answer you'd have picked" not in body, (
+    assert "the one to trust here" not in body, (
         "the LIVE page (?council_id= OUTCOME path) rendered the trophy winner-verdict "
         "on a same-provider council — the member_results list didn't collapse to one "
         "distinct voice. Verdict text: " + repr(verdict)

@@ -155,25 +155,14 @@ class TestLaunchpadFlow:
             )
         # The browser-capture card stays demoted into a <details> wrapper
         # (2026-05-21, council_1f9cbecd7104f90f #4) so the launchpad stays
-        # focused. The EVAL value-proof card was PROMOTED out of its wrapper
-        # 2026-06-07 (founder: "promote the eval moat") — the rejection-signal
-        # benchmark is the one artifact no model vendor / request-router can copy,
-        # so it leads as a value card rather than hiding behind a click.
+        # focused. (The eval-score value card was removed 2026-07-14 — the
+        # judge-dominated leaderboard gave way to the disagreement-ledger hero.)
         assert 'class="demoted-card-wrapper"' in html, (
             "the browser-capture card must stay demoted into a <details> wrapper"
         )
-        # Exactly ONE wrapper now (browser-capture); the eval card is promoted.
+        # Exactly ONE wrapper (browser-capture) — the eval card no longer exists.
         assert html.count('class="demoted-card-wrapper"') == 1, (
-            "Expected exactly 1 demoted-card-wrapper (browser-capture); the eval "
-            "value-proof card was promoted out of its <details>."
-        )
-        # The eval moat is a PROMINENT value card, not demoted: its lead copy
-        # renders, and it is NOT inside the demoted wrapper.
-        assert "proven on your rejections" in html, (
-            "the promoted eval card must lead with the rejection-signal moat copy"
-        )
-        assert "no model vendor or request-router can copy" in html, (
-            "the eval moat's unfakable-signal differentiator must render"
+            "Expected exactly 1 demoted-card-wrapper (browser-capture)."
         )
         assert "liveReviewUrl" in html
         assert "Stop council" in html

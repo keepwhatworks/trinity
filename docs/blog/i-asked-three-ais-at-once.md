@@ -1,15 +1,15 @@
 ---
 class: aspirational
-title: "I run my hardest questions through Claude, GPT, and Gemini at once. Then one of them picks the answer I'd have picked."
+title: "I run my hardest questions through Claude, GPT, and Gemini at once. Then I learn which one to trust."
 published: true
-description: "I pay for three AI subscriptions and never knew which to trust. So I built a tool that asks all three at once. Then one of them reads all three and picks the answer I'd have chosen. Local, free, no API key."
+description: "I pay for three AI subscriptions and never knew which to trust. So I built a tool that asks all three at once. A chairman reads all three, shows me exactly where they split, and learns which one I keep siding with. Local, free, no API key."
 tags: ai, opensource, productivity, privacy
 canonical_url: https://github.com/keepwhatworks/trinity/blob/main/docs/blog/i-asked-three-ais-at-once.md
 cover_image: ""
 voice_pass: council_94dfe5466e3e3b9f (chairman=claude, your lens)
 ---
 
-# I run my hardest questions through Claude, GPT, and Gemini at once. Then one of them picks the answer I'd have picked.
+# I run my hardest questions through Claude, GPT, and Gemini at once. Then I learn which one to trust.
 
 I pay for three frontier subscriptions. Claude, ChatGPT, Gemini.
 For the questions that matter, the architecture call, the security trade-off, rewrite-or-patch, I'd ask all three. Then sit there comparing three half-answers, guessing which to trust.
@@ -53,7 +53,7 @@ Every time a model answers and I rewrite it, cut the lecture, ask for a spec ins
 Trinity reads the transcripts already on my machine. Claude Code, Codex, Antigravity, plus my web chats on claude.ai, chatgpt.com, Gemini. It mines exactly those moments.
 It builds a *lens*, a small model of how I think, and hands it to the chairman on every council.
 
-So the chairman doesn't pick the universally "best" answer. It picks the one that fits me. It enforces my constraints.
+So the chairman doesn't crown the universally "best" answer. It weights the split by the constraints I've shown over months of pushing back — and tells me which model I keep siding with here.
 
 It also turns those rewrites into a benchmark. Which model wins the questions I actually corrected? Not HumanEval. My corrections. Only I can see that signal, because only I have the cross-provider rejection history.
 
@@ -67,7 +67,7 @@ The cross-provider view has to come from outside all three.
 
 Turned out that someone was me. On a weekend, with a curl command and the subscriptions I was already paying for.
 
-I still pay for three. I just don't tab-switch anymore. Ask once, all three answer, and what comes back is the answer I'd have picked.
+I still pay for three. I just don't tab-switch anymore. Ask once, all three answer, and the chairman shows me where they split — and which one I keep siding with.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash

@@ -473,28 +473,6 @@ class TestShareCardsNoRawContentLeak:
         assert data.agreed_claims == ["models converged on clarity"]
         assert data.disagreed_claim == "ship sooner"
 
-    def test_eval_card_carries_only_scores_and_labels(self) -> None:
-        from trinity_local.eval_card import collect_card_data_from_result
-
-        class _Result:
-            target_provider = "claude"
-            target_model = "claude-opus-4-8"
-            aggregate_score = 0.66
-            items_total = 20
-            items_completed = 20
-            by_rejection_type = {
-                "REFRAME": {"mean_score": 0.8, "count": 5},
-                "COMPRESSION": {"mean_score": 0.5, "count": 4},
-            }
-
-        data = collect_card_data_from_result(_Result())
-        blob = json.dumps(data.to_dict())
-        assert SECRET not in blob
-        # Only categorical axis names + numeric scores cross.
-        for axis_name, mean, count in data.by_axis:
-            assert axis_name in {"REFRAME", "COMPRESSION"}
-            assert isinstance(mean, float)
-            assert isinstance(count, int)
 
 
 class TestAppVersionIsReal:

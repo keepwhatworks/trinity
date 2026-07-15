@@ -5,7 +5,7 @@ THE DEFECT (found 2026-06-18 driving the live page in the UX sweep, Iter 98): th
 live council page updates its status VISUALLY as the poll advances — the spinner +
 "Council running", the rotating ".status-message" ("Synthesizing the strongest
 answer…"), the "Stopping…" ack, "Council failed/stopped", and on completion the
-"🏆 … — the answer you'd have picked" winner verdict. NONE of it sat in an aria-live /
+"🏆 … — the one to trust here" winner verdict. NONE of it sat in an aria-live /
 role=status / role=alert region (``all_live_regions`` was ``[]`` on both a running
 and a completed council). A sighted user sees the spinner stop and the verdict appear;
 a screen-reader user was told NOTHING that the council finished, a round transitioned,
@@ -219,7 +219,7 @@ def test_completed_council_verdict_in_live_region_and_mirror_announces_completio
         "fix the seed before trusting the a11y assert"
     )
     assert ancestor.get("inLiveRegion"), (
-        "the completion WINNER VERDICT (🏆 … — the answer you'd have picked) is NOT "
+        "the completion WINNER VERDICT (🏆 … — the one to trust here) is NOT "
         "inside any aria-live / role=status region — a screen-reader user is never "
         "told the council COMPLETED or who won (WCAG 4.1.3 Status Messages)."
     )

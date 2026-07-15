@@ -322,7 +322,7 @@ class TestCouncilPageCssIsWellFormed:
         glows in and a verdict banner restates the product promise. Guard the
         three load-bearing pieces so a future edit can't silently drop them."""
         html = render_live_council_page()
-        assert "the answer you'd have picked" in html, (
+        assert "the one to trust here" in html, (
             "live council page lost the winner verdict line"
         )
         assert "winner-verdict" in html and "@keyframes winner-glow" in html, (

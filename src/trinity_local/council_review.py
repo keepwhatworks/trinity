@@ -705,8 +705,8 @@ def render_live_council_page() -> str:
           <p class="meta" v-else style="margin-top: 8px;">{{{{ analysisRowFor(seg).detail }}}}</p>
         </section>
 
-        <!-- Winner verdict — the chairman's pick framed as "the answer you'd
-             have picked". Suppressed on a SOLO council (1 responder): a single
+        <!-- Winner verdict — the chairman's pick framed as "the one to
+             trust here". Suppressed on a SOLO council (1 responder): a single
              model has no contest to win, so the trophy framing overclaims. The
              solo line below states what actually happened instead (mirrors the
              share card's "One model — no council"). -->
@@ -716,7 +716,7 @@ def render_live_council_page() -> str:
                when the council finishes (the .launch-status live region has
                disappeared by then), so without its OWN live region a screen-reader
                user was never told the council completed or who won (WCAG 4.1.3). -->
-          <span class="trophy">🏆</span>{{{{ formatProviderLabel(lensPickProviderFor(seg)) }}}} — the answer you'd have picked.
+          <span class="trophy">🏆</span>{{{{ formatProviderLabel(lensPickProviderFor(seg)) }}}} — the one to trust here.
         </div>
         <!-- The solo verdict literally claims "One model answered" — it must NOT
              fire when ZERO models answered (a completed-but-all-failed status: the
@@ -1205,7 +1205,7 @@ def render_live_council_page() -> str:
             if (this.isSoloFor(seg) && this.respondedMembersFor(seg) === 0) return `Council round ${{round}} complete. Every model failed to respond — no synthesis.`;
             if (this.isSoloFor(seg)) return `Council round ${{round}} complete. One model answered — no council.`;
             const pick = this.lensPickProviderFor(seg);
-            if (pick) return `Council round ${{round}} complete. ${{this.formatProviderLabel(pick)}} — the answer you'd have picked.`;
+            if (pick) return `Council round ${{round}} complete. ${{this.formatProviderLabel(pick)}} — the one to trust here.`;
             return `Council round ${{round}} complete.`;
           }}
           return '';
@@ -1311,7 +1311,7 @@ def render_live_council_page() -> str:
           // ONE member responded (a single provider was enabled, OR every
           // other member failed leaving one), there's no one to "win" against
           // and no one to "agree" with — so the chairman's winner-verdict
-          // ("X — the answer you'd have picked"), the "Winner:" line, and the
+          // ("X — the one to trust here"), the "Winner:" line, and the
           // "Agreed claims" block are degenerate competition framing that
           // OVERCLAIMS (the same #35 green-while-degenerate the SHARE CARD
           // suppresses in council_card.py's `solo = len(members) <= 1` branch —

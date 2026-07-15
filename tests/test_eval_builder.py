@@ -102,3 +102,53 @@ class TestBaselineResolution:
         }))
         es = load_eval_set("eval_legacy1")
         assert es.items[0].baseline_resolution == "quote"
+
+
+class TestEvalSetAvailable:
+    """Green-gate guard for eval_set_available() — relocated from launchpad_data
+    to evals.builder 2026-07-14 when the launchpad eval-score card was removed
+    (`status`'s new-model nudge still gates on it). A built set counts as
+    available ONLY with >=1 scoreable item: a 0-item hollow set (a ledger of
+    only self_expressed / all-degenerate acts builds one) must read as NOT
+    available, else the eval-run nudge points at a benchmark with no signal."""
+
+    def _write_set(self, tmp_path, monkeypatch, items):
+        import json
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        from trinity_local.evals.builder import evals_dir
+        d = evals_dir()
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "eval_test.json").write_text(
+            json.dumps({"stats": {"items": items}}), encoding="utf-8")
+
+    def test_no_evals_dir_is_unavailable_and_stays_uncreated(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        from trinity_local.evals.builder import eval_set_available
+        assert eval_set_available() is False
+        # The no-mkdir contract: the check must NOT create the ghost dir
+        # (evals_dir() mkdirs — using it here was the 2026-07-14 review catch).
+        # MUTATION: route the check through evals_dir() and this reds.
+        assert not (tmp_path / "evals").exists(), (
+            "eval_set_available() created ~/.trinity/evals/ — the read-only "
+            "contract is broken (ghost dir falsely reads as eval-ready to any "
+            "is_dir() consumer)"
+        )
+
+    def test_hollow_zero_item_set_is_unavailable(self, tmp_path, monkeypatch):
+        # MUTATION: if the >0 guard degrades to "any eval_*.json exists", reds.
+        self._write_set(tmp_path, monkeypatch, 0)
+        from trinity_local.evals.builder import eval_set_available
+        assert eval_set_available() is False
+
+    def test_set_with_items_is_available(self, tmp_path, monkeypatch):
+        self._write_set(tmp_path, monkeypatch, 3)
+        from trinity_local.evals.builder import eval_set_available
+        assert eval_set_available() is True
+
+    def test_malformed_set_degrades_to_unavailable(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        from trinity_local.evals.builder import evals_dir, eval_set_available
+        d = evals_dir()
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "eval_bad.json").write_text("{not json", encoding="utf-8")
+        assert eval_set_available() is False

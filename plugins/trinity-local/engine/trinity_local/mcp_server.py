@@ -1855,6 +1855,32 @@ def _members_to_dispatch(members: list, host_responses: list[dict]) -> list:
     return out
 
 
+def _attach_council_guidance(response: dict) -> dict:
+    """Onboarding surface (#25): a council needs ≥2 authenticated providers to
+    BE a council — one voice + chairman is a single-model answer dressed up as
+    cross-provider deliberation. When <2 are authed, attach a `reduced_mode`
+    block to the launched-council response so the agent can tell the user, at
+    the highest-intent moment (they just asked for a council), that they're in
+    reduced mode and the one action that unlocks the asymmetric edge.
+
+    Reuses `health_checks.council_reduced_mode_guidance()` — the SAME detector
+    the `status` row and launchpad tip card read from, so the three surfaces
+    can't disagree. Returns the response unchanged when ≥2 are authed (guidance
+    is None) so the guide self-dismisses the moment the user is ready — never a
+    standing nag. Extracted as a pure helper so it's unit-testable without
+    launching a real council. Best-effort: a detection failure never breaks a
+    council that already launched.
+    """
+    try:
+        from .health_checks import council_reduced_mode_guidance
+        guidance = council_reduced_mode_guidance()
+    except Exception:
+        return response
+    if guidance is not None:
+        response["reduced_mode"] = guidance
+    return response
+
+
 async def _council_with_host_members(args: dict, host_responses: list[dict]) -> list[Any]:
     """Provider-side loop (the MCP-sampling-deprecation-proof path for the Claude voice).
 
@@ -2085,6 +2111,10 @@ async def _run_council(args: dict) -> list[Any]:
             "review_path": raw.get("review_path"),
         },
     }
+
+    # Onboarding (#25): when <2 providers are authed, this "council" is a
+    # single voice + chairman. Surface that honestly at the moment of use.
+    response = _attach_council_guidance(response)
 
     # MCP logging + progress (best-effort; no-op without a capable client).
     from .mcp_features import mcp_log, mcp_progress

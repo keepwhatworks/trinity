@@ -629,8 +629,8 @@ def test_live_council_winner_brand_and_agreed_count_are_correct(tmp_path, monkey
     "claude"), and NO browser test asserted the agreed <li> COUNT against the seed.
 
     FOUNDER SYMPTOM this bites: a regression that drops formatProviderLabel
-    (slug-passthrough → the live verdict reads "codex — the answer you'd have
-    picked." instead of "GPT"), or re-binds the agreed `v-for` to the wrong array
+    (slug-passthrough → the live verdict reads "codex — the one to trust
+    here." instead of "GPT"), or re-binds the agreed `v-for` to the wrong array
     / slices it (the verdict lists a wrong number of agreed claims), would paint a
     WRONG scalar while every existing live-council browser test stays green.
     """

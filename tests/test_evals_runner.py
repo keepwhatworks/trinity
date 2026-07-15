@@ -206,17 +206,15 @@ class TestRunner:
         """A valid-JSON-but-WRONG-TYPE `by_rejection_type` (a list/string/number/
         null where the per-axis map {axis: {mean_score, count}} is expected — a
         hand-edited / half-migrated / schema-drifted result file) must NOT land RAW
-        on the dataclass: `collect_card_data_from_result` then crashes on
-        `result.by_rejection_type.keys()` ('list' object has no attribute 'keys')
-        and takes down the eval-share PNG render — the corrupt-state-file class.
-        The loader coerces non-dict to {} at the boundary so every dataclass
-        consumer (the share card, eval-show, the launchpad mirror) sees the dict
-        contract. MUTATION: drop the isinstance coercion in runner.load_run_result
-        → `collect_card_data_from_result` reds with 'has no attribute keys'.
+        on the dataclass: a downstream consumer doing `result.by_rejection_type.keys()`
+        would crash ('list' object has no attribute 'keys') — the corrupt-state-file
+        class. The loader coerces non-dict to {} at the boundary so every dataclass
+        consumer (eval-show, the launchpad mirror) sees the dict contract. MUTATION:
+        drop the isinstance coercion in runner.load_run_result → the raw type lands
+        and a `.keys()` consumer reds.
         """
         import json
         from trinity_local.evals.runner import load_run_result
-        from trinity_local.eval_card import collect_card_data_from_result
 
         p = home / "bad_result.json"
         p.write_text(json.dumps({
@@ -233,18 +231,14 @@ class TestRunner:
 
         result = load_run_result(p)
         assert result is not None
-        # The boundary coercion: a non-dict by_rejection_type degrades to {}.
+        # The boundary coercion: a non-dict by_rejection_type degrades to {} so a
+        # `.keys()` consumer can't crash on it.
         assert result.by_rejection_type == {}, (
             "wrong-type by_rejection_type was not coerced to {} at the load "
-            f"boundary — it landed raw as {type(result.by_rejection_type).__name__}, "
-            "so the share card's .keys() will crash"
+            f"boundary — it landed raw as {type(result.by_rejection_type).__name__}"
         )
-        # The downstream consumer must survive (no AttributeError) and emit an
-        # empty per-axis breakdown rather than crashing the PNG render.
-        card = collect_card_data_from_result(result)
-        assert card.by_axis == []
         # The aggregate score is untouched — only the per-axis breakdown is lost.
-        assert card.aggregate_score == 0.81
+        assert result.aggregate_score == 0.81
 
 
 class TestScorer:
@@ -995,21 +989,6 @@ class TestModelIdentityTriple:
         assert loaded is not None
         assert loaded.target_effort == "high"
 
-    def test_card_renders_identity_line_with_effort(self):
-        from trinity_local.eval_card import collect_card_data_from_result
-
-        class _Result:
-            target_provider = "claude"
-            target_model = "claude-opus-4-8"
-            target_effort = "high"
-            aggregate_score = 0.79
-            items_total = 20
-            items_completed = 20
-            by_rejection_type = {}
-
-        data = collect_card_data_from_result(_Result())
-        assert data.target_effort == "high"
-        assert data.to_dict()["target_effort"] == "high"
 
 
 class TestDispatchIsolation:

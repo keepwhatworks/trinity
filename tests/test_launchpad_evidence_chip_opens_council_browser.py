@@ -152,7 +152,7 @@ def test_cortex_evidence_chip_opens_a_hydrating_council(tmp_path, monkeypatch):
                     "the evidence chip's council page rendered no routing-label panel "
                     "— it didn't hydrate the outcome the chip points at"
                 )
-                assert "the answer you'd have picked" in text, (
+                assert "the one to trust here" in text, (
                     "the winner verdict is absent — the evidence council never "
                     "reached the completed/hydrated state"
                 )

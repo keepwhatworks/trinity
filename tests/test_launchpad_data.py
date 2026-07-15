@@ -103,48 +103,6 @@ class TestColdStartPageData:
         )
 
 
-class TestEvalEmptyStateRejectionsSignal:
-    """The `rejections_available` signal that drives the eval card's first-run CTA
-    chain (`lens` → `eval-build` → `eval-run`). Without it the empty state led with
-    `eval-build`, which FileNotFoundErrors on a fresh home (no preference-act ledger).
-    The browser guard pins the TEMPLATE branches; this pins the DATA the template
-    branches on — both sides of the contract (see test_the_boundary_and_the_action)."""
-
-    def test_fresh_home_reports_no_rejections(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        from trinity_local.launchpad_data import _eval_summary, _rejections_available
-
-        assert _rejections_available() is False
-        es = _eval_summary()
-        assert es["has_results"] is False
-        assert es["rejections_available"] is False, (
-            "a fresh home (no preference_acts.jsonl) must report rejections_available "
-            "False so the eval card leads with `lens`, not the doomed `eval-build`"
-        )
-
-    def test_ledger_with_acts_reports_rejections_available(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        me = tmp_path / "me"
-        me.mkdir(parents=True)
-        (me / "preference_acts.jsonl").write_text(
-            '{"act_type":"REFRAME","model_quote":"x","user_substitute":"y","trigger":"model_miss"}\n',
-            encoding="utf-8",
-        )
-        from trinity_local.launchpad_data import _eval_summary, _rejections_available
-
-        assert _rejections_available() is True
-        assert _eval_summary()["rejections_available"] is True
-
-    def test_empty_ledger_file_reports_no_rejections(self, tmp_path, monkeypatch):
-        # A ledger file that exists but holds only blank lines must NOT claim
-        # rejections — eval-build would still produce nothing useful.
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        me = tmp_path / "me"
-        me.mkdir(parents=True)
-        (me / "preference_acts.jsonl").write_text("\n  \n", encoding="utf-8")
-        from trinity_local.launchpad_data import _rejections_available
-
-        assert _rejections_available() is False
 
 
 def test_recent_council_links_target_the_always_present_live_page(tmp_path, monkeypatch):

@@ -52,12 +52,12 @@
 
     <p>
       Often, you don't realize how bad something is until a truly good
-      alternative appears, suddenly revealing the old way as
-      intolerable. However, human nature resists change. Due to
-      switching costs, loss aversion, and status quo bias, getting
-      people to move is incredibly difficult — unless the new thing is
-      at least 10 times better. When a solution is 10x better, it's
-      surprising how fast demand can shift, like water turning to ice.
+      alternative appears. Suddenly the old way looks intolerable.
+      However, human nature resists change. Due to switching costs,
+      loss aversion, and status quo bias, getting people to move is
+      incredibly difficult. It takes a new thing at least 10 times
+      better. When a solution is 10x better, it's surprising how fast
+      demand can shift, like water turning to ice.
     </p>
 
     <p>
@@ -75,16 +75,16 @@
 
     <p>
       Critical Path Analysis shows us the path to unbundling. The goal
-      is to use <em>Dependency Inversion</em> — where high-level and
-      low-level modules depend on abstractions (APIs), not on each
-      other — to parallelize formerly serial steps. This approach,
-      however, runs into a fundamental limit: some computations appear
-      to be <em>inherently sequential</em>. Certain problems are
-      P-complete — the hardest in P to parallelize. Unless NC = P
-      (widely believed false, but unproven), they lie outside NC, the
-      class of work that massive parallelism can actually speed up — so
-      in practice their steps must run one after another no matter how
-      many workers you add.
+      is to use <em>Dependency Inversion</em> to parallelize formerly
+      serial steps. High-level and low-level modules depend on
+      abstractions (APIs), not on each other. This approach, however,
+      runs into a fundamental limit: some computations appear to be
+      <em>inherently sequential</em>. Certain problems are P-complete.
+      They are the hardest in P to parallelize. Unless NC = P (widely
+      believed false, but unproven), they lie outside NC, the class of
+      work that massive parallelism can actually speed up. In practice
+      their steps must run one after another no matter how many workers
+      you add.
     </p>
 
     <p>
@@ -98,8 +98,8 @@
 
     <p>
       This structural optimization creates a problem: a brittle system.
-      When foundational constraints change, as they always do thanks
-      to forces like Moore's Law, the entire system can be disrupted.
+      Foundational constraints always change, thanks to forces like
+      Moore's Law. When they do, the entire system can be disrupted.
       This puts you on a treadmill, constantly re-architecting just to
       keep up.
     </p>
@@ -109,7 +109,7 @@
     <p>
       The "Bitter Lesson" of AI shows the way out of this trap. Don't
       waste time building things that will be replaced. The rules and
-      logic you write in code don't matter in the long run; platforms,
+      logic you write in code don't matter in the long run. Platforms,
       tools, and logic are all ephemeral.
     </p>
 
@@ -126,15 +126,15 @@
       <li>Test the new models against edge cases and then in the real world to verify they're better than the current ones.</li>
       <li>Release when ready, and repeat the loop. The loop earns its keep by never
       asking: it does not wait for a human to notice the error, approve the
-      fix, or bless the retrain — correction is a standing process, not a
+      fix, or bless the retrain. Correction is a standing process, not a
       request.</li>
     </ol>
 
     <p>
-      Crucially, this requires building for scale from the start while
-      always designing for verifiability by instrumenting the
-      end-user experience and capturing exceptions. This is what makes
-      the learning loop robust.
+      Crucially, this requires building for scale from the start. It
+      also requires always designing for verifiability by instrumenting
+      the end-user experience and capturing exceptions. This is what
+      makes the learning loop robust.
     </p>
 
     <p>
@@ -146,10 +146,10 @@
       <h2>Intellectual lineage</h2>
       <ul>
         <li><a href="http://www.incompleteideas.net/IncIdeas/BitterLesson.html" target="_blank" rel="noopener">Richard Sutton &mdash; <cite>The Bitter Lesson</cite></a> &mdash; general methods that scale with computation beat hand-coded domain knowledge.</li>
-        <li><a href="http://incompleteideas.net/book/the-book-2nd.html" target="_blank" rel="noopener">Sutton &amp; Barto &mdash; <cite>Reinforcement Learning: An Introduction</cite></a> &mdash; the reward hypothesis — goals as the maximization of expected reward.</li>
-        <li><a href="https://en.wikipedia.org/wiki/Loss_aversion" target="_blank" rel="noopener">Kahneman &amp; Tversky &mdash; <cite>loss aversion</cite></a> &mdash; switching costs, loss aversion, and status quo bias — why the new thing has to be 10&times; better.</li>
-        <li><a href="https://en.wikipedia.org/wiki/Dependency_inversion_principle" target="_blank" rel="noopener">Robert C. Martin &mdash; <cite>the Dependency Inversion Principle</cite></a> &mdash; modules depend on abstractions, not on each other — the seam that lets serial steps parallelize.</li>
-        <li><a href="https://en.wikipedia.org/wiki/P-complete" target="_blank" rel="noopener">P-completeness</a> &mdash; some computations are inherently sequential — outside NC unless NC = P.</li>
+        <li><a href="http://incompleteideas.net/book/the-book-2nd.html" target="_blank" rel="noopener">Sutton &amp; Barto &mdash; <cite>Reinforcement Learning: An Introduction</cite></a> &mdash; the reward hypothesis: goals as the maximization of expected reward.</li>
+        <li><a href="https://en.wikipedia.org/wiki/Loss_aversion" target="_blank" rel="noopener">Kahneman &amp; Tversky &mdash; <cite>loss aversion</cite></a> &mdash; switching costs, loss aversion, and status quo bias: why the new thing has to be 10&times; better.</li>
+        <li><a href="https://en.wikipedia.org/wiki/Dependency_inversion_principle" target="_blank" rel="noopener">Robert C. Martin &mdash; <cite>the Dependency Inversion Principle</cite></a> &mdash; modules depend on abstractions, not on each other. The seam that lets serial steps parallelize.</li>
+        <li><a href="https://en.wikipedia.org/wiki/P-complete" target="_blank" rel="noopener">P-completeness</a> &mdash; some computations are inherently sequential, outside NC unless NC = P.</li>
         <li><a href="https://en.wikipedia.org/wiki/Amdahl%27s_law" target="_blank" rel="noopener">Gene Amdahl &mdash; <cite>Amdahl's Law</cite></a> &mdash; the serial fraction caps the speedup no matter how many workers you add.</li>
       </ul>
     </section>

@@ -329,67 +329,7 @@ class TestFloorMirrorsOnOtherClaimSurfaces:
     read the same result files — a refused headline must be withdrawn on ALL
     of them or the exclusion just moves the laundering surface."""
 
-    def test_launchpad_eval_summary_skips_refused_run(self, tmp_path, monkeypatch):
-        """Discriminating fixture: the refused run is NEWER and HIGHER (0.9 vs
-        0.5) — if the launchpad skip is deleted, the hero headline becomes the
-        withdrawn 0.9 and this reds."""
-        import os
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        from trinity_local.evals.runner import save_run_result
-        from trinity_local.launchpad_data import _eval_summary
 
-        clean = _scored_run([0.5])
-        clean.aggregate_score = 0.5
-        clean.by_rejection_type = {"REFRAME": {"count": 1, "mean_score": 0.5,
-                                               "min_score": 0.5, "max_score": 0.5}}
-        clean.eval_id = "evlp"
-        clean.target_provider = "codex"
-        clean.started_at = "2026-07-10T00:00:00+00:00"
-        p_clean = save_run_result(clean)
-
-        refused = _scored_run([0.9])
-        refused.aggregate_score = 0.9
-        refused.by_rejection_type = {"REFRAME": {"count": 1, "mean_score": 0.9,
-                                                 "min_score": 0.9, "max_score": 0.9}}
-        refused.eval_id = "evlp"
-        refused.target_provider = "claude"
-        refused.started_at = "2026-07-11T00:00:00+00:00"
-        refused.baseline_floor = _verdict(False).to_dict()
-        p_refused = save_run_result(refused)
-        os.utime(p_clean, (1_000_000, 1_000_000))
-        os.utime(p_refused, (2_000_000, 2_000_000))
-
-        summary = _eval_summary()
-        assert summary["has_results"] is True
-        assert summary["target"] == "codex"
-        assert summary["aggregate_score"] == pytest.approx(0.5)
-
-    def test_share_card_refuses_to_render_refused_headline(self):
-        """floor_refused runs KEEP their aggregate in the JSON by design, so
-        the card's own gate is the only thing between a withdrawn headline and
-        a shareable PNG. The flag must (a) be derived from the stamped verdict
-        and (b) actually change the paint. Mutation: drop floor_refused from
-        the render gate → the two renders are identical → RED."""
-        import dataclasses as _dc
-        from trinity_local.eval_card import (
-            collect_card_data_from_result,
-            render_eval_card,
-        )
-
-        rr = _scored_run([0.9])
-        rr.aggregate_score = 0.9
-        rr.by_rejection_type = {"REFRAME": {"count": 1, "mean_score": 0.9,
-                                            "min_score": 0.9, "max_score": 0.9}}
-        rr.baseline_floor = _verdict(False).to_dict()
-        data = collect_card_data_from_result(rr)
-        assert data.floor_refused is True
-
-        png_refused = render_eval_card(data)
-        png_scored = render_eval_card(_dc.replace(data, floor_refused=False))
-        assert png_refused != png_scored, (
-            "floor_refused did not change the rendered card — the withdrawn "
-            "headline would ship on the PNG"
-        )
 
 
 class TestFloorInnerFieldCorruption:

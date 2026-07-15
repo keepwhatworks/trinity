@@ -1,7 +1,7 @@
 """Model-launch detection (#218) — the local-first signal that a new model
 shipped, so Trinity can nudge the user to score it against their taste.
 
-The whole celebration loop is **detect → notify → eval → eval-card**. This
+The whole celebration loop is **detect → notify → eval**. This
 module is the *detect* half. There is no server: the canonical current model
 per provider ships in ``data/models.json`` and rides Trinity releases (the
 user receives a bump via ``trinity-local update``). ``detect_new_models()``
@@ -14,7 +14,8 @@ viral, lab-impossible artifact.
 The *notify* half surfaces these in ``trinity-local status`` + the launchpad
 (no new CLI verb — the surface stays collapsed to lens/council). The *eval*
 half is the existing ``eval-run --target <name>`` (now alias-friendly via
-``resolve_provider_alias``). The *card* half is the existing eval-card.
+``resolve_provider_alias``). (The former *card* half — the shareable
+eval-card PNG — was removed 2026-07-14 with eval-share.)
 """
 
 from __future__ import annotations

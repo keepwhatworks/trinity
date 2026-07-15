@@ -56,8 +56,7 @@ def test_build_page_data_does_not_crash_on_empty_home(cold_page):
 
 
 def test_cold_start_data_sections_are_sensibly_empty(cold_page):
-    # eval: no scored runs yet (NOT a degenerate has_results=True with null score)
-    assert cold_page.get("evalSummary", {}).get("has_results") is False
+    # (evalSummary was removed 2026-07-14 with the launchpad eval-score card.)
     # timeline: no chapters
     assert cold_page.get("timeline") == []
     # elo: no councils → no provider bars (and no 1500-default noise rows)

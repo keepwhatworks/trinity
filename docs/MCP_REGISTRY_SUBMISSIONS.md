@@ -37,9 +37,9 @@ this verbatim where the registry takes a free-text description.
 > verdict and shows you where they split. Free and local: rides your
 > existing subscriptions, no API key, no credits, no cloud; prompts
 > stay in `~/.trinity/`. Over time it distills a lens from your existing
-> transcripts so the chairman returns the answer YOU would have picked —
-> the cross-provider layer the labs are commercially prevented from
-> building. Score any model against your *actual* rejection signal.
+> transcripts so the chairman shows which model to trust on YOUR kind of
+> question — the cross-provider layer the labs are commercially prevented
+> from building. See which model wins the disagreements your own later work settled.
 > macOS today; rides on your existing Claude / Gemini / OpenAI
 > subscriptions, no API billing.
 
@@ -75,8 +75,8 @@ keep what works, and Claude learns your voice over time"):
 > subscriptions you already pay for, with prompts staying in
 > `~/.trinity/`. Over a handful of councils it distills a personal lens
 > from your existing transcripts (CLI + claude.ai web chats) and feeds
-> it into the synthesis, so the answer comes back in your voice — the
-> tensions you reject vs accept, the subject basins you actually care
+> it into the synthesis, so the verdict weighs what you actually weigh —
+> the tensions you reject vs accept, the subject basins you actually care
 > about, your own vocabulary. Comes with the canonical supervision-loop
 > tools (`ask` / `run_council` / `get_persona` / `get_council_status`)
 > plus a personalized eval harness that benchmarks any provider

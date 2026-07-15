@@ -57,27 +57,14 @@ def _assert_clean(label: str, visible: str) -> None:
 
 
 def test_launchpad_visible_copy_has_no_cost_framing():
-    """Both eval-card states (empty CTA + the promoted has-results moat card) must
-    stay audience-neutral — no cost framing in the visible copy."""
+    """The launchpad must stay audience-neutral — no cost framing in the
+    visible copy. (The "promoted eval card" branch was removed 2026-07-14 with
+    the launchpad eval-score card; the cold-start render covers the full
+    remaining template.)"""
     from trinity_local.launchpad_template import render_launchpad_html
 
     empty = _strip_noise(render_launchpad_html(page_data={}))
     _assert_clean("the launchpad (cold-start)", empty)
-
-    with_eval = _strip_noise(render_launchpad_html(page_data={
-        "evalSummary": {
-            "has_results": True, "target": "claude", "target_display": "Claude",
-            "model": "opus-4-8", "aggregate_score": 0.79, "items_completed": 23,
-            "items_total": 23, "total_runs": 2,
-            "axes": [{"name": "REFRAME", "count": 12, "mean": 0.71}],
-            "comparison": [
-                {"target": "claude", "target_display": "Claude", "aggregate_score": 0.79, "items_completed": 23},
-                {"target": "codex", "target_display": "GPT", "aggregate_score": 0.70, "items_completed": 20},
-            ],
-            "per_axis_leader": [], "mixed_eval_sets": False, "latest_run": None,
-        },
-    }))
-    _assert_clean("the launchpad (promoted eval card)", with_eval)
 
 
 def test_readme_and_landing_have_no_cost_framing():

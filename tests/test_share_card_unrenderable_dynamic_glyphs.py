@@ -37,7 +37,6 @@ from trinity_local.share_card_base import (  # noqa: E402
 )
 from trinity_local.council_card import render_council_card, CouncilCardData  # noqa: E402
 from trinity_local.me_card import render_me_card, CardLensData  # noqa: E402
-from trinity_local.eval_card import render_eval_card, EvalCardData  # noqa: E402
 
 
 def _arr(png_bytes: bytes):
@@ -118,26 +117,6 @@ def test_me_card_emoji_lens_text_paints_no_tofu_box():
 
 # ── Eval card: an emoji in the model name (provider slug) ──
 
-def test_eval_card_emoji_model_name_paints_no_tofu_box():
-    emoji = _arr(render_eval_card(EvalCardData(
-        target_provider="rocket-🚀-model", target_model="rocket-🚀-model",
-        aggregate_score=0.74, items_total=20, items_completed=20,
-        by_axis=[("REFRAME", 0.81, 5), ("COMPRESSION", 0.70, 5)],
-    )))
-    clean = _arr(render_eval_card(EvalCardData(
-        target_provider="rocket--model", target_model="rocket--model",
-        aggregate_score=0.74, items_total=20, items_completed=20,
-        by_axis=[("REFRAME", 0.81, 5), ("COMPRESSION", 0.70, 5)],
-    )))
-    # The headline runs the slug through _provider_display_name → _fit_one_line,
-    # so the emoji must be stripped there. (The model-id subhead is the same
-    # string; both must come out box-free.)
-    diff = _diff_px(emoji, clean)
-    assert diff == 0, (
-        "eval share card drew a TOFU BOX for an emoji in the target model name "
-        f"({diff} stray pixels vs the emoji-free card) — model names flow onto "
-        "the headline + identity line and must pass through strip_unrenderable."
-    )
 
 
 # ── ALL-NON-LATIN honest degradation (Iter 246) ──────────────────────────────
@@ -274,30 +253,3 @@ def test_council_card_all_non_latin_winner_names_someone_not_void():
     )
 
 
-def test_eval_card_all_non_latin_axis_label_is_named_not_blank():
-    # The second axis label is all-non-Latin → must read as the placeholder, not
-    # an unlabelled bar floating in space.
-    rendered = _arr(render_eval_card(EvalCardData(
-        target_provider="antigravity", target_model="standard",
-        aggregate_score=0.83, items_total=5, items_completed=5,
-        by_axis=[("REFRAME", 0.90, 3), (_KO, 0.70, 2)],
-    )))
-    void = _arr(render_eval_card(EvalCardData(
-        target_provider="antigravity", target_model="standard",
-        aggregate_score=0.83, items_total=5, items_completed=5,
-        by_axis=[("REFRAME", 0.90, 3), ("", 0.70, 2)],
-    )))
-    placeholder = _arr(render_eval_card(EvalCardData(
-        target_provider="antigravity", target_model="standard",
-        aggregate_score=0.83, items_total=5, items_completed=5,
-        by_axis=[("REFRAME", 0.90, 3), (NON_LATIN_PLACEHOLDER, 0.70, 2)],
-    )))
-    assert _diff_px(rendered, void) > 200, (
-        "eval share card painted an UNLABELLED bar for an all-non-Latin per-axis "
-        "label — it stripped to '' and the bar floated with no label on the PUBLIC "
-        "card. Axis labels must pass through fit_one_line with the placeholder."
-    )
-    assert _diff_px(rendered, placeholder) == 0, (
-        "eval share card's all-non-Latin axis label did not render the placeholder "
-        f"({_diff_px(rendered, placeholder)} px differ) — tofu / partial draw."
-    )

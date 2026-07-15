@@ -527,6 +527,34 @@ def save_eval_set(eval_set: EvalSet) -> Path:
     return path
 
 
+def eval_set_available() -> bool:
+    """True when at least one built eval set with >=1 SCOREABLE item exists
+    (`~/.trinity/evals/eval_*.json` whose `stats.items` > 0) — the single
+    'can the user actually run `eval-run` yet?' check.
+
+    Read-only: never mkdir's `evals/` (an empty ghost dir would falsely read as
+    eval-ready). Deliberately does NOT call `evals_dir()` — that helper mkdirs,
+    which would both create the ghost dir this docstring forbids and make the
+    `is_dir()` guard below dead code (caught in the 2026-07-14 review of the
+    relocation). A 0-item set (a ledger of only self_expressed / all-degenerate
+    acts builds one) counts as NOT available — the green-while-degenerate guard;
+    counting it as ready would point the new-model `eval-run` nudge at a hollow
+    benchmark. Malformed/unreadable → not-available (degrades safe). Relocated
+    from launchpad_data 2026-07-14 when the launchpad eval-score card was removed
+    (`status`'s new-model nudge still gates on it — the eval harness stays)."""
+    d = state_dir() / "evals"
+    if not d.is_dir():
+        return False
+    for path in d.glob("eval_*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict) and (data.get("stats") or {}).get("items", 0) > 0:
+            return True
+    return False
+
+
 def load_eval_set(eval_id: str) -> EvalSet | None:
     """Read back an eval set by id. Returns None if not found."""
     path = evals_dir() / f"{eval_id}.json"

@@ -42,7 +42,7 @@ class: reference
 ### ⓘ 8 · Mock/synthetic tests green while the real backend fails · `test-rigor`
 - **the easy wrong move:** validate against mocked `embed()` / orthogonal synthetic vectors / degenerate fixtures — tests stay green while the code is inert at production scale.
 - **the invariant:** run on the real corpus + realistic backends; check `mlx_actually_loaded()` and degrade to count-only on TF-IDF; vary fixtures along production dimensions; pair every string-presence assert with a real-browser/real-backend smoke.
-- **enforced by:** `tests/test_real_corpus_invariants.py`, the <!-- canonical:smoke_surface_count -->35<!-- /canonical -->-surface `browser_smoke.py`. **Source:** #185/#186 (TF-IDF fallback silently gutted the lens; synthetic tests passed because they mocked `embed()`).
+- **enforced by:** `tests/test_real_corpus_invariants.py`, the <!-- canonical:smoke_surface_count -->34<!-- /canonical -->-surface `browser_smoke.py`. **Source:** #185/#186 (TF-IDF fallback silently gutted the lens; synthetic tests passed because they mocked `embed()`).
 
 ### ⓘ 4 · Degenerate-extraction clobber of a populated store · `persistence`
 - **the easy wrong move:** let a transient/empty/partial upstream stage persist its near-empty result and report `ok:true`, gutting the corpus/ledger/lens.

@@ -509,18 +509,6 @@ class TestLaunchpadEvalExclusion:
     """The launchpad's eval card mirrors the CLI leaderboard, so it must carry
     the same exclusion disclosure in its payload (excluded_runs)."""
 
-    def test_eval_summary_payload_exposes_excluded_runs(self, home):
-        from trinity_local.launchpad_data import _eval_summary
-        _write_run(home, eval_id="set_a", target="claude", aggregate=0.82, items_failed=3)
-        _write_run(home, eval_id="set_a", target="codex", aggregate=0.78, items_failed=0)
-        es = _eval_summary()
-        excluded = es.get("excluded_runs") or []
-        # Only the provider with failures appears; codex (0 failures) is absent.
-        targets = {e["items_failed"] for e in excluded}
-        assert 3 in targets, f"claude's 3 excluded items missing from payload: {excluded}"
-        assert all(e["items_failed"] > 0 for e in excluded), (
-            "excluded_runs must list only providers that actually dropped items"
-        )
 
 
 class TestPairedComparisonNote:
