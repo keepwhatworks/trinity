@@ -65,7 +65,7 @@ On 113 disagreements my later work settled:
 
 The Opus 4.8 confidence interval excludes a coin flip. The Opus 4.7 record *is* a coin flip.
 
-That gap is the finding. One version apart, same lab, same brand. A generic "Claude" score would blend them to 59% and hide the only thing worth knowing.
+That gap is the finding. One version apart, same lab, same brand. A generic "Claude" score would blend them to about 62% and hide the only thing worth knowing.
 Model, size, and version. Or the number means nothing.
 
 ## How it earns the right to be believed
@@ -75,7 +75,7 @@ A benchmark dies by a thousand "well, actually"s. So the gates were registered b
 - **Coverage floor.** The extractor had to find real evidence for at least 40% of disagreements. It found 94%.
 - **Reliability floor.** Same evidence, extracted twice, had to agree. Kappa 0.70 against a 0.60 floor.
 - **Blind extraction.** The extractor never sees which model held which position. It cannot flatter anyone.
-- **A coin-flip kill.** If no model's interval excluded 50%, the whole instrument dies and I say so. One did.
+- **A coin-flip kill.** If no model's interval had excluded 50%, the whole instrument would have died, and I would have said so. Two did: one above the coin flip, one below it.
 - **Honest scope.** This is my corpus. 113 resolved disagreements, one user. Your number will be yours, and it accrues from your own councils. I am not publishing a universal ranking. I am publishing a method.
 
 And the standing proof of all of it: the first instrument failed these standards, and it is dead. The graveyard is the credential.
