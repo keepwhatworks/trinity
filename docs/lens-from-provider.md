@@ -5,7 +5,7 @@ class: live
 # Provider-side lens prompt
 
 Paste this verbatim into a fresh chat with Claude, ChatGPT/Codex, or Gemini.
-Each provider has the user's full conversation history on their side — they
+Each provider has the user's full conversation history on their side. They
 can synthesize a lens directly without Trinity needing to scrape transcripts.
 
 Run it weekly (or on demand). Save the JSON output to a file, then import:
@@ -16,8 +16,8 @@ trinity-local lens-import --provider codex   ./lens-from-codex.json
 trinity-local lens-import --provider gemini  ./lens-from-gemini.json
 ```
 
-Trinity merges the three provider perspectives into `~/.trinity/me/lenses.json`
-— same schema the local lens-build pipeline emits, so all downstream consumers
+Trinity merges the three provider perspectives into `~/.trinity/me/lenses.json`.
+Same schema the local lens-build pipeline emits, so all downstream consumers
 (council chairman context, launchpad, share cards) work unchanged.
 
 ---
@@ -26,8 +26,8 @@ Trinity merges the three provider perspectives into `~/.trinity/me/lenses.json`
 
 Look back over my recent work with you from the last 30 days, or all
 available history if shorter, and identify **paired tensions** in how I
-think and decide — places where I consistently privilege one legitimate
-value over another legitimate competing value.
+think and decide. These are places where I consistently privilege one
+legitimate value over another legitimate competing value.
 
 Use evidence in this order:
 - Recent conversation history and any session summaries
@@ -42,7 +42,7 @@ genuine trade-off where:
 
 - Both poles are legitimate competing values
 - I consistently lean one way (the *privileged* pole)
-- The opposite pole (the *sacrificed* pole) is a real cost — there exist
+- The opposite pole (the *sacrificed* pole) is a real cost. There exist
   domains where someone reasonable would choose it
 - Each pole, taken too far, has a recognizable failure mode
 
@@ -50,7 +50,7 @@ Only emit a tension when:
 
 - It recurs across **at least two distinct domains or contexts** (not one
   domain repeated)
-- I can recognize specific evidence — quote a short phrase, name a
+- I can recognize specific evidence: quote a short phrase, name a
   decision, point to a moment
 - The failure mode for both poles is non-trivial (not "X is bad, ~X is
   good")
@@ -102,17 +102,17 @@ can ingest it directly.
 
 ## Horizon definitions
 
-- **tactical** — response-shape / turn-scale preferences. "Be terse." "Show
+- **tactical**: response-shape / turn-scale preferences. "Be terse." "Show
   code first." "Confirm before destructive actions."
-- **strategic** — quarter-scale trajectory choices. "Ship the MVP over
+- **strategic**: quarter-scale trajectory choices. "Ship the MVP over
   polish." "Single load-bearing change over composite menu."
-- **philosophical** — year-scale identity or framing. "Intelligence is
+- **philosophical**: year-scale identity or framing. "Intelligence is
   infrastructure, not interface." "Getting it into people's hands beats
   making it elegant."
 
 A tension can be tagged tactical OR strategic OR philosophical based on
-the scale at which the trade-off plays out. Use philosophical sparingly —
-most working preferences are tactical or strategic.
+the scale at which the trade-off plays out. Use philosophical sparingly.
+Most working preferences are tactical or strategic.
 
 ## Quality bar
 
@@ -120,7 +120,28 @@ most working preferences are tactical or strategic.
 - Skip a slot rather than fill it with a weak tension.
 - Confidence "high" should mean: "If shown this lens, the user would
   recognize the trade-off as theirs without prompting."
-- Confidence "low" tensions are useful but flag them — Trinity weights
+- Confidence "low" tensions are useful but flag them. Trinity weights
   high-confidence pairs more heavily in chairman synthesis.
 
 Output the JSON now. Nothing else.
+
+## Import verification (what happens to your payload)
+
+Imports are verified, not trusted. An agent asserting "the user prefers X"
+is not evidence. The user's own transcripts are. At import Trinity checks
+each tension/ordering's `evidence` quotes against the local prompt index
+(the user's real, ingested prompts):
+
+- **Verifies**: at least one evidence quote resolves into the corpus
+  (a fragment of a real prompt counts) → the row enters `lenses.json` /
+  `orderings.json` through the normal dedup/append path.
+- **Quarantines**: well-formed but no quote resolves (yet) → the row
+  waits in a sidecar (`me/quarantine_lens.jsonl`), untouchable by
+  lens-build and routing. After each ingest pass it re-verifies against
+  the larger corpus and promotes when its session lands on disk.
+- **Refused**: malformed rows (missing fields, evidence shorter than
+  the pre-registered floor) are rejected at parse, never quarantined.
+
+So: quote the user's REAL words in `evidence`. Verbatim fragments of
+prompts they actually typed. Paraphrases don't verify and will sit in
+quarantine until the matching transcript is ingested, or forever.

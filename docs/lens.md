@@ -2,15 +2,15 @@
 class: live
 ---
 
-# Your lens — what `lens` builds from your prompts
+# Your lens: what `lens` builds from your prompts
 
 > Long-form companion to the README. The README leads with the fusion
-> council; the **lens** is the opt-in upsell — this file says **what's in
+> council. The **lens** is the opt-in upsell. This file says **what's in
 > it** and **how to inspect it**.
 
 ## Four levels of cognitive shape
 
-`trinity-local lens` synthesizes your prompts into your lens — one
+`trinity-local lens` synthesizes your prompts into your lens, one
 hierarchical artifact the chairman reads top-down on every council. Four
 levels, generated bottom-up from your prompt corpus:
 
@@ -24,7 +24,7 @@ levels, generated bottom-up from your prompt corpus:
 ## Scoreboards live alongside (but aren't cognitive memory)
 
 Two files alongside the four cognitive levels are derived from your council
-outcomes (the verdicts you log) and feed Trinity's model picker — not the
+outcomes (the verdicts you log) and feed Trinity's model picker, not the
 chairman's identity context:
 
 | file | what's in it |
@@ -34,7 +34,7 @@ chairman's identity context:
 
 ## Inspect your lens
 
-Open the launchpad's lens card; it links to a local viewer at
+Open the launchpad's lens card. It links to a local viewer at
 `~/.trinity/portal_pages/memory.html`. The four cognitive levels render
 together as one document:
 
@@ -47,4 +47,4 @@ together as one document:
 Scoreboards (`picks.json` / `routing.json`) surface as schema-aware Reader
 views on the launchpad's routing card, not in the lens viewer.
 
-All inlined at `portal-html` time — works under `file://`, no server needed.
+All inlined at `portal-html` time. Works under `file://`, no server needed.

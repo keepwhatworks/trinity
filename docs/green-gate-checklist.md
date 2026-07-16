@@ -1,4 +1,4 @@
-# Green-gate checklist — don't ship a green check over degenerate data
+# Green-gate checklist: don't ship a green check over degenerate data
 
 > The single most recurring bug shape in Trinity is **a green check (ok / ready /
 > healthy / complete / `*_recommended` / a headline metric) passing while the
@@ -24,21 +24,21 @@ the check stays green.
 ## The 6-step protocol
 
 1. **Name the invariant** the green is supposed to attest. (Most of these bugs are
-   a green that was never tied to the right invariant — "ready" meant "process
+   a green that was never tied to the right invariant. "ready" meant "process
    ran," never "has content.")
-2. **Measure the degeneracy — don't assume.** Pull the *real distribution*, not the
-   aggregate; eyeball N raw rows. Measure coverage / collapse / fallback-rate /
+2. **Measure the degeneracy. Don't assume.** Pull the *real distribution*, not the
+   aggregate. Eyeball N raw rows. Measure coverage / collapse / fallback-rate /
    skew. (Nearly every instance was found by driving the surface on real or
    degenerate data, not by reading code.)
-3. **Gate the green on the invariant — put the disqualifier IN the gate.**
-   `flip = wins AND coverage≥floor`; `ok=True` only if no `fix`; `ready` only if
-   `tensions>0`. A disqualifier reported in a sibling field is toothless — a
+3. **Gate the green on the invariant. Put the disqualifier IN the gate.**
+   `flip = wins AND coverage≥floor`. `ok=True` only if no `fix`. `ready` only if
+   `tensions>0`. A disqualifier reported in a sibling field is toothless. A
    consumer polling the boolean gets green.
 4. **Pre-register the floor** when "enough" is a judgment (`N_C_FLOOR`,
    `COVERAGE_FLOOR`, `MIN_GAMES_FOR_ELO_CHART`, `_VALUE_PROOF_MIN_COUNCILS`, n≥3).
    Fix the number *before* seeing the data and **echo it in the output** so an
    "abstain, N=4" can't be relitigated into a green by tuning.
-5. **Abstain honestly below the floor** — "can't tell, N_c=3", "no tensions yet",
+5. **Abstain honestly below the floor**: "can't tell, N_c=3", "no tensions yet",
    "coverage-gated, not evidence". A first-class result, not a failure.
 6. **Dual-test + mutation-verify.** The test must prove the green FIRES on healthy
    data AND is REFUSED on degenerate data. A happy-path test (or a substring-
@@ -48,9 +48,9 @@ the check stays green.
 
 ## Ship-time checklist (run when you add or change a green)
 
-When you add or change anything that returns/sets a green — a boolean
-(`ok`/`ready`/`*_recommended`/`flip`), a "complete"/"healthy" status, or a
-headline metric a surface displays — answer these before shipping:
+A green is a boolean (`ok`/`ready`/`*_recommended`/`flip`), a
+"complete"/"healthy" status, or a headline metric a surface displays. When you
+add or change one, answer these before shipping:
 
 - [ ] **Invariant, not proxy:** does the green gate on the thing it actually
       claims, or on a cheap proxy (process finished / field present / parsed /
@@ -71,7 +71,7 @@ headline metric a surface displays — answer these before shipping:
 
 Decision-directive greens (booleans/metrics that tell a consumer to take an action
 based on data) carry the highest risk and are ratcheted by
-`tests/test_green_gate_registry.py` — a new one can't ship until it's listed here
+`tests/test_green_gate_registry.py`. A new one can't ship until it's listed here
 with its classification and gate.
 
 | Green | File | Classification | Gate |
@@ -84,12 +84,12 @@ with its classification and gate.
 | `baseline_floor.trustworthy` | `evals/baseline_floor.py` + `commands/eval.py` + `launchpad_data.py` + `eval_card.py` | **data-directive** (ship or REFUSE the eval-run headline) | `judge_ok (echo_gold − echo_rejected ≥ JUDGE_RECOGNITION_MARGIN 0.25) AND discriminates (real − worst negative control ≥ DISCRIMINATION_FLOOR 0.15)`, both pre-registered; wired as eval-run's pre-report gate 2026-07-11 — refused runs print the refusal instead of the score, are excluded from the eval-show leaderboard + launchpad hero + share card, with the exclusion disclosed; mutation-proven in `test_baseline_floor.py` |
 
 "Heuristic hint" greens gate on task/route *shape*, not on a *data distribution*,
-so they need no degeneracy floor — but they must be classified here (the ratchet
+so they need no degeneracy floor. But they must be classified here (the ratchet
 forces the author to make that call explicitly).
 
 ## Where the bug class lives (Phase-1 inventory, 2026-06-02)
 
-The launchpad **cards are comprehensively gated and tested** — elo
+The launchpad **cards are comprehensively gated and tested**: elo
 (`MIN_GAMES_FOR_ELO_CHART`), cortex (demotes below trust threshold), council-value
 (`vp.ready`), timeline (`min_prompts`), cold-open (confidence-softens), eval
 (mixed-set guard), memory-health (#273 soft-degrade-needs-fix), lens "✓ ready"
@@ -98,34 +98,34 @@ The launchpad **cards are comprehensively gated and tested** — elo
 **(b) new code that didn't inherit the card discipline** (the holdout flip). Hunt
 those, not the established cards.
 
-## Sibling discipline — the accretion / divergent-duplication guard
+## Sibling discipline: the accretion / divergent-duplication guard
 
 The green-gate bug is *one check over degenerate data*. Its sibling is *two checks
-over the same data that have drifted apart* — one concept implemented in two places,
+over the same data that have drifted apart*. One concept gets implemented in two places,
 where a fix lands on one copy and the twin silently keeps the old behavior. Same
-root failure (a check that looks fine but isn't); different shape. This discipline
-shipped after the #316 eval-unification work, where the 3rd patch on the
+root failure (a check that looks fine but isn't). Different shape. This discipline
+shipped after the #316 eval-unification work. The 3rd patch on the
 rejection→eval seam surfaced ~10 divergent copies at once (cosine in 4 modules, the
 fence-stripper in 2, `_write_prompt_node` in 2 test files, `MAX_MISSING_POLLS` in 3
 pollers, a real-contest threshold inlined twice).
 
-### Trigger — when to run this
+### Trigger: when to run this
 
-Run the audit when ANY of these fires; don't wait for a bug report:
+Run the audit when ANY of these fires. Don't wait for a bug report:
 
-- **The 3rd patch on one seam.** Two fixes to "the same area" is a coincidence; the
+- **The 3rd patch on one seam.** Two fixes to "the same area" is a coincidence. The
   third is the signal that the *seam itself* is duplicated, not just buggy.
 - **You're about to add robustness to ONE of two similar call sites.** If the twin
   doesn't get the same guard, you've just *created* a divergence.
 - **A grep for a literal/constant/helper name returns 2+ hits in non-test code.**
 
-### The divergence checklist — what to look for
+### The divergence checklist: what to look for
 
 - **Two readers of one source diverging.** Two parsers/loaders of the same file or
-  field that don't agree on shape (the gemini ingest reading raw frames; two
+  field that don't agree on shape (the gemini ingest reading raw frames. Two
   `json.loads` sites guarding the parse but not the resulting *type*).
 - **One concept computed twice.** Cosine similarity, "is this the same text?",
-  "strip the fence", "is this a real contest?" — each had ≥2 implementations that
+  "strip the fence", "is this a real contest?". Each had ≥2 implementations that
   could (and did) drift. The **narrower** copy is the latent bug: the scorer's
   `(?:json)?` fence-stripper silently left a ```` ```text ```` fence in and broke
   the parse, while its twin handled any language tag.
@@ -140,24 +140,24 @@ Run the audit when ANY of these fires; don't wait for a bug report:
 ### The net-simplicity guardrail (so the cure isn't worse than the disease)
 
 Unify **only when it nets simpler.** The failure mode of a DRY pass is merging two
-things that are *coincidentally* similar but *semantically distinct* — a forced
-shared helper then grows flags and branches to serve both callers, and you've traded
+things that are *coincidentally* similar but *semantically distinct*. A forced
+shared helper then grows flags and branches to serve both callers. You've traded
 two clear copies for one tangled one. Before extracting, all of:
 
 - [ ] The two copies compute the **same concept**, not just similar-looking code. If
-      a kwarg/flag has to switch behavior per caller, they may be distinct — stop.
+      a kwarg/flag has to switch behavior per caller, they may be distinct. Stop.
 - [ ] The unified version is the **superset** each caller uses unchanged (the
-      `_write_prompt_node` merge kept the `provider` kwarg the smoke copy lacked;
-      every call site was untouched).
+      `_write_prompt_node` merge kept the `provider` kwarg the smoke copy lacked.
+      Every call site was untouched).
 - [ ] It **nets fewer lines and fewer places to change**, with **one obvious home**
-      (a shared module / `conftest` / `embeddings.cosine_similarity`) — not a new
+      (a shared module / `conftest` / `embeddings.cosine_similarity`), not a new
       dependency edge between two peers that risks an import cycle.
-- [ ] **grep `tests/` before deleting any "dead" symbol** — a test may import the
+- [ ] **grep `tests/` before deleting any "dead" symbol.** A test may import the
       copy you're removing (deleting `cross_provider_pairs._cosine` red'd a test
-      that imported it directly; re-point the import at the canonical name). And
+      that imported it directly. Re-point the import at the canonical name). And
       after a deletion, `rm -rf` stale `__pycache__` before trusting a green
-      orphan/grep guard — stale bytecode keeps a removed string alive.
+      orphan/grep guard. Stale bytecode keeps a removed string alive.
 
 When unification would *add* coupling or branches, leave the copies and reach for a
-shared **constant** or a guard instead — the goal is fewer places the bug can hide,
+shared **constant** or a guard instead. The goal is fewer places the bug can hide,
 not DRY for its own sake.

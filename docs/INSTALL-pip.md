@@ -2,7 +2,7 @@
 class: live
 ---
 
-# Install Trinity (Python library access — power-user path)
+# Install Trinity (Python library access, power-user path)
 
 > The primary install path is the curl-bash installer in
 > [`INSTALL-skill.md`](INSTALL-skill.md). It clones the repo, drops
@@ -17,7 +17,7 @@ class: live
 - You're running Trinity in a fresh CI environment where the
   curl-bash installer's wrappers in `~/.local/bin/` don't make sense
   (e.g., a Docker layer where you want pip-managed deps).
-- You're a contributor working on Trinity itself — `pip install -e .`
+- You're a contributor working on Trinity itself. `pip install -e .`
   from a clone gives you the editable install.
 
 **Trinity does NOT publish to PyPI.** No `pip install trinity-local`
@@ -74,16 +74,16 @@ See `trinity-local --help` for the full command list.
 
 ## Why no PyPI publish?
 
-Three reasons (per the launch architecture decision; see
+Three reasons, per the launch architecture decision (see
 [`three-tier-architecture.md`](three-tier-architecture.md)):
 
 1. **Trust positioning**. Trinity's pitch is "your transcripts never
    leave your machine." A PyPI wheel adds a supply-chain trust step
    (`pip install` is opaque after the fact). A git clone is
-   auditable end-to-end — `ls ~/.claude/skills/trinity/` shows
+   auditable end-to-end. `ls ~/.claude/skills/trinity/` shows
    every file the install ever touches.
 
-2. **Distribution simplicity**. One channel (GitHub) — not two
+2. **Distribution simplicity**. One channel (GitHub), not two
    (GitHub + PyPI). Updates: `trinity-local update` does
    `git pull` + MCP refresh + status. No "is the pip cache
    stale" confusion.
@@ -100,10 +100,10 @@ The pip tier writes to `~/.trinity/audit.log` via
 `tail -20 ~/.trinity/audit.log`.
 
 The trust-gating library (`trinity_local.trust`) was retired
-2026-05-22 (post-launch sweep iter #117) — `~/.trinity/trust.toml` is
+2026-05-22 (post-launch sweep iter #117). `~/.trinity/trust.toml` is
 no longer consulted by any tier. Gating config + the dedicated CLI
 land in v1.1 as a fresh build. See [`historical/trust-mode.md`](historical/trust-mode.md)
-for the original design — preserved as the historical record of the
+for the original design. It is preserved as the historical record of the
 substrate Trinity moved away from.
 
 ## Heavy ops as standalone scripts
@@ -111,7 +111,7 @@ substrate Trinity moved away from.
 Trinity ships the heavy operations as shebang-runnable Python at
 `scripts/` (`embed.py`, `cluster.py`, `pca.py`, `descriptor.py`,
 `signature.py`, `anchor.py`). The pip tier imports from these
-modules in v1.0; v1.1 inverts so the scripts are the canonical
+modules in v1.0. v1.1 inverts so the scripts are the canonical
 location and the pip tier is the thin wrapper.
 
 ```bash
@@ -121,16 +121,16 @@ echo '{"texts": ["hello", "world"]}' | python3 scripts/embed.py
 ```
 
 The first run creates a script-scoped venv at
-`~/.trinity/.venvs/embed/` and installs deps; subsequent runs reuse
+`~/.trinity/.venvs/embed/` and installs deps. Subsequent runs reuse
 it. See `scripts/<name>.py --help` for each script's I/O contract.
-The pip wheel isn't needed for this path — `scripts/` are
+The pip wheel isn't needed for this path. `scripts/` are
 self-contained.
 
 ## See also
 
-- [`INSTALL-skill.md`](INSTALL-skill.md) — primary install path
-  (curl-bash; the user-facing default)
-- [`INSTALL-extension.md`](INSTALL-extension.md) — Chrome extension
+- [`INSTALL-skill.md`](INSTALL-skill.md), the primary install path
+  (curl-bash, the user-facing default)
+- [`INSTALL-extension.md`](INSTALL-extension.md), the Chrome extension
   for cross-surface UI
-- [`three-tier-architecture.md`](three-tier-architecture.md) — full
+- [`three-tier-architecture.md`](three-tier-architecture.md), the full
   architecture spec

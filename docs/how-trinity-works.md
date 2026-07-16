@@ -4,11 +4,11 @@ class: live
 
 # How Trinity works
 
-> **Ask all three. The chairman keeps what works — and learns which model you keep siding with.**
+> **Ask all three. The chairman keeps what works, and learns which model you keep siding with.**
 
 Trinity is a cross-provider council. You send one prompt and Claude, ChatGPT, and Gemini answer in parallel. Then one of them, the chairman, synthesizes the verdict: what they agreed on, where they split, which answer wins. It runs free and local, on the subscriptions you already pay for, no API key, and your transcripts never leave your machine. That's day one, no setup, no warm-up.
 
-Underneath, Trinity is also a cross-provider memory layer. It reads the transcripts you already have on your machine, from Claude Code, Codex CLI, Antigravity, plus claude.ai / chatgpt.com / Gemini web chats and exports, and extracts the pattern in how you rephrase, judge, and decide. (It also runs *inside* Cursor as an MCP server; ingesting Cursor's own chat history is on the roadmap.) Over a handful of councils that pattern becomes a lens, and the chairman starts weighting the synthesis by it — routing to the model you keep siding with on your kind of question. The council is the lead; the lens is the layer that personalizes it as your corpus deepens.
+Underneath, Trinity is also a cross-provider memory layer. It reads the transcripts you already have on your machine, from Claude Code, Codex CLI, Antigravity, plus claude.ai / chatgpt.com / Gemini web chats and exports, and extracts the pattern in how you rephrase, judge, and decide. (It also runs *inside* Cursor as an MCP server. Ingesting Cursor's own chat history is on the roadmap.) Over a handful of councils that pattern becomes a lens, and the chairman starts weighting the synthesis by it, routing to the model you keep siding with on your kind of question. The council is the lead. The lens is the layer that personalizes it as your corpus deepens.
 
 This doc walks the pipeline end-to-end. If you want the install path, see [README](../README.md). If you want the on-disk contract, see [`three-tier-architecture.md`](three-tier-architecture.md).
 
@@ -42,7 +42,7 @@ Every node gets passed through `modernbert-embed-base` when a real embedding run
 
 ## Dream, the offline synthesis pass
 
-`trinity-local lens --deep` (the deep build — the former `dream` verb, folded 2026-07-04) walks six phases:
+`trinity-local lens --deep` (the deep build, the former `dream` verb, folded 2026-07-04) walks six phases:
 
 **Phase 1, Discover.** Find pairs of nodes across providers that are semantically the SAME question (cosine ≥ 0.85). That's how Trinity knows you asked "the same thing" of Claude AND Codex AND Gemini.
 
@@ -88,7 +88,7 @@ The folder is the API. Everything in it is human-readable Markdown or JSON. Trin
 
 You drop a hard question into any harness (Claude Code, Codex, Cursor, Antigravity). The agent there sees Trinity registered as an MCP server and calls one of <!-- canonical:mcp_tool_count -->9<!-- /canonical --> MCP tools. The three that matter most, council first, routing later:
 
-- **`run_council(task)`**, the flagship and the day-one lead. Dispatches the question to Claude + ChatGPT + Gemini in parallel, collects three responses, runs chairman synthesis. The chairman emits a Routing JSON: agreed claims, disagreed claims, winner, why. It reads `core.md` first and drills to `lens.md` only if a lens exists yet, so the council is full-fidelity on minute one. Once a lens has warmed up, the chairman weights the synthesis by it — routing to the model you keep siding with on your kind of question. **The council is the value; the lens makes it yours.**
+- **`run_council(task)`**, the flagship and the day-one lead. Dispatches the question to Claude + ChatGPT + Gemini in parallel, collects three responses, runs chairman synthesis. The chairman emits a Routing JSON: agreed claims, disagreed claims, winner, why. It reads `core.md` first and drills to `lens.md` only if a lens exists yet, so the council is full-fidelity on minute one. Once a lens has warmed up, the chairman weights the synthesis by it, routing to the model you keep siding with on your kind of question. **The council is the value. The lens makes it yours.**
 - **`ask(query)`**, the cheap 90% path that *emerges* once you have a track record of councils. Pulls a high-trust extracted pick if one exists ("looks like a COMPRESSION task → codex wins on those for you") and returns a single answer instead of running a full council. With no council history yet it falls back to a heuristic, so routing is the layer that accrues after the council, not a prerequisite for it.
 - **`get_persona()`**, hands the lens to the agent at session handshake so it can tailor responses without an MCP round-trip per call.
 
@@ -129,7 +129,7 @@ The eval is **structurally asymmetric** in your favor. Only Trinity sees your cr
 
 ## The closed loop, how Trinity gets better
 
-The chairman reads your `lens.md` during every synthesis. Each council emits a `routing_label` (winner, agreed/disagreed claims, why). Those outcomes feed the per-basin **routing** tally: `cortex consolidate` places each council into its nearest lens basin and records the recency-weighted winner in `picks.json`, so the next `ask` can route a similar question on that basin's track record. The lens *itself* refreshes separately. Each deep build re-reads new turn-pair signal from your raw prompts (not from how councils turned out; that council→lens re-extraction edge isn't wired). The lens isn't static. It's the slow-changing layer your fast-changing conversations refine.
+The chairman reads your `lens.md` during every synthesis. Each council emits a `routing_label` (winner, agreed/disagreed claims, why). Those outcomes feed the per-basin **routing** tally: `cortex consolidate` places each council into its nearest lens basin and records the recency-weighted winner in `picks.json`, so the next `ask` can route a similar question on that basin's track record. The lens *itself* refreshes separately. Each deep build re-reads new turn-pair signal from your raw prompts (not from how councils turned out. That council→lens re-extraction edge isn't wired). The lens isn't static. It's the slow-changing layer your fast-changing conversations refine.
 
 The taste you build with Trinity is the persistent thing across model generations. When the next frontier model ships, your lens still grades it. That's the layer this thing is.
 
@@ -139,4 +139,4 @@ The taste you build with Trinity is the persistent thing across model generation
 
 - [README](../README.md), install + the 30-second pitch
 - [`three-tier-architecture.md`](three-tier-architecture.md), on-disk contract (MCP server / pip engine / Chrome extension)
-- [`PREFERENCE_CORPUS_SPEC.md`](PREFERENCE_CORPUS_SPEC.md), historical v2 substrate draft; the live survivor is the unified `preference_acts.jsonl` eval/lens corpus
+- [`PREFERENCE_CORPUS_SPEC.md`](PREFERENCE_CORPUS_SPEC.md), historical v2 substrate draft. The live survivor is the unified `preference_acts.jsonl` eval/lens corpus

@@ -36,7 +36,7 @@ Telemetry exists to support:
 ## 1. Default-on, provably no-PII, one command off
 
 **Superseded 2026-05-27** (this section originally read "Opt-in only"): telemetry
-ships **on by default** to close the feedback loop — Trinity can't improve routing
+ships **on by default** to close the feedback loop. Trinity can't improve routing
 without seeing which providers win which task types. The guarantee is not *off*, it
 is *provably no-PII*: only categorical labels (`task_type`, `winner`, `member_count`,
 `mode`) and an anonymous numeric Elo snapshot ever leave the machine, enforced
@@ -46,14 +46,14 @@ allowlist (a param outside the set is dropped at the wire boundary) and asserted
 
 Two further gates make a stock install send **nothing**:
 
-- the public build ships **no GA4 credentials** — absent `TRINITY_GA4_MEASUREMENT_ID`
-  + `TRINITY_GA4_API_SECRET`, both the CLI and the launchpad silently no-op;
+- the public build ships **no GA4 credentials**. Absent `TRINITY_GA4_MEASUREMENT_ID`
+  + `TRINITY_GA4_API_SECRET`, both the CLI and the launchpad silently no-op.
 - the browser send path is withheld an `endpoint` unless those creds are present, so
   it can't bypass the Python no-op.
 
 Control:
 
-- `trinity-local telemetry-disable` turns it off; data stops immediately.
+- `trinity-local telemetry-disable` turns it off. Data stops immediately.
 - adjustable later from Launchpad settings.
 
 ## 2. Summary-level sharing only
@@ -87,7 +87,7 @@ the (default-on, opt-out) telemetry path. `main()` pins `HF_HUB_OFFLINE=1` +
 `TRANSFORMERS_OFFLINE=1` + `HF_HUB_DISABLE_TELEMETRY=1` at startup via
 `setdefault`, so the embedding model loads from `~/.cache/huggingface/hub/`
 without contacting the Hub. The one-time download is a deliberate user
-action via `HF_HUB_OFFLINE=0 huggingface-cli download nomic-ai/modernbert-embed-base`.
+action via `trinity-local download-embedder` (or `HF_HUB_OFFLINE=0 huggingface-cli download nomic-ai/modernbert-embed-base`).
 MCP child processes inherit the env so the guarantee propagates through
 every spawn. Override per-invocation when explicitly pulling fresh weights.
 
@@ -128,13 +128,13 @@ The copy should clearly distinguish:
 
 Users must be able to:
 
-- enable sharing (shipped — launchpad settings modal)
+- enable sharing (shipped, launchpad settings modal)
 - disable sharing (shipped)
-- reset anonymous share identity (shipped — `telemetry-reset-id` CLI; modal button)
+- reset anonymous share identity (shipped, `telemetry-reset-id` CLI + modal button)
 - configure endpoint URL (shipped)
 
 **Future / not yet implemented:**
-- preview shared payload (UI not built; the shared event shape is documented below in this file, but no in-launchpad preview exists)
+- preview shared payload (UI not built. The shared event shape is documented below in this file, but no in-launchpad preview exists)
 - see last successful upload time (no `last_upload_at` field tracked in `~/.trinity/settings/telemetry.json` today)
 
 Recommended settings fields:
@@ -342,7 +342,7 @@ If the hash is unchanged, the snapshot does not need to be re-uploaded.
 
 ## Public Aggregate Model (deferred)
 
-**Status: not implemented in code today.** Current `telemetry.py` only supports a configurable endpoint URL with default-off; there is no aggregation backend, no `last_upload_at` round-trip, no public-Elo response shape.
+**Status: not implemented in code today.** Current `telemetry.py` only supports a configurable endpoint URL with default-off. There is no aggregation backend, no `last_upload_at` round-trip, no public-Elo response shape.
 
 When/if a backend is built, the natural shape is:
 

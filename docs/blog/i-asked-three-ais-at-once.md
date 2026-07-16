@@ -53,7 +53,7 @@ Every time a model answers and I rewrite it, cut the lecture, ask for a spec ins
 Trinity reads the transcripts already on my machine. Claude Code, Codex, Antigravity, plus my web chats on claude.ai, chatgpt.com, Gemini. It mines exactly those moments.
 It builds a *lens*, a small model of how I think, and hands it to the chairman on every council.
 
-So the chairman doesn't crown the universally "best" answer. It weights the split by the constraints I've shown over months of pushing back — and tells me which model I keep siding with here.
+So the chairman doesn't crown the universally "best" answer. It weights the split by the constraints I've shown over months of pushing back. And it tells me which model I keep siding with here.
 
 It also turns those rewrites into a benchmark. Which model wins the questions I actually corrected? Not HumanEval. My corrections. Only I can see that signal, because only I have the cross-provider rejection history.
 
@@ -67,7 +67,7 @@ The cross-provider view has to come from outside all three.
 
 Turned out that someone was me. On a weekend, with a curl command and the subscriptions I was already paying for.
 
-I still pay for three. I just don't tab-switch anymore. Ask once, all three answer, and the chairman shows me where they split — and which one I keep siding with.
+I still pay for three. I just don't tab-switch anymore. Ask once, all three answer, and the chairman shows me where they split, and which one I keep siding with.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash

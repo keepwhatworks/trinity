@@ -2,19 +2,19 @@
 class: live
 ---
 
-# Install Trinity (Chrome Extension — Tier 3, optional)
+# Install Trinity (Chrome Extension, Tier 3, optional)
 
 > The Chrome extension is the optional third tier. It does two things
 > the skill + pip tiers can't: (1) the launchpad + council UI in a
 > side panel that opens from the browser toolbar, (2) cross-surface
 > capture of web-chat conversations from claude.ai, chatgpt.com, and
-> gemini.google.com — captures land in ~/.trinity/conversations/ and
+> gemini.google.com. Captures land in ~/.trinity/conversations/ and
 > the lens picks them up on the next MCP-triggered ingest cycle.
 
 ## When to install this tier
 
 - You want the launchpad and councils accessible from any tab via
-  the toolbar icon — it opens a side panel, no terminal.
+  the toolbar icon. It opens a side panel, no terminal.
 - You want web chats (claude.ai, chatgpt.com, gemini.google.com)
   ingested into `~/.trinity/conversations/` so Trinity sees ALL your
   conversations, not just the CLI tools.
@@ -25,7 +25,7 @@ Tier 3 is **opt-in**. Skill + pip work fully without it.
 
 ## Prerequisites
 
-Tier 2 (pip) must already be installed — the extension talks to
+Tier 2 (pip) must already be installed. The extension talks to
 the engine via Native Messaging.
 
 ```bash
@@ -45,7 +45,7 @@ not from the Chrome Web Store). Web Store publish is post-launch.
    ```
 
 2. Open `chrome://extensions` in Chrome (or `edge://extensions` in
-   Edge; both work — same MV3 manifest).
+   Edge). Both work, same MV3 manifest.
 
 3. Toggle **"Developer mode"** on (top-right).
 
@@ -64,8 +64,8 @@ not from the Chrome Web Store). Web Store publish is post-launch.
 
    This writes the manifest into Chrome's Native Messaging directory
    (`~/Library/Application Support/Google/Chrome/NativeMessagingHosts/`
-   on macOS; `~/.config/google-chrome/NativeMessagingHosts/` on
-   Linux; registry on Windows). Edge gets the same manifest in its
+   on macOS, `~/.config/google-chrome/NativeMessagingHosts/` on
+   Linux, registry on Windows). Edge gets the same manifest in its
    own NM directory.
 
 7. Verify:
@@ -75,19 +75,19 @@ not from the Chrome Web Store). Web Store publish is post-launch.
    # dispatch_ready should now be green
    ```
 
-   Or click the Trinity toolbar icon — the launchpad opens in a
-   side panel; the "Launch Council" composer should fire end-to-end.
+   Or click the Trinity toolbar icon. The launchpad opens in a
+   side panel. The "Launch Council" composer should fire end-to-end.
 
-## What v0.2 ships (current — `browser-extension/manifest.json` version `<!-- canonical:chrome_extension_version -->0.2.22<!-- /canonical -->`)
+## What v0.2 ships (current `browser-extension/manifest.json` version `<!-- canonical:chrome_extension_version -->0.2.22<!-- /canonical -->`)
 
 - Toolbar icon → opens the side panel (`sidepanel.html`), which hosts
   the launchpad + council composer (the manifest sets
   `side_panel.default_path` and has NO `default_popup`, so the action
   click opens the panel via `openPanelOnActionClick`)
 - Action dispatch via Native Messaging (replaces the macOS Shortcut
-  dispatcher; works cross-platform). <!-- canonical:chrome_action_allowlist_count -->17<!-- /canonical -->-entry `ACTION_ALLOWLIST` in
+  dispatcher, works cross-platform). <!-- canonical:chrome_action_allowlist_count -->17<!-- /canonical -->-entry `ACTION_ALLOWLIST` in
   `src/trinity_local/capture_host.py` gates which CLI surfaces are
-  callable — defense in depth.
+  callable. Defense in depth.
 - Conversation capture content-scripts loaded on claude.ai /
   chatgpt.com / gemini.google.com (writes to
   `~/.trinity/conversations/<provider>/`). The gemini.google.com
@@ -104,8 +104,8 @@ Per the council-ratified roadmap (see
 - Audit-log read surface in the popup ("last 10 operations")
 
 (Trust-indicator badges in the popup were on the original v0.2
-pickup list but the underlying substrate was retired 2026-05-22 —
-see [`historical/trust-mode.md`](historical/trust-mode.md). Whatever
+pickup list but the underlying substrate was retired 2026-05-22.
+See [`historical/trust-mode.md`](historical/trust-mode.md). Whatever
 gating UX v1.1 rebuilds will dictate the indicator shape.)
 
 ## Audit log
@@ -119,12 +119,12 @@ grep '"tier": "extension"' ~/.trinity/audit.log | tail -20
 ```
 
 The trust-*gating* library (`trinity_local.trust`) was retired
-2026-05-22; the `trust.toml` config is no longer consulted by any
+2026-05-22. The `trust.toml` config is no longer consulted by any
 tier. The extension's allowlist (`background.js`
 `ACTION_ALLOWLIST`) is its current gating surface. A unified gating
 config + the `trust-init` / `trust-show` / `audit-show` CLI lands in
 v1.1 as a fresh build. See [`historical/trust-mode.md`](historical/trust-mode.md) for the
-original design — preserved as the historical record of the
+original design. It is preserved as the historical record of the
 substrate Trinity moved away from.
 
 ## Limitations and what to expect
@@ -132,9 +132,9 @@ substrate Trinity moved away from.
 - **File-URL access**: opening the file:// launchpad with the
   extension wired up requires the extension's "Allow access to file
   URLs" toggle (chrome://extensions). v0.1 doesn't auto-enable
-  this — the user has to flip the toggle once.
+  this. The user has to flip the toggle once.
 - **Conversation capture is read-only**: the extension reads web-chat
-  DOM via content scripts; it never injects user messages or modifies
+  DOM via content scripts. It never injects user messages or modifies
   the provider UI.
 - **Real-Chrome smoke test is gated**: see
   `tests/test_chrome_extension_smoke.py`. It uses the optional
@@ -144,12 +144,12 @@ substrate Trinity moved away from.
 
 ## See also
 
-- [`INSTALL-skill.md`](INSTALL-skill.md) — primary install path
+- [`INSTALL-skill.md`](INSTALL-skill.md), the primary install path
   (skill tier via Claude Code)
-- [`INSTALL-pip.md`](INSTALL-pip.md) — engine-only install
-- [`MIGRATION.md`](MIGRATION.md) — for users coming from the
+- [`INSTALL-pip.md`](INSTALL-pip.md), the engine-only install
+- [`MIGRATION.md`](MIGRATION.md), for users coming from the
   macOS Shortcut dispatcher era
-- [`three-tier-architecture.md`](three-tier-architecture.md) — full
+- [`three-tier-architecture.md`](three-tier-architecture.md), the full
   architecture spec
-- `browser-extension/README.md` — extension-internal architecture
+- `browser-extension/README.md`, the extension-internal architecture
   notes

@@ -110,7 +110,7 @@ What to copy:
 The shipped v1 bridge and the next launch target are:
 
 1. **Chrome-extension launch is the v1 bridge:** the Trinity Chrome
-   extension hosts the launchpad — click the toolbar icon to open the
+   extension hosts the launchpad. Click the toolbar icon to open the
    local launchpad/review cockpit without a terminal window. Native
    Messaging carries launchpad button clicks back to `trinity-local`.
    The earlier `Trinity.app` osacompile wrapper was retired pre-launch
@@ -119,32 +119,32 @@ The shipped v1 bridge and the next launch target are:
    acquisition surface is a real desktop app with an app icon, menu bar,
    hotkey, first-run setup/status UI, and a local cockpit over
    `~/.trinity/`. The extension remains browser capture and dispatch
-   plumbing; it is not the long-term app shell.
-3. **Direct prompt → council** is the primary action: launchpad has a textarea + autofill suggestions; user types a prompt or picks a replay candidate; click dispatches `launch_council` through the Chrome extension's Native Messaging host.
+   plumbing. It is not the long-term app shell.
+3. **Direct prompt → council** is the primary action: launchpad has a textarea + autofill suggestions. User types a prompt or picks a replay candidate. Click dispatches `launch_council` through the Chrome extension's Native Messaging host.
 4. Trinity writes `PromptBundle` and `CouncilOutcome` files.
 5. The static launchpad page renders the personal routing table, the `lens`es card, and recent councils.
 6. Launch actions post a JSON message to `trinity-local-capture-host` (the Native Messaging endpoint registered by `install-extension`).
-7. The capture host spawns the local CLI as a one-shot subprocess and exits when the council completes — no persistent process. (The earlier macOS Shortcut path through `~/.trinity/bin/trinity-dispatch` was retired pre-launch; an inert `shortcuts_integration` shim survives so older renderers don't break before their JS surgery lands.)
-8. Finished councils write to `council_outcomes/`; the next launchpad render reflects them via on-demand `compute_personal_routing_table()` (no durable state file).
+7. The capture host spawns the local CLI as a one-shot subprocess and exits when the council completes. No persistent process. (The earlier macOS Shortcut path through `~/.trinity/bin/trinity-dispatch` was retired pre-launch. An inert `shortcuts_integration` shim survives so older renderers don't break before their JS surgery lands.)
+8. Finished councils write to `council_outcomes/`. The next launchpad render reflects them via on-demand `compute_personal_routing_table()` (no durable state file).
 9. **Mobile starts as review links**: the phone opens a web/deep link to a
    council review page, then writes ratings through the paired desktop when
    available.
-10. **Tool-triggered ingest replaces watchers**: `ingest-recent` is fired by the Chrome extension and by MCP `ask` with a 1s deadline; the legacy `watch-once`/`watch-loop` CLIs were retired pre-launch with the daemon subsystem.
+10. **Tool-triggered ingest replaces watchers**: `ingest-recent` is fired by the Chrome extension and by MCP `ask` with a 1s deadline. The legacy `watch-once`/`watch-loop` CLIs were retired pre-launch with the daemon subsystem.
 
 ## Action taxonomy
 
 Current dispatch actions (`src/trinity_local/dispatch_registry.py`):
 
-- `launch_council` — primary path; user picks members + task
-- `stop_council` — cancel an in-flight council
-- `open_review` — open the unified council page
-- `start_council` — alternative entry from a prepared bundle
-- `council_iterate` — canonical iteration action (replaces continue/refine/auto-chain). Args: `{rounds: int, prompt: str|None}`. Legacy aliases (`council_continue`, `council_refine`, `council_auto_chain`) still accepted as input — they map to `council_iterate` via the dispatch shim — so old launchpad URLs and saved Shortcuts keep working.
-- `open_path`, `open_url`, `run_applescript`, `run_command` — generic dispatch helpers
+- `launch_council`: primary path. User picks members + task.
+- `stop_council`: cancel an in-flight council
+- `open_review`: open the unified council page
+- `start_council`: alternative entry from a prepared bundle
+- `council_iterate`: canonical iteration action (replaces continue/refine/auto-chain). Args: `{rounds: int, prompt: str|None}`. Legacy aliases (`council_continue`, `council_refine`, `council_auto_chain`) are still accepted as input. They map to `council_iterate` via the dispatch shim, so old launchpad URLs and saved Shortcuts keep working.
+- `open_path`, `open_url`, `run_applescript`, `run_command` are generic dispatch helpers
 
 (The `rate_council` dispatch action was retired 2026-05-21/22 alongside the
-rest of the rating UX — chairman pick is the auto-recorded supervision signal
-now. `council-rate` CLI + MCP `record_outcome` are retired; pick-veto on
+rest of the rating UX. Chairman pick is the auto-recorded supervision signal
+now. `council-rate` CLI + MCP `record_outcome` are retired. Pick-veto on
 extracted cortex rules is the remaining user-side supervision surface.)
 
 If multiple pending actions exist for the same task, priority order:

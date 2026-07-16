@@ -1,24 +1,23 @@
 ---
 class: aspirational
-title: "Three AI labs can't tell you which one is best. So I built a benchmark that scores them on the answers I rewrote."
+title: "Three AI labs can't tell you which one to trust. So I kept score on the disagreements my own work settled."
 published: true
-description: "Public leaderboards say which model is best on average. I wanted which is best for MY work. So I scored Claude, GPT, and Gemini on the answers I actually rewrote, with a judge I measured against my own corrections. Local, open, private."
+description: "Public leaderboards say which model is best on average. I wanted which model to trust for MY work. I built a judge-scored benchmark first, measured the judge, and killed it. What survived is better: a ledger of model disagreements, settled by what I actually did next. Local, open, private."
 tags: ai, opensource, machinelearning, privacy
 canonical_url: https://github.com/keepwhatworks/trinity/blob/main/docs/blog/i-benchmarked-the-models-on-my-own-corrections.md
 cover_image: ""
-voice_pass: council_85247df76a7d46d2 (winner=codex, your lens)
+voice_pass: rewritten 2026-07-15 around the disagreement ledger (the judge-scored instrument was retired by its own measurement)
 ---
 
-# Three AI labs can't tell you which one is best. So I built a benchmark that scores them on the answers I rewrote.
+# Three AI labs can't tell you which one to trust. So I kept score on the disagreements my own work settled.
 
 Every leaderboard answers the wrong question. HumanEval, MMLU, LMArena. Strongest *on average, across everyone*.
-I don't want the average. I want this: for my work, on the questions I actually ask, which model is best for *me*?
+I don't want the average. I want this: for my work, on the questions I actually ask, which model should I trust?
 
 The labs can't answer that. Anthropic can't say "use ChatGPT." OpenAI can't say "Claude won." Permanent conflict of interest.
 The most useful comparison in AI is the one with no honest source.
 
-So I built the source. It scores Claude, GPT, and Gemini on the one answer key only I have. The times I rewrote their answers.
-Then I spent the hardest part of the build making it un-poke-able. Because the day you publish a benchmark, people show up to break it.
+So I built the source. Twice. The first version died by its own measurement. That story is the point of this post.
 
 ## The benchmark nobody can publish
 
@@ -29,45 +28,64 @@ Best-for-me is the model that makes *those* mistakes least. No public benchmark 
 The labs are the obvious people to build a personalized cross-model benchmark. And the exact people who can't.
 "Claude wins your refactors, GPT wins your compression" is a scorecard each of them could only ever publish the flattering half of. It has to come from outside all three.
 
-## My corrections are the answer key
+## The benchmark I built first, and why I killed it
 
-When a model answers and I rewrite it in my next message, I've told you which was better. Not in theory. With my own hands.
-That rewrite is a human-labeled preference. I privileged my version over the model's. A few dozen of those and you have a graded test where the answer key is *real human judgment, not a model's opinion of "good."*
+Version one was the obvious design. Take the answers I rewrote, turn each into a scored question, and have a judge model grade every candidate against my corrections.
+I even measured the judge before trusting it. I handed it pairs where I had already picked a side, randomized A/B, and checked how often it agreed with me.
 
-That's the whole game. Almost every "LLM benchmark" is a model grading a model. Turtles all the way down. Mine is anchored to a human.
-The eval reads my transcripts, finds the moments I rewrote an answer, classifies what I was reaching for (shorter? a different frame? more precision?), and turns each into a scored question. Given this prompt, does this model avoid the mistake I had to fix?
+Then I ran the experiment that mattered. Swap the judge and hold everything else still.
+The score moved about four times more than the gap between the models.
 
-First run: one model won my compression-heavy prompts, a different one won my "give me the actual numbers" prompts.
-There is no single best model. There's a best model for each kind of thing I do.
+Read that again. The number I wanted to publish was mostly a measurement of the judge, wearing the models as a costume.
+So the leaderboard died. I deleted the shareable score card the same week. A benchmark that measures its own grader is not a benchmark.
 
-## Making the judge impossible to argue with
+## What survived: the disagreement ledger
 
-Scoring needs a judge, and a judge is a model. The objection writes itself. *You used a model to grade models, of course it's biased.*
-So I don't assert the judge is fair. I measure it.
+Here is what I noticed while burying version one. I never needed a judge to grade *quality*. I needed to know *which side to take when the models split*.
+And I already had thousands of splits on disk.
 
-I already have a pile of cases where I told you which answer I preferred. My own rewrites.
-I hand the judge those exact pairs, randomized A/B so it can't game position, and check how often it picks the side *I* actually chose. That's a number. This judge agrees with my own corrections N% of the time.
-I run it for every candidate and the most-aligned one gets the job. Chosen by measurement, not by my preference. One fixed judge, so every model is scored the same way.
+I run my hard questions through Claude, GPT, and Gemini at once. A chairman synthesizes the verdict and records exactly where they disagreed.
+Weeks later, my own work settles those disagreements. I shipped the design one model argued for. I deleted the abstraction another one defended. I renamed the thing a third one insisted was fine.
 
-Then the smaller holes, closed one by one. Because a benchmark dies by a thousand "well, actually"s:
+That settling is the answer key. Not a model's opinion of "good." What I actually did, with my own hands, once reality weighed in.
+An extractor reads my later work blind. It does not know which model said what. It marks each disputed claim followed or contradicted. Credit lands on whichever models took the side my work took.
 
-- **Every score carries its own error bar.** `0.79 ± 0.04, n = 23`. Below a sample floor it's labeled *preliminary*. A number that admits its uncertainty is more trustworthy, not less.
-- **A failed judgment is "no score," never a sneaky 0.5** dragging the average to the middle.
-- **Trivially-passable questions get dropped.** And the drop is shown, not hidden.
-- **The method is open source.** It's adversarial-proof *because* you don't have to trust me. You can read every gate.
+No judge grades an answer. No one rates anything. The scoreboard is behavior.
 
-None of this is me freelancing. Learning taste from your edits is a NeurIPS 2024 paper ([PRELUDE](https://arxiv.org/abs/2404.15269)). It even lands on the same interpretable-text representation I call the lens.
-The judge's failure modes, position, length, self-preference, are the exact ones the [LLM-as-judge surveys](https://arxiv.org/pdf/2410.02736) catalogue, and I close each one.
-The fact that the signal goes thin at honest sample size is itself a [known result](https://arxiv.org/html/2507.23158v2) about implicit feedback. Which is why the judge refuses to crown a winner instead of pretending.
-The idea is settled science. What's new is running it across three labs, on your own machine, and declining to overclaim.
+## The numbers, with their teeth
+
+On 113 disagreements my later work settled:
+
+| Model | Record | Win rate |
+|---|---|---|
+| Claude Opus 4.8 | 32 wins, 10 losses | **76%** |
+| Claude Opus 4.7 | 24 wins, 24 losses | 50% |
+| GPT-5.5 | 42 wins, 43 losses | 49% |
+| Gemini 3.1 Pro | 25 wins, 41 losses | 38% |
+
+The Opus 4.8 confidence interval excludes a coin flip. The Opus 4.7 record *is* a coin flip.
+
+That gap is the finding. One version apart, same lab, same brand. A generic "Claude" score would blend them to 59% and hide the only thing worth knowing.
+Model, size, and version. Or the number means nothing.
+
+## How it earns the right to be believed
+
+A benchmark dies by a thousand "well, actually"s. So the gates were registered before the run, and the run had to clear every one:
+
+- **Coverage floor.** The extractor had to find real evidence for at least 40% of disagreements. It found 94%.
+- **Reliability floor.** Same evidence, extracted twice, had to agree. Kappa 0.70 against a 0.60 floor.
+- **Blind extraction.** The extractor never sees which model held which position. It cannot flatter anyone.
+- **A coin-flip kill.** If no model's interval excluded 50%, the whole instrument dies and I say so. One did.
+- **Honest scope.** This is my corpus. 113 resolved disagreements, one user. Your number will be yours, and it accrues from your own councils. I am not publishing a universal ranking. I am publishing a method.
+
+And the standing proof of all of it: the first instrument failed these standards, and it is dead. The graveyard is the credential.
 
 ## And it never leaves my laptop
 
-The card is built to share. "Which model wins my work" is fun to post. The card has scores, model names, axes, sample size. Nothing else.
-The raw prompts, the responses, my corrections, those never appear in anything that leaves the machine. They live in a local file I can audit and you can't.
-The transparency is in the *method*, which is fully open. The data is yours.
+The raw material is my own transcripts and councils. They live in a local folder I can audit and you can't.
+Nothing uploads. The method is fully open source instead. You don't have to trust my number. You can run yours.
 
-So I can't tell you which AI is best. Nobody honestly can. But I can tell you which is best for *me*, backed by the only answer key that was ever going to be right. My own work, graded by a judge I measured, on a machine nobody else can see.
+So I still can't tell you which AI is best. Nobody honestly can. But I can tell you which one my own settled work keeps siding with, at the exact model version, on my kind of question.
 The method is sitting right there for you to run on yours.
 
 ```bash

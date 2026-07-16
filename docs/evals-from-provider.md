@@ -5,8 +5,8 @@ class: live
 # Provider-side eval prompt
 
 Paste this verbatim into a fresh chat with Claude, ChatGPT/Codex, or Gemini.
-Each provider has the user's full conversation history on their side —
-they can extract **rejection signals** (turn-pairs where you reframed,
+Each provider has the user's full conversation history on their side.
+They can extract **rejection signals** (turn-pairs where you reframed,
 redirected, sharpened, or compressed their suggestion) directly. Trinity
 runs those signals as a personal eval suite: any model dispatched
 against the suite earns a score based on how close its response gets
@@ -23,13 +23,13 @@ trinity-local eval-import --provider gemini ./evals-from-gemini.json
 
 Trinity merges into `~/.trinity/me/preference_acts.jsonl` (same file the
 turn-pair-extraction pipeline writes). Existing `eval-build` /
-`eval-run` / `eval-show` consume them unchanged — provider-imported
+`eval-run` / `eval-show` consume them unchanged. Provider-imported
 signals become eval items the next time you build a set.
 
 How measurement works once the loop closes: score the same set against
 this week's lens vs last week's. The lens is improving when the
 aggregate score on YOUR rejection signal climbs. OpenAI's "eval skills"
-pattern is the same shape — a skill (a lens, here) is evaluated against
+pattern is the same shape. A skill (a lens, here) is evaluated against
 the suite of cases it claims to handle.
 
 ---
@@ -37,9 +37,9 @@ the suite of cases it claims to handle.
 ## The prompt — copy below this line
 
 Look back over my recent work with you from the last 30 days, or all
-available history if shorter, and extract **rejection signals** —
-specific moments where your suggestion didn't land and I asked for
-something different.
+available history if shorter, and extract **rejection signals**.
+These are specific moments where your suggestion didn't land and I
+asked for something different.
 
 Use evidence in this order:
 - Recent conversation history and any session summaries
@@ -50,32 +50,32 @@ Use evidence in this order:
 
 For each rejection, classify it as exactly one of these four axes:
 
-- **REFRAME** — you proposed framing A; I substituted framing B.
+- **REFRAME**: you proposed framing A. I substituted framing B.
   ("Let me explain why X is hard" → "Just give me the SQL.")
-- **REDIRECT** — you went down path A; I asked for path B.
+- **REDIRECT**: you went down path A. I asked for path B.
   ("Here's how to debug this" → "Skip debugging, just rewrite the
   function.")
-- **SHARPENING** — you gave a vague/hedged answer; I asked for precision.
+- **SHARPENING**: you gave a vague/hedged answer. I asked for precision.
   ("It depends" → "Pick one and defend it.")
-- **COMPRESSION** — you gave a long answer; I asked for a shorter one,
+- **COMPRESSION**: you gave a long answer. I asked for a shorter one,
   or made the substance you should have led with explicit.
   (300 words of caveats → "Yes or no.")
 
 Only include rejections where:
-- The substitution is unambiguous — I clearly didn't accept the original
-- The axis is identifiable — if it's two axes blended, pick the
+- The substitution is unambiguous. I clearly didn't accept the original
+- The axis is identifiable. If it's two axes blended, pick the
   dominant one
-- The signal is non-trivial — not "I asked for a clarification"; the
+- The signal is non-trivial, not "I asked for a clarification". The
   REJECTION shows a stable preference about HOW I want answers
 
 Skip:
 - Casual reformulations where I just rephrased for myself
 - Cases where I accepted the answer but moved on to a follow-up
-- Acknowledgment-only ("got it", "thanks") — not a rejection
+- Acknowledgment-only ("got it", "thanks"), not a rejection
 - Sensitive personal content unless it's load-bearing for the signal
 
 Aim for **10–25 rejection signals**. Quality over quantity. If you
-genuinely have fewer, emit fewer — Trinity de-dupes against existing
+genuinely have fewer, emit fewer. Trinity de-dupes against existing
 items, so noise is worse than missing data.
 
 ## Output format
@@ -103,23 +103,45 @@ Trinity's `RejectionSignal` schema so `eval-import` ingests directly.
 
 ## Quality bar
 
-- `original_prompt` is **required** — it's the turn-pair anchor that makes a
+- `original_prompt` is **required**. It's the turn-pair anchor that makes a
   rejection a *record of a correction I actually made*, not a preference you're
   asserting on my behalf. Trinity gates every imported rejection on it (the same
   provenance check every other ledger write must pass): supply MY actual request
   (not a paraphrase of the answer), and it enters the ledger AND the benchmark
-  Trinity re-runs through each candidate model. If you omit it — or it just echoes
-  my `user_substitute` — the rejection has no anchor and is **refused at import**,
+  Trinity re-runs through each candidate model. If you omit it, or it just echoes
+  my `user_substitute`, the rejection has no anchor and is **refused at import**,
   not written. A bare quote/substitute is an assertion, not my ground truth.
 - `model_quote` and `user_substitute` should be short enough to read
   at a glance but specific enough that I can recognize them. If the
   original was longer, pull the load-bearing sentence.
-- `why_signal` is the load-bearing field — it's what Trinity uses to
+- `why_signal` is the load-bearing field. It's what Trinity uses to
   score future responses against. Make it the underlying preference,
   not the surface ("user wanted concrete numbers, not ranges" beats
   "user asked again").
 - `confidence` reflects how clean the rejection signal is. "high" means
-  the substitution is obviously a different answer; "low" means it
+  the substitution is obviously a different answer. "low" means it
   might be a follow-up rather than a rejection.
 
 Output the JSON now. Nothing else.
+
+## Import verification (what happens to your payload)
+
+The anchor is checked for TRUTH, not just presence. At import Trinity
+resolves each `original_prompt` against the local prompt index (the
+user's real, ingested prompts):
+
+- **Verifies**: the claimed prompt matches (or contains / is contained
+  by) a real indexed prompt → the rejection enters the append-only
+  ledger through the normal dedup path.
+- **Quarantines**: well-formed but the prompt doesn't resolve (yet) →
+  the row waits in a sidecar (`me/quarantine_acts.jsonl`), untouchable
+  by the ledger, evals, and lens-build. After each ingest pass it
+  re-verifies against the larger corpus and promotes when its session
+  lands on disk.
+- **Refused**: malformed rows (missing `original_prompt`, an anchor
+  that just echoes the substitute, or one shorter than the
+  pre-registered floor) are rejected at parse, never quarantined.
+
+So: supply the user's REAL request verbatim. A paraphrase doesn't
+verify and will sit in quarantine until the matching transcript is
+ingested, or forever.
