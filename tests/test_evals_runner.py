@@ -1068,3 +1068,48 @@ class TestJudgeDispatchIsolation:
         src = inspect.getsource(scorer.score_run)
         assert "clean_completion" in src, "judge no longer forced to clean completion"
         assert "trinity-judge-" in src, "judge cwd no longer isolated to a scratch dir"
+
+
+class TestGoldReachableDispatchFilter:
+    """Surface-binding test for the gold-side filter (2026-07-17): the
+    classifier primitive is tested in test_eval_builder; THIS asserts the
+    runner actually excludes stamped-unreachable items at dispatch — the
+    shipped surface. MUTATION: drop the _reachable() filter in run_eval and
+    the first test reds."""
+
+    def _set_with_unreachable(self):
+        from dataclasses import replace
+        base = _make_eval_set()
+        clean = base.items[0]
+        unreachable = replace(
+            base.items[1],
+            eval_item_id="ei_ccc",
+            gold_reachable=False,
+            gold_reason="context-reveal (introduces personal/situational facts outside the prompt)",
+        )
+        base.items = [clean, unreachable]
+        return base
+
+    def test_unreachable_gold_item_not_dispatched(self, home):
+        from unittest.mock import patch
+        from trinity_local.evals.runner import run_eval
+        fake = FakeProvider()
+        with patch("trinity_local.evals.runner.make_provider", return_value=fake):
+            result = run_eval(
+                self._set_with_unreachable(), "antigravity",
+                {"antigravity": _make_provider_config("antigravity")},
+            )
+        assert len(fake.calls) == 1
+        assert [r.eval_item_id for r in result.items] == ["ei_aaa"]
+
+    def test_include_context_bound_restores_everything(self, home):
+        from unittest.mock import patch
+        from trinity_local.evals.runner import run_eval
+        fake = FakeProvider()
+        with patch("trinity_local.evals.runner.make_provider", return_value=fake):
+            run_eval(
+                self._set_with_unreachable(), "antigravity",
+                {"antigravity": _make_provider_config("antigravity")},
+                include_context_bound=True,
+            )
+        assert len(fake.calls) == 2, "escape hatch must dispatch stamped items too"

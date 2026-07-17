@@ -83,7 +83,39 @@ _IMAGE_MARKERS = _re.compile(
 _DEICTIC_OPENERS = _re.compile(
     r"^(and|also|same|again|continue|what about|how about|ok but|now do|"
     r"why not|then|next|more|another)\b", _re.I)
-_BARE_DEIXIS = _re.compile(r"^(this|that|these|those|it|they)\b", _re.I)
+_BARE_DEIXIS = _re.compile(
+    # 2026-07-16 widening (#19 COMPRESSION-artifact root cause): the original
+    # set caught only neuter deixis, so third-person openers ("He has …",
+    # "Her results show …") sailed into cold dispatch, models correctly
+    # refused the missing antecedent, and the axis printed a fake 0.00.
+    r"^(this|that|these|those|it|they|he|she|him|her|his|them|their)\b", _re.I)
+# Trailing deixis: the sentence RESOLVES onto lost context ("… says invalid
+# folio for that"). Same antecedent problem as an opener, at the other end.
+_TRAILING_DEIXIS = _re.compile(r"\b(for|about|with|on|do|fix|try)\s+(that|this|it)[\s.?!]*$", _re.I)
+# Project-artifact bug/issue headers: "Bug #1 — …" enumerations belong to a
+# specific codebase/session a cold model cannot see.
+_ARTIFACT_HEADER = _re.compile(r"^(bug|issue|ticket|task)\s*#?\d", _re.I)
+
+
+def _is_pasted_fragment(p: str) -> bool:
+    """Pasted UI/notification/page text with no request in it — content the
+    user forwarded from a screen, not something a cold model can act on.
+
+    Two shapes: (a) a short notification blob — a handful of very short lines
+    ("Fast. Easy.\\nShop in our free App today\\nOpen\\n…"); (b) a page dump —
+    dozens of lines (nav chrome, product titles, price filters) with no
+    question anywhere. Both are stamped, not deleted: `--include-context-bound`
+    still dispatches them on request."""
+    lines = [l.strip() for l in p.splitlines() if l.strip()]
+    if len(lines) < 4 or "?" in p:
+        return False
+    short = sum(1 for l in lines if len(l) <= 14)
+    if short >= len(lines) * 0.6:
+        return True
+    if len(lines) >= 15:
+        med = sorted(len(l) for l in lines)[len(lines) // 2]
+        return med <= 40
+    return False
 
 
 def classify_cold_answerable(prompt_text: str) -> tuple[bool, str]:
@@ -99,7 +131,110 @@ def classify_cold_answerable(prompt_text: str) -> tuple[bool, str]:
         return False, "conversational continuation (leans on prior turns)"
     if _BARE_DEIXIS.match(p):
         return False, "opens on a bare deictic (antecedent lives in lost context)"
+    if _TRAILING_DEIXIS.search(p):
+        return False, "ends on a bare deictic (antecedent lives in lost context)"
+    if _ARTIFACT_HEADER.match(p):
+        return False, "project bug/issue enumeration (codebase context lost)"
+    if _is_pasted_fragment(p):
+        return False, "pasted UI/notification fragment (no cold-answerable request)"
     return True, "self-contained"
+
+
+# ── Gold-reachability classifier (2026-07-17, the tournament autopsy) ──────
+# The cold-answerable classifier checks the PROMPT side; nothing checked the
+# GOLD side. The item-level matrix on the six-model board found 12/35 items
+# where every model scored zero, and the autopsy showed why: their golds are
+# CONVERSATION CONTINUATIONS — the user's next turn supplying new facts,
+# continuing a lost thread, or pivoting to a new personal question — not
+# taste corrections. No cold answer to the prompt can move toward facts
+# outside the prompt, so those items are unwinnable by design and drag every
+# model toward a shared zero. Same discipline as the prompt side: LLM-free,
+# reasons attached, precision-first (a missed reveal costs one noisy item;
+# an eaten taste-steer costs real signal).
+
+_GOLD_THIRD_PERSON_FACT = _re.compile(
+    r"^(he|she|they)\s+(just\s+|also\s+|previously\s+)?"
+    r"(has|had|takes|took|is|was|are|were|does|did|doesn't|don't|can|can't)\b",
+    _re.I)
+_GOLD_FIRST_PERSON_FACT = _re.compile(
+    r"^i\s+(just\s+|also\s+|already\s+)?"
+    r"(closed|bought|can|could|have|had|set|turned|got|used|paid|booked|"
+    r"installed|switched)\b", _re.I)
+# NOTE: "no"/"yes"/"ok" openers are CLASSIC taste corrections ("no, just the
+# spec") — they must never appear in this list.
+_GOLD_CONTINUATION = _re.compile(r"^(same|also|again|still)\b", _re.I)
+# Correction shape trumps everything: a gold arguing AGAINST the answer's
+# framing ("essential tremor, NOT parkinson's", "I mean the other layout") is
+# a steer even when it names new things — retro-verified: without this escape
+# the classifier ate 5/22 items the six-model board proved discriminating.
+_GOLD_CORRECTIVE = _re.compile(r"\b(not|instead|rather|actually)\b|^i mean\b", _re.I)
+_SENTENCE_SPLIT = _re.compile(r"[.!?\n]+\s*")
+
+
+def _novel_entities(gold: str, context: str) -> list[str]:
+    """Names the gold introduces that the prompt+rejected never mention:
+    mid-sentence Capitalized words, underscore identifiers. Digits are
+    deliberately NOT entities — "gpt-5.5 vs 4-8" style taste-steers are full
+    of novel numerals that reveal nothing."""
+    ctx = context.lower()
+    seen: list[str] = []
+    for sentence in _SENTENCE_SPLIT.split(gold):
+        for i, tok in enumerate(sentence.split()):
+            w = tok.strip(".,;:()[]\"'!?")
+            if not w:
+                continue
+            mid_cap = i > 0 and _re.match(r"^[A-Z][a-z]{2,}$", w)
+            # Underscore identifiers only (META_BUG_REPORT) — plain ALLCAPS
+            # words (BUG, CLASS) are shouting, not entities (retro-verified:
+            # the ALLCAPS branch ate a real bug-taxonomy taste-steer).
+            identifier = "_" in w and bool(
+                _re.match(r"^[A-Z0-9_]{3,}$", w) and any(c.isalpha() for c in w))
+            if (mid_cap or identifier) and w.lower() not in ctx and w not in seen:
+                seen.append(w)
+    return seen
+
+
+def _personal_pivot_question(gold: str, prompt: str) -> bool:
+    """The gold is a NEW question about the user's personal sphere ("how do I
+    explain this to my daughters?") sharing no content words with the prompt —
+    the user changed subject; they didn't steer this answer."""
+    if "?" not in gold or not _re.search(r"\bmy\b", gold, _re.I):
+        return False
+    def content(s: str) -> set:
+        # >=5 chars: 4-char function words ("this", "that", "year") create
+        # fake overlap between a personal pivot and any prompt.
+        return set(_re.findall(r"[a-z]{5,}", s.lower()))
+    g, p = content(gold), content(prompt)
+    if not g or not p:
+        # No prompt content to pivot FROM (callers without a resolved prompt,
+        # e.g. the judge-alignment pair builder) — a pivot claim needs both
+        # sides, so refuse to fire rather than flag every "my ...?" question.
+        return False
+    return len(g & p) / len(g) < 0.1
+
+
+def classify_gold_reachable(gold: str, prompt: str,
+                            rejected: str = "") -> tuple[bool, str]:
+    """Is the user's correction a TASTE STEER a cold answer could move toward,
+    or a CONTEXT REVEAL / TOPIC PIVOT no answer to this prompt could
+    anticipate? Returns (reachable, reason); the reason ships on the item."""
+    g = (gold or "").strip()
+    if not g:
+        return True, "taste-steer"   # empties are the degeneracy gates' job
+    if _GOLD_CORRECTIVE.search(g):
+        return True, "taste-steer (corrective shape)"
+    if _GOLD_THIRD_PERSON_FACT.match(g) or _GOLD_FIRST_PERSON_FACT.match(g):
+        return False, ("context-reveal (introduces personal/situational facts "
+                       "outside the prompt)")
+    if _GOLD_CONTINUATION.match(g):
+        return False, "context-reveal (continues a lost conversation thread)"
+    novel = _novel_entities(g, f"{prompt} {rejected}")
+    if novel:
+        return False, f"context-reveal (novel entities: {', '.join(novel[:3])})"
+    if _personal_pivot_question(g, prompt):
+        return False, ("topic pivot (a new personal question, not a steer on "
+                       "this answer)")
+    return True, "taste-steer"
 
 
 @dataclass(frozen=True)
@@ -119,6 +254,12 @@ class EvalItem:
     provider_of_rejected_response: str | None
     cold_answerable: bool = True
     cold_reason: str = "self-contained"
+    # Gold-side twin of the cold flags (2026-07-17): is the user's correction
+    # a direction a cold answer could move toward, or a context reveal /
+    # topic pivot that makes the item unwinnable? Both flags must be True for
+    # default dispatch.
+    gold_reachable: bool = True
+    gold_reason: str = "taste-steer"
     # Baseline provenance (council 2026-07-14, the post-null roadmap): the
     # extraction stores the rejected answer as a <=25-word QUOTE (a pointer for
     # provenance) — a strawman when used as the scoring baseline. At build time
@@ -406,6 +547,10 @@ def build_eval_set(*, source: str = "rejections", limit: int | None = None) -> E
             baseline_resolution=_baseline_resolution,
             cold_answerable=classify_cold_answerable(prompt_text)[0],
             cold_reason=classify_cold_answerable(prompt_text)[1],
+            gold_reachable=classify_gold_reachable(
+                user_sub, prompt_text, _baseline_text)[0],
+            gold_reason=classify_gold_reachable(
+                user_sub, prompt_text, _baseline_text)[1],
         ))
     # #281: derive the fully-dropped axes BEFORE limit truncation, so the signal
     # means "this axis had model_miss acts but ZERO survived the degeneracy /
@@ -584,6 +729,15 @@ def load_eval_set(eval_id: str) -> EvalSet | None:
                 else classify_cold_answerable(it.get("prompt", ""))[0],
             cold_reason=it.get("cold_reason")
                 or classify_cold_answerable(it.get("prompt", ""))[1],
+            # legacy sets predate the gold-reachability stamp — classify at load
+            gold_reachable=it["gold_reachable"] if "gold_reachable" in it
+                else classify_gold_reachable(
+                    it.get("user_substitute", ""), it.get("prompt", ""),
+                    it.get("rejected_response", ""))[0],
+            gold_reason=it.get("gold_reason")
+                or classify_gold_reachable(
+                    it.get("user_substitute", ""), it.get("prompt", ""),
+                    it.get("rejected_response", ""))[1],
             # legacy sets predate baseline resolution — their stored
             # rejected_response IS the extraction quote
             baseline_resolution=it.get("baseline_resolution", "quote"),

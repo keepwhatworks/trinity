@@ -33,6 +33,75 @@ class TestColdAnswerableClassifier:
             "compare fixed versus variable mortgage for a fifteen year horizon")
         assert ok and reason == "self-contained"
 
+    # ── 2026-07-16 widening (#19): the COMPRESSION-artifact miss classes.
+    # Fixtures are SYNTHETIC equivalents of the real misses (never corpus
+    # text in committed tests — the e4e0d64d privacy class). MUTATION: revert
+    # the corresponding pattern in classify_cold_answerable and each reds.
+
+    def test_third_person_deixis_excluded(self):
+        # Real-miss shape: "He has <condition>, not <other> ..." — the
+        # antecedent person lives in lost conversation context.
+        from trinity_local.evals.builder import classify_cold_answerable
+        ok, reason = classify_cold_answerable(
+            "She prefers the second design, not the rounded one we started from")
+        assert not ok and "deictic" in reason
+
+    def test_trailing_deixis_excluded(self):
+        # Real-miss shape: "<opaque id> <site> says invalid entry for that"
+        from trinity_local.evals.builder import classify_cold_answerable
+        ok, reason = classify_cold_answerable(
+            "the portal rejects the reference number and says invalid entry for that")
+        assert not ok and "deictic" in reason
+
+    def test_bug_enumeration_excluded(self):
+        # Real-miss shape: "Bug #1 — <renderer error> fires 2x per session"
+        from trinity_local.evals.builder import classify_cold_answerable
+        ok, reason = classify_cold_answerable(
+            "Bug #1 - the widget renderer drops its context twice per session during resize")
+        assert not ok and "enumeration" in reason
+
+    def test_pasted_notification_fragment_excluded(self):
+        # Real-miss shape: forwarded app-notification text, many short lines,
+        # no request.
+        from trinity_local.evals.builder import classify_cold_answerable
+        ok, reason = classify_cold_answerable(
+            "Fast. Easy.\nShop in our app\nOpen\nnow\nTap here\nInstall today")
+        assert not ok and "fragment" in reason
+
+    def test_pasted_page_dump_excluded(self):
+        # Real-miss shape: a forwarded shopping-page scrape — dozens of nav/
+        # product lines, no question anywhere. MUTATION: drop the >=15-line
+        # branch in _is_pasted_fragment and this reds.
+        from trinity_local.evals.builder import classify_cold_answerable
+        dump = "\n".join(
+            ["Menu", "Home", "Deals today", "Up to 40% off"]
+            + [f"Ultra Portable Charger model {i} with braided cable and travel case" for i in range(6)]
+            + ["Price", "Under 1,000", "1,000 to 2,000", "Over 5,000", "Brands", "Wattage", "Add to cart"]
+        )
+        ok, reason = classify_cold_answerable(dump)
+        assert not ok and "fragment" in reason
+
+    def test_pasted_code_with_question_still_passes(self):
+        # Over-exclusion guard for the page-dump branch: a long paste WITH a
+        # question is a real request and must dispatch.
+        from trinity_local.evals.builder import classify_cold_answerable
+        code = "\n".join([f"    line_{i} = compute({i})" for i in range(20)])
+        ok, reason = classify_cold_answerable(
+            "why does the loop below allocate on every iteration?\n" + code)
+        assert ok, f"over-excluded a real code question -> {reason}"
+
+    def test_widening_does_not_eat_valid_prompts(self):
+        # Guard against over-exclusion: normal self-contained prompts that
+        # merely CONTAIN a pronoun or the word bug still pass.
+        from trinity_local.evals.builder import classify_cold_answerable
+        for p in (
+            "explain how a debugger attaches to a running process on linux",
+            "what does the borrow checker guarantee, and where does it stop helping",
+            "write a short bio for a speaker who studies coral reefs in Fiji",
+        ):
+            ok, reason = classify_cold_answerable(p)
+            assert ok, f"over-excluded: {p!r} -> {reason}"
+
 
 class TestBaselineResolution:
     """Full-turn baseline resolution (council 2026-07-14, post-null roadmap):
@@ -152,3 +221,97 @@ class TestEvalSetAvailable:
         d.mkdir(parents=True, exist_ok=True)
         (d / "eval_bad.json").write_text("{not json", encoding="utf-8")
         assert eval_set_available() is False
+
+
+class TestGoldReachableClassifier:
+    """Gold-side twin of the cold-answerable filter (2026-07-17): the item
+    matrix on the six-model board found 12/35 items where EVERY model scored
+    zero; the autopsy showed their golds are conversation continuations
+    (context reveals / topic pivots), not taste corrections. Retro-verified
+    on that board: union with the cold filter excludes 10/12 dead items while
+    eating 1/22 discriminating ones. Fixtures are SYNTHETIC equivalents of
+    the real misses (never corpus text — the e4e0d64d privacy class).
+    MUTATION: revert the matching rule in classify_gold_reachable and each
+    test here reds."""
+
+    def _check(self, gold, prompt="compare the two proposals for the city park",
+               rejected="Proposal A offers more green space overall."):
+        from trinity_local.evals.builder import classify_gold_reachable
+        return classify_gold_reachable(gold, prompt, rejected)
+
+    def test_third_person_fact_reveal_excluded(self):
+        ok, reason = self._check(
+            "He takes lisinopril for blood pressure and walks with a cane")
+        assert not ok and "context-reveal" in reason
+
+    def test_first_person_fact_reveal_excluded(self):
+        ok, reason = self._check(
+            "I just bought the ceramic version from the outlet store")
+        assert not ok and "context-reveal" in reason
+
+    def test_continuation_opener_excluded(self):
+        ok, reason = self._check(
+            "same problem in the other browser. can I do it by phone")
+        assert not ok and "lost conversation thread" in reason
+
+    def test_novel_entity_reveal_excluded(self):
+        # A mid-sentence name absent from prompt+rejected = facts from
+        # outside the exchange.
+        ok, reason = self._check("send the summary to Ferdinand at the branch")
+        assert not ok and "novel entities" in reason and "Ferdinand" in reason
+
+    def test_underscore_identifier_excluded(self):
+        ok, reason = self._check("check LEGACY_AUDIT_NOTES first")
+        assert not ok and "novel entities" in reason
+
+    def test_personal_pivot_question_excluded(self):
+        ok, reason = self._check(
+            "How do I explain all of it to my eight year old nephew?")
+        assert not ok and "topic pivot" in reason
+
+    # ── over-exclusion guards: correction shapes MUST survive ──
+
+    def test_corrective_not_shape_passes(self):
+        # "X, not Y" argues against the answer's framing — a steer, even when
+        # it opens with a third-person fact frame that would otherwise flag.
+        # MUTATION: drop the corrective escape and this reds (third-person
+        # rule fires on "She has ..."); the escape spared 4 real board items.
+        ok, reason = self._check(
+            "She has the compact layout in mind, not the expanded grid")
+        assert ok, f"ate a corrective steer -> {reason}"
+
+    def test_no_opener_correction_passes(self):
+        ok, reason = self._check("no, just give me the spec as a table")
+        assert ok, f"ate a classic 'no, ...' correction -> {reason}"
+
+    def test_allcaps_shouting_is_not_an_entity(self):
+        # Plain ALLCAPS words (BUG, CLASS) are emphasis, not entities —
+        # only underscore identifiers count.
+        ok, reason = self._check(
+            "BUG CATEGORY two: the layout engine drops labels under resize")
+        assert ok, f"ate an ALLCAPS taste-steer -> {reason}"
+
+    def test_entity_present_in_rejected_passes(self):
+        # Reachability includes the rejected answer: naming something the
+        # model itself said is a steer on THAT answer.
+        ok, reason = self._check(
+            "focus on the Riverside section only",
+            prompt="compare the two proposals for the city park",
+            rejected="Proposal A adds the Riverside section and a playground.")
+        assert ok, f"ate a steer that references the rejected answer -> {reason}"
+
+    def test_question_with_topic_overlap_passes(self):
+        # A question that stays on-topic is a reframe, not a pivot.
+        ok, reason = self._check(
+            "shouldn't the proposals be judged on maintenance cost for my neighborhood?")
+        assert ok, f"ate an on-topic reframing question -> {reason}"
+
+    def test_pivot_needs_a_prompt_to_pivot_from(self):
+        # Callers without a resolved prompt (judge-alignment pair builder)
+        # must not see every "my ...?" question flagged as a pivot.
+        # MUTATION: drop the empty-prompt guard in _personal_pivot_question
+        # and this reds.
+        ok, reason = self._check(
+            "How do I explain all of it to my eight year old nephew?",
+            prompt="", rejected="")
+        assert ok, f"pivot fired with no prompt to pivot from -> {reason}"

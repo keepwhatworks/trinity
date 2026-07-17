@@ -309,3 +309,30 @@ class TestAxisPrimerInValidationPrompt:
         ground truth is generic human preference by design."""
         from trinity_local.evals.judge_alignment import GENERIC_PREFERENCE_PROMPT as G
         assert "COMPRESSION" not in G and "verbosity is a defect" not in G
+
+
+def test_unreachable_gold_acts_excluded_from_pairs(monkeypatch):
+    """Gold-side achievability gate at the PAIR source (2026-07-17): an act
+    whose privileged side is a context reveal is not an A/B preference — it
+    must never reach a judge, because the alignment number it feeds gates
+    every leaderboard. MUTATION: drop the classify_gold_reachable call in
+    build_preference_pairs and this reds. Fixtures synthetic (e4e0d64d)."""
+    monkeypatch.setattr(
+        "trinity_local.me.preference_acts.iter_preference_acts",
+        lambda: iter([
+            SimpleNamespace(trigger="model_miss", kind="REDIRECT", id="reveal",
+                            privileged="He takes lisinopril for blood pressure and walks daily",
+                            sacrificed="A general overview of treatment options and lifestyle."),
+            SimpleNamespace(trigger="model_miss", kind="REFRAME", id="steer",
+                            privileged="just give me the spec as a table, skip the narrative",
+                            sacrificed="Here is a six-part strategy narrative for the rollout."),
+            SimpleNamespace(trigger="model_miss", kind="REDIRECT", id="corrective",
+                            privileged="She wants the compact layout, not the expanded grid",
+                            sacrificed="The expanded grid gives each panel more room."),
+        ]),
+    )
+    pairs = ja.build_preference_pairs()
+    ids = [p.source_id for p in pairs]
+    assert "reveal" not in ids, "context-reveal act reached the judge pairs"
+    assert ids == ["steer", "corrective"], (
+        "taste-steers (incl. corrective third-person shapes) must survive")

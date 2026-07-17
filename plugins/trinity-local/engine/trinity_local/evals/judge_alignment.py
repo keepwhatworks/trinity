@@ -141,8 +141,16 @@ def build_preference_pairs(limit: int | None = None) -> list[PreferencePair]:
     judge with a constant-answer position bias scores ~50%, not a fake-high
     number. Skips degenerate pairs (privileged == sacrificed, or either empty) —
     they carry no preference signal, same floor-guard as the eval builder.
+
+    Gold-side achievability gate (2026-07-17): also skips acts whose
+    "privileged" side is a context reveal / topic pivot (classify_gold_
+    reachable) — those aren't a preference between two answers, so asking a
+    judge which side the human chose measures noise, and the alignment number
+    they feed gates every leaderboard. The six-model board autopsy measured
+    ~1/3 of model_miss acts mislabeled this way.
     """
     from ..me.preference_acts import MODEL_MISS, iter_preference_acts
+    from .builder import _lookup_prompt_text, classify_gold_reachable
 
     pairs: list[PreferencePair] = []
     idx = 0
@@ -155,6 +163,10 @@ def build_preference_pairs(limit: int | None = None) -> list[PreferencePair]:
             continue
         if _norm(privileged) == _norm(sacrificed):
             continue  # no preference signal
+        pid = getattr(act, "prompt_id", None)
+        prompt_text = (_lookup_prompt_text(pid)[0] or "") if pid else ""
+        if not classify_gold_reachable(privileged, prompt_text, sacrificed)[0]:
+            continue  # unwinnable act — a reveal/pivot, not a taste signal
         # Alternate which side carries the human choice to cancel position bias.
         if idx % 2 == 0:
             option_a, option_b, human_side = privileged, sacrificed, "A"

@@ -227,20 +227,33 @@ def run_eval(
     # load, so old eval files keep working.
     all_items = list(eval_set.items)
     if not include_context_bound:
-        from .builder import classify_cold_answerable
+        from .builder import classify_cold_answerable, classify_gold_reachable
         def _cold(it):
             v = getattr(it, "cold_answerable", None)
             if v is None:
                 v = classify_cold_answerable(getattr(it, "prompt", "") or "")[0]
             return bool(v)
+        def _reachable(it):
+            # Gold-side twin (2026-07-17): an item whose gold is a context
+            # reveal / topic pivot is unwinnable by design — every model
+            # shares a zero and the aggregate loses discrimination.
+            v = getattr(it, "gold_reachable", None)
+            if v is None:
+                v = classify_gold_reachable(
+                    getattr(it, "user_substitute", "") or "",
+                    getattr(it, "prompt", "") or "",
+                    getattr(it, "rejected_response", "") or "")[0]
+            return bool(v)
         answerable = [it for it in all_items if _cold(it)]
-        excluded = len(all_items) - len(answerable)
-        if excluded:
-            print(f"  cold-answerable filter: dispatching {len(answerable)}/{len(all_items)} items "
-                  f"({excluded} context-bound excluded — fragments, image-grounded, or "
-                  f"conversation-dependent; a cold dispatch of those scores apologies, not taste). "
-                  f"Pass --include-context-bound to run everything.")
-        all_items = answerable
+        n_context_bound = len(all_items) - len(answerable)
+        winnable = [it for it in answerable if _reachable(it)]
+        n_unreachable = len(answerable) - len(winnable)
+        if n_context_bound or n_unreachable:
+            print(f"  item filter: dispatching {len(winnable)}/{len(all_items)} items "
+                  f"({n_context_bound} context-bound prompts + {n_unreachable} unreachable-gold "
+                  f"excluded — a cold dispatch of those scores apologies or shared zeros, "
+                  f"not taste). Pass --include-context-bound to run everything.")
+        all_items = winnable
     items_to_run = all_items[:limit] if limit else all_items
     started = datetime.now(timezone.utc).isoformat(timespec="seconds")
     runs: list[EvalItemRun] = []

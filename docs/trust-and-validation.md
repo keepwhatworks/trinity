@@ -10,10 +10,24 @@ a documented validation you can run.
 
 ## Grounding in the literature (this isn't a crank idea)
 
-The two parts of Trinity's eval (*learn taste from edits* and *score with an
-LLM judge*) are both established research lines. We build on their known results
-rather than rediscovering them.
+The three pillars (*multi-perspective synthesis*, *learn taste from edits*,
+and *score with an LLM judge*) are all established research lines. We build on
+their known results rather than rediscovering them.
 
+- **Multi-perspective synthesis with preserved disagreement is independently
+  validated.** Gauntlet,
+  [*Can LLMs Perform Deep Technical Comprehension of Computer Architecture Papers?*](https://arxiv.org/abs/2607.11859)
+  (Aggarwal et al., **2026**, UW–Madison and NVIDIA), runs five independent
+  reviewer agents and a synthesizer whose defining instruction is to preserve
+  disagreement rather than average it. Human evaluators preferred it over
+  trained human analyses in 15 of 20 comparisons. Their ablation isolates the
+  gain to the synthesis pass: the pipeline beats the same model run as a
+  single rich-persona agent on 96% of papers. That is Trinity's chairman +
+  disagreed-claims architecture, measured by another lab with a same-model
+  ensemble. Cross-provider member diversity is the axis their limitations
+  section names as untested. They also demote their LLM judge to a secondary
+  instrument with randomized ordering, the same discipline Trinity's
+  judge-validity floor enforces.
 - **Learning preference from edits is peer-reviewed.** PRELUDE / CIPHER,
   [*Aligning LLM Agents by Learning Latent Preference from User Edits*](https://arxiv.org/abs/2404.15269)
   (Gao et al., **NeurIPS 2024**), infers a user's latent preferences from their edits and

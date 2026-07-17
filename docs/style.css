@@ -234,3 +234,22 @@ article.essay.fable p { font-size: 20px; line-height: 1.7; margin: 0 0 26px; }
 article.essay.fable header { margin-bottom: 36px; }
 
 article.essay.fable blockquote { font-size: 21px; line-height: 1.55; margin: 34px 0; }
+
+/* Product funnel additions (2026-07-16): the hero chip gives X/product-intent
+   visitors an instant path past the decalogue; the ledger stats pay off the
+   which-model-to-trust promise; the copy button makes the install line usable
+   on a phone. Colors stay on the AA palette (accent-deep text on light). */
+.hero-chip { display: inline-flex; align-items: center; gap: 8px; margin-top: 26px; font-size: 14px; font-weight: 600; color: var(--accent-deep); text-decoration: none; border: 1px solid var(--border); border-radius: 999px; padding: 10px 18px; transition: border-color .18s ease, background .18s ease; }
+.hero-chip:hover { border-color: var(--accent); background: var(--surface); }
+#trinity, #articles, #principles { scroll-margin-top: 24px; }
+.ledger-stats { display: flex; flex-wrap: wrap; gap: 12px; margin: 4px 0 10px; }
+.ledger-stats .stat { flex: 1 1 120px; min-width: 120px; background: var(--surface-muted); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+.ledger-stats .stat-n { font-family: var(--display); font-size: 26px; font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.ledger-stats .stat:first-child .stat-n { color: var(--accent-deep); }
+.ledger-stats .stat-l { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+.ledger-note { font-size: 13px; color: var(--text-muted); margin-bottom: 18px; line-height: 1.5; }
+.install-wrap { position: relative; margin-bottom: 18px; }
+.install-wrap .install { margin-bottom: 0; padding-right: 74px; }
+.copy-btn { position: absolute; top: 50%; right: 10px; transform: translateY(-50%); font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--accent-deep); background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; cursor: pointer; transition: border-color .18s ease; }
+.copy-btn:hover { border-color: var(--accent); }
+.copy-btn.copied { color: var(--accent-text); background: var(--accent-fill); border-color: var(--accent-fill); }

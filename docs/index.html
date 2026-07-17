@@ -44,6 +44,7 @@
     And the tools that come out of writing them. The point was never the
     destination. It was always the becoming.
   </p>
+  <a class="hero-chip" href="#trinity">Here for Trinity? Skip straight to the product ↓</a>
 </section>
 
 <section class="decalogue" id="principles" aria-label="The principles">
@@ -123,8 +124,6 @@
       No API key. Your transcripts never leave your machine.
     </p>
 
-    <div class="install">curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash</div>
-
     <figure class="product-shot">
       <img src="launchpad_example.png" alt="The Trinity launchpad in a browser tab. Recent councils, the personal routing table, your lens, and the topic graph, all rendered locally." loading="lazy" width="1280" height="800">
       <figcaption>What a fresh install opens to: recent councils, your lens, and the topic graph in one local tab. Nothing leaves your machine.</figcaption>
@@ -155,7 +154,20 @@
       disagreements your own later work settles, Trinity shows which model you
       keep siding with, at model-and-version fidelity (Opus 4.8 and Opus 4.7
       are not the same model). A benchmark no lab can publish, because only the
-      layer above the labs sees your judgment across all three.
+      layer above the labs sees your judgment across all three. From the
+      founder's own ledger, 113 settled disagreements:
+    </p>
+
+    <div class="ledger-stats" aria-label="Win rates on the founder's settled disagreements">
+      <div class="stat"><span class="stat-n">76%</span><span class="stat-l">Claude Opus 4.8 (32&ndash;10)</span></div>
+      <div class="stat"><span class="stat-n">50%</span><span class="stat-l">Claude Opus 4.7 (coin flip)</span></div>
+      <div class="stat"><span class="stat-n">49%</span><span class="stat-l">GPT-5.5</span></div>
+      <div class="stat"><span class="stat-n">38%</span><span class="stat-l">Gemini 3.1 Pro</span></div>
+    </div>
+    <p class="ledger-note">
+      One version apart, same lab: a real signal next to a coin flip. Only the
+      Opus 4.8 interval excludes chance. One user's corpus. Your number accrues
+      from your own councils.
     </p>
 
     <ul class="features">
@@ -167,6 +179,17 @@
       <li>Every council sharpens your local routing</li>
       <li>Embedding model + index stay local</li>
     </ul>
+
+    <p class="tagline" style="font-size:15px; margin-bottom:10px;">
+      <strong>Install</strong> is one line. It rides the CLIs you already
+      have: Claude Code, Codex CLI, Gemini CLI. One is enough to start. The
+      "where they split" payoff needs two.
+    </p>
+
+    <div class="install-wrap">
+      <div class="install" id="install-cmd">curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash</div>
+      <button type="button" class="copy-btn" id="copy-install" aria-label="Copy install command">Copy</button>
+    </div>
 
     <a class="btn" href="https://github.com/keepwhatworks/trinity#readme" target="_blank" rel="noopener">See how it works →</a>
     <a class="btn ghost" href="https://github.com/keepwhatworks/trinity" target="_blank" rel="noopener">View source</a>
@@ -318,6 +341,35 @@
     <a href="https://github.com/keepwhatworks/trinity/blob/main/docs/enterprise.md" target="_blank" rel="noopener">For teams</a>
   </div>
 </footer>
+
+<script>
+(function () {
+  var btn = document.getElementById("copy-install");
+  var cmd = document.getElementById("install-cmd");
+  if (!btn || !cmd) return;
+  btn.addEventListener("click", function () {
+    var text = cmd.textContent.trim();
+    function done() {
+      btn.textContent = "Copied";
+      btn.classList.add("copied");
+      setTimeout(function () {
+        btn.textContent = "Copy";
+        btn.classList.remove("copied");
+      }, 2000);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () {});
+    } else {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); done(); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+  });
+})();
+</script>
 
 </body>
 </html>

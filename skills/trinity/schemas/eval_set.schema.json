@@ -146,6 +146,14 @@
           "type": "string",
           "description": "Why the classifier decided (self-contained / fragment / image-grounded / conversational continuation / bare deictic)."
         },
+        "gold_reachable": {
+          "type": "boolean",
+          "description": "Whether the user's correction (user_substitute) is a taste STEER a cold answer could move toward, vs a context reveal / topic pivot that makes the item unwinnable (every model shares a zero). Gold-side twin of cold_answerable; both must be true for default dispatch. Stamped at eval-build; legacy sets classify at load. Added 2026-07-17 (tournament autopsy)."
+        },
+        "gold_reason": {
+          "type": "string",
+          "description": "Why the gold-side classifier decided (taste-steer / context-reveal: personal facts, lost thread, novel entities / topic pivot)."
+        },
         "baseline_resolution": {
           "type": "string",
           "enum": [

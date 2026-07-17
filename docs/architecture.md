@@ -132,9 +132,13 @@ frozen direction, LLM-free and instant, with the live accuracy in every
 payload and an abstain under the same noise floor. Generation-side
 conditioning measured null (16/30, pre-registered) and ships dormant. Eval
 leaderboards are gated by a judge-validity floor: a judge must agree with the
-user's own held-out corrections at ≥70% before rankings read as decisive
-(cleared 2026-07-07 by the axis-instruction fix, antigravity 77%). Below it,
-every surface stamps "directional, not decisive".
+user's own held-out corrections at ≥70% before rankings read as decisive.
+The floor has teeth both ways: a 2026-07-07 axis-instruction fix lifted the
+best judge to 77% on that day's pair set, and a 2026-07-17 re-measurement on a
+cleaned pair source (unwinnable context-reveal acts gated out) dropped it back
+to 60%. Every ranking surface currently stamps "directional, not decisive",
+which is exactly what the floor is for. The behavioral disagreement ledger
+needs no judge and is unaffected.
 
 ## Deliberately absent
 

@@ -170,3 +170,50 @@ def test_quota_failed_judge_is_named_and_suppressed(monkeypatch):
     # "judge returned empty output" _DEGENERATE_REASONS prefix so #246 suppresses.
     assert all((r or "").startswith("judge returned empty output") for r in reasons), reasons
     assert all("usage limit reached" in (r or "") for r in reasons), reasons
+
+
+def test_floor_clearing_judge_beats_blind_fallback_on_margin_abstention():
+    """#19 (2026-07-16): when select_aligned_judge abstains on MARGIN (the top
+    two judges within noise), the fallback must still prefer a measured
+    floor-clearing judge over the fixed heuristic order — the live report had
+    antigravity 0.77 / codex 0.72 / claude 0.59 with chosen_judge=None, and a
+    codex target fell back to claude, the one judge BELOW the 0.70 validity
+    floor. MUTATION: drop the _floor_clearing_judge tier from the selection
+    chain (or its floor check) and this reds."""
+    from types import SimpleNamespace
+    from trinity_local.commands.eval import _floor_clearing_judge
+
+    configs = {n: SimpleNamespace(enabled=True) for n in ("claude", "codex", "antigravity")}
+    report = {
+        "chosen_judge": None,  # margin abstention — honest, stays None
+        "judges": {
+            "claude":      {"agreement": 0.59, "n_parsed": 39},
+            "codex":       {"agreement": 0.72, "n_parsed": 39},
+            "antigravity": {"agreement": 0.77, "n_parsed": 39},
+        },
+    }
+    # codex target: antigravity (0.77) is the highest floor-clearing non-target.
+    assert _floor_clearing_judge("codex", configs, report) == "antigravity"
+    # antigravity target: codex (0.72) clears the floor; claude (0.59) must not win.
+    assert _floor_clearing_judge("antigravity", configs, report) == "codex"
+    # claude target: antigravity leads the clearing set.
+    assert _floor_clearing_judge("claude", configs, report) == "antigravity"
+
+
+def test_floor_clearing_judge_returns_none_when_nothing_clears():
+    """No measured judge above the validity floor -> None, so the caller's
+    blind heuristic is genuinely the best available (never a false pick)."""
+    from types import SimpleNamespace
+    from trinity_local.commands.eval import _floor_clearing_judge
+
+    configs = {n: SimpleNamespace(enabled=True) for n in ("claude", "codex", "antigravity")}
+    report = {"chosen_judge": None, "judges": {
+        "claude": {"agreement": 0.59, "n_parsed": 39},
+        "codex":  {"agreement": 0.65, "n_parsed": 39},
+    }}
+    assert _floor_clearing_judge("antigravity", configs, report) is None
+    # thin n never clears, even at high agreement
+    report_thin = {"chosen_judge": None, "judges": {
+        "antigravity": {"agreement": 0.9, "n_parsed": 4},
+    }}
+    assert _floor_clearing_judge("codex", configs, report_thin) is None

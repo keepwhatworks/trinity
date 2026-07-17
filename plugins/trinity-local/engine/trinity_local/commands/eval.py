@@ -481,6 +481,38 @@ def _alignment_chosen_judge(target: str, configs: dict, report: dict | None) -> 
     return None
 
 
+def _floor_clearing_judge(target: str, configs: dict, report: dict | None) -> str | None:
+    """The middle tier between the abstained `chosen_judge` and the blind
+    heuristic (#19, 2026-07-16). `select_aligned_judge` honestly REFUSES to crown
+    a single winner when the lead is within noise (antigravity 77% vs codex 72%
+    at n=39 is a margin abstention, not a tie with claude's 59%). But the old
+    fallback was a FIXED preference order starting at claude, so a codex target
+    fell back to the one judge that FAILED the 0.70 validity floor while two
+    floor-clearing judges sat measured in the same report. Respect the
+    abstention (no "most-aligned" claim) while never preferring a measured
+    invalid judge over a measured valid one: pick the highest-agreement
+    non-target enabled judge whose agreement clears JUDGE_VALIDITY_FLOOR at
+    n >= MIN_ALIGNMENT_PAIRS. Total order (agreement, n, slug) so ties can't
+    flip on dict order. Returns None when nothing measured clears — the blind
+    heuristic is then genuinely the best available."""
+    if not report:
+        return None
+    from ..evals.judge_alignment import MIN_ALIGNMENT_PAIRS
+    from ..evals.runner import JUDGE_VALIDITY_FLOOR
+
+    eligible = []
+    for name, entry in (report.get("judges") or {}).items():
+        if name == target or name not in configs or not configs[name].enabled:
+            continue
+        agr = entry.get("agreement")
+        n = entry.get("n_parsed") or 0
+        if agr is not None and agr >= JUDGE_VALIDITY_FLOOR and n >= MIN_ALIGNMENT_PAIRS:
+            eligible.append((-agr, -n, name))
+    if not eligible:
+        return None
+    return sorted(eligible)[0][2]
+
+
 def _record_judge_alignment(run_result, judge: str, report: dict | None) -> None:
     """Stamp the judge's measured agreement (vs the user's own corrections) onto the
     run result, so the card can show 'judged by X — agrees with your corrections Y%'.
@@ -860,10 +892,15 @@ def handle_eval_run(args):
     if not args.skip_score:
         # Judge priority: explicit --judge > the MEASURED most-aligned judge (the
         # eval-judge-check report, validated against the user's own corrections) >
-        # the default non-target heuristic. Trust-first selection.
+        # a measured FLOOR-CLEARING judge when the top pick abstained on margin
+        # (#19 — never fall back past a valid judge to an invalid one) > the
+        # default non-target heuristic. Trust-first selection.
         alignment = _load_alignment_report()
         aligned_judge = _alignment_chosen_judge(args.target, provider_configs, alignment)
-        judge = args.judge or aligned_judge or _default_judge_provider(args.target, provider_configs)
+        floor_judge = None if aligned_judge else _floor_clearing_judge(
+            args.target, provider_configs, alignment)
+        judge = (args.judge or aligned_judge or floor_judge
+                 or _default_judge_provider(args.target, provider_configs))
         if judge is None:
             print("✗ no judge provider available (need a second enabled provider, or pass --judge).")
             raise SystemExit(2)
@@ -875,6 +912,13 @@ def handle_eval_run(args):
             if agr is not None:
                 print(f"  Judge {judge} picked by measured alignment — agrees with your "
                       f"corrections {agr*100:.0f}% (n={entry.get('n_parsed')}).")
+        elif judge == floor_judge and not args.judge:
+            entry = (alignment.get("judges") or {}).get(judge) or {} if alignment else {}
+            agr = entry.get("agreement")
+            if agr is not None:
+                print(f"  Judge {judge} picked from the measured floor-clearing set "
+                      f"({agr*100:.0f}%, n={entry.get('n_parsed')}) — no single most-aligned "
+                      f"winner (lead within noise), but it beats any unmeasured fallback.")
         from ..state_paths import lens_path
         lens_md = lens_path()
         lens_text = lens_md.read_text(encoding="utf-8") if lens_md.exists() else ""

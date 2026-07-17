@@ -39,7 +39,7 @@ this verbatim where the registry takes a free-text description.
 > stay in `~/.trinity/`. Over time it distills a lens from your existing
 > transcripts so the chairman shows which model to trust on YOUR kind of
 > question. Trinity is the cross-provider layer the labs are commercially prevented
-> from building. See which model wins the disagreements your own later work settled.
+> from building. See which model wins the disagreements your own later work settles.
 > macOS today. Rides on your existing Claude / Gemini / OpenAI
 > subscriptions, no API billing.
 
