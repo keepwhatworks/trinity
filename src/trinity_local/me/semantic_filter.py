@@ -148,6 +148,14 @@ def semantic_noise_report(limit: int | None = None) -> dict:
             flagged += 1
             if len(examples) < 12:
                 examples.append((getattr(node, "text", "") or "")[:80])
+    if not total:
+        # Basins + embedder present, but NOT ONE node carried an embedding (the
+        # backfill-stall / cheap-write re-ingest state). The old code dodged the
+        # ZeroDivision in `fraction` but left ready:True, so lens_health greened
+        # "0% of the corpus reads as noise" off a ZERO-node scan. Fold the
+        # disqualifier INTO the ready gate (mirror geometric_insights' `if not
+        # scored`) so a nothing-measured scan abstains instead of greening.
+        return {"ready": False, "reason": "no embedded prompts to score"}
     return {
         "ready": True,
         "total": total,

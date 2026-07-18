@@ -49,6 +49,7 @@ REPO = Path(__file__).resolve().parents[1]
 # b01 is ABOVE → a real route. Same ids in topics + picks → identity bridge resolves.
 _SUBFLOOR = "b00"
 _CONFIDENT = "b01"
+_CHURN = "b02"  # churn-dead: margin over floor but effective_n thin → ask abstains
 
 
 def _render_portal(home: Path) -> Path:
@@ -58,6 +59,8 @@ def _render_portal(home: Path) -> Path:
          "top_terms": ["design", "arch"], "representatives": [{"id": "r0", "snippet": "a design prompt"}]},
         {"id": "b01", "centroid": [0.0, 1.0, 0.0, 0.0], "size": 12, "label": "Debug",
          "top_terms": ["debug", "fix"], "representatives": [{"id": "r1", "snippet": "a debug prompt"}]},
+        {"id": "b02", "centroid": [0.0, 0.0, 1.0, 0.0], "size": 9, "label": "Churn",
+         "top_terms": ["churn", "stale"], "representatives": [{"id": "r2", "snippet": "a churn prompt"}]},
     ]}), encoding="utf-8")
     (home / "scoreboard").mkdir(parents=True)
     (home / "scoreboard" / "picks.json").write_text(json.dumps({
@@ -65,6 +68,9 @@ def _render_portal(home: Path) -> Path:
         "b00": {"winner": "claude", "count": 8, "margin": 0.08, "n_episodes": 8, "evidence": ["c1"]},
         # confident route
         "b01": {"winner": "codex", "count": 9, "margin": 0.42, "n_episodes": 9, "evidence": ["c2"]},
+        # churn-dead: margin 0.90 clears the floor BUT effective_n 1.0 < MIN_EFFECTIVE_N (3.0)
+        # → pick_routes abstains → viewer must NOT claim it routes (margin-only would).
+        "b02": {"winner": "claude", "count": 9, "margin": 0.90, "effective_n": 1.0, "n_episodes": 9, "evidence": ["c3"]},
     }), encoding="utf-8")
     env = dict(os.environ)
     env["TRINITY_HOME"] = str(home)
@@ -141,6 +147,21 @@ def test_subfloor_basin_not_shown_as_routed_in_viewer():
             if "Use GPT" not in (conf.get("text") or ""):
                 failures.append(f"picks Reader: confident basin should read 'Use GPT', got {(conf.get('text') or '')[:160]!r}")
 
+            # churn-dead b02: margin 0.90 clears the floor but effective_n 1.0 is
+            # thin, so pick_routes abstains — the viewer must demote it exactly like
+            # the sub-floor basin, NOT paint it a confident 'Use Claude'. This is the
+            # case margin-only missed (workflow finding 2026-07-17).
+            churn = cards.get(_CHURN, {})
+            churn_text = (churn.get("text") or "")
+            if "Lean Claude" not in churn_text:
+                failures.append(f"picks Reader: churn-dead basin (margin 0.90, effective_n 1.0) should read 'Lean Claude', got {churn_text[:160]!r}")
+            if "near-tie" not in churn_text:
+                failures.append(f"picks Reader: churn-dead basin missing 'near-tie' hint: {churn_text[:160]!r}")
+            if "Use Claude" in churn_text:
+                failures.append(f"picks Reader: churn-dead basin OVERCLAIMS 'Use Claude' — margin-only kept it confident despite thin effective_n: {churn_text[:160]!r}")
+            if "low" not in (churn.get("badgeClass") or ""):
+                failures.append(f"picks Reader: churn-dead badge not 'low' (effective_n below floor): {churn.get('badgeClass')!r}")
+
             # ---- DERIVED-VALUE bindings: the margin NUMBER + the n COUNT ----
             # The head renders two separate derived numbers off the picks.json
             # tally: `margin <p.margin.toFixed(2)>` and `n=<p.count>` (memory_viewer
@@ -186,7 +207,7 @@ def test_subfloor_basin_not_shown_as_routed_in_viewer():
             # ---- topology detail (real node click) ----
             page.goto(f"file://{pages / 'memory.html'}?file=topics.json", wait_until="load")
             page.wait_for_timeout(1600)  # d3 mounts + force settles
-            for basin_id in (_SUBFLOOR, _CONFIDENT):
+            for basin_id in (_SUBFLOOR, _CONFIDENT, _CHURN):
                 clicked = page.evaluate(
                     """(bid) => {
                       const c = [...document.querySelectorAll('#content svg circle')]
@@ -205,7 +226,7 @@ def test_subfloor_basin_not_shown_as_routed_in_viewer():
                     """() => { const d = document.querySelector('.topics-basin-detail, [class*=detail]');
                               return d ? (d.innerText || '').replace(/\\s+/g, ' ').toLowerCase() : ''; }"""
                 )
-                if basin_id == _SUBFLOOR:
+                if basin_id in (_SUBFLOOR, _CHURN):
                     if "routes to claude" in detail:
                         failures.append(f"topology: sub-floor basin FALSELY claims 'Routes to claude' (near-tie → kNN): {detail[:200]!r}")
                     if "near-tie" not in detail and "knn" not in detail:

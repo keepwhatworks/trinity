@@ -90,3 +90,33 @@ def test_clear_noise_beats_floor_and_margin(vectors):
     noise, taste = vectors
     emb = embed_batch(["respond with the word HELLO and nothing else"])[0]
     assert sf.is_semantic_noise(emb, noise, taste)
+
+
+def test_semantic_noise_report_abstains_on_zero_embedded_corpus(monkeypatch):
+    """green-over-degenerate (2026-07-17, workflow finding): with basins +
+    embedder present but every PromptNode carrying an empty embedding (the
+    backfill-stall / cheap-write re-ingest state), the scan counts total==0.
+    The old code dodged the ZeroDivision in `fraction` but left ready:True, so
+    lens_health greened '0% of the corpus reads as noise' off a ZERO-node scan.
+    The disqualifier now lives IN the ready gate. MUTATION: drop the `if not
+    total` branch and this reds (ready flips back to True)."""
+    from types import SimpleNamespace
+    import trinity_local.me.semantic_filter as sf
+
+    # Basins + noise prototypes present, so the report gets PAST the
+    # no-embedder/no-basins guard and into the scan loop.
+    monkeypatch.setattr(sf, "noise_prototype_vectors", lambda: [[1.0, 0.0]])
+    monkeypatch.setattr("trinity_local.me.basins.load_basins",
+                        lambda: [SimpleNamespace(centroid=[0.0, 1.0])])
+    # Every node is text-bearing but UNEMBEDDED → total stays 0.
+    monkeypatch.setattr(
+        "trinity_local.memory.store.iter_prompt_nodes",
+        lambda limit=None: iter(
+            [SimpleNamespace(embedding=None, text="a real prompt") for _ in range(50)]),
+    )
+    rep = sf.semantic_noise_report()
+    assert rep["ready"] is False, (
+        "a zero-embedded corpus must ABSTAIN, not green '0% noise' off nothing "
+        f"measured — got {rep}"
+    )
+    assert "embedded" in (rep.get("reason") or "")

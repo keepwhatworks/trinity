@@ -526,11 +526,24 @@ def _record_judge_alignment(run_result, judge: str, report: dict | None) -> None
         # The validity gate (pre-registered floor; see runner.py): measured
         # below the floor → rankings stamp as directional-not-decisive.
         try:
+            from ..evals.judge_alignment import MIN_ALIGNMENT_PAIRS
             from ..evals.runner import JUDGE_VALIDITY_FLOOR
             ag = run_result.judge_agreement
-            run_result.judge_validated = (
-                float(ag) >= JUDGE_VALIDITY_FLOOR if ag is not None else None
-            )
+            n = entry.get("n_parsed") or 0
+            if ag is None:
+                run_result.judge_validated = None
+            elif n < MIN_ALIGNMENT_PAIRS:
+                # High agreement on too few pairs is a coin flip, not validation
+                # — the SAME n floor select_aligned_judge and _floor_clearing_judge
+                # already enforce. Without this a fallback judge that abstained on
+                # noise (chosen_judge=None) still got stamped judge_validated=True
+                # off a sub-15-pair agreement, which SUPPRESSED the
+                # directional-not-decisive caveat (it only prints when validated is
+                # not True). Return None (unmeasured/insufficient), never False, so
+                # the caveat still fires rather than a spurious "invalid judge".
+                run_result.judge_validated = None
+            else:
+                run_result.judge_validated = float(ag) >= JUDGE_VALIDITY_FLOOR
         except (TypeError, ValueError):
             run_result.judge_validated = None
 
@@ -772,6 +785,35 @@ def handle_eval_audit(args):
     print("\n  (Local scan only — no model dispatch. Judge-behaviour checks (position bias,")
     print("   placebo/shuffle null) need dispatch; run `eval-judge-check` for the measured alignment.)")
     return 0
+
+
+def _axis_breakdown_lines(by_rejection_type: dict, *, bar: bool) -> list[str]:
+    """Per-axis eval breakdown lines, shared by eval-run + eval-show. A thin
+    axis (< composition_floor.MIN_AXIS_N items) has a noise mean, so it renders
+    a 'thin, not reportable' marker INSTEAD of a mean (+ 25-char bar) with the
+    same visual weight as a well-sampled axis — the live #281 shape where
+    COMPRESSION n=1 read as a real 1.000 score. The disqualifying count no
+    longer sits only in a sibling field a reader can ignore."""
+    from ..evals.composition_floor import MIN_AXIS_N
+    from ..evals.scorer import AXIS_ONELINER
+    lines: list[str] = []
+    for axis, stats in sorted(by_rejection_type.items()):
+        hint = AXIS_ONELINER.get(axis, "")
+        n = stats["count"]
+        if n < MIN_AXIS_N:
+            lines.append(f"    {axis:<12} n={n:>3}  (thin, < {MIN_AXIS_N} items "
+                         f"— no reportable per-axis score)")
+        elif bar:
+            width = int(round(stats["mean_score"] * 25))
+            b = "█" * width + "·" * (25 - width)
+            lines.append(f"    {axis:<12} n={n:>3}  mean={stats['mean_score']:.3f}  "
+                         f"[{b}]  min {stats['min_score']:.2f} max {stats['max_score']:.2f}")
+        else:
+            lines.append(f"    {axis:<12} n={n:>3}  mean={stats['mean_score']:.3f}  "
+                         f"(min {stats['min_score']:.2f} max {stats['max_score']:.2f})")
+        if hint:
+            lines.append(f"                 — {hint}")
+    return lines
 
 
 def handle_eval_run(args):
@@ -1026,13 +1068,9 @@ def handle_eval_run(args):
                   "to validate the judge against your own corrections before comparing "
                   "models on this number.")
         if run_result.by_rejection_type:
-            from ..evals.scorer import AXIS_ONELINER
             print("  By rejection axis (what the user wanted that the rejected response missed):")
-            for axis, stats in sorted(run_result.by_rejection_type.items()):
-                hint = AXIS_ONELINER.get(axis, "")
-                print(f"    {axis:<12} n={stats['count']:>3}  mean={stats['mean_score']:.3f}  "
-                      f"(min {stats['min_score']:.2f} max {stats['max_score']:.2f})"
-                      + (f"  — {hint}" if hint else ""))
+            for line in _axis_breakdown_lines(run_result.by_rejection_type, bar=False):
+                print(line)
     elif getattr(run_result, "scoring_degraded", False) and not args.skip_score:
         # #246 nulled the aggregate because the JUDGE returned empty/unparseable
         # on most items — the live cause is a rate-limited judge (codex "you've
@@ -1598,18 +1636,9 @@ def handle_eval_show(args):
         print(f"  Aggregate score: {result.aggregate_score:.3f}  "
               f"(vs the rejected_responses the original prompts elicited)")
         if result.by_rejection_type:
-            from ..evals.scorer import AXIS_ONELINER
             print("\n  By rejection axis (what the user wanted that the rejected response missed):")
-            for axis, stats in sorted(result.by_rejection_type.items()):
-                # Visual bar — 25-char max width, scaled by mean_score
-                width = int(round(stats["mean_score"] * 25))
-                bar = "█" * width + "·" * (25 - width)
-                hint = AXIS_ONELINER.get(axis, "")
-                print(f"    {axis:<12} n={stats['count']:>3}  "
-                      f"mean={stats['mean_score']:.3f}  [{bar}]  "
-                      f"min {stats['min_score']:.2f} max {stats['max_score']:.2f}")
-                if hint:
-                    print(f"                 — {hint}")
+            for line in _axis_breakdown_lines(result.by_rejection_type, bar=True):
+                print(line)
     else:
         print("\n  (No aggregate score — run completed without --no-score, or scoring failed.)")
 

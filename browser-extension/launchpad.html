@@ -2476,6 +2476,9 @@ th {
         <p class="meta">
           One line per kind of question — the model Trinity recommends, tallied from your own {{ cortexRules.total_basins }} basin{{ cortexRules.total_basins === 1 ? '' : 's' }} of council outcomes. The winner is the recency-weighted chairman pick for that basin; margin is how decisively it beat the runner-up. A thin margin is dimmed.
         </p>
+        <p class="meta" v-if="cortexRules.routing_split && cortexRules.routing_split.total">
+          Of those, <strong>{{ cortexRules.routing_split.decisive }}</strong> route decisively, <strong>{{ cortexRules.routing_split.explored }}</strong> {{ cortexRules.routing_split.explored === 1 ? 'is a measured near-tie explored' : 'are measured near-ties explored' }} (ask samples the posterior instead of committing), and <strong>{{ cortexRules.routing_split.thin }}</strong> {{ cortexRules.routing_split.thin === 1 ? 'is thin' : 'are thin' }} → kNN. Only the decisive ones commit to a single model.
+        </p>
         <table class="routing-table cortex-rules-table cortex-cheat-sheet" style="margin-top: 16px;">
           <tbody>
             <!-- Visually demote the picks ask() WON'T route — a basin whose
@@ -2487,8 +2490,8 @@ th {
                  a row ask won't act on, never a hardcoded guess that mislabels
                  a routed basin. -->
             <tr v-for="r in cortexRules.rules"
-                :style="r.margin < cortexRules.winner_margin_floor ? 'opacity: 0.55;' : null"
-                :title="r.margin < cortexRules.winner_margin_floor ? 'Thin margin (' + r.margin_str + ' < ' + cortexRules.winner_margin_floor + ' gate): the runner-up was close, so ask falls back to kNN for this basin until more councils sharpen it.' : 'ask routes this basin (margin ' + r.margin_str + ' ≥ ' + cortexRules.winner_margin_floor + ' gate).'">
+                :style="!r.routes ? 'opacity: 0.55;' : null"
+                :title="!r.routes ? 'Advisory (margin ' + r.margin_str + '): ask falls back to kNN for this basin, either a near-tie under the ' + cortexRules.winner_margin_floor + ' gate or thin/decayed evidence, until more councils sharpen it.' : 'ask routes this basin (margin ' + r.margin_str + ' ≥ ' + cortexRules.winner_margin_floor + ' gate, evidence fresh).'">
               <td style="font-weight: 500;">
                 <!-- Cross-memory deep-link: basin_id → memory.html with
                      this basin focused. Plain-text fallback when

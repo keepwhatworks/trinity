@@ -611,6 +611,13 @@ def build_eval_set(*, source: str = "rejections", limit: int | None = None) -> E
 
     stats = {
         "items": len(items),
+        # Items eval-run can actually DISPATCH (cold-answerable AND
+        # gold-reachable). A set can carry items > 0 while every one is
+        # context-bound or gold-unreachable, leaving nothing to score — the
+        # eval-set-available gate reads this, not the raw item count, so the
+        # new-model nudge never points at a hollow benchmark.
+        "dispatchable": sum(
+            1 for it in items if it.cold_answerable and it.gold_reachable),
         "by_rejection_type": dict(sorted(by_type.items(), key=lambda kv: -kv[1])),
         "by_basin": dict(sorted(by_basin.items(), key=lambda kv: -kv[1])),
         # #247 visibility: how many model_miss acts were dropped as
@@ -673,9 +680,11 @@ def save_eval_set(eval_set: EvalSet) -> Path:
 
 
 def eval_set_available() -> bool:
-    """True when at least one built eval set with >=1 SCOREABLE item exists
-    (`~/.trinity/evals/eval_*.json` whose `stats.items` > 0) — the single
-    'can the user actually run `eval-run` yet?' check.
+    """True when at least one built eval set with >=1 DISPATCHABLE item exists
+    (`~/.trinity/evals/eval_*.json` whose `stats.dispatchable` > 0 — items that
+    are both cold-answerable and gold-reachable) — the single 'can the user
+    actually run `eval-run` yet?' check. Legacy sets built before the
+    dispatchable stamp fall back to `stats.items` > 0.
 
     Read-only: never mkdir's `evals/` (an empty ghost dir would falsely read as
     eval-ready). Deliberately does NOT call `evals_dir()` — that helper mkdirs,
@@ -695,8 +704,20 @@ def eval_set_available() -> bool:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        if isinstance(data, dict) and (data.get("stats") or {}).get("items", 0) > 0:
-            return True
+        if isinstance(data, dict):
+            st = data.get("stats") or {}
+            disp = st.get("dispatchable")
+            if disp is not None:
+                # A set whose items are all context-bound / gold-unreachable has
+                # items > 0 but `dispatchable` 0 — nothing eval-run can score, so
+                # it must NOT read available (the green-while-degenerate guard;
+                # a hollow benchmark would mislead the new-model nudge).
+                if disp > 0:
+                    return True
+            elif st.get("items", 0) > 0:
+                # Legacy set built before the dispatchable stamp — fall back to
+                # the raw item count (the old gate).
+                return True
     return False
 
 

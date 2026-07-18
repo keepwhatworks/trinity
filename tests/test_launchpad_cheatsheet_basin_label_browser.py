@@ -284,3 +284,74 @@ def test_cheatsheet_row_names_the_kind_not_the_basin_id(tmp_path, monkeypatch):
                 browser.close()
     finally:
         httpd.shutdown()
+
+
+def test_routing_split_caption_paints_the_decisive_explored_thin_counts(tmp_path, monkeypatch):
+    """Surface-binding guard (#23, 2026-07-17): the cortex card's honest split
+    caption must PAINT classify_basins' decisive/explored/thin counts — testing
+    the label that ships the value, not just the primitive (the surface-binding
+    sibling of #35). Seeds a discriminating 3-basin split: one decisive (margin
+    over floor + fresh evidence), one Thompson-explored near-tie, one thin
+    (churn-dead effective_n). MUTATION: drop the routing_split <p> in the
+    template and this reds; miscount via raw n and the thin churn-basin would
+    paint decisive."""
+    _seed_home(tmp_path, monkeypatch)
+    _overwrite_picks(
+        tmp_path,
+        {
+            "b00": {"winner": "claude", "count": 20, "margin": 0.60,
+                    "effective_n": 10.0, "n_episodes": 20,
+                    "weights": {"claude": 8.0, "codex": 2.0},
+                    "evidence": []},
+            "b01": {"winner": "claude", "count": 15, "margin": 0.05,
+                    "effective_n": 5.0, "n_episodes": 15,
+                    "weights": {"claude": 5.0, "codex": 4.5},
+                    "evidence": []},
+            "b02": {"winner": "claude", "count": 3, "margin": 0.05,
+                    "effective_n": 1.0, "n_episodes": 3,
+                    "weights": {"claude": 2.0, "codex": 1.0},
+                    "evidence": []},
+        },
+    )
+    # Precondition: the classifier itself splits the seed 1/1/1 (so a caption
+    # regression, not a seed drift, is what a red would mean).
+    import json as _json
+    from trinity_local.lens_routing import classify_basins
+    _rules = _json.loads((tmp_path / "scoreboard" / "picks.json").read_text())
+    assert classify_basins(_rules) == {"decisive": 1, "explored": 1,
+                                       "thin": 1, "total": 3}
+
+    from playwright.sync_api import sync_playwright
+    httpd, port = _serve(tmp_path)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        with sync_playwright() as p:
+            try:
+                browser = p.chromium.launch()
+            except Exception as exc:  # pragma: no cover - env-dependent
+                pytest.skip(f"no launchable chromium: {exc}")
+            try:
+                page = browser.new_context(
+                    viewport={"width": 1280, "height": 1600}
+                ).new_page()
+                errs: list[str] = []
+                page.on("pageerror", lambda e: errs.append("pageerror: " + str(e)[:200]))
+                page.goto(f"{base}/portal_pages/stats.html", wait_until="networkidle")
+                page.wait_for_timeout(700)
+                assert not errs, f"console/page errors on /stats: {errs}"
+                # The split caption is the .meta <p> that mentions "route decisively".
+                caption = page.evaluate(
+                    """() => {
+                        const ps = Array.from(document.querySelectorAll('p.meta'));
+                        const hit = ps.find(p => /route decisively/.test(p.textContent));
+                        return hit ? hit.textContent.replace(/\\s+/g, ' ').trim() : null;
+                    }"""
+                )
+                assert caption, "the routing_split caption did not paint on /stats"
+                assert "1 route decisively" in caption, caption
+                assert "1 is a measured near-tie" in caption, caption
+                assert "1 is thin" in caption, caption
+            finally:
+                browser.close()
+    finally:
+        httpd.shutdown()

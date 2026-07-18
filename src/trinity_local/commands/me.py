@@ -393,7 +393,19 @@ def handle_me_build(args):
             sys.stderr.write("\n→ Lens build stopped.\n")
             sys.exit(130)
     hooks = _post_build_hooks(bool(getattr(args, "dry_run", False)))
-    payload = {"ok": True, "path": str(path), **summary, **hooks}
+    # Derive `ok` from the summary — do NOT hardcode it. build_me_via_lens_pipeline
+    # faithfully reports a degenerate build in a sibling field (preserved_existing
+    # when a content-less Stage 3 would clobber a populated lens; validation_failed;
+    # skipped/no_prompts) but sets no `ok`, so `**summary` never overrode a literal
+    # `ok: True`. A `--json` consumer polling payload['ok'] then read green while
+    # the lens.md was left stale. A legitimate no-corpus-change skip stays ok=True.
+    degenerate = (
+        summary.get("preserved_existing")
+        or summary.get("validation_failed")
+        or (summary.get("skipped") and summary.get("reason") == "no_prompts")
+    )
+    ok = not degenerate
+    payload = {"ok": ok, "path": str(path), **summary, **hooks}
     print(json.dumps(payload, indent=2))
     # 100-persona audit P51 fix: tell the user where to go next.
     import sys as _sys
@@ -401,6 +413,14 @@ def handle_me_build(args):
         _sys.stderr.write(
             "\n→ Stage 1 dry-run complete (no lens written). To build:\n"
             "    trinity-local lens-build\n"
+        )
+    elif not ok:
+        # Nothing durable was written (or the prior lens was preserved), so the
+        # 'Lens built' banner would be a false green. Say what actually happened.
+        _sys.stderr.write(
+            "\n→ Lens NOT rebuilt (a degenerate build was refused; your prior lens "
+            "is preserved). Re-run `trinity-local lens` once your corpus / providers "
+            "are ready.\n"
         )
     else:
         _sys.stderr.write(

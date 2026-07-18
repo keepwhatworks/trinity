@@ -303,3 +303,43 @@ def test_pick_routes_legacy_entry_falls_back_to_margin_gate():
     assert not pick_routes({"winner": "claude", "margin": 0.05})     # margin floor still bites
     assert not pick_routes({"winner": "claude", "margin": 0.4, "effective_n": 1.0})
     assert pick_routes({"winner": "claude", "margin": 0.4, "effective_n": 3.0})
+
+
+def test_load_council_records_reads_created_at_from_outcome_not_routing_label(monkeypatch):
+    """Surface-binding guard (2026-07-17, workflow finding): recency decay was
+    silently DEAD in production (measured 634/634 councils) because
+    _load_council_records read created_at from `routing_label`, which
+    CouncilRoutingLabel.to_dict() never emits — so every age was 0 and
+    HALF_LIFE_DAYS was inert. The real date lives on the outcome (oc.created_at).
+    Tests passed only because compute_basin_routing's fixtures inject created_at
+    directly, never exercising this disk binding. MUTATION: revert the source to
+    `(r.get("routing_label") or {}).get("created_at")` and this reds (created_at
+    comes back '')."""
+    from types import SimpleNamespace
+    from trinity_local import lens_routing
+
+    real_date = "2026-05-01T12:00:00+00:00"
+    # _scan_outcomes yields the record WITHOUT created_at (routing_label lacks it,
+    # exactly like production); the outcome object carries the true date.
+    monkeypatch.setattr(
+        "trinity_local.personal_routing._scan_outcomes",
+        lambda: ([{
+            "council_run_id": "council_x",
+            "chairman_winner": "claude",
+            "routing_label": {},  # no created_at — the production shape
+            "substantive_members": 2,
+            "distinct_substantive_providers": 2,
+        }], {}),
+    )
+    monkeypatch.setattr(
+        "trinity_local.council_runtime.load_council_outcome",
+        lambda cid: SimpleNamespace(
+            created_at=real_date, metadata={"task_text": "t"},
+            winner_model="claude-x", member_results=[]),
+    )
+    recs = lens_routing._load_council_records()
+    assert len(recs) == 1
+    assert recs[0]["created_at"] == real_date, (
+        "created_at must come from the outcome, not the routing_label that "
+        f"never carries it (got {recs[0]['created_at']!r})"
+    )

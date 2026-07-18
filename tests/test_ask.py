@@ -830,6 +830,40 @@ class TestMcpGetCortexRules:
         assert rule["margin"] == 0.82
         assert "trust_score" not in rule and "routing_rule" not in rule
 
+    def test_routes_flag_uses_the_shared_pick_routes_gate_not_margin_only(self, tmp_path, monkeypatch):
+        """Surface-binding guard (2026-07-17, workflow finding): the get_picks
+        TOOL open-coded `routes = margin >= floor`, diverging from the shared
+        lens_routing.pick_routes gate that ask() + the picks RESOURCE use, which
+        also requires effective_n >= MIN_EFFECTIVE_N. On a churn-dead basin
+        (margin over the floor, thin decayed evidence) the tool answered
+        routes:True while ask() abstained — measured 8 live basins. MUTATION:
+        revert to `margin >= winner_margin_floor` and the churn-dead assertion
+        reds (tool vs gate divergence)."""
+        import asyncio
+        import json as _json
+        from trinity_local import mcp_server, cortex
+        from trinity_local.lens_routing import pick_routes
+
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        decisive = {"winner": "claude", "count": 12, "margin": 0.40,
+                    "effective_n": 10.0, "n_episodes": 12, "evidence": []}
+        churn_dead = {"winner": "codex", "count": 9, "margin": 0.30,
+                      "effective_n": 1.5, "n_episodes": 9, "evidence": []}
+        cortex.save_routing_patterns({"b_ok": decisive, "b_churn": churn_dead})
+
+        payload = _json.loads(asyncio.run(mcp_server._get_picks({}))[0]["text"])
+        rules = payload["rules"]
+        # The tool must agree with the gate ask() actually routes on.
+        assert rules["b_ok"]["routes"] is True
+        assert rules["b_ok"]["routes"] == pick_routes(decisive)
+        assert rules["b_churn"]["routes"] is False, (
+            "churn-dead basin (margin 0.30 over floor but effective_n 1.5 < 3) "
+            "must read routes:False — the tool used margin-only and overclaimed"
+        )
+        assert rules["b_churn"]["routes"] == pick_routes(churn_dead)
+        # `routed` reflects the real gate (1), not the margin-only count (2).
+        assert payload["routed"] == 1
+
     def test_skips_legacy_and_malformed_entries(self, tmp_path, monkeypatch):
         """A legacy RoutingPattern dict (no `winner`) or junk entry must be
         skipped — only live lens-basin picks surface to the agent."""

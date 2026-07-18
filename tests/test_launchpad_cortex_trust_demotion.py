@@ -46,9 +46,10 @@ def test_thin_margin_row_carries_opacity_binding():
     # (cortexRules.winner_margin_floor), NOT a hardcoded number — so the dimmed
     # rows are exactly the ones ask() abstains on. A future refactor must keep
     # this card↔router contract.
-    assert "r.margin < cortexRules.winner_margin_floor" in html, (
-        "Picks card row missing the gate-threaded opacity binding for thin-"
-        "margin picks. Demote at the real WINNER_MARGIN_FLOOR, not a guess."
+    assert "!r.routes" in html, (
+        "Picks card row missing the routes-gated opacity binding. The row "
+        "must demote on !r.routes (the shared pick_routes gate: margin AND "
+        "effective_n), not margin alone."
     )
     # And NOT the old hardcoded threshold (the honesty-inversion regression).
     assert "r.margin < 0.2" not in html, (
@@ -56,7 +57,7 @@ def test_thin_margin_row_carries_opacity_binding():
         "(margin 0.15–0.2) as 'abstains'. Use cortexRules.winner_margin_floor."
     )
     # Tooltip explains why
-    assert "Thin margin" in html
+    assert "Advisory" in html
     assert "kNN" in html  # the remedy is named
 
 
@@ -76,7 +77,7 @@ def test_wide_margin_row_keeps_full_opacity():
     )
     # The conditional binding is present (template doesn't branch on data — Vue
     # evaluates at runtime). Confirm it's the gate-threaded form.
-    assert "r.margin < cortexRules.winner_margin_floor" in html
+    assert "!r.routes" in html
 
 
 def test_payload_carries_real_routing_gate(monkeypatch, tmp_path):
@@ -108,6 +109,34 @@ def test_payload_carries_real_routing_gate(monkeypatch, tmp_path):
         "b09 routes (margin 0.167 >= 0.15 gate) — the card must treat it as a "
         "decisive pick, not a dimmed near-tie"
     )
+    assert row["routes"] is True, "b09 (margin 0.167, fresh) must carry routes=True"
+
+
+def test_churn_dead_high_margin_row_is_demoted(monkeypatch, tmp_path):
+    """Surface-binding guard (2026-07-17, workflow finding): the row demotion
+    bound on margin ALONE, so a churn-dead basin (high margin but effective_n
+    below MIN_EFFECTIVE_N after a model bump) rendered full-opacity 'ask routes
+    this basin' while the card's OWN routing_split summary + ask() + get_picks
+    all treated it as thin. The row now carries `routes` from the shared
+    pick_routes gate. MUTATION: revert the row to margin-only (drop the routes
+    field / compute margin>=floor) and this reds (churn-dead reads routes=True)."""
+    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+    from trinity_local import launchpad_data
+    from trinity_local.lens_routing import pick_routes
+    import trinity_local.cortex
+    monkeypatch.setattr(launchpad_data, "_task_to_topology_basin", lambda: {})
+    churn = {"winner": "codex", "count": 9, "margin": 0.90,
+             "effective_n": 1.5, "n_episodes": 9, "evidence": []}
+    monkeypatch.setattr(trinity_local.cortex, "load_routing_patterns",
+                        lambda: {"b_churn": churn})
+    payload = launchpad_data._load_cortex_rules()
+    row = payload["rules"][0]
+    # High margin (0.90) but thin decayed evidence -> ask abstains -> demote.
+    assert row["routes"] is False, (
+        "churn-dead basin (margin 0.90 over gate but effective_n 1.5 < 3) must "
+        "read routes=False so the row dims — margin-only kept it full-opacity"
+    )
+    assert row["routes"] == pick_routes(churn)
 
 
 def test_evidence_chip_label_is_an_ordinal_not_an_id_fragment():

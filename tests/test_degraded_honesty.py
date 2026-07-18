@@ -319,3 +319,46 @@ class TestCouncilBreadthHonesty:
         report.checks.append(hc._check_provider("codex", "codex"))
         report.checks.append(hc._check_council_breadth())
         assert report.ready_for_council is True
+
+
+def test_me_build_ok_is_false_when_prior_lens_preserved(monkeypatch, tmp_path, capsys):
+    """Surface-binding guard (2026-07-18, workflow finding): a degenerate build
+    (empty Stage 3 → _would_clobber_populated_lens preserves the stale lens.md,
+    returning summary {preserved_existing: True} with NO `ok` key) still read
+    `ok: True` to a `--json` consumer, because handle_me_build HARDCODED
+    payload={ok: True, **summary} and no summary path set `ok`. A polling agent
+    concluded the rebuild succeeded and proceeded on a stale lens. `ok` now
+    derives from the summary. MUTATION: revert to a literal `ok: True` and this
+    reds."""
+    import json
+    from types import SimpleNamespace
+    import trinity_local.commands.me as cme
+
+    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+    monkeypatch.setattr("trinity_local.embeddings.require_embedder_ready", lambda: None)
+    monkeypatch.setattr(cme, "_post_build_hooks", lambda dry: {})
+    monkeypatch.setattr(
+        cme, "build_me_via_lens_pipeline",
+        lambda **kw: (tmp_path / "lens.md",
+                      {"preserved_existing": True, "accepted": 0, "active_tensions": 0}),
+    )
+    args = SimpleNamespace(legacy=False, dry_run=False, sample_size=50,
+                           k_basins=8, force=False)
+    cme.handle_me_build(args)
+    out = capsys.readouterr()
+    payload = json.loads(out.out)
+    assert payload["ok"] is False, (
+        "a preserved-stale-lens build must report ok:False to a --json consumer, "
+        f"not a hardcoded green: {payload}"
+    )
+    assert payload.get("preserved_existing") is True
+    assert "Lens built" not in out.err  # the false-green banner must not fire
+
+    # And a legitimate build stays ok:True.
+    monkeypatch.setattr(
+        cme, "build_me_via_lens_pipeline",
+        lambda **kw: (tmp_path / "lens.md", {"accepted": 12, "active_tensions": 9}),
+    )
+    cme.handle_me_build(args)
+    good = json.loads(capsys.readouterr().out)
+    assert good["ok"] is True

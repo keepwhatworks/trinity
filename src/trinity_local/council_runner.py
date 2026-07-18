@@ -34,7 +34,12 @@ def _emit_council_telemetry(outcome) -> None:
         rl = getattr(outcome, "routing_label", None)
         task_type = (getattr(rl, "task_type", None) or "unknown") if rl else "unknown"
         winner = (getattr(rl, "winner", None) or "unknown") if rl else "unknown"
-        member_count = len(getattr(outcome, "responses", []) or [])
+        # CouncilOutcome's field is `member_results`, NOT `responses` — the old
+        # `getattr(outcome, "responses", [])` silently defaulted to [] on EVERY
+        # call, so the council_complete GA4 event always logged member_count=0
+        # (a DISCLOSED_EVENT_PARAM, so the analytics stream was corrupted to a
+        # constant). Bind to the real field the rest of the codebase reads.
+        member_count = len(getattr(outcome, "member_results", []) or [])
         mode = getattr(outcome, "mode", "parallel") or "parallel"
         record_event(
             "council_complete",

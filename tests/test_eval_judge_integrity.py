@@ -217,3 +217,58 @@ def test_floor_clearing_judge_returns_none_when_nothing_clears():
         "antigravity": {"agreement": 0.9, "n_parsed": 4},
     }}
     assert _floor_clearing_judge("codex", configs, report_thin) is None
+
+
+def test_judge_validated_requires_the_alignment_pair_floor():
+    """#green-gate (2026-07-17, workflow finding): judge_validated is the trust
+    green that gates the 'directional, not decisive' caveat — it only prints
+    when validated is not True. It was set on agreement alone with NO n floor,
+    so a fallback judge that abstained on noise (chosen_judge=None) still got
+    stamped True off a sub-15-pair 1.0 agreement, silencing the caveat on a
+    coin flip. The n floor is the SAME MIN_ALIGNMENT_PAIRS the two selection
+    paths already enforce. MUTATION: drop the `n < MIN_ALIGNMENT_PAIRS` branch
+    and the first assert reds (thin agreement stamps True again)."""
+    from types import SimpleNamespace
+    from trinity_local.commands.eval import _record_judge_alignment
+    from trinity_local.evals.judge_alignment import MIN_ALIGNMENT_PAIRS
+
+    def validated(ag, n):
+        rr = SimpleNamespace(judge_agreement=None, judge_alignment_n=None, judge_validated=None)
+        _record_judge_alignment(rr, "claude", {"judges": {"claude": {"agreement": ag, "n_parsed": n}}})
+        return rr.judge_validated
+
+    # thin measurement -> None (unmeasured), NOT True — the caveat must still fire
+    assert validated(1.0, MIN_ALIGNMENT_PAIRS - 1) is None
+    # at/above the floor the real gate applies
+    assert validated(0.8, MIN_ALIGNMENT_PAIRS) is True
+    assert validated(0.5, MIN_ALIGNMENT_PAIRS + 5) is False
+    # never False on a thin sample (that would read as 'invalid judge', wrong)
+    assert validated(0.2, 2) is None
+
+
+def test_thin_axis_shows_no_reportable_score_not_a_mean():
+    """green-over-degenerate (2026-07-18, workflow finding): the per-axis eval
+    breakdown (eval-run + eval-show, via _axis_breakdown_lines) printed a
+    per-axis mean (+ 25-char bar) for EVERY axis with no minimum-sample gate, so
+    a n=1 COMPRESSION axis read as a real 1.000 score with the same visual weight
+    as a n=30 axis — the live #281 shape. Wire the pre-registered MIN_AXIS_N
+    floor: a thin axis shows 'not reportable', never a mean. MUTATION: drop the
+    `n < MIN_AXIS_N` branch and the thin axis prints a mean → this reds."""
+    from trinity_local.commands.eval import _axis_breakdown_lines
+    from trinity_local.evals.composition_floor import MIN_AXIS_N
+
+    by_axis = {
+        "COMPRESSION": {"count": MIN_AXIS_N - 1, "mean_score": 1.0, "min_score": 1.0, "max_score": 1.0},
+        "REFRAME": {"count": MIN_AXIS_N + 5, "mean_score": 0.42, "min_score": 0.0, "max_score": 1.0},
+    }
+    for bar in (False, True):
+        lines = _axis_breakdown_lines(by_axis, bar=bar)
+        comp = [ln for ln in lines if ln.strip().startswith("COMPRESSION")]
+        refr = [ln for ln in lines if ln.strip().startswith("REFRAME")]
+        assert comp and "no reportable" in comp[0] and "mean=" not in comp[0], (
+            f"thin COMPRESSION axis must show 'no reportable', not a mean (bar={bar}): {comp}"
+        )
+        # the well-sampled axis still shows its real score
+        assert refr and "mean=0.420" in refr[0], (
+            f"well-sampled REFRAME axis must still print its mean (bar={bar}): {refr}"
+        )

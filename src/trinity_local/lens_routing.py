@@ -80,6 +80,26 @@ def thompson_route(entry: dict, rng=None) -> str | None:
     entries gain `weights` on the next consolidate).
     """
     import random
+    clean = _thompson_masses(entry)
+    if clean is None:
+        return None
+    total = sum(clean.values())
+    rng = rng or random
+    # deterministic tie-break on slug so equal samples can't flip on dict order
+    best = max(
+        sorted(clean.items()),
+        key=lambda kv: rng.betavariate(kv[1] + 1.0, max(total - kv[1], 0.0) + 1.0),
+    )
+    return best[0]
+
+
+def _thompson_masses(entry: dict) -> dict[str, float] | None:
+    """The positive per-provider weight masses a coin-flip basin would sample
+    over, or None if the basin is NOT Thompson-eligible (decisive, thin/stale,
+    or no recorded weights). One source of truth shared by `thompson_route`
+    (which samples) and `thompson_eligible`/`classify_basins` (which surface),
+    so the router and every card that labels a basin "explored" can never
+    disagree on what exploration actually fires on."""
     if not isinstance(entry, dict):
         return None
     weights = entry.get("weights")
@@ -106,13 +126,35 @@ def thompson_route(entry: dict, rng=None) -> str | None:
             total += w
     if len(clean) < 2 or total <= 0:
         return None
-    rng = rng or random
-    # deterministic tie-break on slug so equal samples can't flip on dict order
-    best = max(
-        sorted(clean.items()),
-        key=lambda kv: rng.betavariate(kv[1] + 1.0, max(total - kv[1], 0.0) + 1.0),
-    )
-    return best[0]
+    return clean
+
+
+def thompson_eligible(entry: dict) -> bool:
+    """Deterministic (no sampling) twin of `thompson_route`: True iff ask()
+    would Thompson-EXPLORE this basin rather than route a winner or fall to
+    kNN. The classification predicate for surfaces."""
+    return _thompson_masses(entry) is not None
+
+
+def classify_basins(rules: dict) -> dict[str, int]:
+    """Split a picks.json `rules` dict into the three routing classes every
+    surface reports — one source of truth so the launchpad card and the
+    status liveness line can never disagree on how many basins actually
+    route. `decisive`: ask() routes the winner (pick_routes). `explored`:
+    ask() Thompson-samples a measured near-tie (thompson_eligible). `thin`:
+    falls to kNN (stale, sub-count, or no weights)."""
+    if not isinstance(rules, dict):
+        return {"decisive": 0, "explored": 0, "thin": 0, "total": 0}
+    decisive = explored = thin = 0
+    for entry in rules.values():
+        if isinstance(entry, dict) and pick_routes(entry):
+            decisive += 1
+        elif thompson_eligible(entry):
+            explored += 1
+        else:
+            thin += 1
+    return {"decisive": decisive, "explored": explored, "thin": thin,
+            "total": len(rules)}
 
 
 _TOPICS_BASINS_CACHE: tuple[str, float, list[dict]] | None = None
@@ -448,7 +490,13 @@ def _load_council_records() -> list[dict[str, Any]]:
             # must be skipped by `_is_real_contest` here too, not just on the
             # value-proof headline. Defaults to 2 when absent (legacy records).
             "distinct_substantive_providers": r.get("distinct_substantive_providers", 2),
-            "created_at": (r.get("routing_label") or {}).get("created_at") or "",
+            # created_at lives on the CouncilOutcome top level (oc.created_at),
+            # NOT on routing_label — CouncilRoutingLabel.to_dict() never emits it,
+            # so the old `routing_label.created_at` binding was '' for EVERY
+            # council (measured 634/634), silently zeroing every age and making
+            # HALF_LIFE_DAYS inert: a basin's stale wins never decayed. `oc` is
+            # already loaded above for winner_model; read the date off it too.
+            "created_at": (getattr(oc, "created_at", None) or "") if oc is not None else "",
         })
     return out
 

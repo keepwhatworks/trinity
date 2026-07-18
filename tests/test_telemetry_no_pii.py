@@ -623,3 +623,36 @@ class TestSettingsCorruptionFailsClosed:
             p.unlink()
         # No file = a genuinely-new user → founder-chosen default-ON (NOT fail-closed).
         assert t.load_telemetry_settings().sharing_enabled is True
+
+
+def test_council_complete_member_count_reads_the_real_field(monkeypatch):
+    """Surface-binding guard (2026-07-18, workflow finding): _emit_council_telemetry
+    read `getattr(outcome, "responses", [])`, but CouncilOutcome's field is
+    `member_results` (no `responses` attr), so getattr silently defaulted to []
+    and the council_complete GA4 event logged member_count=0 on EVERY council —
+    a DISCLOSED_EVENT_PARAM corrupted to a constant. MUTATION: revert to
+    getattr(outcome, "responses", ...) and this reds (captured count → 0)."""
+    from trinity_local import council_runner
+    from trinity_local.council_schema import CouncilOutcome, CouncilMemberResult
+
+    outcome = CouncilOutcome(
+        council_run_id="c_x",
+        bundle_id="b_x",
+        task_cluster_id="t_x",
+        primary_provider="claude",
+        member_results=[
+            CouncilMemberResult(provider="claude", output_text="a"),
+            CouncilMemberResult(provider="codex", output_text="b"),
+            CouncilMemberResult(provider="antigravity", output_text="c"),
+        ],
+    )
+    captured = {}
+    monkeypatch.setattr(council_runner, "record_event",
+                        lambda name, **kw: captured.update(kw), raising=False)
+    monkeypatch.setattr("trinity_local.telemetry.record_event",
+                        lambda name, **kw: captured.update(kw))
+    council_runner._emit_council_telemetry(outcome)
+    assert captured.get("member_count") == 3, (
+        "member_count must reflect the real member_results, not a constant 0 from "
+        f"the wrong attribute name: {captured}"
+    )

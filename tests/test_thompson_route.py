@@ -123,3 +123,50 @@ class TestConsolidateIdentityWeights:
         rules = d.get("rules") or d
         assert any(isinstance(v, dict) and isinstance(v.get("identity_weights"), dict)
                    for v in rules.values()), "consolidate stopped writing identity_weights"
+
+
+class TestClassifyBasins:
+    """Single source of truth for the decisive/explored/thin split the
+    launchpad card + status liveness line both report (2026-07-17). MUTATION:
+    if classify_basins used raw n instead of pick_routes' decayed effective_n,
+    the stale-decisive fixture would miscount as decisive → RED; if it dropped
+    the thompson_eligible branch, the near-tie would count as thin → RED."""
+
+    def test_split_matches_the_router_predicates(self):
+        from trinity_local.lens_routing import (
+            classify_basins, WINNER_MARGIN_FLOOR, MIN_EFFECTIVE_N)
+        rules = {
+            # decisive: margin over floor AND fresh evidence
+            "b_dec": _entry(margin=WINNER_MARGIN_FLOOR + 0.1, eff=10.0),
+            # explored: measured near-tie WITH fresh evidence + >=2 weights
+            "b_exp": _entry(margin=0.05, eff=MIN_EFFECTIVE_N + 1),
+            # thin (churn): margin clears the floor but decayed evidence is dead
+            "b_stale": _entry(margin=WINNER_MARGIN_FLOOR + 0.1,
+                              eff=MIN_EFFECTIVE_N - 0.1),
+            # thin (no weights): a near-tie the router can't sample
+            "b_nowts": {k: v for k, v in _entry(margin=0.05).items()
+                        if k != "weights"},
+        }
+        s = classify_basins(rules)
+        assert s == {"decisive": 1, "explored": 1, "thin": 2, "total": 4}, s
+
+    def test_stale_high_margin_is_not_counted_decisive(self):
+        # The exact drift this catches: a raw-n count would call a churn-dead
+        # basin decisive (its margin is high); pick_routes demotes it to thin.
+        from trinity_local.lens_routing import (
+            classify_basins, WINNER_MARGIN_FLOOR, MIN_EFFECTIVE_N)
+        s = classify_basins({"b": _entry(margin=WINNER_MARGIN_FLOOR + 0.2,
+                                         eff=MIN_EFFECTIVE_N - 0.5)})
+        assert s["decisive"] == 0 and s["thin"] == 1
+
+    def test_non_dict_input_abstains(self):
+        from trinity_local.lens_routing import classify_basins
+        assert classify_basins([]) == {"decisive": 0, "explored": 0,
+                                       "thin": 0, "total": 0}
+
+    def test_eligible_mirrors_route(self):
+        # thompson_eligible must be True exactly when thompson_route would fire.
+        from trinity_local.lens_routing import thompson_eligible
+        assert thompson_eligible(_entry(margin=0.05)) is True
+        assert thompson_eligible(_entry(margin=0.4)) is False   # decisive
+        assert thompson_eligible(_entry(weights={"claude": 5.0})) is False

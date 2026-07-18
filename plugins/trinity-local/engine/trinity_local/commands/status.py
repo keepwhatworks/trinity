@@ -422,6 +422,22 @@ def handle_status(args):
             print(f"    ✅ {label} {path.stat().st_size:>8,} bytes")
         else:
             print(f"    · {label} not built")
+    # Honest routing split — so a full picks.json can't read as "N basins
+    # route". Same source of truth (lens_routing.classify_basins) as the
+    # launchpad card. Best-effort: a read failure never breaks status.
+    try:
+        import json as _json
+        from ..lens_routing import classify_basins
+        if picks_path().exists():
+            _picks = _json.loads(picks_path().read_text(encoding="utf-8"))
+            _rules = _picks.get("rules", _picks) if isinstance(_picks, dict) else {}
+            s = classify_basins(_rules)
+            if s["total"]:
+                print(f"       routing: {s['decisive']} route decisively · "
+                      f"{s['explored']} near-ties explored · {s['thin']} thin→kNN "
+                      f"(of {s['total']} tallied basins)")
+    except Exception:
+        pass
     print()
 
     # Drift

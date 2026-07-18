@@ -214,6 +214,35 @@ class TestEvalSetAvailable:
         from trinity_local.evals.builder import eval_set_available
         assert eval_set_available() is True
 
+    def test_items_present_but_zero_dispatchable_is_unavailable(self, tmp_path, monkeypatch):
+        """green-over-degenerate (2026-07-17, workflow finding): a set can carry
+        stats.items > 0 while every item is context-bound / gold-unreachable, so
+        eval-run has NOTHING to dispatch. It must read NOT available, or the
+        new-model nudge points at a hollow benchmark. MUTATION: gate on
+        stats.items instead of stats.dispatchable and this reds."""
+        import json
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        from trinity_local.evals.builder import evals_dir, eval_set_available
+        d = evals_dir(); d.mkdir(parents=True, exist_ok=True)
+        (d / "eval_hollow.json").write_text(
+            json.dumps({"stats": {"items": 8, "dispatchable": 0}}), encoding="utf-8")
+        assert eval_set_available() is False
+        # ...and a set WITH dispatchable items reads available.
+        (d / "eval_real.json").write_text(
+            json.dumps({"stats": {"items": 8, "dispatchable": 3}}), encoding="utf-8")
+        assert eval_set_available() is True
+
+    def test_legacy_set_without_dispatchable_falls_back_to_items(self, tmp_path, monkeypatch):
+        """A set built before the dispatchable stamp (no stats.dispatchable) must
+        still read available off stats.items > 0 (back-compat, no false negative)."""
+        import json
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        from trinity_local.evals.builder import evals_dir, eval_set_available
+        d = evals_dir(); d.mkdir(parents=True, exist_ok=True)
+        (d / "eval_legacy.json").write_text(
+            json.dumps({"stats": {"items": 3}}), encoding="utf-8")
+        assert eval_set_available() is True
+
     def test_malformed_set_degrades_to_unavailable(self, tmp_path, monkeypatch):
         monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
         from trinity_local.evals.builder import evals_dir, eval_set_available

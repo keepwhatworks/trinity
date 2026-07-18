@@ -1846,6 +1846,7 @@ def _load_cortex_rules() -> dict | None:
     if not patterns:
         return None
     # Compact view for the template — only the fields the launchpad card needs.
+    from .lens_routing import pick_routes
     rules = []
     for basin_id, p in patterns.items():
         # POST-COLLAPSE picks are plain dicts; a legacy RoutingPattern dict (or
@@ -1883,6 +1884,13 @@ def _load_cortex_rules() -> dict | None:
             # numeric `< winner_margin_floor` gate; only the DISPLAY is the
             # string. Same cross-language fix as _fmt_score for eval scores.
             "margin_str": _fmt_score(margin, 2),
+            # Does ask() actually route this basin? THE shared gate
+            # (lens_routing.pick_routes): margin >= floor AND effective_n clears
+            # MIN_EFFECTIVE_N. The row demotion binds on this, not margin alone —
+            # a churn-dead basin (high margin, thin decayed evidence) must dim
+            # like the card's own routing_split summary (classify_basins) already
+            # counts it, and like ask()/get_picks abstain on it.
+            "routes": pick_routes(p),
             "count": int(_safe_number(p.get("count"), 0.0)),
             "n_episodes": int(_safe_number(p.get("n_episodes"), _safe_number(p.get("count"), 0.0))),
             # First few council thread-bundle IDs the pick was tallied
@@ -1919,13 +1927,23 @@ def _load_cortex_rules() -> dict | None:
     # source of truth the card drifts from the router — e.g. a 0.16-margin basin
     # that ask routes but a hardcoded 0.2 demote-threshold mislabels "abstains".)
     try:
-        from .lens_routing import WINNER_MARGIN_FLOOR
+        from .lens_routing import WINNER_MARGIN_FLOOR, classify_basins
+        # Classify the RAW picks (`patterns`: {basin_id: entry} with
+        # effective_n/weights), NOT the display `rules` list — the router
+        # predicates need the churn + weight fields the compact rows drop.
+        split = classify_basins(patterns)
     except Exception:
         WINNER_MARGIN_FLOOR = 0.15
+        split = {"decisive": 0, "explored": 0, "thin": 0, "total": len(rules)}
     return {
         "rules": rules,
         "total_basins": len(rules),
         "winner_margin_floor": WINNER_MARGIN_FLOOR,
+        # The honest split so "total_basins" can't read as "N basins route":
+        # decisive = ask() routes the winner; explored = ask() Thompson-samples
+        # a measured near-tie; thin = falls to kNN. One source of truth
+        # (lens_routing.classify_basins) shared with the status liveness line.
+        "routing_split": split,
     }
 
 

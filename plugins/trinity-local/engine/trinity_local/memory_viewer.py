@@ -310,6 +310,15 @@ def render_memory_viewer_html() -> str:
         winner_margin_floor = float(_wmf)
     except Exception:
         winner_margin_floor = 0.15
+    # The churn-decay floor `ask`/`pick_routes` also gates on (#298 model-churn
+    # decay): a basin whose winner-margin clears the floor but whose post-decay
+    # effective_n is thin is churn-dead — ask abstains on it. Injected so the
+    # viewer's confidence surfaces read the FULL gate, not margin alone.
+    try:
+        from .lens_routing import MIN_EFFECTIVE_N as _men
+        min_effective_n = float(_men)
+    except Exception:
+        min_effective_n = 3.0
     # Inline the same memory-health payload the launchpad surfaces so
     # the viewer can carry the staleness signals forward when the user
     # clicks through to inspect. Same shape as launchpad_data._memory_health()
@@ -1279,6 +1288,17 @@ def render_memory_viewer_html() -> str:
     // to kNN, so the viewer must NOT claim it "Routes to X" (#299, propagated to
     // the viewer's two confidence surfaces).
     const WINNER_MARGIN_FLOOR = {winner_margin_floor};
+    const MIN_EFFECTIVE_N = {min_effective_n};
+    // Mirror of lens_routing.pick_routes — THE gate ask() routes on — so the
+    // viewer's confidence surfaces agree with ask()/get_picks/the launchpad
+    // instead of recomputing margin-only (which called a churn-dead high-margin
+    // basin "routes" while ask abstained). Both constants are injected from
+    // Python; a legacy pick with no effective_n passes on the margin term alone.
+    function pickRoutes(margin, effectiveN) {{
+      if (!isFiniteNumber(margin) || margin < WINNER_MARGIN_FLOOR) return false;
+      if (effectiveN === null || effectiveN === undefined) return true;
+      return effectiveN >= MIN_EFFECTIVE_N;
+    }}
     // Server-pre-formatted picks margins (raw-value repr → Python 2dp string), so
     // the picks badge + topology basin detail render the SAME margin as the CLI
     // `consolidate` line and the launchpad routing card. Re-rounding the raw
@@ -1375,7 +1395,12 @@ def render_memory_viewer_html() -> str:
           // chairman-winner is its defining property — surfacing it where the
           // user explores topics saves a click into the picks Reader).
           const margin = isFiniteNumber(pick.margin) ? pick.margin : null;
-          basinIdToPick.set(basinId, {{ winner: winner, margin }});
+          // Carry effective_n through so the topology detail can apply the FULL
+          // pickRoutes gate (margin AND effective_n) — without it a churn-dead
+          // high-margin basin fell to the legacy margin-only pass and the detail
+          // falsely said "Routes to X" (workflow finding 2026-07-17).
+          const effectiveN = isFiniteNumber(pick.effective_n) ? pick.effective_n : null;
+          basinIdToPick.set(basinId, {{ winner: winner, margin, effective_n: effectiveN }});
         }}
       }});
       return {{ basinIdToTask, taskToBasinId, basinIdToPick }};
@@ -1729,14 +1754,14 @@ def render_memory_viewer_html() -> str:
       return typeof value === "number" && isFinite(value);
     }}
 
-    function trustBadgeClass(margin) {{
-      // Color by the SAME gate ask routes on: below WINNER_MARGIN_FLOOR the basin
-      // is a near-tie ask won't route (falls to kNN) → "low" (red). At/above it the
-      // basin routes; >=0.5 is decisive ("high"), else modest ("med"). The old
-      // hardcoded 0.4/0.7 cuts predated #298/#299 and painted confidently-routed
-      // basins (margin 0.15-0.4, ~half the real picks) red as if they didn't route.
+    function trustBadgeClass(margin, routes) {{
+      // Color by the SAME gate ask routes on (pickRoutes: margin AND effective_n):
+      // a basin ask won't route (near-tie OR churn-dead thin evidence) → "low"
+      // (red). Routed basins split >=0.5 decisive ("high") else modest ("med").
+      // The old margin-only cut painted a churn-dead high-margin basin green as
+      // if ask routed it, disagreeing with ask()/get_picks/the launchpad.
       if (!isFiniteNumber(margin)) return "";
-      if (margin < WINNER_MARGIN_FLOOR) return "low";
+      if (!routes) return "low";
       if (margin >= 0.5) return "high";
       return "med";
     }}
@@ -1774,13 +1799,13 @@ def render_memory_viewer_html() -> str:
     // and the topology basin-detail xlink were the un-glossed siblings. One
     // helper feeds the :title at both sites so the explanation can't drift.
     // Returns "" for a non-number so the badge title stays absent on bad data.
-    function marginGloss(margin) {{
+    function marginGloss(margin, routes) {{
       if (!isFiniteNumber(margin)) return "";
-      const decisive = margin < WINNER_MARGIN_FLOOR
-        ? "Below the " + fmtMargin(WINNER_MARGIN_FLOOR) + " routing gate — a near-tie, so ask falls back to kNN here until more councils sharpen it."
+      const decisive = !routes
+        ? "Ask falls back to kNN here, a near-tie under the " + fmtMargin(WINNER_MARGIN_FLOOR) + " routing gate or thin/decayed evidence, until more councils sharpen it."
         : (margin >= 0.5
             ? "A decisive lead, so ask routes this pick directly."
-            : "Above the " + fmtMargin(WINNER_MARGIN_FLOOR) + " routing gate, so ask routes this pick.");
+            : "Above the " + fmtMargin(WINNER_MARGIN_FLOOR) + " routing gate with fresh evidence, so ask routes this pick.");
       return "Margin = how decisively the chairman's winner beat the runner-up across this basin's councils (0 = coin-flip, 1 = unanimous). " + decisive;
     }}
 
@@ -1940,9 +1965,12 @@ def render_memory_viewer_html() -> str:
         const mval = isFiniteNumber(p.margin)
           ? p.margin
           : (isFiniteNumber(trust.value) ? trust.value : null);
-        // A near-tie below the routing gate isn't a pick ask uses — it falls to
-        // kNN. Say "Lean X" not "Use X" so the primary doesn't overclaim a route.
-        const advisory = (mval !== null) && (mval < WINNER_MARGIN_FLOOR);
+        // A basin ask does NOT route (near-tie OR churn-dead thin evidence) isn't
+        // a pick ask uses — it falls to kNN. Say "Lean X" not "Use X" so the
+        // primary doesn't overclaim a route. Gate on the SHARED pickRoutes
+        // (margin AND effective_n), not margin alone.
+        const pickRoutesFlag = (mval !== null) && pickRoutes(mval, p.effective_n);
+        const advisory = (mval !== null) && !pickRoutesFlag;
         // Post-collapse the winner is the top-level field; a legacy
         // RoutingPattern dict carried it under routing_rule.primary.
         const winner = p.winner || (p.routing_rule && p.routing_rule.primary) || null;
@@ -1956,12 +1984,12 @@ def render_memory_viewer_html() -> str:
             (advisory ? "Lean " : "Use ") + winnerBrand));
         }}
         if (mval !== null) {{
-          const badge = el("span", "pick-badge " + trustBadgeClass(mval),
+          const badge = el("span", "pick-badge " + trustBadgeClass(mval, pickRoutesFlag),
             "margin " + fmtMargin(mval) + (advisory ? " · near-tie" : ""));
           // Gloss the bare number so a first-timer learns what 0.42 means + which
           // way is better (the badge color alone can't say). Same value the
           // launchpad cheat-sheet already glosses.
-          badge.title = marginGloss(mval);
+          badge.title = marginGloss(mval, pickRoutesFlag);
           head.appendChild(badge);
         }}
         const n = isFiniteNumber(p.count) ? p.count
@@ -2823,10 +2851,11 @@ def render_memory_viewer_html() -> str:
           if (pickBrand) {{
             const hasM = isFiniteNumber(pick.margin);
             const m = hasM ? " · margin " + fmtMargin(pick.margin) : "";
-            // Below the routing gate the basin is a near-tie ask does NOT route on
-            // (it falls to kNN) — so don't assert "Routes to X" (a false claim for
-            // ~half the real picks, margin p50≈0.17). Say it leans X but is a tie.
-            const adv = hasM && pick.margin < WINNER_MARGIN_FLOOR;
+            // A basin ask does NOT route (near-tie OR churn-dead thin evidence) —
+            // don't assert "Routes to X" (a false claim for ~half the real picks,
+            // margin p50≈0.17, plus any churn-dead high-margin basin). Gate on the
+            // shared pickRoutes (margin AND effective_n), not margin alone.
+            const adv = hasM && !pickRoutes(pick.margin, pick.effective_n);
             xlink.textContent = adv
               ? "Leans " + pickBrand + m + " · near-tie → kNN →"
               : "Routes to " + pickBrand + m + " →";
@@ -2836,7 +2865,8 @@ def render_memory_viewer_html() -> str:
           // When this xlink paints a "· margin 0.42", gloss what that number means
           // (first-timer can't read the bare value) AND keep the click-action hint.
           const pick2 = basinIdToPick.get(b.id);
-          const mg = (pick2 && isFiniteNumber(pick2.margin)) ? marginGloss(pick2.margin) : "";
+          const mg = (pick2 && isFiniteNumber(pick2.margin))
+            ? marginGloss(pick2.margin, pickRoutes(pick2.margin, pick2.effective_n)) : "";
           xlink.title = (mg ? mg + " " : "") + "Click to open this basin's pick in the picks Reader.";
           detail.appendChild(xlink);
         }}
@@ -2903,7 +2933,7 @@ def render_memory_viewer_html() -> str:
         const announcePick = basinIdToPick.get(b.id);
         const announceBrand = (announcePick && announcePick.winner) ? providerBrand(announcePick.winner) : "";
         if (announceBrand) {{
-          const advTie = isFiniteNumber(announcePick.margin) && announcePick.margin < WINNER_MARGIN_FLOOR;
+          const advTie = isFiniteNumber(announcePick.margin) && !pickRoutes(announcePick.margin, announcePick.effective_n);
           detailParts.push(advTie ? ("leans " + announceBrand + ", a near-tie") : ("routes to " + announceBrand));
         }}
         announceCopy(detailParts.join(". ") + ".");

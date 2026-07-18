@@ -1463,6 +1463,7 @@ async def _get_picks(args: dict) -> list[Any]:
     except (TypeError, ValueError):
         return [ErrorData(code=400, message="`min_trust` must be numeric")]
 
+    from .lens_routing import pick_routes
     patterns = load_routing_patterns()
     if not patterns:
         return [_text({"rules": {}, "note": "No cortex consolidation yet. Run `trinity-local consolidate`."})]
@@ -1497,7 +1498,12 @@ async def _get_picks(args: dict) -> list[Any]:
             "margin": round(margin, 3),
             # Does ask() route on this basin, or is it a near-tie that falls to kNN?
             # `False` means "leans winner, but don't treat it as a firm rule."
-            "routes": margin >= winner_margin_floor,
+            # THE shared gate (lens_routing.pick_routes): margin >= floor AND the
+            # post-decay effective_n clears MIN_EFFECTIVE_N. A margin-only inline
+            # check diverged from ask() + the picks RESOURCE (_annotate_picks_routes)
+            # on churn-dead basins (high margin, thin decayed evidence) — measured
+            # 8 live basins reading routes:True here while ask() abstained.
+            "routes": pick_routes(pick),
             "n_episodes": int(pick.get("n_episodes", pick.get("count", 0)) or 0),
             "evidence": list(pick.get("evidence") or [])[:20],
         }
