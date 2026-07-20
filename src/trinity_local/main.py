@@ -72,6 +72,7 @@ CORE_COMMAND_MODULES = (
     # seed-from-taste-terminal required.
     "status",
     "telemetry",
+    "trust",
     "update",
     "vocabulary",
     "watch",
@@ -125,7 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(
         dest="command",
         required=False,
-        metavar="{lens,council,dream,status,install}",
+        metavar="{lens,council,trust,dream,status,install}",
     )
 
     for module in _iter_command_modules():
@@ -146,6 +147,7 @@ def build_parser() -> argparse.ArgumentParser:
 USER_FACING_COMMANDS = (
     "lens",
     "council",
+    "trust",
     "dream",
     "status",
     "install",

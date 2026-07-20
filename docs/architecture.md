@@ -29,7 +29,7 @@ council.
 the MCP-first path: `lens`, `council`, `status`, and `install` are the
 advertised CLI verbs, while older names stay registered for compatibility with
 launchpad dispatch and existing scripts. The core mechanics are in place:
-<!-- canonical:mcp_tool_count -->9<!-- /canonical --> MCP tools, MCP Resources,
+<!-- canonical:mcp_tool_count -->7<!-- /canonical --> MCP tools, MCP Resources,
 schema migrations, Chrome Native Messaging dispatch, provider-side memory
 imports (verify-at-import with a quarantine sidecar, covered in the four walls
 below), real ModernBERT embeddings when installed, and abstain-gates when only
@@ -39,7 +39,7 @@ the TF-IDF fallback is available. The runtime footprint is two dependencies
 
 The verification surface holds a comprehensive passing test suite,
 <!-- canonical:doc_consistency_guards -->113<!-- /canonical --> doc-consistency
-guards, and a <!-- canonical:smoke_surface_count -->34<!-- /canonical -->-surface
+guards, and a <!-- canonical:smoke_surface_count -->35<!-- /canonical -->-surface
 browser smoke gate. The public repo and the v1.7 release shipped 2026-07-02.
 The remaining launch risks are not core council mechanics: Chrome Web Store
 publish + extension-ID pinning, native Windows beyond WSL2, fresh-machine

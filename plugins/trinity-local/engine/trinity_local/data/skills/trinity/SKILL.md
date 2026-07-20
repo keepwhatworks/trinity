@@ -55,12 +55,12 @@ If any required check fails, walk the user through the surfaced fix. Don't proce
 
 The installer in section 2 already ran this. If MCP needs re-registration (after a `trinity-local update`, or to wire a newly-installed harness), run:
 
-Trinity ships <!-- canonical:mcp_tool_count -->9<!-- /canonical --> MCP tools:
+Trinity ships <!-- canonical:mcp_tool_count -->7<!-- /canonical --> MCP tools:
 - **canonical three** — `run_council`, `get_persona`, `get_council_status`
 - **v1.5 pair** — `ask` (cheap default), `get_picks` (introspection)
 - **in-protocol provider loop** — `import_provider_memory` (write-back path: agent pipes its own extracted lens tensions / rejection signals into Trinity)
-- **lens-lift** — `lens_generators` (run the generators pass in-session; returns cross-domain generating invariants)
-  (`search_prompts` retired 2026-05-17; `get_eval_summary` retired 2026-05-18; `record_outcome` retired 2026-05-21 — chairman's pick is the supervision signal now, refinement prompts carry the "what differently" signal. `handoff` retired 2026-05-26 — 0 usage events in production; lens-via-MCP-Resources is the cross-provider continuity path. `route` removed 2026-06-08 — routing is now `ask(mode="route")`.)
+- **disagreement ledger** — `trust` (which model you side with when the labs split + the recurring cross-provider disagreements a topic maps into; retrieval read-only + LLM-free, per-model tally gated on its trustworthiness check and built via `trust --build`)
+  (`run_eval` / `choose` / `lens_generators` soft-demoted off the MCP surface 2026-07-18 — their CLI verbs + engines stay. `search_prompts` retired 2026-05-17; `get_eval_summary` retired 2026-05-18; `record_outcome` retired 2026-05-21 — chairman's pick is the supervision signal now, refinement prompts carry the "what differently" signal. `handoff` retired 2026-05-26 — 0 usage events in production; lens-via-MCP-Resources is the cross-provider continuity path. `route` removed 2026-06-08 — routing is now `ask(mode="route")`.)
 
 !`trinity-local install-mcp`
 

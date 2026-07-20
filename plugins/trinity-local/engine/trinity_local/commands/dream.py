@@ -143,9 +143,9 @@ def handle_dream(args):
     # embeddings end-to-end (cross-provider pair discovery, basin
     # k-means, lens distillation). Without this gate the user would
     # discover the ~600 MB requirement mid-Phase-1.
-    from ..embeddings import EmbedderNotReadyError, require_embedder_ready
+    from ..embeddings import EmbedderNotReadyError, require_real_embedder
     try:
-        require_embedder_ready()
+        require_real_embedder()
     except EmbedderNotReadyError as exc:
         print(str(exc), file=sys.stderr)
         sys.exit(1)

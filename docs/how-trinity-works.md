@@ -8,7 +8,7 @@ class: live
 
 Trinity is a cross-provider council. You send one prompt and Claude, ChatGPT, and Gemini answer in parallel. Then one of them, the chairman, synthesizes the verdict: what they agreed on, where they split, which answer wins. It runs free and local, on the subscriptions you already pay for, no API key, and your transcripts never leave your machine. That's day one, no setup, no warm-up.
 
-Underneath, Trinity is also a cross-provider memory layer. It reads the transcripts you already have on your machine, from Claude Code, Codex CLI, Antigravity, plus claude.ai / chatgpt.com / Gemini web chats and exports, and extracts the pattern in how you rephrase, judge, and decide. (It also runs *inside* Cursor as an MCP server. Ingesting Cursor's own chat history is on the roadmap.) Over a handful of councils that pattern becomes a lens, and the chairman starts weighting the synthesis by it, routing to the model you keep siding with on your kind of question. The council is the lead. The lens is the layer that personalizes it as your corpus deepens.
+Underneath, Trinity is also a cross-provider memory layer. It reads the transcripts you already have on your machine, from Claude Code, Codex CLI, Antigravity, plus claude.ai / chatgpt.com / Gemini web chats and exports, and extracts the pattern in how you rephrase, judge, and decide. (It also runs *inside* Cursor as an MCP server, but does not read Cursor's own chat history — Cursor is an install target only.) Over a handful of councils that pattern becomes a lens, and the chairman starts weighting the synthesis by it, routing to the model you keep siding with on your kind of question. The council is the lead. The lens is the layer that personalizes it as your corpus deepens.
 
 This doc walks the pipeline end-to-end. If you want the install path, see [README](../README.md). If you want the on-disk contract, see [`three-tier-architecture.md`](three-tier-architecture.md).
 
@@ -23,7 +23,7 @@ That asymmetry is the whole point. Trinity reads your transcripts from all three
 | Source | How Trinity gets to it |
 |---|---|
 | **Claude Code / Codex / Antigravity** | Each CLI writes session logs under `~/.claude/projects/`, `~/.codex/sessions/`, etc. Trinity walks them directly. |
-| **Cursor** | Install target only. Trinity runs *inside* Cursor as an MCP server, but Cursor stores chats in a SQLite `state.vscdb`, not the JSONL these parsers read, so its own history isn't ingested yet (a `state.vscdb` reader is on the roadmap). |
+| **Cursor** | Install target only. Trinity runs *inside* Cursor as an MCP server but does not ingest Cursor's own chat history — Cursor stores chats in a SQLite `state.vscdb`, not the JSONL these parsers read. |
 | **claude.ai / chatgpt.com / gemini.google.com** | The Chrome extension hooks the XHR responses on those tabs and posts the conversation JSON to a local Native-Messaging host. Files land in `~/.trinity/conversations/`. No upload, no listening port. |
 | **Bulk exports** (Claude.ai webapp export, ChatGPT export zip, Gemini Takeout) | `trinity-local import-export <path>` auto-detects the format and ingests. Claude.ai users: Settings → Privacy → Export data. |
 | **Provider-side memory loop** | The agent inside Claude Code / Codex / Cursor sees your full conversation history on its side. The `import_provider_memory` MCP tool lets it pipe extracted tensions or rejections to Trinity directly. No scraping, no re-ingest. |
@@ -86,7 +86,7 @@ The folder is the API. Everything in it is human-readable Markdown or JSON. Trin
 
 ## Runtime, using Trinity
 
-You drop a hard question into any harness (Claude Code, Codex, Cursor, Antigravity). The agent there sees Trinity registered as an MCP server and calls one of <!-- canonical:mcp_tool_count -->9<!-- /canonical --> MCP tools. The three that matter most, council first, routing later:
+You drop a hard question into any harness (Claude Code, Codex, Cursor, Antigravity). The agent there sees Trinity registered as an MCP server and calls one of <!-- canonical:mcp_tool_count -->7<!-- /canonical --> MCP tools. The three that matter most, council first, routing later:
 
 - **`run_council(task)`**, the flagship and the day-one lead. Dispatches the question to Claude + ChatGPT + Gemini in parallel, collects three responses, runs chairman synthesis. The chairman emits a Routing JSON: agreed claims, disagreed claims, winner, why. It reads `core.md` first and drills to `lens.md` only if a lens exists yet, so the council is full-fidelity on minute one. Once a lens has warmed up, the chairman weights the synthesis by it, routing to the model you keep siding with on your kind of question. **The council is the value. The lens makes it yours.**
 - **`ask(query)`**, the cheap 90% path that *emerges* once you have a track record of councils. Pulls a high-trust extracted pick if one exists ("looks like a COMPRESSION task → codex wins on those for you") and returns a single answer instead of running a full council. With no council history yet it falls back to a heuristic, so routing is the layer that accrues after the council, not a prerequisite for it.

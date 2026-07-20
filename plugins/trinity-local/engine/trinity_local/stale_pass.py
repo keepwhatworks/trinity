@@ -206,10 +206,10 @@ def embed_backfill(*, deadline_s: float = _BACKFILL_DEADLINE_S) -> dict:
     embedding changed. Abstains entirely when the embedder model isn't
     downloaded — never writes TF-IDF-fallback vectors into a 768d space.
     """
-    from .embeddings import DEFAULT_DIM, EmbedderNotReadyError, require_embedder_ready
+    from .embeddings import DEFAULT_DIM, EmbedderNotReadyError, require_real_embedder
 
     try:
-        require_embedder_ready()
+        require_real_embedder()
     except EmbedderNotReadyError as exc:
         return {"healed": 0, "remaining": -1, "skipped": f"embedder not ready: {exc}"}
 

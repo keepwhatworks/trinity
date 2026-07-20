@@ -187,7 +187,10 @@ class TestEmbedBackfill:
         def not_ready():
             raise emb.EmbedderNotReadyError("model not downloaded")
 
-        monkeypatch.setattr(emb, "require_embedder_ready", not_ready)
+        # stale_pass gates on the ACTIVE-backend check now (require_real_embedder),
+        # not the model-file probe alone — so it also abstains when the model is
+        # present but the backend can't embed (would fall back to the TF-IDF stub).
+        monkeypatch.setattr(emb, "require_real_embedder", not_ready)
         out = embed_backfill()
         assert out["healed"] == 0 and "not ready" in out.get("skipped", ""), out
         nodes = {n.id: n for n in iter_prompt_nodes()}

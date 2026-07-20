@@ -328,14 +328,14 @@ RETIRED: dict[str, RetirementRecord] = {
         reason="`commands/unrated.py` listed councils without `user_verdict` so the user could see their rating backlog. Module docstring: 'Closes Pillar 4 (verdict-capture funnel widening)' + 'The 16%-rate problem isn't a UX-flaw-per-click; it's that the user doesn't realize how many councils they haven't rated.' Both motivations are moot once ratings are retired. Cleanup pass decision #2 cascaded retirement.",
         kind="module",
     ),
-    "commands.trust": RetirementRecord(
-        name="commands.trust",
-        retired_at="2026-05-22",
-        commit="8465dd6",
-        replacement="(none — trust + audit library lives in `trinity_local.trust`; CLI rebuilt from scratch in v1.1)",
-        reason="`commands/trust.py` (69 LOC) held handle_audit_show / handle_trust_init / handle_trust_show for CLIs already retired 2026-05-20 (audit-show / trust-init / trust-show, commit 1d84366). Docstring claimed 'handlers stay reachable by tests' but iter #115 audit found ZERO callers in tests/ — `test_trust.py` exercises only the library (load_trust_config / resolve_trust / read_audit_log / write_default_trust_toml), not the CLI handlers. Exact same false-claim-docstring shape as `commands.tasks` (tick 85) and `commands.depth` (tick 85). Same fix: delete the orphan module. Library trinity_local.trust + 16 library tests stay; v1.1 will rebuild the CLI surface fresh when needed. Sunset confirmed via AskUserQuestion in iter #115.",
-        kind="module",
-    ),
+    # `commands.trust` (retired 2026-05-22, commit 8465dd6 — a v1.0 trust-mode /
+    # audit-log CLI: handle_audit_show / handle_trust_init / handle_trust_show)
+    # was REVIVED 2026-07-18 for a different feature: the `trust` verb over the
+    # disagreement ledger (commands/trust.py + disagreement_ledger.py — which model
+    # you side with when the labs split). The module path is active again, so it
+    # can no longer be in RETIRED. The old surface lives in git history + CHANGELOG.
+    # The v1.0 trust-mode CLI *tokens* (trust-init / trust-show / audit-show) stay
+    # retired below — they are not the new verb.
     "implementation-notes.html": RetirementRecord(
         name="implementation-notes.html",
         retired_at="2026-05-22",

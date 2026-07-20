@@ -80,6 +80,19 @@ def _reconcile_effort_arg(args: list, effort):
     return effort, out
 
 
+# Capture default (2026-07-19): a council/dispatch with no configured effort runs
+# at the CLI's own default and STAMPS NOTHING — behavioral data that can never gain
+# effort fidelity later (council_runner.py). Default an unset effort so every
+# dispatch runs at + records a KNOWN reasoning level (the model×size×effort unit).
+# Scoped to the providers whose CLI takes an effort flag: claude (--effort) and
+# codex (model_reasoning_effort). antigravity is excluded — agy exposes no flag and
+# owns its level via the IDE dropdown (config gives it None by design), so forcing a
+# default here would stamp a level the CLI never ran. Local mlx/ollama likewise have
+# no knob. Explicit config / inline args still win (they set effort before this).
+DEFAULT_EFFORT = "high"
+_EFFORT_FLAG_PROVIDERS = frozenset({"claude", "codex"})
+
+
 def _reconcile_model_arg(
     command: list[str], args: list[str], model: str | None
 ) -> tuple[str | None, list[str], list[str]]:
@@ -180,6 +193,8 @@ def load_config(explicit: str | None = None, *, required: bool = True) -> AppCon
         # 2026-07-04 stamp bug. Lift the inline value into config.effort and
         # strip it, so downstream sees exactly one mechanism.
         effort, args = _reconcile_effort_arg(args, provider.get("effort"))
+        if effort is None and name in _EFFORT_FLAG_PROVIDERS:
+            effort = DEFAULT_EFFORT
         providers[name] = ProviderConfig(
             name=name,
             type=provider["type"],

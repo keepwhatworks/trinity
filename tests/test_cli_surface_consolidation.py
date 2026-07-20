@@ -23,20 +23,22 @@ from trinity_local.main import (
 
 
 class TestUserFacingSurface:
-    _EXPECTED = ("lens", "council", "dream", "status", "install")
+    # trust added 2026-07-18 — the founder's council/trust/search spine makes the
+    # disagreement-ledger verb headline. dream/lens demotion is the next surface pass.
+    _EXPECTED = ("lens", "council", "trust", "dream", "status", "install")
 
-    def test_user_facing_set_is_exactly_five(self):
-        """Q4 surface-collapse: exactly 5 user-facing verbs, led by the
-        two product words. Drift here (a sixth, or a dropped one)
-        silently changes the marketing claim 'two words: lens, council.'"""
+    def test_user_facing_set_is_exactly_six(self):
+        """Surface guard: exactly the 6 user-facing verbs, in product-first order
+        (council/trust lead the spine). Drift here (a seventh, or a dropped one)
+        silently changes the advertised surface."""
         assert tuple(USER_FACING_COMMANDS) == self._EXPECTED, (
             f"USER_FACING_COMMANDS must be exactly {self._EXPECTED!r} "
             f"(product-first order); got {tuple(USER_FACING_COMMANDS)!r}."
         )
 
-    def test_help_lists_only_five_subparsers_in_descriptive_table(self):
+    def test_help_lists_only_six_subparsers_in_descriptive_table(self):
         """The descriptive table (the part below the usage line) must
-        show exactly the five user-facing verbs, in product-first order.
+        show exactly the six user-facing verbs, in product-first order.
         Non-canonical subparsers stay registered but should NOT appear."""
         parser = build_parser()
         # Find the subparsers action.
@@ -48,21 +50,21 @@ class TestUserFacingSurface:
         # order is load-bearing (lens/council lead).
         listed = [a.dest for a in sub_action._choices_actions]
         assert listed == list(self._EXPECTED), (
-            f"--help descriptive table must list exactly the 5 user-"
+            f"--help descriptive table must list exactly the 6 user-"
             f"facing verbs in product-first order; got {listed!r}."
         )
 
     def test_metavar_overrides_noisy_usage_line(self):
         """Without an explicit metavar, argparse prints all 40+
         registered choices in the usage line. The metavar collapses
-        it to the product-first five."""
+        it to the product-first six."""
         parser = build_parser()
         sub_action = next(
             a for a in parser._actions
             if isinstance(a, argparse._SubParsersAction)
         )
-        assert sub_action.metavar == "{lens,council,dream,status,install}", (
-            f"Subparsers metavar must be the user-facing 5; got "
+        assert sub_action.metavar == "{lens,council,trust,dream,status,install}", (
+            f"Subparsers metavar must be the user-facing 6; got "
             f"{sub_action.metavar!r}."
         )
 

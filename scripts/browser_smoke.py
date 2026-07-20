@@ -2344,6 +2344,33 @@ def main() -> int:
             print(f"[ ✗ ] Surface 37 memory tabs: {reason}")
             fails.append((37, "memory viewer file tabs render", reason))
 
+        # ─── Surface 38: Trust card (disagreement ledger) ─────────────────────
+        # The "which model you side with" card is a stats-card (v-if="trustData"),
+        # visible on /stats. The seeded summary is trustworthy, so the per-model
+        # Wilson-CI tally renders (rows + win% + the ↻ Build chip). Guards the moat
+        # card against template rot (a card with no smoke assertion silently rots).
+        page.goto(f"{base_url}/portal_pages/stats.html", wait_until="networkidle", timeout=15000)
+        trust_state = page.evaluate(
+            """() => {
+              const c = Array.from(document.querySelectorAll('section.card'))
+                .find(el => /which model you side with when the labs split/i.test(el.textContent));
+              if (!c) return {found: false};
+              return {
+                found: true,
+                rows: c.querySelectorAll('table tbody tr').length,
+                hasPct: /%/.test(c.textContent),
+                hasBuildChip: !!Array.from(c.querySelectorAll('button')).find(b => /build/i.test(b.textContent)),
+              };
+            }"""
+        )
+        if (trust_state.get("found") and trust_state.get("rows", 0) >= 1
+                and trust_state.get("hasPct") and trust_state.get("hasBuildChip")):
+            print(f"[ ✓ ] Surface 38 trust card: {trust_state['rows']} per-model rows + win% + build chip")
+        else:
+            reason = f"trust card missing/incomplete on /stats: {trust_state}"
+            print(f"[ ✗ ] Surface 38 trust card: {reason}")
+            fails.append((38, "trust card render", reason))
+
         browser.close()
 
     # Poller-spin guard (live_council_two_pollers): after every surface has run,

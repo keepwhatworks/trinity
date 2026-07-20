@@ -112,11 +112,14 @@ CHROME_WEB_STORE_URL: str = ""
 MCP_TOOL_NAMES: tuple[str, ...] = (
     "ask",
     "run_council",
-    "run_eval",
-    "choose",
     "get_persona",
     "get_picks",
+    "trust",
     "get_council_status",
     "import_provider_memory",
-    "lens_generators",
+    # Demoted from the MCP surface 2026-07-18 (founder soft-demote of the
+    # eval-harness / palate / generators): `run_eval`, `choose`, and
+    # `lens_generators` remain as CLI verbs + internal engines (eval as the
+    # floor-gate, palate feeding lens-health, generators behind `lens --deep`),
+    # just no longer on the agent tool surface. Surface = 7 tools.
 )

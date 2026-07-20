@@ -62,10 +62,10 @@ class TestToolList:
         # `run_eval` added (7→8) — score a model against the user's taste in-session
         # so the judge rides MCP sampling instead of `claude -p` (the CLI eval-run gap).
         assert names == {
-            "ask", "get_picks",
-            "run_council", "run_eval", "choose",
+            "ask", "get_picks", "trust",
+            "run_council",
             "get_persona", "get_council_status",
-            "import_provider_memory", "lens_generators",
+            "import_provider_memory",
         }, f"unexpected tool list: {names}"
 
     def test_old_tools_dropped_from_public_surface(self):
@@ -80,6 +80,8 @@ class TestToolList:
             "handoff",  # retired 2026-05-26 (0 usage; lens flows via MCP Resources)
             "mark_pick_wrong",  # retired 2026-06-05 (user-pick/veto layer removed)
             "route",  # removed in the loop-primitive cut — ask(mode='route') subsumes it
+            # Soft-demoted off the MCP surface 2026-07-18 (CLI verbs + engines stay):
+            "run_eval", "choose", "lens_generators",
         ):
             assert legacy not in names, f"legacy tool {legacy!r} still exposed"
 

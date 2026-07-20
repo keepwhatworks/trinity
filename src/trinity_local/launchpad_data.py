@@ -975,6 +975,7 @@ def build_page_data(
         "councilLoadingMessages": COUNCIL_LOADING_MESSAGES,
         "personalRoutingTable": personal_routing,
         "cortexRules": _load_cortex_rules(),
+        "trustData": _load_trust_data(),
         "tasteLenses": taste_lenses,
         # Embedder-degraded honesty for the embedding-derived cards (taste /
         # cortex-picks / topology). One source of truth with the CLI
@@ -1823,6 +1824,67 @@ def _safe_text(value: object) -> str:
     if isinstance(value, str):
         return value.strip()
     return ""
+
+
+def _load_trust_data() -> dict | None:
+    """The disagreement-ledger card: which model you side with when the labs split.
+
+    Reads the built per-model tally (`disagreement_ledger/summary.json`, written by
+    `trinity-local trust --build`) + counts the cross-provider disagreements in the
+    corpus. Returns None when there are none yet (the card self-hides). When there
+    ARE but the tally hasn't been built or hasn't cleared its trustworthiness gate,
+    the card shows the count + a build CTA rather than an un-earned per-model
+    verdict — the disqualifier is IN the gate (green-gate discipline). Shape-guarded
+    like the cortex card so a hand-edited summary never blanks the launchpad.
+    """
+    try:
+        from .disagreement_ledger import _ledger_dir, load_disagreements
+    except Exception:
+        return None
+    try:
+        xprov = sum(1 for p in load_disagreements() if p.is_cross_provider)
+    except Exception:
+        xprov = 0
+    if xprov <= 0:
+        return None
+    summary: dict = {}
+    sp = _ledger_dir() / "summary.json"
+    if sp.exists():
+        try:
+            loaded = json.loads(sp.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                summary = loaded
+        except Exception:
+            summary = {}
+    trustworthy = bool(summary.get("tally_trustworthy"))
+    records_raw = summary.get("records")
+    records = records_raw if isinstance(records_raw, dict) else {}
+    rows = []
+    if trustworthy:
+        from .disagreement_ledger import MIN_TALLY_N
+        items = [(lab, rec) for lab, rec in records.items()
+                 if isinstance(rec, dict)
+                 and (_safe_number(rec.get("w"), 0) + _safe_number(rec.get("l"), 0)) >= MIN_TALLY_N]
+        items.sort(key=lambda kv: -_safe_number(kv[1].get("win_rate"), 0.0))
+        for lab, rec in items:
+            ci = rec.get("ci")
+            ci = ci if isinstance(ci, list) and len(ci) == 2 else [0.0, 0.0]
+            rows.append({
+                "lab": _safe_text(lab),  # now a model x version identity, not a lab
+                "win_pct": _fmt_score(_safe_number(rec.get("win_rate"), 0.0) * 100, 0),
+                "w": int(_safe_number(rec.get("w"), 0)),
+                "l": int(_safe_number(rec.get("l"), 0)),
+                "ci_lo": _fmt_score(_safe_number(ci[0], 0.0) * 100, 0),
+                "ci_hi": _fmt_score(_safe_number(ci[1], 0.0) * 100, 0),
+                "clear": bool(rec.get("ci_excludes_half")),
+            })
+    return {
+        "cross_provider": xprov,
+        "resolved": int(_safe_number(summary.get("resolved"), 0)),
+        "built": sp.exists(),
+        "trustworthy": trustworthy,
+        "records": rows,
+    }
 
 
 def _load_cortex_rules() -> dict | None:

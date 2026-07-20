@@ -362,9 +362,9 @@ def handle_me_build(args):
     # Without this gate the user gets a multi-minute startup followed
     # by an HF_HUB_OFFLINE error mid-call.
     import sys
-    from ..embeddings import EmbedderNotReadyError, require_embedder_ready
+    from ..embeddings import EmbedderNotReadyError, require_real_embedder
     try:
-        require_embedder_ready()
+        require_real_embedder()
     except EmbedderNotReadyError as exc:
         print(str(exc), file=sys.stderr)
         sys.exit(1)

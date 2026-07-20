@@ -131,6 +131,23 @@ def seed(home: Path) -> dict[str, int]:
         "b01": {"winner": "codex", "count": 6, "margin": 0.31, "n_episodes": 6, "evidence": ["council_syn02"]},
     }), encoding="utf-8")
 
+    # disagreement_ledger/summary.json backs the launchpad TRUST card ("Which model
+    # you trust" — the disagreement ledger). Seeded trustworthy so the smoke gate
+    # exercises the per-model tally render (the richer path); the cross-provider
+    # disagreements themselves come from the seeded councils' disagreed_claims above.
+    ledger = home / "disagreement_ledger"
+    ledger.mkdir(parents=True, exist_ok=True)
+    (ledger / "summary.json").write_text(json.dumps({
+        "resolved": 8,
+        "records": {
+            "anthropic": {"w": 5, "l": 2, "win_rate": 0.714, "ci": [0.35, 0.92], "ci_excludes_half": False},
+            "openai": {"w": 3, "l": 4, "win_rate": 0.429, "ci": [0.15, 0.75], "ci_excludes_half": False},
+        },
+        "k3_chairman_agreement": 0.72, "k3_in_band": True,
+        "k4_discriminates": True, "tally_trustworthy": True,
+        "built_at": "2026-06-09T00:00:00+00:00",
+    }), encoding="utf-8")
+
     (memories / "lens.md").write_text(
         "# Lens\n\n## Tensions\n\n- **concrete vs abstract**: leans concrete\n"
         "- **action vs description**: leads with the action\n", encoding="utf-8")

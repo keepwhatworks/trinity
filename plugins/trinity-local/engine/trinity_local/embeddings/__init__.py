@@ -408,6 +408,54 @@ def require_embedder_ready() -> None:
     )
 
 
+def _tfidf_allowed() -> bool:
+    """TF-IDF is a legitimate ACTIVE backend only as the explicit test/CI
+    stub (``TRINITY_DISABLE_MLX=1`` — the same hatch ``embed()`` honors).
+
+    In any other run, a tfidf backend means the real embedder simply isn't
+    installed/loaded, and the product must refuse LOUDLY rather than compute
+    on the SHA-1 projection (a wire-compatible stub, not a semantic space).
+    """
+    return _os.environ.get("TRINITY_DISABLE_MLX") == "1"
+
+
+def require_real_embedder() -> None:
+    """Production gate: refuse LOUDLY unless a REAL semantic embedder is active.
+
+    Stronger than :func:`require_embedder_ready` — that only probes whether the
+    model FILE is on disk; this asserts the backend can ACTUALLY embed
+    (``mlx_actually_loaded``), which catches the "model present but libs broken →
+    embed() silently falls back to TF-IDF" case. A flow that computes on the
+    SHA-1 TF-IDF stub and presents the result as real (routing, lens-build, the
+    disagreement / meta-pattern retrieval tier) is the #35 green-over-degenerate
+    failure — this makes "no real embedder" an explicit, actionable error.
+
+    Allowed ONLY under the ``TRINITY_DISABLE_MLX=1`` test/CI escape hatch. Every
+    other run must have the MLX-native or sentence-transformers backend loaded;
+    otherwise raises :class:`EmbedderNotReadyError` with the download/install
+    command (CLI handlers already catch it and exit cleanly). ``embed()`` itself
+    stays resilient (returns the stub) so the low-level primitive never crashes
+    and the degraded DISPLAY surfaces keep their graceful cold-open.
+    """
+    if _tfidf_allowed():
+        return
+    if mlx_actually_loaded():
+        return
+    # No real backend in a production run. require_embedder_ready raises with
+    # the download command when the model file is missing; if the file IS
+    # present but the backend still can't embed, raise a clear reinstall
+    # message rather than letting the caller fall through to the tfidf stub.
+    require_embedder_ready()
+    raise EmbedderNotReadyError(
+        "Trinity's embedding model is present but the embedder failed to load, "
+        "so this command would fall back to the SHA-1 TF-IDF stub — a "
+        "wire-compatible projection, not a real semantic space. Reinstall the "
+        "embedder extras:\n"
+        "  pip install -e '.[mlx]'\n"
+        "then re-run. (TRINITY_DISABLE_MLX=1 forces the stub for tests only.)"
+    )
+
+
 def model_status() -> dict:
     """Return model status."""
     return {

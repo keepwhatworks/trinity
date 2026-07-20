@@ -28,3 +28,8 @@ src/trinity_local/me/exposures.py : The behavioral tier's exposure lane (council
 
 # (model_identity.py entry removed 2026-07-14: consolidate imports parse_identity
 # for identity_weights — now production-reachable, no longer an orphan.)
+
+# (disagreement_ledger.py entry removed 2026-07-18: wired into commands/trust.py
+# (the `trust` verb in CORE_COMMAND_MODULES) — now production-reachable, no longer
+# an orphan. The census-validated retrieval + the session-sampling resolver ship
+# behind the trust CLI.)

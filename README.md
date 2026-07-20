@@ -13,7 +13,7 @@ class: live
 
 ## Ask all three. Keep what works.
 
-Send one prompt to Claude, ChatGPT, and Gemini at once. A chairman shows you what they agreed on and exactly where they split. That is the cross-provider read no single lab can give you, because none of them can see the others. Then, from your own history, it learns **which model to trust on your kind of question**. Free, local, on the subscriptions you already pay for. No API key. Your transcripts never leave your machine.
+Trinity learns **which model to trust on your kind of question** — measured on your own transcripts across Claude, ChatGPT, and Gemini, the cross-provider read no single lab can give you because none of them can see the others. It starts as a council: send one prompt to all three at once, and a chairman shows you what they agreed on and exactly where they split. Free, local, on the subscriptions you already pay for. No API key. Your transcripts never leave your machine.
 
 **Install** is just an MCP and a Chrome extension. No new app, no cloud, no API key.
 
@@ -34,7 +34,7 @@ The cross-provider council (three labs in parallel, one synthesized verdict with
 
 **You'll want at least Claude + Codex CLI installed.** The magic is the *disagreement*. A council needs a second voice. One provider runs, but the "where they split" payoff needs two.
 
-**Then it gets sharper: the lens.** The council gives you a synthesized answer now. The lens sharpens the next one. Every council, every rejected answer, every rephrase sharpens a profile of your judgment that lives only on your machine (Anthropic can't read your ChatGPT, and OpenAI can't read your Claude). The longer you use it, the better it knows which model to trust on *your* kind of question, measured on the disagreements your own later work settles.
+**Then it gets sharper: the lens.** The council gives you a synthesized answer now. The lens sharpens the next one. Every council, every rejected answer, every rephrase sharpens a profile of your judgment that lives only on your machine (Anthropic can't read your ChatGPT, and OpenAI can't read your Claude). The longer you use it, the better it knows which model to trust on *your* kind of question, measured on the disagreements your own later work settles. Ask it directly: `trinity-local trust` reads which model you side with when the labs split, per topic; `trinity-local trust "<topic>"` surfaces the recurring cross-provider disagreements you keep returning to.
 
 > **First-run note: councils work immediately. The personalized read layers in.** Every council is full-fidelity from minute one (the cross-provider answer, the agreed claims, the splits), with nothing to download first. Only the *"weighted toward what **you'd** pick"* taste read sharpens with an optional one-time embedder: run `trinity-local download-embedder` (~600 MB, local, one time). Without it the lens falls back to a coarser lexical match and the personalized read is muted, but the council itself is unaffected. The lens then builds in the background from your transcripts. The *which-model-to-trust* read sharpens over your first handful of councils, not on minute one.
 
@@ -253,6 +253,8 @@ Current repo state: v1.7 line, exact package `v<!-- canonical:version -->1.7.397
 |---|---|
 | `trinity-local status` | Health + scoreboard + recent councils (absorbed `doctor`) |
 | `trinity-local council --task "..."` | Run a council from the terminal |
+| `trinity-local trust "<topic>"` | The recurring cross-provider disagreements you keep returning to on a topic |
+| `trinity-local trust` | Which model you side with when the labs split, from your own resolved disagreements |
 | `trinity-local lens` | Build your lens from prompt history |
 | `trinity-local lens --deep` | Mine your history + rebuild the whole memory layer |
 | `trinity-local install` | Install or repair MCP / extension wiring |

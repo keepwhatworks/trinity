@@ -1085,6 +1085,7 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
         providerModels: pageData.providerModels || {},
         personalRoutingTable: pageData.personalRoutingTable || null,
         cortexRules: pageData.cortexRules || null,
+        trustData: pageData.trustData || null,
         tasteLenses: pageData.tasteLenses || null,
         // Tooltip lookup for cross-memory chips that deep-link to
         // topology basins. {basin_id: "top_term1 · top_term2 · ..."}

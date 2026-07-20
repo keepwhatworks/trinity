@@ -1804,6 +1804,50 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
         </article>
       </section>
 
+      <!-- DISAGREEMENT LEDGER — "which model you side with when the labs split".
+           The census-validated moat. The per-model tally shows ONLY when it clears
+           its trustworthiness gate (trustData.trustworthy); otherwise the corpus
+           count + a build CTA, never an un-earned verdict (green-gate discipline). -->
+      <section class="card stats-card" v-if="trustData">
+        <div class="eyebrow" style="display: flex; align-items: center; gap: 8px;">
+          <span>Which model you trust</span>
+          <button type="button"
+                  class="lp-rebuild-chip"
+                  @click.stop="copyText('trinity-local trust --build', 'trust-build')"
+                  title="Copy: trinity-local trust --build">
+            <span v-if="copiedKey === 'trust-build'">✓ Copied</span>
+            <span v-else>↻ Build</span>
+          </button>
+        </div>
+        <h2>Which model you side with when the labs split</h2>
+        <template v-if="trustData.trustworthy && trustData.records.length">
+          <p class="meta">
+            On the {{{{ trustData.resolved }}}} cross-provider disagreements your own later work settled — which model you actually sided with, per Wilson-CI tally.
+          </p>
+          <!-- Distinct class: NOT routing-table / cortex-rules-table, both of
+               which Surface 3's selectors match (personal rows / cortex links). -->
+          <table class="trust-tally-table" style="margin-top: 14px; width: 100%; border-collapse: collapse;">
+            <tbody>
+              <tr v-for="r in trustData.records" style="border-bottom: 1px solid var(--border, rgba(0,0,0,0.08));">
+                <td style="font-weight: 500; padding: 6px 8px;">{{{{ r.lab }}}}</td>
+                <td style="padding: 6px 8px;">{{{{ r.win_pct }}}}%<span v-if="r.clear" class="meta" style="margin-left: 6px; opacity: 0.7;">· clear</span></td>
+                <td class="meta" style="padding: 6px 8px;">{{{{ r.w }}}}W {{{{ r.l }}}}L · CI {{{{ r.ci_lo }}}}–{{{{ r.ci_hi }}}}%</td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
+        <template v-else>
+          <p class="meta">
+            <strong>{{{{ trustData.cross_provider }}}}</strong> cross-provider disagreements in your corpus — questions where the labs split.
+            <span v-if="trustData.resolved"> {{{{ trustData.resolved }}}} resolved so far, but not yet enough clear signal to name a model (the verdict stays withheld until it earns it).</span>
+            <span v-else> Run <code>trinity-local trust --build</code> to resolve which model your later work sided with.</span>
+          </p>
+          <p class="meta" style="margin-top: 8px;">
+            Or <code>trinity-local trust "&lt;topic&gt;"</code> to surface the recurring cross-provider splits on a topic.
+          </p>
+        </template>
+      </section>
+
       <!-- VALUE TIER 2 — "Your model cheat-sheet". The routing patterns
            reframed from a dense 6-column table into a glanceable list that
            answers "which model should I use for what". The underlying
@@ -3500,6 +3544,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
         providerModels: pageData.providerModels || {{}},
         personalRoutingTable: pageData.personalRoutingTable || null,
         cortexRules: pageData.cortexRules || null,
+        trustData: pageData.trustData || null,
         tasteLenses: pageData.tasteLenses || null,
         // Tooltip lookup for cross-memory chips that deep-link to
         // topology basins. {{basin_id: "top_term1 · top_term2 · ..."}}

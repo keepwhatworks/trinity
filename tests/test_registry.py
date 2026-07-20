@@ -77,8 +77,11 @@ class TestMcpToolDrift:
         (Was 9 after `lens_generators` landed 2026-06-05; back to 8 when
         `mark_pick_wrong` retired with the user-pick layer 2026-06-05;
         down to 7 when `route` was cut in the loop-primitive pass 2026-06-08;
-        back to 8 when `run_eval` added in-session eval-judging 2026-06-11.)"""
-        assert len(MCP_TOOL_NAMES) == 9
+        back to 8 when `run_eval` added in-session eval-judging 2026-06-11;
+        up to 10 when `trust` landed 2026-07-18; back to 7 the same day when the
+        eval-harness/palate/generators soft-demote pulled `run_eval` / `choose` /
+        `lens_generators` off the MCP surface — CLI verbs + engines stay.)"""
+        assert len(MCP_TOOL_NAMES) == 7
 
 
 class TestRegistryAdoption:

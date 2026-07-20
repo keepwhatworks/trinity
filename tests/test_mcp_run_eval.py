@@ -27,14 +27,14 @@ def _payload(result):
     return json.loads(result[0]["text"])
 
 
-def test_run_eval_registered_in_tool_surface():
+def test_run_eval_demoted_from_tool_surface():
+    """run_eval was soft-demoted off the MCP surface 2026-07-18 (the eval-harness
+    demote). The CLI `eval-run` + the engine (tests/test_evals_*) stay; the MCP
+    handler remains callable in-process (below) but is no longer advertised."""
     tools = asyncio.run(mcp_server.handle_list_tools())
     names = {t.name for t in tools}
-    assert "run_eval" in names
-    run_eval = next(t for t in tools if t.name == "run_eval")
-    props = run_eval.inputSchema["properties"]
-    assert set(props) >= {"target", "judge", "limit", "eval_id"}
-    assert run_eval.inputSchema["required"] == ["target"]
+    assert "run_eval" not in names
+    assert hasattr(mcp_server, "_run_eval"), "handler kept callable for internal use"
 
 
 def test_missing_target_is_a_400():

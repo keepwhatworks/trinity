@@ -309,6 +309,40 @@ async def handle_list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="trust",
+            description=(
+                "Which model this user sides with when the labs split, and the "
+                "recurring CROSS-PROVIDER disagreements a topic keeps returning to. "
+                "With `query`: the recurring disagreements it maps into (semantic "
+                "retrieval over resolved council splits) — each with the raw record: "
+                "who argued which side, the chairman's pick, and how many councils "
+                "split on the same question. Without `query`: the count of "
+                "cross-provider disagreements in the corpus. Both include `tally` — "
+                "the per-model win/loss over RESOLVED disagreements — but ONLY when it "
+                "clears its trustworthiness gate (K3 chairman-agreement band + K4 "
+                "discrimination); otherwise the per-model verdict is WITHHELD "
+                "(`tally_trustworthy:false`) and you should rely on the raw record, "
+                "not a number. Read-only + LLM-free (requires a real embedder; refuses "
+                "on the TF-IDF stub). Build/refresh the tally out-of-band with "
+                "`trinity-local trust --build` (an LLM judges which branch the user's "
+                "later work took, riding the session)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Optional. Find recurring cross-provider disagreements on this topic.",
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "default": 5,
+                        "description": "Max recurring disagreements to return (default 5).",
+                    },
+                },
+            },
+        ),
+        Tool(
             name="get_council_status",
             description=(
                 "Poll an in-flight or completed council by `council_run_id` (returned from "
@@ -388,95 +422,10 @@ async def handle_list_tools() -> list[Tool]:
                 "required": ["kind", "payload"],
             },
         ),
-        Tool(
-            name="lens_generators",
-            description=(
-                "Run the generators pass (the lens 'lift') and return the user's "
-                "cross-domain GENERATING invariants — the deep preferences the task-level "
-                "lens tensions are projections of (the same reflex in software AND "
-                "materials AND finance AND epistemology). Runs INSIDE this session so it "
-                "samples via the user's subscription (no `claude -p`, no transcript "
-                "pollution). Selects domain-diverse evidence, abstracts to generators, "
-                "then a dual autonomous self-critique (contradiction-split + off-plane "
-                "gap). Writes `~/.trinity/memories/generators.md` and returns the "
-                "structured generators. A multi-minute call (embedding + two chairman "
-                "passes) — trigger on explicit user request, not speculatively."
-            ),
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="run_eval",
-            description=(
-                "Score a model against the USER's taste, IN-SESSION — the judge "
-                "rides this Claude session (#263 MCP sampling) instead of burning "
-                "`claude -p` quota (the one cognition surface the CLI `eval-run` "
-                "still spent it on). Dispatches `target` over the user's personal "
-                "eval set (their own cross-provider rejection signals), then judges "
-                "each answer against `lens.md` with a second provider. Returns the "
-                "aggregate score + per-axis (REFRAME/REDIRECT/SHARPENING/COMPRESSION) "
-                "breakdown + the judge used. USE WHEN: the user asks 'how does "
-                "<model> do on MY kind of work?' / 'score the new model'. `target` "
-                "is the model to score (claude/codex/gemini or a brand alias); "
-                "`judge` defaults to the most-aligned non-target provider (a strong "
-                "fixed judge — Claude rides sampling here, so it's free); `limit` "
-                "caps items (default 5 — every item is a REAL dispatch, so this is "
-                "a multi-minute call). Needs a built eval set "
-                "(`trinity-local eval-build`) and >=2 enabled providers."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "target": {
-                        "type": "string",
-                        "description": "Provider/model to score (claude/codex/gemini or a brand alias like 'gpt').",
-                    },
-                    "judge": {
-                        "type": "string",
-                        "description": "Optional judge provider; defaults to the most-aligned non-target (Claude rides sampling — free).",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "default": 5,
-                        "description": "Max eval items to run (default 5). Each is a real dispatch — keep it small.",
-                    },
-                    "eval_id": {
-                        "type": "string",
-                        "description": "Optional eval-set id; defaults to the most recently built set on disk.",
-                    },
-                },
-                "required": ["target"],
-            },
-        ),
-        Tool(
-            name="choose",
-            description=(
-                "THE CHOICE ORACLE: when you face a decision between concrete "
-                "options (designs, tradeoffs, ship-or-hold), the USER's lens "
-                "ranks them — LLM-free, instant, on the same frozen taste "
-                "direction whose live prospective accuracy is measured on the "
-                "user's own real choices (currently reported in every answer "
-                "as live_accuracy over decided_trials). Returns options ranked "
-                "by lens fit with a confidence_gap; `abstain: true` means the "
-                "gap is under the pre-registered noise floor — ask the human "
-                "instead of dressing up a coin flip. `advisory_only: true` "
-                "means the live accuracy has fallen below its 60% floor and "
-                "rankings are directional, not decisive. Use for SELECTION "
-                "among given options — never to generate answers (that claim "
-                "measured null and ships dormant)."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "options": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "minItems": 2,
-                        "description": "The candidate options, as self-contained descriptions (a sentence to a paragraph each).",
-                    },
-                },
-                "required": ["options"],
-            },
-        ),
+        # `lens_generators`, `run_eval`, `choose` were demoted off the MCP tool
+        # surface 2026-07-18 (founder soft-demote of the eval-harness / palate /
+        # generators). Their CLI verbs (`lens-generators` / `eval-run` / `choose`)
+        # and engines stay; they're just no longer advertised to agents.
     ]
 
 
@@ -599,6 +548,8 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[Any]:
             return await _ask(arguments)
         if name == "get_picks":
             return await _get_picks(arguments)
+        if name == "trust":
+            return await _trust(arguments)
         if name == "run_council":
             return await _run_council(arguments)
         # `record_outcome` dispatch removed 2026-05-21 (rating UX sunset).
@@ -608,12 +559,9 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[Any]:
             return await _get_council_status(arguments)
         if name == "import_provider_memory":
             return await _import_provider_memory(arguments)
-        if name == "lens_generators":
-            return await _lens_generators(arguments)
-        if name == "run_eval":
-            return await _run_eval(arguments)
-        if name == "choose":
-            return _choose(arguments)
+        # `lens_generators`, `run_eval`, `choose` demoted off the MCP surface
+        # 2026-07-18 (founder soft-demote). Their CLI verbs + engines stay; the
+        # handlers below are retained but no longer dispatched here.
         return [ErrorData(code=404, message=f"Tool not found: {name}")]
     except Exception as exc:
         return [ErrorData(code=500, message=f"{type(exc).__name__}: {exc}")]
@@ -1518,6 +1466,47 @@ async def _get_picks(args: dict) -> list[Any]:
         "winner_margin_floor": round(winner_margin_floor, 3),
         "routed": routed,
     })]
+
+
+def _load_trust_summary() -> dict:
+    """The built disagreement ledger's aggregate (per-model tally + the K3/K4
+    trustworthiness gate). Broad-guarded: a missing/corrupt summary yields {}
+    rather than crashing the tool."""
+    from .disagreement_ledger import _ledger_dir
+    try:
+        d = json.loads((_ledger_dir() / "summary.json").read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:  # noqa: BLE001 — absent/corrupt ledger → no tally, not a crash
+        return {}
+
+
+async def _trust(args: dict) -> list[Any]:
+    """Handle mcp__trinity-local__trust. Which model the user sides with when the
+    labs split + the recurring cross-provider disagreements a query maps into.
+    Read-only + LLM-free (retrieval requires a real embedder; the per-model tally
+    is surfaced only when it clears its trustworthiness gate)."""
+    from .disagreement_ledger import load_disagreements, retrieve_recurring
+    from .embeddings import EmbedderNotReadyError
+
+    query = args.get("query")
+    if query is not None and not isinstance(query, str):
+        return [ErrorData(code=400, message="`query` must be a string when provided")]
+    try:
+        top_k = int(args.get("top_k", 5))
+    except (TypeError, ValueError):
+        return [ErrorData(code=400, message="`top_k` must be numeric")]
+
+    payload: dict = {"tally": _load_trust_summary()}
+    if query:
+        try:
+            payload["recurring"] = retrieve_recurring(query, top_k=top_k)
+        except EmbedderNotReadyError as exc:
+            return [_text({"error": "embedder_not_ready", "message": str(exc),
+                           "tally": payload["tally"]})]
+    else:
+        payload["cross_provider_disagreements"] = sum(
+            1 for p in load_disagreements() if p.is_cross_provider)
+    return [_text(payload)]
 
 
 async def _route(args: dict) -> list[Any]:

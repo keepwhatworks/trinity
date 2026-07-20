@@ -154,26 +154,26 @@ class TestCLIHandlersUseGate:
         require wiring up the full handler test apparatus."""
         path = Path(__file__).resolve().parents[1] / "src" / "trinity_local" / "commands" / "dream.py"
         src = path.read_text()
-        assert "require_embedder_ready" in src, (
-            "dream handler must call require_embedder_ready — Phase 1 "
-            "uses embeddings extensively, so the gate belongs at handler "
-            "entry, not in the embeddings module's call sites."
+        assert "require_real_embedder" in src, (
+            "dream handler must call require_real_embedder — the active-backend "
+            "gate (not the model-file probe alone), so a broken backend that "
+            "would fall back to the TF-IDF stub is refused, not silently used."
         )
         assert "EmbedderNotReadyError" in src
 
     def test_me_build_handler_imports_gate(self):
         path = Path(__file__).resolve().parents[1] / "src" / "trinity_local" / "commands" / "me.py"
         src = path.read_text()
-        assert "require_embedder_ready" in src, (
-            "lens-build (handle_me_build) must call require_embedder_ready "
+        assert "require_real_embedder" in src, (
+            "lens-build (handle_me_build) must call require_real_embedder "
             "— embedder is used for assistant-text reranking + basin clustering."
         )
 
     def test_vocabulary_handler_imports_gate(self):
         path = Path(__file__).resolve().parents[1] / "src" / "trinity_local" / "commands" / "vocabulary.py"
         src = path.read_text()
-        assert "require_embedder_ready" in src, (
-            "vocabulary distillation must call require_embedder_ready — "
+        assert "require_real_embedder" in src, (
+            "vocabulary distillation must call require_real_embedder — "
             "uses synonym embeddings to cluster anchor terms."
         )
 
@@ -188,6 +188,12 @@ class TestDreamHandlerGateBehavior:
         from trinity_local.commands.dream import handle_dream
 
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        # require_real_embedder short-circuits on a LIVE backend (an empty HF
+        # cache is irrelevant once the model is loaded in memory), so simulate
+        # "no real embedder" by forcing the active-backend probe False; the
+        # empty Path.home then yields the download message.
+        import trinity_local.embeddings as _emb
+        monkeypatch.setattr(_emb, "mlx_actually_loaded", lambda: False)
         args = SimpleNamespace(
             similarity_threshold=0.9, max_clusters=None,
             min_overlap=2, skip_lens_build=False, skip_consolidate=False,
@@ -207,6 +213,8 @@ class TestDreamHandlerGateBehavior:
         from trinity_local.commands.me import handle_me_build
 
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        import trinity_local.embeddings as _emb
+        monkeypatch.setattr(_emb, "mlx_actually_loaded", lambda: False)
         args = SimpleNamespace(
             legacy=False, sample_size=200, k_basins=12,
             budget_chars=10000, dry_run=False,
