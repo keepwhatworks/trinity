@@ -301,6 +301,14 @@ def _post_build_hooks(dry_run: bool) -> dict:
         out["palate_snapshot"] = record_direction_snapshot()
     except Exception as exc:
         out["palate_snapshot"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    # Residual-over-time log (compression-loop gap #3, passive half): record one
+    # prediction-quality snapshot per build so the learning-progress derivative
+    # becomes computable later. Pure recording — no objective is touched.
+    try:
+        from ..me.residual_log import record_snapshot
+        out["residual_snapshot"] = record_snapshot()
+    except Exception as exc:
+        out["residual_snapshot"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
     return out
 
 
