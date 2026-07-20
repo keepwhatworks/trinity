@@ -142,6 +142,27 @@ def test_tally_keys_on_model_version_not_lab():
     assert recs["claude · opus · 4.7"]["win_rate"] == 0.0
 
 
+def test_effort_rolls_into_primary_with_gated_breakdown():
+    """A stamped effort tallies into the model×version PRIMARY (no fragmentation);
+    effort appears only in the SECONDARY breakdown, gated on clearing the floor.
+    Mutation: revert the _model_version_and_effort split in aggregate_tally -> the
+    primary fragments into per-effort rows and this reds."""
+    pats = [DisagreementPattern(
+        claim_id=f"e#{i}", council_id=f"c{i}", at="2026-05-01T00:00:00+00:00",
+        claim=f"c{i}", why_matters="w", providers_for=["openai"],
+        providers_against=["google"], chairman_winner="openai",
+        models_for=["openai · flagship · 5.5 · xhigh"],
+        models_against=["google · pro · 3.1 · high"]) for i in range(12)]
+    agg = aggregate_tally(pats, {f"e#{i}": "followed" for i in range(12)})
+    recs = agg["records"]
+    assert "openai · flagship · 5.5" in recs, "effort must roll into the model×version primary"
+    assert "openai · flagship · 5.5 · xhigh" not in recs, "effort must NOT be a primary row"
+    assert recs["openai · flagship · 5.5"]["w"] == 12
+    eb = agg["effort_breakdown"]
+    assert eb.get("openai · flagship · 5.5", {}).get("xhigh", {}).get("w") == 12, \
+        "the effort split must surface in the secondary breakdown"
+
+
 def test_tally_falls_back_to_lab_when_model_absent():
     """A pattern with no captured model identity keeps its lab row rather than
     vanishing — no resolved disagreement is silently dropped."""

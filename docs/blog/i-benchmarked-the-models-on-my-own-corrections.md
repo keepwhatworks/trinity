@@ -54,14 +54,14 @@ No judge grades an answer. No one rates anything. The scoreboard is behavior.
 
 ## The numbers, with their teeth
 
-On 113 disagreements my later work settled:
+On 119 disagreements my later work settled (a live snapshot; the number keeps moving as I run councils):
 
 | Model | Record | Win rate |
 |---|---|---|
-| Claude Opus 4.8 | 32 wins, 10 losses | **76%** |
-| Claude Opus 4.7 | 24 wins, 24 losses | 50% |
-| GPT-5.5 | 42 wins, 43 losses | 49% |
-| Gemini 3.1 Pro | 25 wins, 41 losses | 38% |
+| Claude Opus 4.8 | 37 wins, 11 losses | **77%** |
+| Claude Opus 4.7 | 20 wins, 19 losses | 51% |
+| GPT-5.5 | 48 wins, 47 losses | 51% |
+| Gemini 3.1 Pro | 30 wins, 62 losses | 33% |
 
 The Opus 4.8 confidence interval excludes a coin flip. The Opus 4.7 record *is* a coin flip.
 
@@ -76,7 +76,7 @@ A benchmark dies by a thousand "well, actually"s. So the gates were registered b
 - **Reliability floor.** Same evidence, extracted twice, had to agree. Kappa 0.70 against a 0.60 floor.
 - **Blind extraction.** The extractor never sees which model held which position. It cannot flatter anyone.
 - **A coin-flip kill.** If no model's interval had excluded 50%, the whole instrument would have died, and I would have said so. Two did: one above the coin flip, one below it.
-- **Honest scope.** This is my corpus. 113 resolved disagreements, one user. Your number will be yours, and it accrues from your own councils. I am not publishing a universal ranking. I am publishing a method.
+- **Honest scope.** This is my corpus. 119 resolved disagreements, one user. Your number will be yours, and it accrues from your own councils. I am not publishing a universal ranking. I am publishing a method.
 
 And the standing proof of all of it: the first instrument failed these standards, and it is dead. The graveyard is the credential.
 

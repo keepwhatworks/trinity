@@ -106,13 +106,16 @@ def _print_pattern(r: dict) -> None:
 
 def _tally_lines(agg: dict) -> str:
     if not agg.get("tally_trustworthy"):
+        from ..disagreement_ledger import K4_MIN_RESOLVED
+        resolved = int(agg.get("resolved", 0) or 0)
         why = []
         if not agg.get("k3_in_band"):
             why.append("resolver near noise/parroting")
         if not agg.get("k4_discriminates"):
             why.append("no model separates yet")
         return ("Per-model verdict withheld — " + ("; ".join(why) or "not enough resolved")
-                + f" (resolved: {agg.get('resolved', 0)}). The retrieval + raw council record still hold.")
+                + f" ({resolved}/{K4_MIN_RESOLVED} resolved disagreements). It accrues as you run "
+                "councils; the retrieval + raw council record work now.")
     from ..disagreement_ledger import MIN_TALLY_N
     records = agg.get("records") or {}
     shown = sorted(((k, v) for k, v in records.items()
@@ -128,4 +131,13 @@ def _tally_lines(agg: dict) -> str:
     omitted = len(records) - len(shown)
     if omitted:
         lines.append(f"  (+{omitted} model(s) under {MIN_TALLY_N} decisions — too thin to call.)")
+    # Effort as a SECONDARY read: only sub-cells that independently clear chance
+    # (ci_excludes_half) — a non-significant effort split never surfaces as a claim.
+    eb = agg.get("effort_breakdown") or {}
+    clear = [(mv, eff, r) for mv, effs in eb.items() if isinstance(effs, dict)
+             for eff, r in effs.items() if isinstance(r, dict) and r.get("ci_excludes_half")]
+    if clear:
+        lines.append("  effort (only where it clears chance on its own):")
+        for mv, eff, r in sorted(clear, key=lambda x: -x[2].get("win_rate", 0)):
+            lines.append(f"    {mv} · {eff}  {r.get('win_rate', 0):.0%}  ({r.get('w', 0)}W {r.get('l', 0)}L)")
     return "\n".join(lines)

@@ -212,6 +212,18 @@ def wilson_ci(wins: float, n: int, z: float = 1.96) -> tuple[float, float]:
     return (max(0.0, center - half), min(1.0, center + half))
 
 
+def _model_version_and_effort(label: str) -> tuple[str, str | None]:
+    """Split a 'family · tier · version [· effort]' identity into its model×version
+    PRIMARY and its optional effort leg. The primary is what the tally keys on so a
+    single model never fragments into per-effort rows in the headline; effort is a
+    secondary breakdown, surfaced only when a sub-cell independently clears the floor.
+    Lab-fallback labels (no ' · ') pass through as the primary with no effort."""
+    parts = label.split(" · ")
+    if len(parts) >= 4:
+        return " · ".join(parts[:3]), parts[3]
+    return label, None
+
+
 def aggregate_tally(
     patterns: list[DisagreementPattern],
     resolutions: dict[str, str],
@@ -226,18 +238,26 @@ def aggregate_tally(
     resolved = {cid: r for cid, r in resolutions.items()
                 if r in ("followed", "contradicted") and cid in by_id}
     tally: dict[str, dict[str, int]] = {}
+    eff_tally: dict[str, dict[str, dict[str, int]]] = {}  # model×version -> effort -> {w,l}
     ch_hit = ch_tot = 0
     for cid, r in resolved.items():
         p = by_id[cid]
-        # Tally at model×version identity (falls back to lab when the member model
-        # wasn't captured — no row is lost). K3 stays at LAB granularity because the
-        # chairman's winner is recorded as a lab.
+        # PRIMARY row per model×version (a clean per-model read that never fragments);
+        # effort is a SECONDARY breakdown surfaced only when a sub-cell independently
+        # clears the floor. K3 stays at LAB granularity (chairman winner is a lab).
+        # Falls back to lab when the member model wasn't captured — no row is lost.
         win = (p.models_for or p.providers_for) if r == "followed" else (p.models_against or p.providers_against)
         los = (p.models_against or p.providers_against) if r == "followed" else (p.models_for or p.providers_for)
         for m in win:
-            tally.setdefault(m, {"w": 0, "l": 0})["w"] += 1
+            mv, eff = _model_version_and_effort(m)
+            tally.setdefault(mv, {"w": 0, "l": 0})["w"] += 1
+            if eff:
+                eff_tally.setdefault(mv, {}).setdefault(eff, {"w": 0, "l": 0})["w"] += 1
         for m in los:
-            tally.setdefault(m, {"w": 0, "l": 0})["l"] += 1
+            mv, eff = _model_version_and_effort(m)
+            tally.setdefault(mv, {"w": 0, "l": 0})["l"] += 1
+            if eff:
+                eff_tally.setdefault(mv, {}).setdefault(eff, {"w": 0, "l": 0})["l"] += 1
         win_labs = p.providers_for if r == "followed" else p.providers_against
         los_labs = p.providers_against if r == "followed" else p.providers_for
         cw = p.chairman_winner
@@ -254,10 +274,29 @@ def aggregate_tally(
         k4_pass = k4_pass or excl
         records[m] = {"w": t["w"], "l": t["l"], "win_rate": round(t["w"] / n, 3) if n else 0.0,
                       "ci": [round(lo, 3), round(hi, 3)], "ci_excludes_half": excl}
+    # Secondary effort breakdown: per model×version, only the effort sub-cells that
+    # independently clear the floor — so a non-significant effort split (e.g. an n=13
+    # cell whose CI includes chance) never surfaces as a headline, the exact overclaim
+    # the trustworthiness gate exists to refuse.
+    effort_breakdown: dict[str, dict[str, Any]] = {}
+    for mv, effs in eff_tally.items():
+        rows = {}
+        for eff, t in effs.items():
+            n = t["w"] + t["l"]
+            if n < MIN_TALLY_N:
+                continue
+            lo, hi = wilson_ci(t["w"], n)
+            rows[eff] = {"w": t["w"], "l": t["l"],
+                         "win_rate": round(t["w"] / n, 3) if n else 0.0,
+                         "ci": [round(lo, 3), round(hi, 3)],
+                         "ci_excludes_half": bool(lo > 0.5 or hi < 0.5)}
+        if rows:
+            effort_breakdown[mv] = rows
     in_band = k3 is not None and K3_LOW <= k3 <= K3_HIGH
     return {
         "resolved": len(resolved),
         "records": records,
+        "effort_breakdown": effort_breakdown,
         "k3_chairman_agreement": None if k3 is None else round(k3, 3),
         "k3_in_band": in_band,
         "k4_discriminates": k4_pass and len(resolved) >= K4_MIN_RESOLVED,

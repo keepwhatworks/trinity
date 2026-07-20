@@ -1,8 +1,6 @@
-"""MCP server exposing Trinity's canonical 4 tools + v1.5 trio + provider-loop tool.
+"""MCP server exposing Trinity's 7 public tools (see handle_list_tools).
 
 Public tools, in lifecycle order:
-  - route(task, harness, available_models, budget, latency)
-      "Which model should I use?" — heuristic + k-NN, no model calls.
   - run_council(task, members, mode, sequence, responses)
       "Run the task across multiple models." — N+1 model calls.
       When `responses` is provided, skips member dispatch and goes straight
@@ -13,10 +11,14 @@ Public tools, in lifecycle order:
   - get_council_status(council_run_id)
       "Poll an in-flight or completed council." — for harnesses without fs access.
 
-v1.5 pair: ask / get_picks.
+v1.5 pair: ask (single-call routing; ask(mode="route") returns the routing
+decision only) / get_picks.
+Disagreement ledger: trust — which model you side with when the labs split,
+read-only + gated (per-model verdict withheld unless it clears K3/K4); the tally
+keys a model×version primary with effort as a gated secondary.
 In-protocol provider loop: import_provider_memory.
-Choice oracle: choose (rank options on the frozen palate direction,
-live measured accuracy in every payload).
+(route/choose/run_eval/lens_generators were removed or demoted off the surface —
+routing lives in ask(mode="route"); the eval/palate/generators verbs are CLI-only.)
 
 Plus MCP Resources (v2 substrate, 2026-05-26) for read-only context:
 ~/.trinity/memories/*, ~/.trinity/scoreboard/* exposed as
