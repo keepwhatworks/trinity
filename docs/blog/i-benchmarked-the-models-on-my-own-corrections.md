@@ -54,7 +54,7 @@ No judge grades an answer. No one rates anything. The scoreboard is behavior.
 
 ## The numbers, with their teeth
 
-On 119 disagreements my later work settled (a live snapshot; the number keeps moving as I run councils):
+On 119 disagreements my later work settled, as of mid-2026. The models below are the ones I ran then. Newer ones, the Claude 5 and GPT-5.6 generation, accrue their own rows as I use them. The number never stops moving.
 
 | Model | Record | Win rate |
 |---|---|---|
