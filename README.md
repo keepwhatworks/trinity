@@ -13,7 +13,7 @@ class: live
 
 ## Ask all three. Keep what works.
 
-Send one prompt to Claude, ChatGPT, and Gemini at once, and a chairman shows you what they agreed on and exactly where they split. That is the cross-provider read no single lab can give you, because none of them can see the others — and it works the moment you install. Then, from your own history, it learns **which model to trust on your kind of question**. Free, local, on the subscriptions you already pay for. No API key. Your transcripts never leave your machine.
+Send one prompt to Claude, ChatGPT, and Gemini at once. A chairman shows you what they agreed on and, more to the point, exactly **where they split** — the cross-provider read no single model can give you, however good it gets, because none of them can see the others. It works the moment you install. Then, from your own history, it learns **which side of those splits your work keeps taking**: which model to trust on your kind of question. Free, local, on the subscriptions you already pay for. No API key. Your transcripts never leave your machine.
 
 **Install** is just an MCP and a Chrome extension. No new app, no cloud, no API key.
 
