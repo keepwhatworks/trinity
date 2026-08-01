@@ -125,9 +125,9 @@ The lens's stand-in claim is measured, continuously. At every build the taste
 direction freezes with the exact set of acts it was fit on. Every correction
 that arrives afterward is a prospective trial the direction never saw
 (`me/palate_registry.py`). Train-on-test is structurally impossible there, and
-honest abstains are disclosed. The running number lives in `lens-health` (80.7%
-over 301 decided trials, with a further 46 honestly abstained and never scored,
-against a kill-floor of 60%). `choose(options)`, the ninth
+honest abstains are disclosed. The running number lives in `lens-health` (81.6%
+over 354 decided trials as of 2026-08-01, with a further 55 honestly
+abstained and never scored, against a kill-floor of 60%). `choose(options)`, the ninth
 MCP tool, productizes the validated half. It ranks any concrete options on the
 frozen direction, LLM-free and instant, with the live accuracy in every
 payload and an abstain under the same noise floor. Generation-side
