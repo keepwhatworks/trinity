@@ -308,9 +308,17 @@ def compute_basins(
     clustering — it splits ONLY the oversized + incoherent mega-basins into
     coherent sub-basins (fresh ids like b05a/b05b) and leaves every small or
     coherent basin untouched. Split-only: never merges, never moves prompts
-    across basins, never re-clusters globally. OFF by default
-    (`split_megas=None` reads the env knob, which itself defaults off), so the
-    default path is behaviour-preserving. See `me/basin_split.py`.
+    across basins, never re-clusters globally. ON by default since af073886
+    (`split_megas=None` reads the env knob, which itself defaults ON) — it was
+    flipped because leaving it off meant every automatic rebuild silently
+    reverted a hand-run split. See `me/basin_split.py`.
+
+    NOTE for anyone debugging "the split reverted again": a long-lived
+    `--mcp` server runs the code it STARTED with, and its activity-gated lens
+    kick rebuilds topics.json in-process. A server that predates a change to
+    this default will keep writing unsplit basins however current the repo is.
+    Check the server's start time against the commit before suspecting the
+    plumbing (measured 2026-07-25: server 26h stale, b00 back to 21.4%).
     """
     try:
         import numpy as np

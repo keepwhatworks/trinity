@@ -1,11 +1,12 @@
 """Tests for the MCP host-sampling primitive (mcp_sampling.py).
 
-This is the foundation for the 2026-06-15 billing-change adaptation:
-when Trinity-MCP runs inside a chat client that supports sampling
+When Trinity-MCP runs inside a chat client that supports sampling
 (Claude Desktop), we ask the host for Claude completions instead of
-subprocessing `claude -p` — which avoids the Agent SDK credit pool
-entirely. These tests pin the degradation contract (returns None,
-never raises) since the live council path will lean on that.
+subprocessing `claude -p`. Both bill the same Claude subscription
+(there is no separate Agent-SDK credit pool — that change is paused);
+sampling wins on quota efficiency and session context. These tests pin
+the degradation contract (returns None, never raises) since the live
+council path leans on that.
 """
 from __future__ import annotations
 

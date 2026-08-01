@@ -136,25 +136,172 @@ def thompson_eligible(entry: dict) -> bool:
     return _thompson_masses(entry) is not None
 
 
-def classify_basins(rules: dict) -> dict[str, int]:
-    """Split a picks.json `rules` dict into the three routing classes every
-    surface reports — one source of truth so the launchpad card and the
-    status liveness line can never disagree on how many basins actually
-    route. `decisive`: ask() routes the winner (pick_routes). `explored`:
-    ask() Thompson-samples a measured near-tie (thompson_eligible). `thin`:
-    falls to kNN (stale, sub-count, or no weights)."""
+def classify_basins(rules: dict, basin_ids: set[str] | None = None) -> dict[str, int]:
+    """Split a picks.json `rules` dict into the routing classes every surface
+    reports — one source of truth so the launchpad card and the status
+    liveness line can never disagree on how many basins actually route.
+    `decisive`: ask() routes the winner (pick_routes). `explored`: ask()
+    Thompson-samples a measured near-tie (thompson_eligible). `thin`: falls to
+    kNN (stale, sub-count, or no weights).
+
+    Pass `basin_ids` (the LIVE topics.json ids) to add a fourth class:
+    `orphan` — a rule keyed to a basin that no longer exists. An orphan can
+    never be reached, because `place_query` only ever returns a live basin id,
+    so counting one as "decisive" overstates how much routing is actually
+    wired. Measured 2026-07-31 on the founder's corpus: 6 of 31 rules were
+    orphans and ONE of them (`b01d`, margin 0.35, effective_n 3.06) cleared the
+    routing gate — so the surfaces read "4 basins route decisively" when only 3
+    could ever fire.
+
+    `basin_ids=None` means "the live basin set was not supplied", and the
+    `orphan` key is then OMITTED rather than reported as 0. Reporting a
+    reassuring zero for something we did not look at is the exact
+    green-over-degenerate move this codebase keeps having to undo — and it
+    keeps the default return shape byte-identical for existing callers."""
     if not isinstance(rules, dict):
-        return {"decisive": 0, "explored": 0, "thin": 0, "total": 0}
-    decisive = explored = thin = 0
-    for entry in rules.values():
+        base = {"decisive": 0, "explored": 0, "thin": 0, "total": 0}
+        return {**base, "orphan": 0} if basin_ids is not None else base
+    decisive = explored = thin = orphan = 0
+    for bid, entry in rules.items():
+        if basin_ids is not None and str(bid) not in basin_ids:
+            orphan += 1
+            continue
         if isinstance(entry, dict) and pick_routes(entry):
             decisive += 1
         elif thompson_eligible(entry):
             explored += 1
         else:
             thin += 1
-    return {"decisive": decisive, "explored": explored, "thin": thin,
-            "total": len(rules)}
+    out = {"decisive": decisive, "explored": explored, "thin": thin,
+           "total": len(rules)}
+    if basin_ids is not None:
+        out["orphan"] = orphan
+    return out
+
+
+# ── Orphan pruning ─────────────────────────────────────────────────────
+#
+# picks.json is keyed by basin id; basin ids are assigned BY POSITION in
+# `me/basins.py` (`b{i:02d}` after a size-descending sort) and re-drawn on every
+# lens build. topics.json and picks.json are rebuilt by two INDEPENDENT kicks
+# (`cold_start.maybe_kick_lens_refresh`, 30-min cooldown, vs
+# `stale_pass.run_stale_pass`, 24-h window) with no ordering guarantee and no
+# re-consolidate after a lens rebuild — so every lens build that lands between
+# consolidates leaves rules pointing at ids that no longer exist.
+#
+# Pre-registered refusal floors. Pruning is a DELETE against the chairman's
+# accumulated picks, so it must refuse rather than guess whenever the basin set
+# it is checking against looks degenerate:
+#   * fewer than MIN_BASINS_FOR_PRUNE live basins → the topology is unbuilt or
+#     clobbered, and "not in the live set" would mean "not in an empty set".
+#   * more than MAX_ORPHAN_DROP_FRACTION of the rules would go → that is not a
+#     few stragglers, it is a whole-scheme change (renamed ids, a different
+#     splitter). Keep everything and surface it; a human decides.
+# Same shape as the #194 clobber guard on `save_routing_patterns`.
+MIN_BASINS_FOR_PRUNE = 5
+MAX_ORPHAN_DROP_FRACTION = 0.5
+
+# ── Why there is no stable basin key (assessed + DECLINED 2026-07-31) ──
+#
+# The obvious repair for orphaned rules is to stop keying on an ordinal id and
+# key on content instead — carry a rule across a rebuild by matching its old
+# centroid to its nearest new centroid. It was assessed against the measured
+# behaviour of this corpus (script `internal/experiments/basin_degeneracy.py`,
+# results `internal/experiments/basin_degeneracy_results.json`, run with the real
+# MLX embedder — backend `mlx`, nomic-ai/modernbert-embed-base:768 — over 40,236
+# embedded nodes) and DECLINED. Three results, in the order that matters:
+#
+#   T3 — the thing a stable key would anchor to is not stable. Re-cluster the
+#   SAME corpus at a different seed, and again on a 99% subsample: 52 ids
+#   survive in each arm, and in BOTH the median membership Jaccard against the
+#   base clustering is 0.000. Only 5.8% of ids reach Jaccard >= 0.5 (both arms);
+#   at >= 0.8 it is 1.9% for the reseed arm and 0.0% for the subsample arm — i.e.
+#   perturbing the corpus by ONE PERCENT leaves no id with a stable membership.
+#   "Basin b07" is not a thing that persists and gets renumbered — it is
+#   redrawn. A nearest-centroid re-key would therefore not RECOVER an identity,
+#   it would MINT one, and every consumer would then read a stable id as
+#   evidence of a stable topic.
+#
+#   T4b — and the payload attached to a surviving id is chance. Controlled arm:
+#   same councils, same code, same corpus, only the clustering seed changed. Of
+#   30 ids present in both runs the tallied winner disagrees on 16 (53.3%),
+#   against an analytic chance rate of 55.7% and a permutation chance of 55.5%
+#   (p5-p95 43.3-66.8%), p=0.476. A shared id predicts its own winner no better
+#   than a random re-pairing does. n=30 is thin — this is "no evidence of
+#   signal", not "proof of none" — but it is nowhere near a basis for building
+#   machinery whose entire purpose is to preserve that payload.
+#
+#   T2 — the downstream claim does not discriminate either. Decisive routing
+#   fires on 16.6% of 651 real council tasks and 16.0% of 200 word-salad nulls
+#   (z=0.2, p=0.844). Placement itself does discriminate (65.0% vs 29.5%,
+#   p<0.001); what does not is the routed VERDICT.
+#
+# So a stable keying scheme would be a stable pointer to something measured to
+# carry nothing — a green over degenerate data with extra steps, and a harder
+# one to see through than the orphans it replaces, because after re-keying the
+# store would look continuous. Pruning is the honest handling: a rule whose
+# basin was redrawn has lost its referent, and deleting it costs nothing that
+# `pick_routes` was not already refusing to act on. The cheap structural half
+# is not a key at all — it is ordering: re-consolidate after a lens build, so
+# the tally is rebuilt against the topology it will be read with.
+#
+# PRE-REGISTERED REOPEN CONDITION (do not re-propose without it): re-run T3 and
+# T4b and get median Jaccard >= 0.5 on shared ids AND a winner-disagreement rate
+# at least 15 points below the permutation chance rate at n >= 60. Below that,
+# any re-keying proposal is re-proposing this measurement's null.
+
+
+def live_basin_ids() -> set[str]:
+    """The id set of the CURRENT lens topology. Empty when topics.json is
+    missing/unreadable/wrong-shape — callers must treat empty as "unknown",
+    never as "no basins exist"."""
+    return {str(b.get("id")) for b in load_topics_basins() if b.get("id")}
+
+
+def prune_orphan_rules(
+    rules: dict, basin_ids: set[str] | None,
+    *,
+    min_basins: int = MIN_BASINS_FOR_PRUNE,
+    max_drop_fraction: float = MAX_ORPHAN_DROP_FRACTION,
+) -> tuple[dict, list[str], str]:
+    """Drop picks entries whose basin no longer exists in the lens topology.
+
+    Returns ``(kept_rules, dropped_ids, reason)``. ``dropped_ids`` is empty
+    whenever the prune refused, and ``reason`` always says which of the three
+    outcomes happened — pruned / nothing to prune / refused — so a caller can
+    never report "clean" off a refusal. Pure: the live basin set is injected."""
+    if not isinstance(rules, dict):
+        return {}, [], "picks rules are not a dict — nothing to prune"
+    if not basin_ids:
+        return dict(rules), [], (
+            "no live basin set (topics.json missing, unreadable, or empty) — "
+            "REFUSED: without a topology every rule would look orphaned"
+        )
+    if len(basin_ids) < min_basins:
+        return dict(rules), [], (
+            f"only {len(basin_ids)} live basin(s), below MIN_BASINS_FOR_PRUNE="
+            f"{min_basins} — REFUSED: a degenerate topology cannot arbitrate "
+            "which rules are dead"
+        )
+    orphans = sorted(str(bid) for bid in rules if str(bid) not in basin_ids)
+    if not orphans:
+        return dict(rules), [], (
+            f"no orphans: all {len(rules)} rule(s) key a live basin "
+            f"(of {len(basin_ids)})"
+        )
+    if rules and (len(orphans) / len(rules)) > max_drop_fraction:
+        return dict(rules), [], (
+            f"{len(orphans)}/{len(rules)} rules are orphaned, above "
+            f"MAX_ORPHAN_DROP_FRACTION={max_drop_fraction} — REFUSED: that is a "
+            "basin-id scheme change, not stale stragglers. Re-run "
+            "`trinity-local consolidate` to rebuild the tally against the "
+            "current topology instead of deleting most of it"
+        )
+    kept = {bid: entry for bid, entry in rules.items() if str(bid) in basin_ids}
+    return kept, orphans, (
+        f"pruned {len(orphans)} orphan rule(s) ({', '.join(orphans)}); "
+        f"{len(kept)} of {len(rules)} kept against {len(basin_ids)} live basins"
+    )
 
 
 _TOPICS_BASINS_CACHE: tuple[str, float, list[dict]] | None = None

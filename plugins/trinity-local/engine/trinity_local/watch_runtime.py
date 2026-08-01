@@ -66,6 +66,31 @@ def _source_root(source: str) -> Path:
     raise ValueError(f"Unknown source: {source}")
 
 
+def _is_conversation_capture(path: Path) -> bool:
+    """Is this browser-capture file a CONVERSATION (vs. provider metadata)?
+
+    ``capture_host.iter_capture_files`` is the documented single source of truth
+    for that question and skips two shapes the extension also writes into
+    ``conversations/<provider>/``:
+
+      * ``_``-prefixed sentinels (``_sidebar.json``) — the recent-conversations
+        snapshot the sync diff reads, written by a ``sidebar_list`` capture;
+      * ``stream-<urlhash>.json`` — raw-fallback orphans with no conv_id,
+        written when no adapter exists for the domain.
+
+    The ingest walker did NOT apply that filter, so it handed a known
+    non-conversation to a conversation parser and booked the inevitable None as
+    a PARSE FAILURE. Measured 2026-07-31 on the live corpus: exactly one
+    ``_sidebar.json`` per provider, so browser_claude / browser_chatgpt /
+    browser_gemini each reported a permanent, unclearable ``skipped_parse`` of
+    1 — the same "reads as breakage, isn't" defect the empty/parse split fixes,
+    on the same counter. (No ``stream-`` orphan exists on that corpus; it is
+    filtered here because ``capture_host`` writes the shape, not because one
+    was observed.)
+    """
+    return not (path.name.startswith("_") or path.name.startswith("stream-"))
+
+
 def _iter_recent_paths(source: str, since_mtime: float) -> Iterator[Path]:
     root = _source_root(source)
     if not root.exists():
@@ -83,14 +108,15 @@ def _iter_recent_paths(source: str, since_mtime: float) -> Iterator[Path]:
         # the canonical structure (chat_messages for claude, mapping for
         # chatgpt) and the captured parsers return None for them.
         # Saves the parse attempt + skipped_parse increment.
-        paths = (p for p in root.glob("*.json") if not p.name.endswith(".stream.json"))
+        paths = (p for p in root.glob("*.json")
+                 if not p.name.endswith(".stream.json") and _is_conversation_capture(p))
     elif source == "browser_gemini":
         # Gemini has NO canonical full-conversation fetch — the
         # batchexecute RPC is reply-only — so the .stream.json files
         # ARE the data. Include them (opposite of the claude/chatgpt
         # filter above). All *.json files under conversations/gemini/
         # are adapter outputs from adapters/gemini.js.
-        paths = root.glob("*.json")
+        paths = (p for p in root.glob("*.json") if _is_conversation_capture(p))
     else:
         paths = root.rglob("local_*.json")
     recent = []
@@ -136,3 +162,22 @@ def _parse_source_path(source: str, path: Path):
         from .ingest import parse_captured_gemini_conversation
         return parse_captured_gemini_conversation(path)
     raise ValueError(f"Unknown source: {source}")
+
+
+def _parse_source_path_classified(source: str, path: Path):
+    """``_parse_source_path`` + WHY nothing came back — ``(session, reason)``
+    with reason in ``ingest.PARSE_OK`` / ``PARSE_EMPTY`` / ``PARSE_UNREADABLE``.
+
+    A bare `None` cannot distinguish "this file is broken" from "this file is
+    fine and carries nothing yet", so the caller that counts skips has to pick
+    one and be wrong about the other. Sources whose parser can tell the
+    difference answer here; the rest fall back to UNREADABLE, which is what
+    the counter meant before this split (no source silently becomes 'empty'
+    without a parser that actually checked)."""
+    from .ingest import PARSE_OK, PARSE_UNREADABLE
+
+    if source == "browser_gemini":
+        from .ingest import parse_captured_gemini_conversation_classified
+        return parse_captured_gemini_conversation_classified(path)
+    session = _parse_source_path(source, path)
+    return session, (PARSE_OK if session is not None else PARSE_UNREADABLE)

@@ -44,7 +44,7 @@ class TestModelsManifest:
 
     def test_claude_model_matches_default(self):
         from trinity_local.models import current_models
-        assert current_models()["claude"]["model"] == "claude-fable-5"
+        assert current_models()["claude"]["model"] == "claude-opus-5"
 
 
 @pytest.mark.usefixtures("patch_trinity_home")
@@ -75,11 +75,11 @@ class TestDetectNewModels:
 
     def test_provider_scored_on_old_model_is_new(self):
         from trinity_local.models import detect_new_models
-        self._write_run("claude", "claude-opus-4-8")  # stale model (superseded by Fable 5)
+        self._write_run("claude", "claude-opus-4-8")  # stale model (superseded by Opus 5)
         events = [e for e in detect_new_models() if e.slug == "claude"]
         assert len(events) == 1
         assert events[0].last_evaluated == "claude-opus-4-8"
-        assert events[0].model == "claude-fable-5"
+        assert events[0].model == "claude-opus-5"
 
     def test_nudge_names_slug_and_command(self):
         from trinity_local.models import detect_new_models

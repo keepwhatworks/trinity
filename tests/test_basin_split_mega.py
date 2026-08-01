@@ -266,19 +266,41 @@ def test_other_basins_in_the_list_are_untouched(monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
-# 6. KNOB OFF by default                                                       #
+# 6. KNOB ON by default (founder flip 2026-07-24), explicit-off still honoured  #
 # --------------------------------------------------------------------------- #
-def test_knob_off_by_default_is_noop(monkeypatch):
+def test_knob_on_by_default_splits_a_mega_basin(monkeypatch):
+    """Default ON. It was opt-in until 2026-07-24, and that default was
+    self-defeating: the junk-drawer canary can only be cleared by a rebuild WITH
+    the splitter, but the usage-gated stale pass rebuilds on every council launch
+    WITHOUT the env knob — so normal product use reverted the fix (measured: 64
+    basins / 13.4% top share after a manual split rebuild, back to 55 / 20.6%
+    one council later)."""
     monkeypatch.delenv(bs.SPLIT_ENV_VAR, raising=False)
     rng = np.random.default_rng(0)
     ids, matrix = _two_blob_mega(rng)
     _patch_store(monkeypatch, _nodes_for(ids, matrix))
     mega = _basin("b00", ids)
 
-    # enabled=None => reads env knob => off => returns the SAME list object
-    out = bs.split_mega_basins([mega])
-    assert out == [mega]
-    assert out[0] is mega, "default-off must not rebuild basins"
+    out = bs.split_mega_basins([mega])  # enabled=None -> reads env -> unset -> ON
+    assert len(out) > 1, "default must SPLIT a two-blob mega basin, not pass it through"
+    assert out[0] is not mega, "default-on must rebuild basins"
+
+
+def test_explicit_off_is_still_a_noop(monkeypatch):
+    """The A/B escape hatch survives the flip — an explicit falsy value forces
+    the byte-identical vanilla k-means contract back on."""
+    rng = np.random.default_rng(0)
+    ids, matrix = _two_blob_mega(rng)
+    _patch_store(monkeypatch, _nodes_for(ids, matrix))
+    for falsy in ("0", "false", "off", "no"):
+        monkeypatch.setenv(bs.SPLIT_ENV_VAR, falsy)
+        mega = _basin("b00", ids)
+        out = bs.split_mega_basins([mega])
+        assert out[0] is mega, f"{falsy!r} must force the splitter off"
+    # per-call override beats the env in both directions
+    monkeypatch.delenv(bs.SPLIT_ENV_VAR, raising=False)
+    mega = _basin("b00", ids)
+    assert bs.split_mega_basins([mega], enabled=False)[0] is mega
 
 
 def test_env_knob_enables_split(monkeypatch):

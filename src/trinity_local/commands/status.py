@@ -427,15 +427,26 @@ def handle_status(args):
     # launchpad card. Best-effort: a read failure never breaks status.
     try:
         import json as _json
-        from ..lens_routing import classify_basins
+        from ..lens_routing import classify_basins, live_basin_ids
         if picks_path().exists():
             _picks = _json.loads(picks_path().read_text(encoding="utf-8"))
             _rules = _picks.get("rules", _picks) if isinstance(_picks, dict) else {}
-            s = classify_basins(_rules)
+            # Pass the live basin ids so a rule keyed to a re-drawn basin is
+            # counted as ORPHAN, not as a route. `live_basin_ids()` returns an
+            # empty set when topics.json is unreadable; `or None` then means
+            # "not supplied", so the line degrades to the old three-class split
+            # instead of declaring every rule orphaned off a failed read.
+            s = classify_basins(_rules, live_basin_ids() or None)
             if s["total"]:
-                print(f"       routing: {s['decisive']} route decisively · "
-                      f"{s['explored']} near-ties explored · {s['thin']} thin→kNN "
-                      f"(of {s['total']} tallied basins)")
+                line = (f"       routing: {s['decisive']} route decisively · "
+                        f"{s['explored']} near-ties explored · {s['thin']} thin→kNN "
+                        f"(of {s['total']} tallied basins)")
+                if s.get("orphan"):
+                    line += (f"\n       ⚠  {s['orphan']} rule(s) key basins that no "
+                             "longer exist — the lens was rebuilt after the last "
+                             "consolidate. Clear with `trinity-local consolidate "
+                             "--prune-orphans`.")
+                print(line)
     except Exception:
         pass
     print()

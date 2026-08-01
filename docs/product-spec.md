@@ -122,11 +122,11 @@ The chairman reads `lens` (composed by `lens-build` from sampled diverse prompts
 
 ### CLI dispatcher
 
-`src/trinity_local/main.py` is a thin dispatcher. Command modules live under `commands/`. Selected commands shown below. The complete live surface (<!-- canonical:cli_command_count -->60<!-- /canonical --> subcommands across <!-- canonical:command_module_count -->24<!-- /canonical --> command modules) is enumerated by `trinity-local --help`.
+`src/trinity_local/main.py` is a thin dispatcher. Command modules live under `commands/`. Selected commands shown below. The complete live surface (<!-- canonical:cli_command_count -->59<!-- /canonical --> subcommands across <!-- canonical:command_module_count -->24<!-- /canonical --> command modules) is enumerated by `trinity-local --help`.
 
 | Module | Key commands |
 |--------|-------------|
-| `commands/council.py` | `council-start`, `council-launch`, `council-stop`, `council-share`, `council-iterate` (former `council-html` retired 2026-05-17 with the verifier→synthesis rename. `council-rate` retired 2026-05-22 alongside the rest of the rating UX. Chairman pick is the auto-recorded supervision signal now) |
+| `commands/council.py` | `council-start`, `council-launch`, `council-stop`, `council-share` (`council-iterate` removed 2026-07-24 together with the run_consensus_round engine and the live council page's "Continue the thread" composer — 17 recorded rounds, last used 2026-06-12. Former `council-html` retired 2026-05-17 with the verifier→synthesis rename. `council-rate` retired 2026-05-22 alongside the rest of the rating UX. Chairman pick is the auto-recorded supervision signal now) |
 | `commands/me.py` | `lens-build` (chairman-driven), `lens-show` |
 | ~~`commands/seed.py`~~ | ~~`seed-from-taste-terminal`~~. Retired 2026-05-27 (required a personal-rig directory layout no end user has. `import-export` auto-detects type at any path. Helpers consolidated into `src/trinity_local/ingest_helpers.py`) |
 | `commands/import_export.py` | `import-export` (auto-detect + bulk-ingest ChatGPT / Claude.ai / Gemini Takeout from any path, task #148) |

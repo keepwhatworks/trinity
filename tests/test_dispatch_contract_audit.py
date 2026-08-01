@@ -171,7 +171,11 @@ def test_audit_would_catch_the_original_bug():
     # json_field is underscore must be... ACCEPTED now (the host tolerates both),
     # but a payload using a key the host reads under NEITHER spelling must be
     # flagged. Prove the auditor actually fires on a true unknown key.
-    bad = "dispatcher.dispatch({ extensionAction: { kind: 'council-iterate', councle: x } });"
+    # (Fixture moved off 'council-iterate' 2026-07-24 — that kind was removed from
+    # ACTION_ALLOWLIST with the verb, so the auditor now correctly flags it as a
+    # dead dispatch. 'launch-council' is a live kind, which is what this meta-guard
+    # needs to distinguish "unknown key" from "unknown kind".)
+    bad = "dispatcher.dispatch({ extensionAction: { kind: 'launch-council', tsak: x } });"
     assert _audit(bad, label="synthetic"), "the auditor failed to flag an unknown key (it's vacuous)"
-    good = "dispatcher.dispatch({ extensionAction: { kind: 'council-iterate', council: x } });"
+    good = "dispatcher.dispatch({ extensionAction: { kind: 'launch-council', task: x } });"
     assert not _audit(good, label="synthetic"), "the auditor false-flagged a valid key"

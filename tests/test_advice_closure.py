@@ -23,6 +23,15 @@ The closure proof for lens_freshness decomposes as:
   (c) refreshing the files those writers write clears the
       check                                               → asserted here
 
+Instance 3 (pre-empted 2026-07-31): per-source ingest staleness computed from
+the cursor's `last_mtime`. That field is a content watermark and the scan
+boundary is inclusive, so a source whose newest file is old and fully drained
+pins it forever — the live `gemini` source read "86.5 days behind" while being
+perfectly current, and `trinity-local ingest-recent` could not move it by a
+second. No surface had shipped that number yet; the guards below keep it that
+way by pinning the clearable clock (`source_scan_ages`) as the one a freshness
+surface may read. Full reproduction: tests/test_ingest_cursor_fixed_point.py.
+
 When you add a NEW staleness warning with a `fix=` command, add its closure
 test here.
 """
@@ -32,6 +41,7 @@ import inspect
 import json
 import os
 import time
+from pathlib import Path
 
 
 def _age(path, days: float) -> None:
@@ -101,3 +111,79 @@ class TestLensFreshnessAdviceClosure:
         os.utime(topics, (now, now))  # topics fresh, vocab still 9d old
         still = _check_lens_freshness()
         assert "vocabulary.md" in still.detail and "predate" in still.detail, still.detail
+
+
+class TestIngestSourceFreshnessAdviceClosure:
+    """Instance 3. Whichever number a future surface reports for "how far behind
+    is this source", running the advised command must move it."""
+
+    def _pinned_home(self, tmp_path, monkeypatch):
+        """A source whose only transcript is old and already fully ingested."""
+        home = tmp_path / "home"
+        (home / ".claude" / "projects" / "proj").mkdir(parents=True)
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("TRINITY_HOME", str(home / ".trinity"))
+        sess = home / ".claude" / "projects" / "proj" / "s1.jsonl"
+        sess.write_text(
+            json.dumps({"type": "user", "sessionId": "s1",
+                        "timestamp": "2026-05-06T13:48:00Z",
+                        "message": {"role": "user", "content": "an old prompt"}}) + "\n",
+            encoding="utf-8",
+        )
+        _age(sess, 86.5)
+        return home
+
+    def test_running_ingest_recent_clears_the_source_staleness(self, tmp_path, monkeypatch):
+        """(a) the number exists, (b) the advised CLI verb — not some internal
+        writer — is what moves it, (c) it lands at ~0."""
+        from types import SimpleNamespace
+        from trinity_local.commands.watch import handle_ingest_recent
+        from trinity_local.incremental_ingest import source_scan_ages
+
+        self._pinned_home(tmp_path, monkeypatch)
+
+        # `trinity-local ingest-recent` IS the advice. Drive its handler.
+        handle_ingest_recent(SimpleNamespace(sources=["claude"], deadline=10.0))
+        first = source_scan_ages()["claude"]
+        assert first < 60, f"the advised command left the source at {first}s stale"
+
+        # And it keeps clearing it on a second run, when there is nothing new at
+        # all — the case the watermark could never handle.
+        handle_ingest_recent(SimpleNamespace(sources=["claude"], deadline=10.0))
+        assert source_scan_ages()["claude"] < 60
+
+    def test_the_unclearable_number_is_still_unclearable(self, tmp_path, monkeypatch):
+        """The negative half, and the reason the separate clock exists: no
+        amount of running the fix moves `last_mtime`, because the content did
+        not change. Anyone tempted to report that field as freshness is
+        reporting something their own advice cannot fix."""
+        from types import SimpleNamespace
+        from trinity_local.commands.watch import handle_ingest_recent
+        from trinity_local.state_paths import ingest_cursors_path
+
+        self._pinned_home(tmp_path, monkeypatch)
+        for _ in range(3):
+            handle_ingest_recent(SimpleNamespace(sources=["claude"], deadline=10.0))
+        entry = json.loads(ingest_cursors_path().read_text(encoding="utf-8"))["claude"]
+        assert time.time() - entry["last_mtime"] > 80 * 86400, (
+            "if the watermark now advances past a drained boundary file, re-check "
+            "that equal-mtime siblings can still be picked up before relaxing this"
+        )
+
+    def test_no_surface_derives_freshness_from_the_watermark(self):
+        """Ratchet. `last_mtime` is a content watermark; only the ingest engine
+        may touch it. A freshness surface reads source_scan_ages() instead."""
+        src = Path(__file__).resolve().parent.parent / "src" / "trinity_local"
+        allowed = {"incremental_ingest.py"}
+        offenders = sorted(
+            str(p.relative_to(src)) for p in src.rglob("*.py")
+            if p.name not in allowed
+            and "last_mtime" in p.read_text(encoding="utf-8", errors="replace")
+        )
+        assert not offenders, (
+            "these modules read/write the ingest watermark `last_mtime`: "
+            f"{offenders}. It cannot move past a fully-drained boundary file, so "
+            "a staleness number derived from it can never be cleared by "
+            "`trinity-local ingest-recent`. Use "
+            "incremental_ingest.source_scan_ages()."
+        )

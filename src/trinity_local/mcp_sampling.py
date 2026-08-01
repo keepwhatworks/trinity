@@ -2,13 +2,17 @@
 MCP client's `sampling/createMessage` channel instead of subprocessing
 `claude -p`.
 
-WHY this exists. As of 2026-06-15 Anthropic moves `claude -p` (Agent
-SDK) usage to a separate monthly credit pool ($20 Pro, $100 Max 5x,
-$200 Max 20x). MCP host sampling — when Trinity-MCP is loaded by a
-chat client like Claude Desktop and asks the client to do a Claude
-completion — counts against the host's *regular* plan, not the Agent
-SDK pool. So for the 1-member-from-Claude-Desktop case the user pays
-nothing beyond their existing Claude Desktop subscription.
+WHY this exists. BOTH paths bill the same wallet: `claude -p`, the
+Agent SDK, and third-party app usage all draw from the user's Claude
+SUBSCRIPTION limits. (The announced separate Agent-SDK credit pool is
+PAUSED as of 2026-06-15 and has never taken effect — verified against
+Anthropic's help centre 2026-07-31. Do not reintroduce that
+distinction; there is no second pool to sidestep.) The preference is
+about QUOTA EFFICIENCY and SESSION CONTEXT, not billing: when
+Trinity-MCP is loaded by a chat client and asks that client to do the
+Claude completion, the answer comes from the session the user is
+already in — no second CLI process, no cold re-read, no duplicated
+turn — where `claude -p` spends plan quota on a fresh subprocess.
 
 DESIGN.
 * This module exposes one primitive — ``request_claude_sample`` — that
@@ -30,9 +34,9 @@ INVARIANTS.
   fails. Caller always has a working subprocess fallback.
 * Never logs the sampled content — privacy posture matches the rest
   of Trinity (no prompt content leaves the user's machine).
-* Other providers (Codex, Gemini) are NOT touched here — they don't
-  penalize ``-p`` calls today, so the subprocess path remains correct
-  and cheap for them.
+* Other providers (Codex, Gemini) are NOT touched here — the host
+  session is a Claude session, so it can't be asked to answer as
+  another lab. The subprocess path remains correct for them.
 """
 from __future__ import annotations
 

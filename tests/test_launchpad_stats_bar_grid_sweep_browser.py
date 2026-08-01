@@ -9,8 +9,18 @@ overflow the trailing column on a phone" defect that was fixed THREE times as on
     the score BAR to 0px at 320px (43px at 375px), the "which axis the model is
     strongest on" visual gone on a phone.
 
-Rather than add yet another per-row guard, this sweep is class-level: it seeds ALL
-three bar rows on ONE populated /stats render, then — at the narrowest supported
+SCOPE, 2026-08-01: the two eval rows above are HISTORY, not current coverage. The
+eval leaderboard UI was deleted on 2026-07-14 when the disagreement ledger replaced
+the judge-dominated score card; neither class exists in src/ any longer. This file
+was the only place still naming them, so it had been RED from that day until the
+browser shard was next run — the shard is not in the default pytest selection.
+``.bc-provider-row`` is the surviving seeded row and carries the coverage. The
+class-level sweep below is unchanged and still catches a FUTURE fixed-px bar row
+automatically, which is the point of the file; a `deadEval*` assertion now fires if
+the eval rows ever return, so this docstring cannot quietly overstate its scope again.
+
+Rather than add yet another per-row guard, this sweep is class-level: it seeds the
+bar rows on ONE populated /stats render, then — at the narrowest supported
 phone width (320px, where these fixed-column grids collapse hardest) — it finds
 EVERY rendered BAR TRACK by its shape (a thin, height<=14px, position:relative|absolute
 span carrying an absolutely-positioned background-filled child) regardless of which
@@ -20,9 +30,11 @@ fixed-px bar row is therefore caught automatically — no new test needed.
 It also asserts no element clips past the viewport (the founder mobile-grid-clip
 shape — a page that scrolls horizontally on a phone).
 
-Mutation-proven: drop the ``.eval-axis-row`` <=480px mobile grid (back to the fixed
-``110px 50px 1fr 80px`` at every width) and at 320px all four eval-axis bars render
-at 0px width → this reds with the exact symptom.
+Mutation-proven (against ``.eval-axis-row``, before it was removed): dropping its
+<=480px mobile grid back to a fixed ``110px 50px 1fr 80px`` at every width made all
+four of its bars render at 0px at 320px and this file redded with the exact symptom.
+The equivalent live mutation today is ``.bc-provider-row``'s <=480px rule at
+launchpad_template.py:1162.
 
 Slow + browser marked; skips without Playwright/chromium; runs in CI `browser`.
 """
@@ -220,31 +232,44 @@ def test_no_stats_bar_grid_collapses_or_overflows_on_phone():
             page.wait_for_timeout(250)
             assert not errs, f"JS errors rendering /stats: {errs[:3]}"
 
-            # Precondition: all three known bar rows must actually be present, else the
-            # sweep is vacuous (a future seed regression would hide the real assertion).
+            # Precondition: the bar rows must actually be present, else the sweep is
+            # vacuous (a future seed regression would hide the real assertion).
+            #
+            # SCOPE NARROWED 2026-08-01. This guard used to require .eval-axis-row
+            # and .eval-lb-row too. Both were DELETED from the product — the eval
+            # leaderboard UI went with the judge-dominated score card on 2026-07-14,
+            # when the disagreement ledger became the hero. Neither class exists
+            # anywhere in src/ any more; the only file still naming them was this
+            # test. So it had been RED since that removal, asserting on a surface
+            # that no longer ships, and nobody saw it because `-m browser` is not in
+            # the default shard. Removing a surface must remove its guard in the same
+            # commit; this is the repair, not a relaxation — .bc-provider-row still
+            # exists (with its <=480px mobile grid at launchpad_template.py:1160-1162)
+            # and keeps the founder mobile-grid-clip coverage this file is FOR.
             present = page.evaluate(
                 """() => ({
-                  evalAxis: document.querySelectorAll('.eval-axis-row').length,
-                  evalLb: document.querySelectorAll('.eval-lb-row').length,
                   bcRow: document.querySelectorAll('.bc-provider-row').length,
+                  deadEvalAxis: document.querySelectorAll('.eval-axis-row').length,
+                  deadEvalLb: document.querySelectorAll('.eval-lb-row').length,
                 })"""
-            )
-            assert present["evalAxis"] >= 3, (
-                f"the eval per-axis bar rows did not render (got {present['evalAxis']}) — "
-                "the sweep precondition failed; seed the eval result so the bars exist"
-            )
-            assert present["evalLb"] >= 2, (
-                f"the eval leaderboard rows did not render (got {present['evalLb']})"
             )
             assert present["bcRow"] >= 2, (
                 f"the browser-capture rows did not render (got {present['bcRow']})"
+            )
+            # If the eval rows ever come BACK, this file must re-cover them rather
+            # than silently sweeping a smaller surface than its docstring claims.
+            assert present["deadEvalAxis"] == 0 and present["deadEvalLb"] == 0, (
+                "the eval bar rows are rendering again (axis="
+                f"{present['deadEvalAxis']}, lb={present['deadEvalLb']}). They were "
+                "removed 2026-07-14 and this sweep was narrowed to match — restore "
+                "them to the precondition and the docstring before shipping."
             )
 
             res = page.evaluate(_SWEEP_JS, PHONE_W)
 
             # The sweep must have FOUND bars (shape-detection sanity — a refactor that
             # renamed the bar markup must not silently make this vacuous).
-            assert len(res["bars"]) >= 6, (
+            assert len(res["bars"]) >= 2, (
                 "the bar-track sweep found fewer bars than seeded "
                 f"({len(res['bars'])}) — the bar markup shape changed; the class-level "
                 "guard would have gone vacuous (re-pin the bar-track detector)"

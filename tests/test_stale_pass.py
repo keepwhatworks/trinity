@@ -203,9 +203,9 @@ class TestEmbedBackfill:
 class TestWireIn:
     def test_run_council_kicks_the_gate(self, stale_home, monkeypatch):
         """run_council must consult the stale-pass gate on EVERY launch.
-        Chain mode with an empty explicit sequence reaches the kick (it fires
-        before the chain branch) then fails loudly in _run_chain — so this
-        asserts the wire-in without dispatching any provider."""
+        An empty member list reaches the kick (it fires first) then fails
+        loudly with 'All council members failed' — so this asserts the
+        wire-in without dispatching any provider."""
         from trinity_local import stale_pass
         from trinity_local.council_runner import run_council
         from trinity_local.config import AppConfig
@@ -222,8 +222,6 @@ class TestWireIn:
                 member_providers=[],
                 primary_provider="claude",
                 cwd=Path("."),
-                mode="chain",
-                sequence=[],
             )
         assert kicked == ["run_council"], (
             "run_council launched without consulting the stale-pass gate"

@@ -939,39 +939,6 @@ th {
       border-color: rgba(139, 30, 30, 0.2);
     }
 
-    .quote-member-btn {
-      margin-left: auto;
-      /* The live council page is the streaming "watch it" companion link people
-         open on PHONES (see .provider-status-row comment), so Quote ↓ — a real
-         content-action control — must clear the 44px touch target like every
-         other action button (WCAG 2.5.5 / Apple HIG; founder: "every action
-         button clear 44px on touch widths"). At 11px/1.4 + 2px padding the chip
-         was ~21px tall — HALF the floor — a fat-finger miss on the exact surface
-         it ships to. Flex-center floors the HIT AREA to 44px while the compact
-         font/padding keep the chip visually small (the .button + sidepanel
-         icon-button pattern), so the row header doesn't bloat. */
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 44px;
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--text-secondary);
-      font-size: 11px;
-      padding: 2px 10px;
-      border-radius: 999px;
-      cursor: pointer;
-      font-family: inherit;
-      line-height: 1.4;
-    }
-    .quote-member-btn:hover {
-      background: var(--surface-muted);
-      color: var(--text-primary);
-    }
-    .quote-member-btn:focus-visible {
-      outline: 2px solid var(--accent);
-      outline-offset: 2px;
-    }
 
     .provider-status-detail {
       color: var(--text-secondary);
@@ -1048,77 +1015,6 @@ th {
       padding-left: 20px;
     }
 
-    .chain-actions {
-      margin-top: 24px;
-    }
-
-    .chain-button-row {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      margin-top: 16px;
-    }
-
-    .chain-refine-row {
-      display: flex;
-      gap: 12px;
-      margin-top: 16px;
-      align-items: stretch;
-    }
-
-    /* A TEXTAREA, not a single-line input: quoteMember() builds a multi-line
-       markdown blockquote ("> [Claude]: …") and stacks several joined by blank
-       lines, and that refinePrompt is sent verbatim as the next-round directive
-       (where the markdown IS meaningful). A single-line <input> silently strips
-       every newline, jamming stacked quotes into one unreadable run — found
-       driving Quote ↓ in the 2026-06-17 UX sweep. Compact (2 rows) + button
-       submit; plain Enter now inserts a newline (Cmd/Ctrl+Enter submits). */
-    .chain-refine-input {
-      flex: 1;
-      padding: 10px 14px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      font-size: 14px;
-      font-family: inherit;
-      line-height: 1.4;
-      background: var(--surface);
-      color: var(--text-primary);
-      min-height: 44px;
-      resize: vertical;
-      white-space: pre-wrap;
-    }
-
-    .chain-refine-input:focus {
-      outline: none;
-      border-color: var(--action);
-      box-shadow: 0 0 0 3px rgba(79, 144, 149, 0.12);
-    }
-
-    /* On a narrow phone the refine input + Refine button don't both fit on one
-       row; let the row wrap and the input take the full width above the button. */
-    @media (max-width: 480px) {
-      .chain-refine-row { flex-wrap: wrap; }
-      .chain-refine-input { flex: 1 1 100%; }
-    }
-
-    .chain-loading {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      margin-top: 16px;
-      padding: 14px 18px;
-      background: var(--surface-muted);
-      border-radius: 10px;
-    }
-
-    .chain-loading .spinner {
-      display: inline-block;
-      width: 18px;
-      height: 18px;
-      border: 2px solid var(--border);
-      border-top-color: var(--action);
-      border-radius: 50%;
-    }
 
     @keyframes trinity-spin {
       to {
@@ -1386,6 +1282,11 @@ th {
                   <span>{{ d.claim }}</span>
                   <span v-if="d.providers_for && d.providers_for.length" class="meta"> — for: {{ formatProviders(d.providers_for) }}</span>
                   <span v-if="d.providers_against && d.providers_against.length" class="meta"> · against: {{ formatProviders(d.providers_against) }}</span>
+                  <!-- The prosecutorial chairman's adjudication of the split:
+                       which side survives the other members' evidence, or
+                       "unresolved". This is the verdict the Contested section
+                       exists to produce, so it renders ABOVE why_matters. -->
+                  <div v-if="d.resolution" class="meta"><strong>Verdict:</strong> {{ d.resolution }}</div>
                   <div v-if="d.why_matters" class="meta">{{ d.why_matters }}</div>
                 </li>
               </ul>
@@ -1450,23 +1351,11 @@ th {
                 <div class="provider-status-name">{{ row.label }}</div>
                 <div class="provider-status-badge" :class="row.statusClass" v-if="row.statusClass !== 'done'">{{ row.statusLabel }}</div>
                 <div class="provider-status-badge done" v-if="isLensPick(seg, row)">Lens pick</div>
-                <!-- Quote ↓ feeds the shared `.chain-refine-input` (the "Continue
-                     the thread" composer), which only exists when `canChainNext &&
-                     !chainBusy`. Gate the button on the SAME condition: while a
-                     chain round is still running (canChainNext false) or a refine
-                     is in flight (chainBusy), the composer is hidden, so a visible
-                     Quote button would silently append to an OFF-SCREEN textarea and
-                     dead-end — the tooltip promises "into the refinement input below"
-                     but there is no input below (driven 2026-06-19: clicking it on a
-                     prior completed round mid-chain changed nothing the user could
-                     see). No composer → no Quote button. -->
-                <button
-                  type="button"
-                  class="quote-member-btn"
-                  v-if="canChainNext && !chainBusy && row.statusClass === 'done' && (row.responseText || row.responseHtml)"
-                  @click.stop="quoteMember(row.provider, row)"
-                  title="Quote this answer into the refinement input below"
-                >Quote ↓</button>
+                <!-- Quote ↓ removed 2026-07-24 with the "Continue the thread"
+                     composer it fed: the council-iterate CLI verb (and the
+                     run_consensus_round engine behind it) were removed, so the
+                     composer had nothing to dispatch to. Its own 2026-06-19 rule
+                     — "no composer → no Quote button" — now applies permanently. -->
               </div>
               <div class="provider-status-response markdown-body" v-if="row.responseHtml" v-html="row.responseHtml"></div>
               <pre class="provider-status-response" v-else-if="row.responseText">{{ row.responseText }}</pre>
@@ -1476,11 +1365,10 @@ th {
         </section>
       </div>
 
-      <!-- chainError banner — hoisted OUT of the chain-actions section
-           because that section gates on `canChainNext` (only post-
-           completion), which would hide Stop council's dispatch-failure
-           banner during the running state when it's most needed.
-           Stuck-launch sibling fix shipped 2026-05-26. -->
+      <!-- chainError banner. Still load-bearing after the "Continue the
+           thread" composer was removed (2026-07-24): Stop council and the
+           failed-council "Try again" retry both surface dispatch failures
+           here. -->
       <section class="card" v-if="chainError"
                style="margin-bottom: 16px; border-left: 3px solid #4f9095; background: rgba(79, 144, 149, 0.08); color: #714824; padding: 16px; overflow-wrap: anywhere; word-break: break-word; min-width: 0;"
                role="alert">
@@ -1489,35 +1377,15 @@ th {
         <a href="#" @click.prevent="dismissChainError" style="display: inline-block; margin-top: 6px; color: #34666b; font-size: 12px;">Dismiss</a>
       </section>
 
-      <section class="card chain-actions" v-if="canChainNext">
-        <h2 v-if="!chainBusy" style="margin-top: 0;">Continue the thread</h2>
-        <h2 v-if="chainBusy" style="margin-top: 0;">{{ chainStatusHeading }}</h2>
-        <p class="meta" v-if="!chainBusy" style="margin-top: 4px;">
-          Run another round where each model sees the others' answers and refines, or add a new directive to push the conversation in a new direction. Each round is a fresh full council — every model runs again — so it uses your subscription quota each time. <strong>Auto-chain</strong> runs up to 3 such rounds (stopping early once the models converge), so it can cost up to 3× a single round — useful when you suspect the first round missed something none of them flagged alone.
-        </p>
-        <div class="chain-loading" v-if="chainBusy" role="status" aria-live="polite">
-          <span class="spinner" aria-hidden="true"></span>
-          <span class="meta">{{ chainStatusDetail }}</span>
-        </div>
-        <div class="chain-button-row" v-if="!chainBusy">
-          <button type="button" class="button primary" @click="startContinue">Continue (one round)</button>
-          <button type="button" class="button ghost" @click="startAutoChain">Auto-chain (up to 3 rounds)</button>
-        </div>
-        <div class="chain-refine-row" v-if="!chainBusy">
-          <textarea
-            class="chain-refine-input"
-            rows="2"
-            aria-label="Refine directive for the next council round"
-            v-model="refinePrompt"
-            placeholder="Or refine with a new directive… (Quote ↓ stacks each member's answer here; ⌘/Ctrl+Enter to send)"
-            @keydown.enter.meta.prevent="startRefine"
-            @keydown.enter.ctrl.prevent="startRefine"
-          ></textarea>
-          <button type="button" class="button" :disabled="!refinePrompt.trim()" @click="startRefine">
-            Refine
-          </button>
-        </div>
-      </section>
+      <!-- The "Continue the thread" composer (Continue / Auto-chain / Refine)
+           was removed 2026-07-24 together with the council-iterate CLI verb and
+           the run_consensus_round engine. Every button here dispatched
+           `kind: 'council-iterate'` through the extension, which capture_host
+           spawned DETACHED with stdio to /dev/null — so once the verb was gone
+           the clicks failed silently and this page polled forever for a status
+           no process would ever write. Historical multi-round threads still
+           RENDER (the segment list above reads chain_root_id/round_number off
+           disk); they just cannot be extended. -->
     </main>
   </div>
 
@@ -2280,9 +2148,6 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
         statusPollHandle: null,
         statusRotateHandle: null,
         chainBusy: false,
-        chainStatusHeading: '',
-        chainStatusDetail: '',
-        refinePrompt: '',
         // Stuck-launch sibling fix shipped 2026-05-26: chainError surfaces
         // dispatch failures outside the chainBusy guard so the user
         // actually sees them; _pendingChainSegmentToken tracks the
@@ -2296,7 +2161,14 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
         // round" would assert a failure that never happened (UX sweep: a
         // user opening a completed council with an out-of-date extension saw
         // "Could not start next round" before touching anything).
-        chainErrorHeading: 'Could not start next round',
+        // COPY FIX 2026-08-01: was 'Could not start next round'. Rounds cannot be
+        // started any more — the Continue / Auto-chain / Refine composer was deleted
+        // 2026-07-24 with the council-iterate verb. The only user action that still
+        // reaches this banner is retryFailedCouncil(), whose own comment says it is
+        // "NOT a chain-iterate" but which nevertheless set this heading, so a failed
+        // RETRY told the user a ROUND failed. Phrasing is now action-neutral; the two
+        // sites that used to re-assert the round wording set the same constant.
+        chainErrorHeading: 'Could not dispatch',
         _pendingChainSegmentToken: '',
         // Immediate-ACK flag for Stop council (sibling of the launchpad fix
         // shipped 2026-06-17). The stop dispatch SUCCEEDS but the actual cancel
@@ -2354,26 +2226,6 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
           const raw = (this.threadTaskText || '').trim();
           if (!raw) return '';
           return raw.split('\n').filter((line) => line.trim() !== '---').join('\n').trim();
-        },
-        get canChainNext() {
-          if (this.segments.length === 0) return false;
-          const last = this.segments[this.segments.length - 1];
-          // SOLO suppression (the isSoloFor class, applied to the chain composer):
-          // when only ONE provider responded, the "Continue the thread" composer's
-          // entire value proposition is a multi-model dynamic that can't happen —
-          // its copy promises "each model sees the OTHERS' answers and refines" and
-          // "every model runs again", and the Quote ↓ buttons stack "each member's
-          // answer". With one model there are no others to see, nothing to stack,
-          // and Auto-chain would re-run the same single model up to 3× (burning
-          // quota) for a dynamic that requires a second voice. The solo-verdict line
-          // right above already tells the user the honest next step ("Enable a
-          // second provider to run a real contest"), so offering a multi-model
-          // composer below it is a direct self-contradiction — the live-page twin of
-          // the winner/agreed-claims/routing-label solo suppression already on this
-          // page (isSoloFor). Gate the composer (and its Quote ↓ buttons, which share
-          // canChainNext) off on a solo council; re-enable once a real contest exists.
-          if (this.isSoloFor(last)) return false;
-          return !!(last.completed && last.councilId);
         },
         currentStatusMessageFor(seg) {
           // Immediate, honest status after Stop is clicked — the cancel is
@@ -2603,35 +2455,6 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
           const prov = normalizeProviderSlug(String(row.provider || '').trim().toLowerCase());
           return !!win && win === prov;
         },
-        quoteMember(provider, row) {
-          // Append a quoted fragment of this member's response into the
-          // shared refinement input. The user's hand-rolled flow on
-          // bundle_42f8cea9c9e705e5 was: see Gemini's "Own your context",
-          // see Claude's response, type a merged directive freehand.
-          // This shortcut lets multi-quote stack — each click adds one
-          // attribution block, the user types the merge instruction on
-          // top. Chairman still runs the synthesis; only the input UX
-          // changes. Quote is capped at 300 chars so the textarea stays
-          // legible; the user can edit the truncation if they want more.
-          const text = (row && (row.responseText || (row.responseHtml || '').replace(/<[^>]+>/g, ''))) || '';
-          if (!text.trim()) return;
-          const QUOTE_CAP = 300;
-          const trimmed = text.trim().length > QUOTE_CAP
-            ? text.trim().slice(0, QUOTE_CAP).trimEnd() + '…'
-            : text.trim();
-          const block = '> [' + formatProviderLabel(provider) + ']: ' + trimmed + '\n';
-          // Preserve any existing user-typed directive; append the
-          // quote with a blank-line separator if there's prior content.
-          this.refinePrompt = (this.refinePrompt && this.refinePrompt.trim())
-            ? this.refinePrompt.replace(/\s+$/, '') + '\n\n' + block
-            : block;
-          // Drop focus on the refine input so the user lands ready to
-          // type their merge directive.
-          this.$nextTick && this.$nextTick(() => {
-            const input = document.querySelector('.chain-refine-input');
-            if (input) input.focus();
-          });
-        },
         dismissChainError() {
           // Clearing chainError removes the `v-if`-gated <section role=alert> that
           // CONTAINS the Dismiss link the user just activated — so the focused
@@ -2681,8 +2504,16 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
           // Proactively warn if the installed extension is too OLD to accept
           // this council page as a dispatch sender (it rejects with
           // 'rejected-sender' → dispatcher state 'stale'). Surface the reload
-          // hint on load — before the user clicks Refine and hits the rejection
-          // (founder report 2026-05-31). A reload, not a reinstall, fixes it.
+          // hint on load — before the user hits the rejection (founder report
+          // 2026-05-31). A reload, not a reinstall, fixes it.
+          //
+          // COPY FIX 2026-08-01: this message used to read "Refine / Continue
+          // won't work until you reload it". Refine and Continue were DELETED on
+          // 2026-07-24 with the council-iterate verb (see the composer comment
+          // above), so the warning was naming two controls the user cannot find,
+          // for a page whose only remaining dispatch is Retry. The stale state is
+          // still real and still reachable — retryFailedCouncil() sets chainError
+          // — so the warning stays; only the dead control names go.
           const _disp = window.__TRINITY_DISPATCH__;
           if (_disp) {
             const _STALE_HEADING = 'Your Trinity extension is out of date';
@@ -2692,7 +2523,7 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
                 // so the heading must NOT claim a round failed. Lead with the
                 // actual situation (the extension is out of date).
                 this.chainErrorHeading = _STALE_HEADING;
-                this.chainError = "Refine / Continue won't work until you reload it at chrome://extensions.";
+                this.chainError = "Dispatching from this page won't work until you reload it at chrome://extensions.";
               } else if (st !== 'stale' && this.chainErrorHeading === _STALE_HEADING && this.chainError) {
                 // The user did exactly what the warning prescribed — reloaded the
                 // extension at chrome://extensions — and a refocus re-probe now
@@ -2703,7 +2534,7 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
                 // round-start failure banner (a different heading) is never wiped
                 // by an unrelated state transition.
                 this.chainError = '';
-                this.chainErrorHeading = 'Could not start next round';
+                this.chainErrorHeading = 'Could not dispatch';
               }
             };
             _disp.onStateChange(_onState);
@@ -2811,7 +2642,9 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
             // per-segment selection state needed since the rating
             // click-flow was retired 2026-05-22 (Phase 3d).
             // user_refinement is the directive the user typed to launch
-            // this round (council-iterate / launchpad refinement input).
+            // this round, back when rounds could be started (the composer
+            // and council-iterate were removed 2026-07-24). Historical
+            // rounds still carry it, so it still renders.
             // Source: outcome.metadata.user_refinement (written by
             // council_runner when chaining). The eyebrow row renders it
             // as "↳ <text>" so the user's contribution to the chain is
@@ -2914,7 +2747,7 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
           const segKey = seg.key;
           const newToken = this._newStatusToken();
           this.chainError = '';
-          this.chainErrorHeading = 'Could not start next round';
+          this.chainErrorHeading = 'Could not retry the council';
           this.chainBusy = true;
           this.stopRequested = false;
           this.clearPolling();
@@ -3007,140 +2840,6 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
         },
         _newStatusToken() {
           return 'chain_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
-        },
-        _startChainAction(actionName, additionalArgs, refinementText, heading, detail) {
-          const last = this.segments[this.segments.length - 1];
-          if (!last?.councilId) return;
-          const newToken = this._newStatusToken();
-          const args = additionalArgs || {};
-          this.chainBusy = true;
-          this.chainStatusHeading = heading;
-          this.chainStatusDetail = detail;
-          // A brand-new round starts fresh — clear any stale stop-ACK so the new
-          // segment's Stop button reads "Stop council", not a leftover "Stopping…".
-          this.stopRequested = false;
-
-          // Same migration as the council-review page above: all
-          // chain actions (refine / continue / auto-chain) route to
-          // `trinity-local council-iterate` via the Chrome extension
-          // dispatcher. Shortcuts:// path retired pre-launch.
-          const dispatcher = window.__TRINITY_DISPATCH__;
-          const extensionAction = {
-            kind: 'council-iterate',
-            council: last.councilId,
-            // Underscore key (NOT the hyphen CLI-flag spelling) — capture_host's
-            // ACTION_ALLOWLIST reads payload.get('status_token'). A hyphen here
-            // silently dropped the token so the chain round wrote status under
-            // the bundle_id, not the chain token this page polls → the page
-            // 404'd forever ("council never started"). Founder 2026-06-12.
-            status_token: newToken,
-          };
-          if (args.prompt) extensionAction.prompt = args.prompt;
-          if (args.max_rounds) extensionAction.rounds = String(args.max_rounds);
-
-          // Sequencing matters: when the Chrome-extension state is already
-          // 'absent', dispatcher.dispatch() calls onResult SYNCHRONOUSLY
-          // inside the same tick. If we set _pendingChainSegmentToken or
-          // chainError AFTER that call, the failure handler would (a)
-          // miss the token (never set yet) and (b) get its chainError
-          // wiped by the post-dispatch reset. So: do all state setup
-          // BEFORE dispatching, and the onResult handler just consumes
-          // the pre-populated state.
-          this.clearPolling();
-          this.refinePrompt = '';
-          this.chainError = '';  // clear any prior dispatch error on retry
-          this.chainErrorHeading = 'Could not start next round';  // reset from any proactive stale-warning heading
-          // Append a NEW segment for the next round; prior rounds stay
-          // visible above so the page reads as a scrollable thread.
-          const memberOrder = Object.keys(last.runState?.members || {});
-          const newSeg = makeSegment({
-            statusToken: newToken,
-            taskText: this.threadTaskText,
-            members: memberOrder,
-            refinementText: refinementText || '',
-          });
-          // Track this segment's token so onResult's failure path can
-          // find + remove it for rollback. MUST be set before dispatch
-          // so a synchronous failure handler sees the right token.
-          this._pendingChainSegmentToken = newToken;
-          // Push the segment BEFORE dispatch so a synchronous failure
-          // (dispatch state already 'absent', no extension) can find +
-          // splice it. If the push happened after dispatch, the
-          // rollback's findIndex would return -1 in the sync-fail case.
-          newSeg.roundNumber = (last.roundNumber || 1) + 1;
-          this.segments.push(newSeg);
-
-          if (dispatcher) {
-            dispatcher.dispatch({
-              extensionAction,
-              onResult: (r) => {
-                if (!r || !r.ok) {
-                  this.chainBusy = false;
-                  // chainStatusDetail only shows while chainBusy=true, so it
-                  // gets hidden the moment we flip chainBusy to false above.
-                  // Use chainError instead — rendered in a persistent ribbon
-                  // outside the chainBusy guard. Silent-failure fix shipped
-                  // 2026-05-26 alongside the launchpad stuck-launch rollback;
-                  // before, the user clicked Refine and saw absolutely
-                  // nothing for ~800ms then the action panel returned with
-                  // no error indication.
-                  this.chainError = dispatchErrorMessage(r);
-                  // Roll back the optimistic new segment so the polling
-                  // loop doesn't hammer a status file that will never
-                  // exist + the thread visual stays accurate.
-                  if (this._pendingChainSegmentToken) {
-                    const idx = this.segments.findIndex((s) => s.statusToken === this._pendingChainSegmentToken);
-                    if (idx !== -1) this.segments.splice(idx, 1);
-                    this._pendingChainSegmentToken = '';
-                  }
-                  this.clearPolling();
-                  // Restore the prompt the user typed so they can fix +
-                  // retry without retyping (mirrors launchpad pendingPrompt).
-                  if (refinementText) this.refinePrompt = refinementText;
-                  return;
-                }
-              },
-            });
-          } else {
-            // No dispatcher loaded — also roll back the segment we just
-            // pushed; the polling loop has nothing to talk to.
-            const idx = this.segments.findIndex((s) => s.statusToken === newToken);
-            if (idx !== -1) this.segments.splice(idx, 1);
-            this._pendingChainSegmentToken = '';
-            this.chainBusy = false;
-            this.chainError = 'Trinity dispatcher not loaded on this page. Reload the launchpad and try again.';
-            if (refinementText) this.refinePrompt = refinementText;
-            return;
-          }
-          // If the synchronous dispatch path already failed (chainError
-          // set), don't continue with the polling + scroll affordance —
-          // the segment has already been spliced out above.
-          if (this.chainError) return;
-          // Auto-scroll the new segment into view after render.
-          requestAnimationFrame(() => {
-            const el = document.querySelector('[data-seg-key="' + newSeg.key + '"]');
-            el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          });
-          this.startPolling();
-          setTimeout(() => { this.chainBusy = false; }, 800);
-        },
-        startContinue() {
-          if (this.chainBusy) return;
-          this._startChainAction('council_continue', null, '', 'Starting next round…',
-            "Each model is reading the others' answers and refining.");
-        },
-        startAutoChain() {
-          if (this.chainBusy) return;
-          this._startChainAction('council_auto_chain', { max_rounds: 3 }, '',
-            'Auto-chaining…',
-            'Models will iterate up to 3 rounds, stopping when the chairman declares convergence.');
-        },
-        startRefine() {
-          if (this.chainBusy) return;
-          const prompt = (this.refinePrompt || '').trim();
-          if (!prompt) return;
-          this._startChainAction('council_refine', { prompt }, prompt, 'Refining…',
-            'Each model is incorporating your new directive into a refined answer.');
         },
         clearPolling() {
           if (this.statusPollHandle) {

@@ -163,6 +163,37 @@
           "description": "Statements all members converged on. The compressed signal.",
           "items": {"type": "string"}
         },
+        "facets": {
+          "type": "array",
+          "description": "Free-form dimensions that ACTUALLY discriminated between the member answers on this task, named by the chairman in its own words (e.g. 'invalidation semantics', 'cost realism') rather than drawn from the fixed provider_scores axes. Labels are embedded and clustered across councils into an emergent facet taxonomy — geometry finds the structure, the model names it. Absent when no nameable dimension separated the answers.",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": {"type": "string", "description": "The discriminating dimension, in the chairman's words."},
+              "winner": {"type": "string", "description": "Canonical provider slug that won this dimension."},
+              "basis": {"type": "string", "description": "One line of evidence for the call."}
+            }
+          }
+        },
+        "combined_answer": {
+          "type": "string",
+          "description": "The chairman's MERGED answer: the winning member's response as the spine with the claims that survived cross-provider prosecution grafted in. Machine-parsable counterpart to the '## Combined' memo section — an agent or eval reads this, not the prose. Absent when the winner already subsumed every surviving claim (an empty merge is not recorded)."
+        },
+        "grafts": {
+          "type": "array",
+          "description": "Provenance for combined_answer: one entry per claim merged in, and what decided to keep it. `basis` is an instrument, not decoration — it makes 'how often does taste actually break an evidence-tie' countable. Absent when nothing was grafted.",
+          "items": {
+            "type": "object",
+            "required": ["claim"],
+            "properties": {
+              "claim": {"type": "string"},
+              "from": {"type": "string", "description": "Canonical provider slug the claim came from."},
+              "basis": {"type": "string", "enum": ["evidence", "lens"], "description": "'evidence' when reasoning decided; 'lens' ONLY for a genuine evidence-tie broken by the user's named tensions."},
+              "tension": {"type": "string", "description": "Which named tension decided it. Present only when basis is 'lens'."}
+            }
+          }
+        },
         "disagreed_claims": {
           "type": "array",
           "description": "Statements where members diverged + why it matters. The residual signal (see meta-principle #18). Each entry: {claim, why_matters, providers[]}.",
@@ -172,6 +203,7 @@
             "properties": {
               "claim": {"type": "string"},
               "why_matters": {"type": "string"},
+              "resolution": {"type": "string", "description": "The prosecutorial chairman's verdict on the split: which side SURVIVES the other members' evidence and the ground for it, or 'unresolved' when undecidable."},
               "providers": {
                 "type": "array",
                 "items": {"type": "string"}

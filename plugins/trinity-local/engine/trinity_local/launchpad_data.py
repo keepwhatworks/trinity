@@ -1989,11 +1989,21 @@ def _load_cortex_rules() -> dict | None:
     # source of truth the card drifts from the router — e.g. a 0.16-margin basin
     # that ask routes but a hardcoded 0.2 demote-threshold mislabels "abstains".)
     try:
-        from .lens_routing import WINNER_MARGIN_FLOOR, classify_basins
+        from .lens_routing import WINNER_MARGIN_FLOOR, classify_basins, live_basin_ids
         # Classify the RAW picks (`patterns`: {basin_id: entry} with
         # effective_n/weights), NOT the display `rules` list — the router
         # predicates need the churn + weight fields the compact rows drop.
-        split = classify_basins(patterns)
+        #
+        # Thread the LIVE basin ids for the same reason `status` does: basin ids
+        # are positional and re-drawn on every lens build, so a rule can outlive
+        # its basin. `place_query` only ever returns a live id, so such a rule is
+        # unreachable — counting it "decisive" tells the user a basin routes when
+        # it cannot fire. Measured 2026-07-31: 6 of 31 rules were orphaned and one
+        # (`b01d`, margin 0.35, effective_n 3.06) cleared the routing gate, so the
+        # card read 4 decisive where only 3 were reachable. `or None` keeps a
+        # failed topics.json read meaning "not supplied" (three-class split)
+        # rather than "every rule is orphaned".
+        split = classify_basins(patterns, live_basin_ids() or None)
     except Exception:
         WINNER_MARGIN_FLOOR = 0.15
         split = {"decisive": 0, "explored": 0, "thin": 0, "total": len(rules)}

@@ -487,9 +487,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // `trinity-local serve` became the recommended dev-mode entry to dodge
 // the file:// unique-origin restrictions Chrome enforces on iframes.
 // Trinity-served local pages allowed to dispatch actions. The launchpad is one;
-// the live COUNCIL page is the other — Refine / Continue / Auto-chain / Stop
-// council all dispatch `council-iterate` from review_pages/live_council.html,
-// NOT the launchpad. Found 2026-05-31 (founder report): the council page was
+// the live COUNCIL page is the other — Stop council and the failed-council
+// retry dispatch from review_pages/live_council.html, NOT the launchpad.
+// (Refine / Continue / Auto-chain dispatched `council-iterate` here until
+// 2026-07-24, when that verb and its composer were removed.)
+// Found 2026-05-31 (founder report): the council page was
 // rejected as a sender ("rejected-sender"), so every in-council refine failed
 // with a misleading "is the extension installed?" even though it was. Same
 // suffix-and-origin hardening (Phase 8) applies to each — only the exact

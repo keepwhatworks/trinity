@@ -223,140 +223,102 @@ def _member_lens_constraints() -> str:
         return ""
 
 
-def chairman_says_converged(routing_label: CouncilRoutingLabel | None) -> bool:
-    """Convergence rule (consensus-iteration chain mode).
+COMBINE_ENV_VAR = "TRINITY_COMBINE_SURVIVORS"
 
-    The chairman has effectively said "the models agree" when:
-      - confidence is "high"  (chairman is sure)
-      - AND there are no disagreed_claims (or only trivial ones)
-      - AND there is at least one agreed_claim (otherwise it's a vacuous agreement)
 
-    This drives auto-chain stop. Tunable; if the loop runs too long in practice,
-    relax to confidence != "low" + disagreed_claims <= 1.
+def combine_enabled() -> bool:
+    """Dormant by default. See _combine_survivors_block for the pre-registered
+    falsifier this ships behind."""
+    import os
+
+    return os.environ.get(COMBINE_ENV_VAR, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _combine_json_fields() -> str:
+    """The combine output as STRUCTURED fields, not just PART 1 prose.
+
+    Prose in the decision memo is unreadable to an agent, the MCP surface, or any
+    eval — if the merged answer is the deliverable, it has to be in the JSON. Four
+    layers must agree or the field silently vanishes: this template, the parse
+    normalizer's whitelist, the CouncilRoutingLabel dataclass fields, and the
+    outcome JSON schema. `resolution` shipped with only the first and lost the
+    other two, and no test caught it because the test asserted the PROMPT.
     """
-    if routing_label is None:
-        return False
-    if (routing_label.confidence or "").lower() != "high":
-        return False
-    if routing_label.disagreed_claims:
-        return False
-    if not routing_label.agreed_claims:
-        return False
-    return True
+    return (
+        '  "combined_answer": "<the merged answer: the winner as the spine with the '
+        'surviving claims grafted in. Markdown is fine. Omit entirely if the winner '
+        'already subsumes every survivor>",\n'
+        '  "grafts": [\n'
+        '    {"claim": "<the specific claim you grafted in>",\n'
+        '     "from": "<lowercase provider it came from>",\n'
+        '     "basis": "evidence|lens",\n'
+        '     "tension": "<which named tension decided it — ONLY when basis is '
+        'lens>"}\n'
+        '  ]\n'
+    )
 
 
-def render_consensus_round_prompt(
-    bundle: PromptBundle,
-    *,
-    round_index: int,
-    own_provider: str,
-    own_prior_output: str,
-    other_outputs: list[tuple[str, str]],  # list[(provider, output)]
-    user_refinement: str | None = None,
-) -> str:
-    """Render the prompt for one member in a consensus-iteration round.
+def _combine_survivors_block() -> str:
+    """Ask the chairman to MERGE the claims that survived cross-provider
+    prosecution, instead of only crowning one member's answer.
 
-    Round 1 is the normal member prompt. Round 2+ each member sees its OWN
-    prior answer + the OTHER members' prior answers, and is asked to refine.
-    Optionally, the user can inject a `user_refinement` prompt that overrides
-    the "refine" instruction with a new directive.
+    WHY OVER SURVIVORS AND NOT OVER THE LENS (founder call 2026-07-24). Combining
+    "based on the lens" is the thing measured NULL twice here: lens-conditioned
+    generation aligned better on the validated lens direction only 16/30
+    (one-sided p=0.43) and chairman-transmission came back at chance. Those two
+    nulls are why the product is selection-only ("selection, not a reproduced
+    answer"). Merging what SURVIVED the prosecution round is a different claim —
+    synthesis over evidence, not reproduction of a voice — and it has never been
+    measured either way, so it is a live question rather than a dead one.
+
+    DORMANT until it earns its place (TRINITY_COMBINE_SURVIVORS=1 opts in).
+    PRE-REGISTERED FALSIFIER, in two stages so no user attention is spent on a
+    feature that might be a no-op:
+      1. ADDRESSABILITY (free, no judge, no user time): on real councils, how
+         often does the combined answer differ MATERIALLY from the winner's own
+         answer? If under ~20% of contests, the merge is cosmetic — KILL without
+         ever running a preference test. This is the echo-council census shape
+         (1.9% addressable → killed).
+      2. PREFERENCE (only if 1 clears): blind A/B, combined vs the selected
+         winner, unlabelled, ~15 decided pairs, the FOUNDER picks. There is no
+         valid model judge for this — the judged tier measured 57% against its
+         own 70% floor — so the user is the instrument. Bar: combined wins and
+         the CI excludes 50%. Adaptive stopping.
     """
-    sections: list[str] = []
-    sections.append(
-        f"You are {own_provider} in a multi-model council, round {round_index + 1}. "
-        "Earlier rounds produced these outputs. Your job: read the other models' "
-        "answers, keep what's right, fix what's wrong, and produce a stronger "
-        "answer than yours from the prior round. Do NOT just summarize what "
-        "others said — commit to a concrete answer."
+    if not combine_enabled():
+        return ""
+    return (
+        "## Combined\n"
+        "- Only when the Contested section left at least one SURVIVING claim that "
+        "the winning answer does not already make.\n"
+        "- Merge those survivors into the winner's answer: keep the winner as the "
+        "spine, graft in the specific claims that withstood cross-examination.\n"
+        "- Cite which member each grafted claim came from.\n"
+        "- MERGE RULE — two stages, same order as the WINNER RULE:\n"
+        "  Stage 1 (reason first): decide what to keep on the EVIDENCE — which "
+        "claim is better supported, more complete, more correct for this task. "
+        "Reasoning decides the merge whenever it can.\n"
+        "  Stage 2 (taste only breaks ties): when two surviving claims are "
+        "evidence-equivalent and reasoning genuinely cannot separate them, choose "
+        "the one that fits the user's named tensions above, and say which tension "
+        "decided it. Taste never overrides better evidence.\n"
+        "- Do NOT rewrite in anyone's voice and do NOT smooth the answers into a "
+        "consensus mush. Only carry over claims that SURVIVED on the evidence.\n"
+        "- Skip this section entirely when the winner already subsumes every "
+        "survivor — an empty merge is worse than no merge.\n\n"
     )
-    sections.append(f"Original task:\n{bundle.task_text}")
-    if bundle.goal:
-        sections.append(f"Goal:\n{bundle.goal}")
-    if bundle.context_excerpt:
-        sections.append(f"Context:\n{bundle.context_excerpt}")
-    sections.append(f"Your prior-round answer:\n{own_prior_output.strip() or '(no prior answer)'}")
-    if other_outputs:
-        other_blocks = []
-        for provider, output in other_outputs:
-            body = output.strip() or "(no output)"
-            other_blocks.append(f"[{provider}] said:\n{body}")
-        sections.append("Other models' prior-round answers:\n\n" + "\n\n".join(other_blocks))
-    if user_refinement:
-        sections.append(
-            "ADDITIONAL USER DIRECTIVE for this round (treat as the most important "
-            f"signal — override your prior answer if it conflicts):\n{user_refinement}"
-        )
-    sections.append(
-        "Produce your refined answer below. Be concrete and decisive. "
-        "Do not mention the council. Do not summarize the other models. "
-        "Just give your strongest current answer."
-    )
-    return "\n\n".join(sections)
-
-
-def render_chain_step_prompt(
-    bundle: PromptBundle,
-    *,
-    step_index: int,
-    prior_steps: list,  # list[CouncilChainStep]
-    is_final: bool = False,
-) -> str:
-    """Render the prompt for one step of a chain-mode council.
-
-    The first step sees only the user task. Each subsequent step sees the
-    original task plus all prior steps' outputs, and is asked to refine.
-    """
-    sections: list[str] = []
-    if step_index == 0:
-        sections.append(
-            "You are the first model in a chain of refinement. "
-            "Other models will see your output and improve on it."
-        )
-        sections.append(f"Task:\n{bundle.task_text}")
-        if bundle.goal:
-            sections.append(f"Goal:\n{bundle.goal}")
-        if bundle.context_excerpt:
-            sections.append(f"Context:\n{bundle.context_excerpt}")
-        sections.append(
-            "Give your best concrete answer. Be specific. The next model "
-            "will critique and improve, so don't hedge — commit to an answer."
-        )
-        return "\n\n".join(sections)
-
-    sections.append(
-        f"You are step {step_index + 1} of a chain of refinement. "
-        "Earlier models have answered the same task. Read their outputs, "
-        "keep what's right, fix what's wrong, and produce a stronger answer."
-    )
-    sections.append(f"Original task:\n{bundle.task_text}")
-    if bundle.goal:
-        sections.append(f"Goal:\n{bundle.goal}")
-    if bundle.context_excerpt:
-        sections.append(f"Context:\n{bundle.context_excerpt}")
-    prior_blocks: list[str] = []
-    for step in prior_steps:
-        provider = getattr(step, "model_provider", "unknown")
-        text = getattr(step, "output_text", "").strip() or "(no output)"
-        prior_blocks.append(f"[Step {step.step_index + 1}] from {provider}:\n{text}")
-    sections.append("Prior chain outputs:\n" + "\n\n".join(prior_blocks))
-    if is_final:
-        sections.append(
-            "You are the FINAL step. Produce the converged answer. Do NOT "
-            "summarize or critique the prior steps — produce the cleanest "
-            "best answer that incorporates what they got right."
-        )
-    else:
-        sections.append(
-            "Produce the next refinement. Be concrete and decisive. "
-            "Subsequent models may iterate further."
-        )
-    return "\n\n".join(sections)
 
 
 def render_primary_council_prompt(
     bundle: PromptBundle,
     members: list[CouncilMemberResult],
+    extra_context: str = "",
 ) -> str:
+    # extra_context (default ""): an optional block inserted after the member
+    # outputs and before the decision instructions. Slice (c) uses it to feed the
+    # chairman the CROSS-EXAMINATION verdicts on the disputed claims during
+    # re-synthesis, so a claim that was broken does not survive. Empty for every
+    # normal council — no behaviour change for existing callers.
     member_sections = []
     for index, member in enumerate(members, start=1):
         member_sections.append(
@@ -371,6 +333,13 @@ def render_primary_council_prompt(
         "You are the primary council synthesizer for a SPECIFIC user. Your job",
         "is to pick the answer that best fits THIS user — not the world. "
         "Members generate broad; you condense through the user's taste.",
+        "You are a PROSECUTOR, not a summarizer. The members answered "
+        "independently and never saw each other's work. Where they disagree, "
+        "do not just report the split — force each disputed claim against the "
+        "OTHER members' evidence and name which side SURVIVES. Keep what "
+        "withstands scrutiny; kill what does not. A disagreement you genuinely "
+        "cannot resolve on the evidence is itself a verdict — say 'unresolved' "
+        "and why, rather than papering over it.",
     ]
     # User profile — chairman reads `core.md` FIRST (one paragraph, the
     # distillation of the lens hierarchy: lens.md tensions, topics.json
@@ -477,11 +446,13 @@ def render_primary_council_prompt(
     if bundle.comparison_instructions:
         sections.append(f"Comparison instructions:\n{bundle.comparison_instructions}")
     sections.append("Council member outputs:\n" + "\n\n".join(member_sections))
+    if extra_context.strip():
+        sections.append(extra_context.strip())
     sections.append(
         "Treat this like a live competition between named models. Use provider names directly, not response letters.\n\n"
         "Your job is to help the user decide quickly, not to write a long essay.\n\n"
         "Return TWO parts in this exact order:\n\n"
-        "PART 1 — concise decision memo in markdown. Stay under 120 words total.\n"
+        "PART 1 — concise decision memo in markdown. Stay under 160 words total.\n"
         "Prefer short bullets. Skip weak sections rather than padding.\n\n"
         "Use these sections:\n\n"
         "## Winner\n"
@@ -492,6 +463,14 @@ def render_primary_council_prompt(
         "- One short bullet per provider.\n"
         "- Focus on what that model actually contributes.\n"
         "- If a response is unusable, say so briefly.\n\n"
+        "## Contested\n"
+        "- Only if members genuinely disagreed. Skip entirely if they converged.\n"
+        "- One bullet per real disagreement: which side SURVIVES when weighed "
+        "against the other members' evidence, and the ground for it.\n"
+        "- If undecidable on the evidence, say 'unresolved' and why.\n"
+        "- This is the priority section. Never drop it to save words; drop Key "
+        "Tradeoffs first.\n\n"
+        + _combine_survivors_block() +
         "## Key Tradeoffs\n"
         "- 2 bullets max.\n"
         "- Name the real decision criteria for this task.\n\n"
@@ -520,8 +499,15 @@ def render_primary_council_prompt(
         '    {"claim": "<the disputed claim>",\n'
         '     "providers_for": ["<provider>"],\n'
         '     "providers_against": ["<provider>"],\n'
+        '     "resolution": "<which side survives the other members\' evidence and the ground for it, or \'unresolved\' if undecidable>",\n'
         '     "why_matters": "<one short sentence on why this disagreement matters>"}\n'
-        '  ]\n'
+        '  ],\n'
+        '  "facets": [\n'
+        '    {"name": "<name the dimension that ACTUALLY separated these answers on '
+        'this task, in your own words — not a generic axis>",\n'
+        '     "winner": "<provider that won that dimension>",\n'
+        '     "basis": "<one line of evidence>"}\n'
+        '  ]' + (",\n" + _combine_json_fields() if combine_enabled() else "\n") +
         "}\n"
         "```\n\n"
         "Rules for the JSON:\n"
@@ -531,8 +517,12 @@ def render_primary_council_prompt(
         "- routing_lesson is one short sentence in the form: For <task_type>, prefer <provider> because <observed reason>.\n"
         "- eval_seed is one short sentence describing a check a future answer should satisfy.\n"
         "- agreed_claims: short factual statements ALL responses make. 3-7 items. Empty list if none.\n"
-        "- disagreed_claims: each entry names ONE specific disagreement, with which providers landed on which side, and one sentence on why it matters. 0-5 items.\n"
-        "- Output ONLY this JSON inside the routing-json fence. No commentary inside the fence.\n"
+        "- facets: 1-3 entries. Name the dimensions that actually DISCRIMINATED between these answers for THIS task (e.g. 'invalidation semantics', 'cost realism', 'migration risk') and who won each. Do NOT reuse the generic score axes; if a dimension separated nobody, leave it out. Empty list when the answers did not differ along any nameable dimension.\n"
+        "- disagreed_claims: each entry names ONE specific disagreement, with which providers landed on which side, the RESOLUTION (which side survives the other members' evidence, or 'unresolved'), and one sentence on why it matters. 0-5 items.\n"
+        + ("- combined_answer: the SAME merge you wrote in '## Combined', as one string. It must be usable on its own by someone who never reads the memo. Omit the field when there was nothing to merge.\n"
+           "- grafts: one entry per claim you grafted in, naming its source provider and whether EVIDENCE or the LENS decided to keep it. Set basis='lens' ONLY for a genuine evidence-tie broken by taste, and then name the tension. An empty list is correct when nothing was grafted.\n"
+           if combine_enabled() else "")
+        + "- Output ONLY this JSON inside the routing-json fence. No commentary inside the fence.\n"
         "- The JSON block is required. If a field is unknown, use null. Never omit a required field."
     )
     return "\n\n".join(sections)
@@ -825,7 +815,7 @@ def load_council_outcome(path_or_run_id: str) -> CouncilOutcome:
         # `touch`ed-but-never-written file is 0 bytes) parses to a raw
         # json.JSONDecodeError. The bare parse here leaked that traceback through
         # `load_council_outcome_or_exit` (which only caught FileNotFoundError) —
-        # so `trinity-local council-share <id>` / `council-iterate <id>` on a
+        # so `trinity-local council-share <id>` on a
         # crash-corrupted council printed a Python stack trace instead of a
         # one-line error. Raise the SAME clean, catchable ValueError the
         # wrong-type guard below already uses, with a TYPE-ONLY honest message
@@ -936,7 +926,7 @@ def load_council_outcome(path_or_run_id: str) -> CouncilOutcome:
 def load_council_outcome_or_exit(council_id: str) -> CouncilOutcome:
     """CLI helper: load a council outcome, or exit cleanly (a one-line error, NOT a
     traceback) when the id is unknown. A user passing a typo'd / deleted council id
-    to a documented command (review-link, council-share, council-iterate) shouldn't
+    to a documented command (review-link, council-share) shouldn't
     get a Python stack trace — the same first-run-robustness class as the eval-audit
     cold-home fix. Library callers that scan a glob keep using `load_council_outcome`
     directly so they can catch + skip."""
@@ -1166,9 +1156,73 @@ def _normalize_routing_dict(data: dict) -> dict:
             why = entry.get("why_matters")
             if isinstance(why, str) and why.strip():
                 sub["why_matters"] = why.strip()
+            # The prosecutorial chairman's verdict on the split: which side
+            # SURVIVES the other members' evidence (or "unresolved"). This
+            # normalizer REBUILDS each claim from an explicit key list, so a new
+            # field that isn't named here is silently dropped — which is exactly
+            # what happened to `resolution` between shipping the prompt
+            # (2026-07-22) and the first real council that used it (2026-07-24):
+            # the chairman emitted it, the markdown rendered it, and the stored
+            # outcome lost it. Round-trip guard: test_resolution_survives_parse.
+            resolution = entry.get("resolution")
+            if isinstance(resolution, str) and resolution.strip():
+                sub["resolution"] = resolution.strip()
             cleaned_disagreed.append(sub)
         if cleaned_disagreed:
             out["disagreed_claims"] = cleaned_disagreed
+    # Machine-parsable combine. Same rebuild-from-whitelist rule as above: a field
+    # not named here is dropped even when the chairman emitted it correctly.
+    combined = data.get("combined_answer")
+    if isinstance(combined, str) and combined.strip():
+        out["combined_answer"] = combined.strip()
+    grafts = data.get("grafts")
+    if isinstance(grafts, list):
+        from .council_schema import normalize_provider_slug
+
+        cleaned_grafts: list[dict[str, object]] = []
+        for g in grafts:
+            if not isinstance(g, dict):
+                continue
+            claim = g.get("claim")
+            if not isinstance(claim, str) or not claim.strip():
+                continue
+            entry: dict[str, object] = {"claim": claim.strip()}
+            src = g.get("from")
+            if isinstance(src, str) and src.strip():
+                entry["from"] = normalize_provider_slug(src.strip())
+            basis = g.get("basis")
+            if isinstance(basis, str) and basis.strip().lower() in ("evidence", "lens"):
+                entry["basis"] = basis.strip().lower()
+            tension = g.get("tension")
+            if isinstance(tension, str) and tension.strip():
+                entry["tension"] = tension.strip()
+            cleaned_grafts.append(entry)
+        if cleaned_grafts:
+            out["grafts"] = cleaned_grafts
+    # Free-form facets. Kept UNCONDITIONALLY (not behind the combine flag): naming
+    # what actually separated the answers is valuable on every council, and it is
+    # the raw material the facet clustering embeds.
+    facets = data.get("facets")
+    if isinstance(facets, list):
+        from .council_schema import normalize_provider_slug as _nps
+
+        cleaned_facets: list[dict[str, object]] = []
+        for fc in facets:
+            if not isinstance(fc, dict):
+                continue
+            name = fc.get("name")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            entry: dict[str, object] = {"name": name.strip()[:120]}
+            win = fc.get("winner")
+            if isinstance(win, str) and win.strip():
+                entry["winner"] = _nps(win.strip())
+            basis = fc.get("basis")
+            if isinstance(basis, str) and basis.strip():
+                entry["basis"] = basis.strip()
+            cleaned_facets.append(entry)
+        if cleaned_facets:
+            out["facets"] = cleaned_facets
     return out
 
 

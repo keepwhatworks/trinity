@@ -4,7 +4,7 @@
   "_comment": "Canonical current model per provider slug. Ships in the package and rides Trinity releases — the local-first 'how does the user learn a new model launched' signal (no server). When a lab ships, bump the entry + release a Trinity point version; the user receives it via `trinity-local update`, and `detect_new_models()` diffs it against the model they last evaluated to surface a 'score it against your taste' nudge. `model` MUST match the slug's config.model (what eval-run records as target_model) for the diff to fire.",
   "models": {
     "claude": {
-      "model": "claude-fable-5",
+      "model": "claude-opus-5",
       "display": "Claude Fable 5",
       "released": "2026-06-09",
       "whats_new": "Anthropic's Claude 5 flagship lane — Trinity's default Claude voice. Beat Opus 4.8 on the founder's own corrections in the 2026-07-17 pairwise tournament. Note: if Fable 5 is not on your Claude plan yet, set the claude member's model back to claude-opus-4-8 (universally available)."

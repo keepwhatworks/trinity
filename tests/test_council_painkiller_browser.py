@@ -34,6 +34,11 @@ pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
 _CID = "council_painkiller_browsertest"
 _DISAGREED_CLAIM = "Whether to cache per-call or in-process changes the failure mode"
+# The prosecutorial chairman's adjudication of the split (slice b, 2026-07-22).
+# It reached the stored outcome only after 2026-07-24 — the parse normalizer
+# rebuilt each claim from a key whitelist and silently dropped it, which the
+# first real council exposed. This asserts the whole wire: stored -> rendered.
+_RESOLUTION = "codex survives: the tenancy leak outweighs the latency win"
 _AGREED_CLAIM = "Both agree the cache key must include the provider slug"
 
 # --- Brand-fold + claim-count discriminating fixture (for the scalar guard) ----
@@ -94,6 +99,7 @@ def _seed_painkiller() -> None:
                 "claim": _DISAGREED_CLAIM,
                 "providers_for": ["claude"],
                 "providers_against": ["codex"],
+                "resolution": _RESOLUTION,
                 "why_matters": "per-call caching leaks across tenants",
             }
         ],
@@ -167,6 +173,7 @@ def test_live_council_renders_painkiller_and_no_thread_404(tmp_path, monkeypatch
                         agreed_header: strongs.includes('Agreed claims'),
                         synth: !!document.querySelector('.synthesis-section .markdown-body'),
                         claim_rendered: body.includes(frag),
+                        resolution_rendered: body.includes('the tenancy leak outweighs'),
                       };
                     }""",
                     _DISAGREED_CLAIM[:40],
@@ -188,6 +195,11 @@ def test_live_council_renders_painkiller_and_no_thread_404(tmp_path, monkeypatch
     # The painkiller itself — the cross-provider disagreement — must render.
     assert state["disagreed_header"], "the 'Disagreed claims' section did not render (the differentiator)"
     assert state["claim_rendered"], "the disagreed-claim text did not render into the DOM"
+    assert state["resolution_rendered"], (
+        "the chairman's RESOLUTION (which side survives) did not render — the "
+        "prosecutorial verdict is the point of the Contested section; a claim "
+        "shown without its adjudication is the summarizer behaviour slice (b) replaced"
+    )
     assert state["agreed_header"], "the 'Agreed claims' section did not render"
     assert state["synth"], "the chairman synthesis body did not render"
 

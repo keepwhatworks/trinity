@@ -46,3 +46,13 @@ launch_councils/
 # internal/ + docs/maxroom-redesign.html are intentionally version-controlled now
 # (do NOT re-ignore them). Real personal data — config.json, conversations/,
 # preference_acts*, *corpus-gold* — stays ignored above.
+
+# memory bake-off bulk artifacts (2026-08-01): derived caches + per-arm retrieval
+# dumps, ~235MB total, fully regenerable from prep_corpus.py + the arm scripts.
+# The verdict artifacts (FINDINGS.md, score_summary.json, score_posthoc.json)
+# and every .py instrument ARE committed.
+internal/experiments/memory_bakeoff/*.npy
+internal/experiments/memory_bakeoff/*.jsonl
+internal/experiments/memory_bakeoff/results/retrieval_*.jsonl
+internal/experiments/memory_bakeoff/results/retr_*.jsonl
+internal/experiments/memory_bakeoff/*.npz

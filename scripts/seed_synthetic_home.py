@@ -135,13 +135,42 @@ def seed(home: Path) -> dict[str, int]:
     # you trust" — the disagreement ledger). Seeded trustworthy so the smoke gate
     # exercises the per-model tally render (the richer path); the cross-provider
     # disagreements themselves come from the seeded councils' disagreed_claims above.
+    #
+    # TWO THINGS HERE ARE LOAD-BEARING AND WERE BOTH WRONG UNTIL 2026-08-01, which
+    # false-failed Surface 38 for anyone running the gate:
+    #
+    #  1. EVERY RECORD MUST CLEAR MIN_TALLY_N (=10). `launchpad_data._load_trust_data`
+    #     drops any record with w+l < MIN_TALLY_N *before* rendering. The old seed
+    #     used 5-2 and 3-4 (n=7 each), so it set `tally_trustworthy: True` and then
+    #     rendered ZERO rows — the producer asserting a green the consumer's own
+    #     floor rejected. If MIN_TALLY_N is ever raised, these must move with it.
+    #  2. KEYS ARE model x version, NOT lab. The tally was re-keyed 2026-07-18;
+    #     the old seed still said "anthropic"/"openai", which no longer matches the
+    #     identity format the card labels rows with (`model_identity.py`).
+    #
+    # Records below are shaped like the real artifact: a clear winner whose CI
+    # excludes half, and a coin-flip whose CI does not, so the gate exercises BOTH
+    # branches of the `clear` flag rather than only one.
     ledger = home / "disagreement_ledger"
     ledger.mkdir(parents=True, exist_ok=True)
     (ledger / "summary.json").write_text(json.dumps({
-        "resolved": 8,
+        # SYNTHETIC MARKER — load-bearing, added 2026-08-01. Browser tests run
+        # this seeder into the shared isolated TRINITY_HOME, and
+        # `TestLiveLedgerAgreement` reads whatever ledger it finds there as if it
+        # were the USER'S live one, then compares CLAUDE.md's published numbers
+        # against it. A fixture ledger can never back those numbers, so the guard
+        # failed on POLLUTION rather than on any real drift — and only in the
+        # slow shard, because the polluting test is slow-marked. The marker lets
+        # that guard tell "no live ledger" from "a fixture pretending to be one".
+        "synthetic_fixture": True,
+        "resolved": 34,
         "records": {
-            "anthropic": {"w": 5, "l": 2, "win_rate": 0.714, "ci": [0.35, 0.92], "ci_excludes_half": False},
-            "openai": {"w": 3, "l": 4, "win_rate": 0.429, "ci": [0.15, 0.75], "ci_excludes_half": False},
+            "claude · opus · 4.8": {
+                "w": 14, "l": 4, "win_rate": 0.778,
+                "ci": [0.549, 0.906], "ci_excludes_half": True},
+            "openai · flagship · 5.5": {
+                "w": 8, "l": 8, "win_rate": 0.5,
+                "ci": [0.28, 0.72], "ci_excludes_half": False},
         },
         "k3_chairman_agreement": 0.72, "k3_in_band": True,
         "k4_discriminates": True, "tally_trustworthy": True,

@@ -61,9 +61,9 @@ terminal. Once installed:
   / gemini.google.com into `~/.trinity/conversations/` via Native
   Messaging. No listening port, no upload. Chrome spawns a local
   capture host on demand.
-* **Dispatcher**: narrow action-allowlist (<!-- canonical:chrome_action_allowlist_count -->17<!-- /canonical --> entries
+* **Dispatcher**: narrow action-allowlist (<!-- canonical:chrome_action_allowlist_count -->16<!-- /canonical --> entries
   total: `launch-council`, `ingest-recent`, `stop-council`,
-  `render-me-card`, `dream`, `council-iterate`, three settings
+  `render-me-card`, `dream`, three settings
   toggles `telemetry-enable` / `telemetry-disable` /
   `telemetry-reset-id`, the in-process popup actions
   `open-council-page`, `get-council-status`, `open-launchpad`, plus

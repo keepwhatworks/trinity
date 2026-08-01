@@ -288,15 +288,33 @@ def test_live_council_chain_error_long_token_does_not_overflow_at_320px(tmp_path
                 page = browser.new_context(
                     viewport={"width": 320, "height": 900}
                 ).new_page()
+                # RE-POINTED 2026-08-01, same repair as
+                # test_dismiss_banner_focus_rehome_browser. This used to click the
+                # button labelled "Continue (one round)" — part of the composer
+                # deleted 2026-07-24 with the council-iterate verb — so `.find(...)`
+                # returned undefined and the file died on
+                # "Cannot read properties of undefined (reading 'click')". It had been
+                # RED since that removal, unseen because `-m browser` is not in the
+                # default pytest shard.
+                #
+                # The banner under test is still LIVE; its surviving trigger is
+                # retryFailedCouncil's "Try again" CTA (button.primary). That CTA needs
+                # canRetryFailed() true, i.e. a FAILED last segment plus non-empty
+                # threadTaskText — both reachable from the URL: an unknown council_id
+                # makes the outcome fetch fail (segment flips to failed) and `task=`
+                # supplies the text via getParams().
                 page.goto(
-                    f"http://127.0.0.1:{port}/review_pages/live_council.html?council_id={cid}"
+                    f"http://127.0.0.1:{port}/review_pages/live_council.html"
+                    f"?council_id=absent_{cid}&task=Long+token+overflow+probe"
                 )
                 page.wait_for_timeout(1200)
                 page.evaluate(stub)
-                page.evaluate(
-                    "() => [...document.querySelectorAll('button')]"
-                    ".find(x => /Continue \\(one round\\)/.test(x.textContent)).click()"
+                assert page.locator("button.primary").count() >= 1, (
+                    "the 'Try again' retry CTA did not render — canRetryFailed() was "
+                    "false, so the chainError banner is unreachable and this overflow "
+                    "check would false-pass on a page with no banner"
                 )
+                page.evaluate("() => document.querySelector('button.primary').click()")
                 # The chain-error banner mounts with the raw host token.
                 page.wait_for_function(
                     "() => [...document.querySelectorAll('section.card')]"

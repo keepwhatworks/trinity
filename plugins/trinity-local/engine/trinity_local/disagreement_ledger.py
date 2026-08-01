@@ -172,8 +172,24 @@ def assemble_evidence(
     one embed pass over claim texts. `nodes` are (ts, text, unit_vec) sorted by ts.
 
     Returns {claim_id: [{"sim", "at", "text"}, ...]}.
+
+    MACHINE TURNS ARE EXCLUDED (2026-07-26). This is the load-bearing correction:
+    the whole claim of this ledger is that a verdict reflects what the PERSON did
+    next. `_load_nodes` reads prompt_nodes raw, so harness output captured as
+    role=user — hook fires, subagent notifications, /loop drivers, and worst of all
+    Trinity's OWN `_EXTRACT_PROMPT` from a previous `trust --build` — was being
+    retrieved as evidence of their behaviour. Measured before the fix: 37.1% of all
+    evidence rows were machine-generated, 185 of 294 claims carried at least one, and
+    37 claims were resolved on machine-only evidence. Those verdicts described text
+    the user never wrote, and every build deepened the loop.
+
+    `is_user_facing_text` is the read-time projection of the ingest gate, which is
+    exactly the seam the ingest filter was designed for: improvements there become
+    retroactively effective here with no re-ingest.
     """
     import numpy as np
+
+    from .ingest import is_user_facing_text
 
     if not patterns:
         return {}
@@ -191,6 +207,8 @@ def assemble_evidence(
         for ts, text, v in nodes:
             if ts <= t0 or ts > t1:
                 continue
+            if not is_user_facing_text(text):
+                continue  # harness output is not this person's behaviour
             s = float(np.dot(cv, v))
             if s >= ADJ_FLOOR:
                 cands.append((s, ts, text))
@@ -457,14 +475,77 @@ def _ledger_dir(home: str | None = None) -> Path:
     return Path(home or trinity_home()) / "disagreement_ledger"
 
 
+def _prior_resolutions(home: str | None = None) -> dict[str, tuple[str, str]]:
+    """{claim_id: (resolution, quote)} already on disk. Empty when none built."""
+    out: dict[str, tuple[str, str]] = {}
+    rpath = _ledger_dir(home) / "resolutions.jsonl"
+    if not rpath.exists():
+        return out
+    for line in rpath.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        # guard_shape_not_just_parse: a valid-JSON-but-non-dict line (hand edit,
+        # partial write) would crash `.get` and take the whole incremental build
+        # down — which would silently fall back to re-resolving everything.
+        if not isinstance(row, dict):
+            continue
+        cid = row.get("claim_id")
+        if cid:
+            out[str(cid)] = (str(row.get("resolution") or "unresolved"),
+                             str(row.get("quote") or ""))
+    return out
+
+
+def _needs_resolve(pattern: "DisagreementPattern", prior: dict[str, tuple[str, str]],
+                   now: datetime | None = None) -> bool:
+    """Should this claim cost an LLM call on THIS build?
+
+    A rebuild used to re-resolve all 300 cross-provider disagreements from scratch
+    — 286 billable calls to refresh 39 genuinely new ones. That cost is why the
+    ledger sat six days stale: the only way to add today's councils was to pay for
+    every prior day again. Resolutions are deterministic given (claim, evidence),
+    so re-paying for a settled one buys nothing.
+
+    Skip a claim whose stored verdict is DECIDED (followed/contradicted) — settled
+    is settled. Retry an `unresolved` one ONLY while its evidence window is still
+    open: `assemble_evidence` reads the 14 days after the council, so once that
+    window has closed no new prompt can enter it and the verdict cannot change.
+    An unresolved claim from a council two days ago can still resolve tomorrow; one
+    from last month cannot.
+    """
+    cid = pattern.claim_id
+    if cid not in prior:
+        return True  # never seen
+    res, _ = prior[cid]
+    if res in ("followed", "contradicted"):
+        return False  # settled
+    t0 = _parse_ts(pattern.at)
+    if t0 is None:
+        return False  # undatable: its window can never re-open
+    now = now or datetime.now(t0.tzinfo)
+    return now <= t0 + timedelta(days=WINDOW_DAYS)
+
+
 def build_ledger(*, home: str | None = None, config: Any = None, limit: int | None = None,
                  resolver: Callable[..., tuple[str, str]] | None = None,
-                 embed_batch_fn: Callable[[list[str]], list[list[float]]] | None = None) -> dict:
+                 embed_batch_fn: Callable[[list[str]], list[list[float]]] | None = None,
+                 force: bool = False) -> dict:
     """Assemble evidence, resolve each cross-provider disagreement via the LLM
     (session sampling), aggregate, and persist to ~/.trinity/disagreement_ledger/.
     `resolver` is injectable for tests (default: resolve_claim). Requires a real
     embedder for the evidence pass. Returns the aggregate (with the
-    tally_trustworthy gate — the per-model verdict is withheld unless it clears)."""
+    tally_trustworthy gate — the per-model verdict is withheld unless it clears).
+
+    INCREMENTAL by default (2026-07-25): claims already settled on disk are carried
+    forward instead of re-resolved, so a refresh costs one call per genuinely new or
+    still-open claim rather than one per claim in the corpus. `force=True` re-resolves
+    everything — use it when the resolver prompt or the evidence knobs change, since
+    carried-forward verdicts were produced by the OLD instrument.
+    """
     from .embeddings import embed_batch, require_real_embedder
     require_real_embedder()
     embed_batch_fn = embed_batch_fn or embed_batch
@@ -478,15 +559,26 @@ def build_ledger(*, home: str | None = None, config: Any = None, limit: int | No
     patterns = [p for p in load_disagreements(home) if p.is_cross_provider]
     if limit:
         patterns = patterns[:limit]
-    evidence = assemble_evidence(patterns, _load_nodes(home), embed_batch_fn)
+    prior = {} if force else _prior_resolutions(home)
+    todo = [p for p in patterns if _needs_resolve(p, prior)]
+    todo_ids = {p.claim_id for p in todo}   # set, not `in todo` — that is an O(n^2)
+    carried = len(patterns) - len(todo)     # dataclass-equality scan over 300 rows
+    # Evidence only for what we will actually resolve — the embed pass is cheap but
+    # not free, and assembling it for carried-forward claims is pure waste.
+    evidence = assemble_evidence(todo, _load_nodes(home), embed_batch_fn)
     resolutions: dict[str, str] = {}
     quotes: dict[str, str] = {}
     for p in patterns:
-        res, quote = resolver(p, evidence.get(p.claim_id, []), config)
+        if p.claim_id not in todo_ids and p.claim_id in prior:
+            res, quote = prior[p.claim_id]
+        else:
+            res, quote = resolver(p, evidence.get(p.claim_id, []), config)
         resolutions[p.claim_id] = res
         if quote:
             quotes[p.claim_id] = quote
     agg = aggregate_tally(patterns, resolutions)
+    agg["resolved_this_build"] = len(todo)
+    agg["carried_forward"] = carried
     d = _ledger_dir(home)
     d.mkdir(parents=True, exist_ok=True)
     with (d / "resolutions.jsonl").open("w", encoding="utf-8") as f:

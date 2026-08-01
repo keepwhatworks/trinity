@@ -136,6 +136,27 @@
     return lastCumulative.length >= deltaAccum.length ? lastCumulative : deltaAccum;
   }
 
+  // The model that actually produced the reply. OpenAI puts it on the message
+  // metadata we already walk for conversation_id, so extracting it is free.
+  //
+  // WHY (2026-07-25): captured councils stored provider but not model, leaving 73%
+  // of member rows with model=null — so every per-model rollup silently collapses
+  // to lab granularity, the exact blending the trust ledger abandoned when it
+  // re-keyed to model x version. A capture that goes unstamped can never gain model
+  // fidelity afterwards. Returns null rather than guessing: a missing stamp is
+  // visibly missing, a wrong one is not.
+  function extractModel(events) {
+    for (const ev of events) {
+      const d = ev && ev.data;
+      if (!d || !d.message || typeof d.message !== "object") continue;
+      const md = d.message.metadata;
+      if (md && typeof md.model_slug === "string" && md.model_slug.trim()) {
+        return md.model_slug.trim();
+      }
+    }
+    return null;
+  }
+
   function adapt(input) {
     const url = input.url || "";
     const body_text = input.body_text || "";
@@ -145,6 +166,7 @@
       kind: "adapter_stream",
       conv_id: extractConvId(events),
       message_id: extractMessageId(events),
+      model: extractModel(events),
       url,
       method: input.method || "POST",
       captured_at: input.captured_at,

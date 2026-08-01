@@ -28,6 +28,14 @@ class PromptNode:
     timestamp: str | None = None
     preceding_assistant_text: str = ""
     following_assistant_text: str = ""
+    # Raw provider strings for the model that answered this prompt, carried
+    # through from PromptTurn (see session_schema.PromptTurn for the contract).
+    # Optional: None on any surface that doesn't record them, and on every node
+    # written before this field existed — from_dict() tolerates their absence,
+    # so a legacy node loads with model=None rather than failing. Normalise via
+    # model_identity.parse_identity(); never compare these strings directly.
+    model: str | None = None
+    effort: str | None = None
     cluster_id: str | None = None
     themes: list[str] = field(default_factory=list)
     council_run_ids: list[str] = field(default_factory=list)

@@ -29,6 +29,8 @@ class _FakeTurn:
         turn_index: int,
         text: str,
         provider: str = "claude",
+        model: str | None = None,
+        effort: str | None = None,
     ):
         self.transcript_id = transcript_id
         self.turn_index = turn_index
@@ -38,6 +40,11 @@ class _FakeTurn:
         self.timestamp = "2026-05-11T12:00:00Z"
         self.preceding_assistant_text = ""
         self.following_assistant_text = ""
+        # Mirror PromptTurn's optional identity pair. A stand-in that omits a
+        # real field turns a genuine AttributeError into a test-only surprise
+        # (which is exactly how this fake broke when model/effort landed).
+        self.model = model
+        self.effort = effort
 
 
 class _FakeSession:

@@ -2,9 +2,9 @@
 agree across surfaces.
 
 This catches the exact drift the validation workflow found on 2026-07-19: a hero
-stat showing '77%' next to '(37-11)' when the two don't match, a GPT-5.5 stat that
-read 51% in the block and 48% in the note, and the blog/site disagreeing on the
-same model. These are static snapshots (they do NOT track the live tally — a user's
+stat showing '77%' next to '(37-11)' — both since invalidated by the contamination
+re-resolution, the clean record is 28-13 = 68% — a GPT-5.5 stat that read 51% in
+the block and 48% in the note, and the blog/site disagreeing on the same model. These are static snapshots (they do NOT track the live tally — a user's
 number accrues from their own councils), so the guard checks self-consistency and
 cross-surface agreement, NOT equality to ~/.trinity.
 """

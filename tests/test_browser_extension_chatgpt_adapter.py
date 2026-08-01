@@ -173,3 +173,15 @@ def test_adapter_falls_back_to_message_metadata_for_conv_id():
     assert out.returncode == 0, out.stderr
     result = json.loads(out.stdout)
     assert result["conv_id"] == "only-in-metadata"
+
+
+def test_adapter_stamps_the_model_slug(adapter_result: dict):
+    """OpenAI puts `model_slug` on the message metadata the adapter already walks
+    for conversation_id, so stamping it costs nothing. Same reason as the claude
+    adapter: an unstamped capture can never gain model fidelity later, and without
+    it every per-model rollup collapses to lab granularity — the blending the trust
+    ledger abandoned when it re-keyed to model x version."""
+    assert adapter_result.get("model") == "gpt-5.5", (
+        "the adapter must stamp message.metadata.model_slug; "
+        f"got {adapter_result.get('model')!r}"
+    )

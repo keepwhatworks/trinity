@@ -1830,7 +1830,18 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
             <tbody>
               <tr v-for="r in trustData.records" style="border-bottom: 1px solid var(--border, rgba(0,0,0,0.08));">
                 <td style="font-weight: 500; padding: 6px 8px;">{{{{ r.lab }}}}</td>
-                <td style="padding: 6px 8px;">{{{{ r.win_pct }}}}%<span v-if="r.clear" class="meta" style="margin-left: 6px; opacity: 0.7;">· clear</span></td>
+                <!-- NO `opacity:` on this span. `.meta` is already
+                     var(--text-muted) = #616a73, a value chosen 2026-06-16
+                     specifically to clear WCAG AA (5.31 on the card's
+                     #fafbfc ground, floor 4.5). Multiplying it by 0.7
+                     composites it back toward the background to rgb(143,150,156)
+                     = 2.89, i.e. the inline opacity silently undoes the palette
+                     work. Measured, not theorised: this shipped at ratio 3.0 and
+                     the AA gate could not see it, because `· clear` renders only
+                     when a record has ci_excludes_half=true and no seeded record
+                     ever did (fixed 2026-08-01 in seed_synthetic_home.py). Use a
+                     muted COLOUR for de-emphasis here, never opacity. -->
+                <td style="padding: 6px 8px;">{{{{ r.win_pct }}}}%<span v-if="r.clear" class="meta" style="margin-left: 6px;">· clear</span></td>
                 <td class="meta" style="padding: 6px 8px;">{{{{ r.w }}}}W {{{{ r.l }}}}L · CI {{{{ r.ci_lo }}}}–{{{{ r.ci_hi }}}}%</td>
               </tr>
             </tbody>
@@ -1877,7 +1888,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           One line per kind of question — the model Trinity recommends, tallied from your own {{{{ cortexRules.total_basins }}}} basin{{{{ cortexRules.total_basins === 1 ? '' : 's' }}}} of council outcomes. The winner is the recency-weighted chairman pick for that basin; margin is how decisively it beat the runner-up. A thin margin is dimmed.
         </p>
         <p class="meta" v-if="cortexRules.routing_split && cortexRules.routing_split.total">
-          Of those, <strong>{{{{ cortexRules.routing_split.decisive }}}}</strong> route decisively, <strong>{{{{ cortexRules.routing_split.explored }}}}</strong> {{{{ cortexRules.routing_split.explored === 1 ? 'is a measured near-tie explored' : 'are measured near-ties explored' }}}} (ask samples the posterior instead of committing), and <strong>{{{{ cortexRules.routing_split.thin }}}}</strong> {{{{ cortexRules.routing_split.thin === 1 ? 'is thin' : 'are thin' }}}} → kNN. Only the decisive ones commit to a single model.
+          Of those, <strong>{{{{ cortexRules.routing_split.decisive }}}}</strong> route decisively, <strong>{{{{ cortexRules.routing_split.explored }}}}</strong> {{{{ cortexRules.routing_split.explored === 1 ? 'is a measured near-tie explored' : 'are measured near-ties explored' }}}} (ask samples the posterior instead of committing), and <strong>{{{{ cortexRules.routing_split.thin }}}}</strong> {{{{ cortexRules.routing_split.thin === 1 ? 'is thin' : 'are thin' }}}} → kNN. Only the decisive ones commit to a single model.<span v-if="cortexRules.routing_split.orphan"> The remaining <strong>{{{{ cortexRules.routing_split.orphan }}}}</strong> key basins that no longer exist — the lens was rebuilt after the last consolidate, and basin ids are re-drawn each build — so they can never fire. Clear them with <code>trinity-local consolidate --prune-orphans</code>.</span>
         </p>
         <table class="routing-table cortex-rules-table cortex-cheat-sheet" style="margin-top: 16px;">
           <tbody>
@@ -1964,11 +1975,20 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
         </p>
       </section>
 
+      <!-- COLD-START TEACHING CARD. It must name BOTH verbs, in order.
+           Found 2026-08-01: every `trinity-local lens` CTA on this page lives
+           inside a `.home-card`, which the /stats view hides — so a brand-new
+           user landing here was told to run `consolidate` and never told to
+           build the lens it consumes. That is a dead end, not a hint: the copy
+           below already says consolidate "places each one in its nearest lens
+           BASIN", and basins are what `lens` produces, so the prerequisite was
+           described without ever being named. `test_launchpad_cold_start_stats_browser`
+           pins both strings for exactly this reason. -->
       <section class="card stats-card" v-if="!cortexRules">
         <div class="eyebrow">What Trinity will learn about you</div>
-        <h2>Run <code>trinity-local consolidate</code> after a few councils</h2>
+        <h2>Run <code>trinity-local lens</code>, then <code>trinity-local consolidate</code></h2>
         <p class="meta">
-          Once you've run a handful of councils, <code>consolidate</code> places each one in its nearest lens basin and tallies the recency-weighted chairman winner per basin. Those picks then drive the next ask call — which provider wins for which kind of question, learned from your own outcomes.
+          <code>trinity-local lens</code> reads the transcripts you already have and builds your lens basins — the subject areas you actually work in. Then, after a few councils, <code>consolidate</code> places each one in its nearest basin and tallies the recency-weighted chairman winner per basin. Those picks then drive the next ask call — which provider wins for which kind of question, learned from your own outcomes.
         </p>
       </section>
 

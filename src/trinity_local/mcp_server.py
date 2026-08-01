@@ -1,7 +1,7 @@
 """MCP server exposing Trinity's 7 public tools (see handle_list_tools).
 
 Public tools, in lifecycle order:
-  - run_council(task, members, mode, sequence, responses)
+  - run_council(task, members, mode, responses)
       "Run the task across multiple models." — N+1 model calls.
       When `responses` is provided, skips member dispatch and goes straight
       to chairman synthesis (one model call). This is the structured
@@ -62,6 +62,66 @@ from .telemetry import APP_VERSION
 # installed package; correct for pip-installed users, the editable dev install's
 # baked metadata otherwise).
 server = Server("trinity-local", version=APP_VERSION)
+
+
+def members_from_responses(responses: list) -> list:
+    """Caller-supplied `responses` -> CouncilMemberResult list.
+
+    MODULE-LEVEL ON PURPOSE. This was inline in the run_council handler, which meant
+    the only way to test it was to reimplement it in the test — and a test that
+    reimplements the code it guards passes happily while the shipped path is broken
+    (verified: mutating the inline version left all 12 guards green). Extracted so
+    tests exercise THIS function.
+
+    `effort` rides in metadata because that is exactly where the disagreement ledger
+    reads it (`_ident_label`: `(m.get("metadata") or {}).get("effort")`), and where the
+    CLI dispatch path stamps it. Anywhere else is a field nothing consumes.
+
+    WHY IT MATTERS (measured 2026-07-26, corrected 2026-07-27): caller-supplied
+    members are the MAJORITY of council members — 1,057 of 1,493 across 654 councils
+    recorded model=None and effort=None, while the CLI minority stamped both. (An
+    earlier claim of 1,077 counted the web-member TOTAL; 20 gemini members did carry
+    a model.) The trust tally keys on
+    model x version with effort as a gated secondary, so it was computed on 28% of the
+    corpus. Effort is part of the identity unit (model x size x effort), so a dropped
+    leg is lost resolution, not bookkeeping: three effort sub-cells clear MIN_TALLY_N
+    on the clean tally (Fable high 15W-7L, Gemini 3.1 high 30W-57L, GPT-5.5 xhigh
+    17W-12L = 58.6%, CI [0.41, 0.75], includes chance) and NOT ONE has a sibling —
+    no model x version has a second level on file, precisely because the other legs
+    were never recorded, so there is no within-model pair a contrast could be read
+    from. (This comment said "exactly ONE effort sub-cell" until 2026-07-31; that
+    was inferred from the single key it was about. The count and the per-model level
+    max are now planted into CLAUDE.md from `effort_breakdown` via
+    evidence_claims.py, so the claim reds instead of drifting.)
+    (An earlier effort-split pairing quoted here was a
+    pre-contamination-fix number; per CLAUDE.md no per-model figure taken before
+    2026-07-26 may be requoted. tests/test_precontamination_ledger_numbers.py bans
+    the literal string.)
+
+    A missing effort stays MISSING rather than defaulting: the tally slices on it, so a
+    guessed level silently credits wins to a level that never ran. Trinity's own
+    DEFAULT_EFFORT is deliberately scoped to providers whose CLI takes the flag.
+    """
+    from .council_schema import CouncilMemberResult, normalize_provider_slug
+
+    out = []
+    for r in responses or []:
+        if not isinstance(r, dict):
+            continue
+        meta: dict = {"source": "mcp_synthesis"}
+        effort = r.get("effort")
+        if isinstance(effort, str) and effort.strip():
+            meta["effort"] = effort.strip()
+        model = r.get("model")
+        out.append(
+            CouncilMemberResult(
+                provider=normalize_provider_slug(str(r.get("provider", "unknown"))),
+                model=model if isinstance(model, str) and model.strip() else None,
+                output_text=str(r.get("content", "")),
+                metadata=meta,
+            )
+        )
+    return out
 
 
 @server.list_tools()
@@ -133,11 +193,35 @@ async def handle_list_tools() -> list[Tool]:
                 "trivial bugs, syntax, mechanical refactors, retrieval — one right answer "
                 "wastes it.\n\n"
                 "WHAT IT DOES: launches a multi-provider comparison (claude / codex / antigravity "
-                "by default). Supports parallel mode (default; members run simultaneously) and "
-                "chain mode (sequential refinement, each model refines the prior). The chairman "
-                "synthesizes via the user's lens.md and returns agreed_claims, disagreed_claims "
-                "with why_matters, winner, runner_up, routing_lesson. Returns the council_run_id "
-                "and the path to the live review page; the council runs asynchronously.\n\n"
+                "by default). Members run simultaneously (parallel) and never see each other's "
+                "work, so the disagreement is real rather than an echo. The chairman then "
+                "PROSECUTES rather than summarizes: it forces each disputed claim against the "
+                "other members' evidence and records which side SURVIVES. Returns the "
+                "council_run_id and the path to the live review page; the council runs "
+                "asynchronously.\n\n"
+                "WHAT YOU GET BACK, machine-readable (the reason to prefer this over asking one "
+                "model twice):\n"
+                "- agreed_claims: what every member independently asserted.\n"
+                "- disagreed_claims: each split with providers_for / providers_against, "
+                "why_matters, and `resolution` — which side survives the other members' evidence, "
+                "or 'unresolved' when the evidence genuinely cannot decide. An unresolved split "
+                "is a verdict, not a gap: treat it as a real open question.\n"
+                "- facets: the dimensions that ACTUALLY discriminated between the answers on this "
+                "task, named by the chairman in its own words (e.g. 'invalidation semantics'), "
+                "each with the provider that won it. Use these to see WHERE a model was strong, "
+                "not just whether it won.\n"
+                "- winner, runner_up, provider_scores (per-axis), routing_lesson.\n"
+                "- combined_answer + grafts, when the combine round is enabled "
+                "(TRINITY_COMBINE_SURVIVORS): the merged answer — the winner as the spine with "
+                "the surviving claims from other members grafted in — plus per-graft provenance "
+                "{claim, from, basis: evidence|lens}. Prefer combined_answer over the winner's "
+                "raw answer when it is present.\n\n"
+                "HONEST LIMITS, so you weight the output correctly: the chairman's winner is "
+                "~11% nondeterministic run-to-run (measured), so treat a single winner as a "
+                "signal and not a fact — the agreed/disagreed/resolution structure is the stable "
+                "part. provider_scores and facets are the chairman's judgement, not a "
+                "behaviour-validated ranking; the validated per-model signal lives in the `trust` "
+                "tool, which reads which side the user's own later work took.\n\n"
                 "HORIZON WEIGHTING (#139): the chairman receives a query-horizon classification "
                 "(tactical / strategic / philosophical) computed from the task text, and weights "
                 "lens cards tagged with the matching horizon heavier in synthesis. This means a "
@@ -163,26 +247,42 @@ async def handle_list_tools() -> list[Tool]:
                         "items": {"type": "string"},
                         "description": "Provider names (e.g. ['claude', 'antigravity', 'codex']). Omit to use the default 3-member lineup.",
                     },
-                    "mode": {"type": "string", "enum": ["parallel", "chain"], "default": "parallel",
-                             "description": "parallel (the product). chain is PARKED dormant — measured at zero real uses ever (2026-07-10, council_25c534c5f1bf826c); accepted for wire-compat, not recommended."},
-                    "sequence": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "For mode='chain': the ordered provider sequence. Defaults to members.",
-                    },
+                    "mode": {"type": "string", "enum": ["parallel"], "default": "parallel",
+                             "description": "parallel (the product; members run simultaneously then the chairman synthesizes)."},
                     "primary_provider": {"type": "string", "description": "Chairman/synthesizer. Auto-selected if omitted."},
                     "responses": {
                         "type": "array",
                         "description": (
                             "Pre-supplied member outputs. When present, skips member dispatch "
-                            "and runs chairman synthesis only (structured verdict)."
+                            "and runs chairman synthesis only (structured verdict). ALWAYS send "
+                            "`model` and `effort` when you know them: the trust ledger keys on "
+                            "model x version with effort as a gated secondary, and a member "
+                            "supplied without them is counted at a coarser granularity than the "
+                            "ones Trinity dispatches itself."
                         ),
                         "items": {
                             "type": "object",
                             "properties": {
                                 "provider": {"type": "string"},
                                 "content": {"type": "string"},
-                                "model": {"type": "string"},
+                                "model": {
+                                    "type": "string",
+                                    "description": (
+                                        "Exact model id that produced this answer, e.g. "
+                                        "'claude-opus-5', 'gpt-5.5', 'gemini-3.1-pro-preview'. "
+                                        "Not a brand name."
+                                    ),
+                                },
+                                "effort": {
+                                    "type": "string",
+                                    "description": (
+                                        "Reasoning level this answer ran at: low | medium | high "
+                                        "| xhigh | max. On claude.ai this is settings.effort_level; "
+                                        "on chatgpt.com it is baked into the model slug "
+                                        "(…-thinking). Omit rather than guess — a wrong level is "
+                                        "worse than an absent one, because the tally will slice on it."
+                                    ),
+                                },
                             },
                             "required": ["provider", "content"],
                         },
@@ -192,9 +292,10 @@ async def handle_list_tools() -> list[Tool]:
                         "description": (
                             "PROVIDER-SIDE LOOP (flag-gated by TRINITY_HOST_CLAUDE_MEMBER). "
                             "Member answers YOU (the host agent) already produced in-session — "
-                            "typically the Claude voice on the user's full plan, so the Claude "
-                            "member rides the session instead of `claude -p`/MCP sampling (the "
-                            "deprecated path). Trinity dispatches ONLY the members you did NOT "
+                            "typically the Claude voice, so the Claude member rides the session "
+                            "you are already in instead of `claude -p`/MCP sampling (the "
+                            "deprecated path) — same subscription, one fewer call against it. "
+                            "Trinity dispatches ONLY the members you did NOT "
                             "supply (e.g. codex, antigravity) and synthesizes over the full set. "
                             "To use: answer the task yourself, then call run_council with "
                             "host_responses=[{provider:'claude', content:<your answer>}]."
@@ -214,7 +315,7 @@ async def handle_list_tools() -> list[Tool]:
                         "description": (
                             "PROVIDER-SIDE LOOP, chairman-on-host (flag-gated by "
                             "TRINITY_HOST_CLAUDE_MEMBER). The Routing-JSON verdict YOU synthesized "
-                            "in-session over the members (full plan, no `claude -p`). Pass with "
+                            "in-session over the members (no extra `claude -p` call). Pass with "
                             "responses=[all members]; Trinity records the outcome with ZERO chairman "
                             "model calls. Get the members first via host_responses + dispatch_only."
                         ),
@@ -516,8 +617,9 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[Any]:
     # worker threads can find it (via mcp_sampling.request_claude_sample).
     # When Trinity-MCP is loaded inside Claude Desktop and the client
     # advertised sampling capability, the Claude provider routes through
-    # sampling instead of `claude -p` subprocess — sidestepping the
-    # post-2026-06-15 Agent SDK credit pool. ContextVar set here
+    # sampling instead of a `claude -p` subprocess — same subscription
+    # either way, but it reuses the live session instead of spending
+    # plan quota on a second cold process. ContextVar set here
     # propagates to the ThreadPoolExecutor workers in council_runner
     # via copy_context().
     from .mcp_features import clear_request_context, set_request_context
@@ -855,11 +957,10 @@ def _canonicalize_member_slugs(seq: list, *, dedupe: bool = True) -> list:
     symmetric boundary to council_runtime's outcome-LOAD canonicalization (which
     only sees stored outcomes, never the launch-time member list).
 
-    `dedupe=True` (parallel members): collapse `['chatgpt','codex']` → `['codex']`
-    so the same provider isn't dispatched twice concurrently. `dedupe=False`
-    (chain `sequence`): a chain legitimately REVISITS a provider across rounds —
-    `['claude','codex','claude']` must stay 3 steps — so fold each element in
-    place without collapsing repeats."""
+    `dedupe=True` (the default, for parallel members): collapse
+    `['chatgpt','codex']` → `['codex']` so the same provider isn't dispatched
+    twice concurrently. `dedupe=False`: fold each element's brand slug in place
+    without collapsing repeats (order- and multiplicity-preserving)."""
     from .council_schema import normalize_provider_slug
 
     out: list = []
@@ -1710,7 +1811,7 @@ async def _synthesize_responses(args: dict, responses: list[dict]) -> list[Any]:
         save_council_outcome,
         save_prompt_bundle,
     )
-    from .council_schema import CouncilMemberResult, normalize_provider_slug
+    from .council_schema import normalize_provider_slug
     from .providers import make_provider
     from .utils import stable_id
 
@@ -1720,15 +1821,27 @@ async def _synthesize_responses(args: dict, responses: list[dict]) -> list[Any]:
     # council outcome — which the personal routing table reads — never records a
     # non-dispatchable slug (the #249/#260 routing-poison class). Arbitrary
     # labels ('answer_a', 'external') pass through untouched.
-    members = [
-        CouncilMemberResult(
-            provider=normalize_provider_slug(str(r.get("provider", "unknown"))),
-            model=r.get("model"),
-            output_text=str(r.get("content", "")),
-            metadata={"source": "mcp_synthesis"},
-        )
-        for r in responses
-    ]
+    # `effort` rides in metadata because that is where the disagreement ledger reads
+    # it from (`_ident_label`: `(m.get("metadata") or {}).get("effort")`), which is
+    # also where the CLI dispatch path stamps it. Recording it anywhere else would be
+    # a field nothing consumes.
+    #
+    # WHY THIS MATTERS (measured 2026-07-26): caller-supplied members are the MAJORITY
+    # of council members — 1,077 of 1,490 across 654 councils are web-captured
+    # (gemini 437, chatgpt 324, claude_ai 316) and every one of them recorded
+    # model=None, effort=None. The CLI minority stamps both, so the trust tally's
+    # model×version key and its gated effort secondary were being computed on 28% of
+    # the corpus. The missing leg is real resolution, not bookkeeping: effort is part
+    # of the identity unit, and while three effort sub-cells clear MIN_TALLY_N on the
+    # clean tally (Fable·high, Gemini 3.1·high, GPT-5.5·xhigh 17-12 = 58.6%, CI
+    # [0.41,0.75]), NO model×version has a second level — so no cell has a sibling to
+    # contrast against, exactly because the other legs were never recorded. (This read
+    # "only ONE effort sub-cell" until 2026-07-31, inferred from the one key it was
+    # about; the count is now a guarded canonical claim in CLAUDE.md via
+    # evidence_claims.py. The old effort-split pairing here
+    # was a pre-contamination-fix number and must not be requoted; the literal string
+    # is banned by tests/test_precontamination_ledger_numbers.py.)
+    members = members_from_responses(responses)
 
     # Pick the chairman from ENABLED LOCAL providers — not from the
     # caller-supplied response provider labels. The labels can be arbitrary
@@ -1744,8 +1857,8 @@ async def _synthesize_responses(args: dict, responses: list[dict]) -> list[Any]:
     )
     save_prompt_bundle(bundle)
 
-    # Chairman-on-host (the full provider-side loop): the host session — a Claude instance on
-    # the user's FULL plan — already produced the verdict, so there is NO chairman model call
+    # Chairman-on-host (the full provider-side loop): the host session — a Claude instance
+    # already in the conversation — produced the verdict, so there is NO chairman model call
     # (no `claude -p`, no deprecated sampling). Record it directly; attribute the synthesis to
     # the host's lab (claude, or a caller-supplied primary_provider) for the routing table.
     host_synthesis = args.get("host_synthesis")
@@ -1882,11 +1995,11 @@ async def _council_with_host_members(args: dict, host_responses: list[dict]) -> 
     """Provider-side loop (the MCP-sampling-deprecation-proof path for the Claude voice).
 
     The host agent already produced some member answers in-session — typically the Claude
-    voice on the user's FULL plan, so it never touches `claude -p` (the smaller post-2026-06-15
-    Agent-SDK credit pool) or `sampling/createMessage` (deprecated). Trinity dispatches ONLY
-    the remaining members via their CLIs (codex/agy — no billing problem) and reuses the
-    chairman-synthesis path over the combined set. The Claude member's cognition rides MCP
-    *tools* (this call), not server-initiated sampling.
+    voice, riding the session the user is already in, so it never spends a second helping of
+    that same subscription on `claude -p` and never needs `sampling/createMessage`
+    (deprecated). Trinity dispatches ONLY the remaining members via their CLIs (codex/agy)
+    and reuses the chairman-synthesis path over the combined set. The Claude member's
+    cognition rides MCP *tools* (this call), not server-initiated sampling.
     """
     from pathlib import Path
 
@@ -1916,9 +2029,18 @@ async def _council_with_host_members(args: dict, host_responses: list[dict]) -> 
             continue  # not installed/enabled — degrade, don't fail the council
         try:
             res = make_provider(cfg).run(member_prompt, cwd=Path.cwd())
+            # Carry the CONFIGURED effort forward. Trinity knows exactly what level it
+            # dispatched at (config.effort, defaulted for the providers whose CLI takes
+            # the flag), and the recording leg reads `effort` off these dicts — so
+            # omitting it here silently downgrades a KNOWN level to unknown and the
+            # trust tally loses the effort secondary for every host-loop council.
+            # Verified end-to-end 2026-07-26: without this the dispatched members
+            # recorded metadata={'source': ...} with no effort while the host-supplied
+            # member correctly carried its own.
             dispatched.append({
                 "provider": m,
                 "model": cfg.model,
+                "effort": getattr(cfg, "effort", None),
                 "content": (res.stdout or res.stderr or ""),
             })
         except Exception:
@@ -1928,7 +2050,7 @@ async def _council_with_host_members(args: dict, host_responses: list[dict]) -> 
     all_responses = list(host_responses) + dispatched
 
     # dispatch_only (chairman-on-host): hand the assembled member answers + the synthesis
-    # prompt BACK to the host, which produces the verdict in its own turn (full plan, no
+    # prompt BACK to the host, which produces the verdict in its own turn (no separate
     # `claude -p`) and records it via run_council(responses=<these>, host_synthesis=<verdict>).
     # No chairman model call here.
     if args.get("dispatch_only"):
@@ -1950,7 +2072,7 @@ async def _council_with_host_members(args: dict, host_responses: list[dict]) -> 
             "mode": "awaiting_host_synthesis",
             "member_responses": all_responses,
             "synthesis_prompt": synthesis_prompt,
-            "next": "Synthesize this prompt yourself (full plan, no `claude -p`), then call "
+            "next": "Synthesize this prompt yourself (in this session, no `claude -p`), then call "
                     "run_council(task, responses=<member_responses>, host_synthesis=<your Routing "
                     "JSON verdict>) to record the outcome with zero chairman model calls.",
         })]
@@ -1971,8 +2093,8 @@ async def _run_council(args: dict) -> list[Any]:
                      "to enable the provider-side loop, or omit host_synthesis for a normal council.",
         })]
 
-    # Provider-side loop: the host agent supplied some member answers (the Claude voice on the
-    # user's full plan); Trinity dispatches only the rest + synthesizes. Flag-gated OFF.
+    # Provider-side loop: the host agent supplied some member answers (the Claude voice, from
+    # the live session); Trinity dispatches only the rest + synthesizes. Flag-gated OFF.
     if "host_responses" in args:
         host_responses = args.get("host_responses")
         if not isinstance(host_responses, list) or not host_responses:
@@ -2021,7 +2143,6 @@ async def _run_council(args: dict) -> list[Any]:
     from .council_schema import normalize_provider_slug
     members = args.get("members") or default_council_members()
     mode = args.get("mode", "parallel")
-    sequence = args.get("sequence")
     primary_provider = args.get("primary_provider")
     wait_seconds = float(args.get("wait_seconds") or 0)
 
@@ -2031,14 +2152,10 @@ async def _run_council(args: dict) -> list[Any]:
     # member / chairman to `config.providers.get('chatgpt') -> None`.
     if isinstance(members, list):
         members = _canonicalize_member_slugs(members)
-    if isinstance(sequence, list):
-        # dedupe=False: a chain sequence legitimately revisits a provider across
-        # rounds (claude→codex→claude), so fold slugs in place without collapsing.
-        sequence = _canonicalize_member_slugs(sequence, dedupe=False)
     if isinstance(primary_provider, str) and primary_provider:
         primary_provider = normalize_provider_slug(primary_provider)
 
-    if mode not in ("parallel", "chain"):
+    if mode not in ("parallel",):
         return [_text({"ok": False, "error": f"unknown mode: {mode}"})]
 
     launch_args = SimpleNamespace(
@@ -2048,15 +2165,8 @@ async def _run_council(args: dict) -> list[Any]:
         instructions="Prefer the strongest answer for the user's current task.",
         context_file=None,
         project_hint="",
-        members=members if mode == "parallel" else (sequence or members),
+        members=members,
         primary_provider=primary_provider,
-        # CRITICAL: thread mode + sequence into launch_args so handle_council_launch
-        # can propagate them to handle_council_start → run_council. Without these,
-        # MCP `run_council(mode="chain")` was reaching the runner as parallel
-        # while the response said "mode": "chain" — the silent-dispatch bug
-        # the verification council caught.
-        mode=mode,
-        sequence=sequence,
         cwd=".",
         status_token=None,
         open_browser=False,

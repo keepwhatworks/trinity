@@ -206,14 +206,15 @@ class CLIProvider(BaseProvider):
     def run(self, prompt: str, cwd: Path) -> ProviderResult:
         # MCP host sampling — preferred path for the Claude voice when
         # Trinity-MCP is loaded inside a chat client (Claude Desktop)
-        # that advertised the `sampling` capability. Counts against
-        # the user's regular Claude plan, NOT the post-2026-06-15 Agent
-        # SDK credit pool.
+        # that advertised the `sampling` capability. Both paths bill the
+        # user's Claude subscription (there is no separate Agent-SDK
+        # credit pool — that change is paused); sampling is preferred
+        # because it reuses the live session instead of paying for a
+        # second cold `claude -p` process out of the same plan quota.
         #
         # Other CLI-shaped providers (agy/Antigravity, etc.) don't go through
-        # sampling — they don't have the billing problem `claude -p`
-        # has, and the host can't promise to route to a non-Claude
-        # model anyway. Gate on the provider name.
+        # sampling — the host session is a Claude session, so it can't
+        # promise to answer as a non-Claude model. Gate on the provider name.
         if self.config.name == "claude":
             sampled = self._try_sampling(prompt)
             if sampled is not None:

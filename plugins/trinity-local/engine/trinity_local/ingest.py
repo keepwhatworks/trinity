@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
+from .model_identity import is_known_effort
 from .session_schema import PromptTurn, SessionMessage, SessionRecord
 
 
@@ -199,6 +200,7 @@ def parse_claude_code_session(path: Path) -> SessionRecord | None:
     cwd = None
     cli_version = None
     model = None
+    effort = None
     git_branch = None
     permission_mode = None
     messages: list[SessionMessage] = []
@@ -246,8 +248,28 @@ def parse_claude_code_session(path: Path) -> SessionRecord | None:
                 candidate_model = message.get("model")
                 is_synthetic = candidate_model == "<synthetic>"
                 is_api_error = bool(entry.get("isApiErrorMessage"))
+                # `effort` is a TOP-LEVEL key on the assistant entry (sibling of
+                # `message`), NOT inside message. Re-counted over the whole live
+                # corpus 2026-07-31 (5,360 files under ~/.claude/projects):
+                # 17,282 top-level `effort` values (xhigh 13,858 / high 2,269 /
+                # low 1,155), every single one on type="assistant" — and ZERO
+                # `message.effort` on the 258,975 entries that carry
+                # `message.model`. Reading it inside `message` returns None
+                # always, which reads as "this surface has no effort".
+                candidate_effort = entry.get("effort")
+                if not isinstance(candidate_effort, str) or not candidate_effort:
+                    candidate_effort = None
+                if is_synthetic:
+                    # A "<synthetic>" turn is harness-generated, not a model
+                    # answer; its effort is meaningless too, so drop the PAIR
+                    # rather than keep a half-identity.
+                    candidate_effort = None
                 if isinstance(candidate_model, str) and not is_synthetic:
                     model = candidate_model or model
+                    # Track the session-level pair together so the fallback in
+                    # iter_prompt_turns can never mix model-from-here with
+                    # effort-from-there.
+                    effort = candidate_effort
                 text = _message_text(message.get("content"))
                 tool_calls: list[dict[str, Any]] = []
                 content = message.get("content")
@@ -284,6 +306,7 @@ def parse_claude_code_session(path: Path) -> SessionRecord | None:
                         text=text,
                         timestamp=ts,
                         model=candidate_model if isinstance(candidate_model, str) and not is_synthetic else None,
+                        effort=candidate_effort,
                         tokens=tokens,
                         tool_calls=tool_calls,
                         raw_type=entry_type,
@@ -312,6 +335,7 @@ def parse_claude_code_session(path: Path) -> SessionRecord | None:
         project_hint=path.parent.name,
         title=None,
         model=model,
+        effort=effort,
         cli_name="claude",
         cli_version=cli_version,
         source_format="claude_code_jsonl",
@@ -353,6 +377,7 @@ def parse_codex_session(path: Path) -> SessionRecord | None:
     cwd = None
     cli_version = None
     model = None
+    effort = None
     model_provider = None
     messages: list[SessionMessage] = []
 
@@ -381,7 +406,22 @@ def parse_codex_session(path: Path) -> SessionRecord | None:
                 cli_version = payload.get("cli_version") or cli_version
                 model_provider = payload.get("model_provider") or model_provider
             elif entry_type == "turn_context":
+                # `turn_context` is running state: it announces the model AND
+                # the reasoning effort in force from here on. Counted over the
+                # live corpus 2026-07-31 (1,656 rollouts): 3,856 turn_context
+                # payloads, every `effort` in the corpus on one of them, and
+                # payload.effort present, non-empty and EQUAL to
+                # payload.collaboration_mode.settings.reasoning_effort on all
+                # 3,856 (xhigh 2,288 / high 1,104 / medium 463 / max 1). The
+                # nested copy is read too so a rollout that carries only it
+                # still lands — no such rollout exists today, so that branch is
+                # covered by a fixture, not by the corpus.
                 model = payload.get("model") or model
+                collab = _as_dict(payload.get("collaboration_mode")).get("settings")
+                nested = _as_dict(collab).get("reasoning_effort")
+                candidate_effort = payload.get("effort") or nested
+                if isinstance(candidate_effort, str) and candidate_effort:
+                    effort = candidate_effort
             elif entry_type == "response_item":
                 payload_type = payload.get("type")
                 if payload_type == "message":
@@ -397,6 +437,7 @@ def parse_codex_session(path: Path) -> SessionRecord | None:
                             text=text,
                             timestamp=ts,
                             model=model if role == "assistant" else None,
+                            effort=effort if role == "assistant" else None,
                             raw_type=payload_type,
                         )
                     )
@@ -413,6 +454,7 @@ def parse_codex_session(path: Path) -> SessionRecord | None:
                             text=text,
                             timestamp=ts,
                             model=model,
+                            effort=effort,
                             raw_type=payload_type,
                         )
                     )
@@ -428,6 +470,7 @@ def parse_codex_session(path: Path) -> SessionRecord | None:
                             text="",
                             timestamp=ts,
                             model=model,
+                            effort=effort,
                             raw_type=payload_type,
                             tool_calls=[
                                 {
@@ -460,6 +503,7 @@ def parse_codex_session(path: Path) -> SessionRecord | None:
         project_hint=cwd,
         title=None,
         model=model,
+        effort=effort,
         cli_name="codex",
         cli_version=cli_version,
         source_format="codex_rollout_jsonl",
@@ -480,6 +524,39 @@ def iter_codex_sessions(root: Path | None = None) -> Iterator[SessionRecord]:
 
 
 _AGY_USER_REQUEST_RE = re.compile(r"<USER_REQUEST>\s*(.*?)\s*</USER_REQUEST>", re.DOTALL)
+
+# agy records no model field anywhere in the transcript — the ONLY place the
+# model appears is a `<USER_SETTINGS_CHANGE>` notice the harness injects into
+# the user turn: "The user changed setting `Model Selection` from None to
+# Gemini 3.1 Pro (High)." Measured on the live corpus 2026-07-31: present in
+# 500/500 transcripts, exactly once each, always on user turn 0, values
+# "Gemini 3.1 Pro (High)" (499) and "Gemini 3.6 Flash (Low)" (1). The trailing
+# "(High)" is the effort, and model_identity._effort already reads that baked
+# parenthesised form, so the notice string is stored VERBATIM as the model and
+# left for parse_identity to decompose.
+#
+# This is running state, matching codex's turn_context: the notice announces
+# the model in force from that turn onward, so it is applied forward and never
+# backward. A transcript without the notice keeps model=None — the settings
+# notice fires on CHANGE, so its absence means "unknown", not "the default".
+_AGY_MODEL_CHANGE_RE = re.compile(
+    r"changed setting `Model Selection` from .+? to (.+?)\.(?:\s|$)"
+)
+
+
+def _antigravity_model_notice(content: str) -> str | None:
+    """Model string from an agy `<USER_SETTINGS_CHANGE>` notice, or None."""
+    m = _AGY_MODEL_CHANGE_RE.search(content)
+    if not m:
+        return None
+    value = m.group(1).strip()
+    # Guard the degenerate captures: "None" is what the notice writes for the
+    # *previous* setting, and a runaway match would swallow the rest of the
+    # sentence. Anything that doesn't look like a short model name is refused
+    # rather than stored as a model.
+    if not value or value.lower() == "none" or len(value) > 60:
+        return None
+    return value
 
 
 def _antigravity_user_text(content: str) -> str:
@@ -544,6 +621,10 @@ def parse_antigravity_session(path: Path) -> SessionRecord | None:
         kind = o.get("type")
         content = o.get("content")
         if kind == "USER_INPUT" and isinstance(content, str):
+            # Read the settings notice BEFORE _antigravity_user_text strips the
+            # metadata tags off — that strip is what has been discarding the
+            # only model signal agy emits.
+            model = _antigravity_model_notice(content) or model
             text = _antigravity_user_text(content)
             if text:
                 messages.append(
@@ -552,7 +633,14 @@ def parse_antigravity_session(path: Path) -> SessionRecord | None:
         elif kind == "PLANNER_RESPONSE" and isinstance(content, str) and content.strip():
             messages.append(
                 SessionMessage(
-                    role="assistant", text=content.strip(), timestamp=ts, raw_type=kind
+                    role="assistant",
+                    text=content.strip(),
+                    timestamp=ts,
+                    # The effort rides inside the model string ("... (High)");
+                    # parse_identity reads it from there. Passing it separately
+                    # would be a second normalisation of the same fact.
+                    model=model,
+                    raw_type=kind,
                 )
             )
 
@@ -803,7 +891,30 @@ def _is_user_facing_prompt(message: SessionMessage, *, apply_dispatch_ledger: bo
                             "<command-name>", "<command-message>", "<local-command-stdout>",
                             "<local-command-stderr>", "<system-reminder>",
                             "<image", "<turn_aborted", "<goal_context",
-                            "<scheduled-task", "<uploaded_files")):
+                            "<scheduled-task", "<uploaded_files",
+                            # Same harness-envelope family, found 2026-07-26 by the
+                            # workstream-clustering probe: `<subagent_notification>`
+                            # (88 nodes) was the SECOND-largest "workstream" in the
+                            # last 90 days, and `<local-command-caveat>` (148) rode
+                            # in with it. Neither is human-authored.
+                            "<subagent_notification", "<local-command-caveat",
+                            # Found 2026-08-01 by scripts/find_generator_families.py,
+                            # which exists BECAUSE the two additions above were found
+                            # by luck, months apart. 409 accepted nodes across six
+                            # tags, every one verified by reading a real sample:
+                            #   <recommended_plugins>  (338) harness block telling the
+                            #       MODEL which plugins to suggest installing
+                            #   <bash-input>/<bash-stdout> (46) bash-mode shell I/O —
+                            #       same class as <local-command-stdout>, already here
+                            #   <<autonomous-loop-dynamic>> (16) the /loop scheduler
+                            #       sentinel; a human never types it
+                            #   <user_shell_command> (5) command+result envelope
+                            #   <user_action> (4) harness review wrapper carrying
+                            #       another model's output
+                            # `<role>` (1 node) was deliberately NOT added: it opens a
+                            # role-play prompt template a user could plausibly paste.
+                            "<recommended_plugins", "<bash-input", "<bash-stdout",
+                            "<<autonomous-loop", "<user_shell_command", "<user_action")):
         return False
     # Meta-narrative + session-frame markers — synthesized by the harness,
     # not the user.
@@ -897,6 +1008,29 @@ def _is_user_facing_prompt(message: SessionMessage, *, apply_dispatch_ledger: bo
     # prompt; require the "test the prod setup" co-occurrence so a real prompt
     # that merely begins "start …" can't be eaten.
     if lowered.startswith("start new end to end flow") and "test the prod setup" in lowered[:160]:
+        return False
+    # TRINITY'S OWN LEDGER RESOLVER, read back as the user's behaviour. This is the
+    # worst instance of the generator-over-generated recursion found so far, because
+    # it contaminated the ONE behaviour-validated layer: `trust --build` dispatches
+    # `_EXTRACT_PROMPT` ("A technical decision was contested. The contested claim: …")
+    # via `claude -p`, the transcript is ingested as role=user, and the NEXT build's
+    # `assemble_evidence` retrieves those prompts as "what the person did next".
+    # Measured 2026-07-26: 118 such nodes, 37.1% of all evidence rows fed to the
+    # resolver were machine-generated, 185 of 294 claims carried at least one, and 37
+    # claims were resolved on machine-only evidence. Every build deepened it.
+    if lowered.startswith("a technical decision was contested"):
+        return False
+    # The `ux-designer` /loop driver: a cron fires the same directive verbatim, 607
+    # copies in the corpus and the single largest repeated CLI text. Same shape as the
+    # "start new end to end flow" driver above.
+    if lowered.startswith("ux-designer loop"):
+        return False
+    # A code-review hook firing on every change: 1,748 nodes, the LARGEST cluster in
+    # the last 90 days of "work". Requires the co-occurring machine preamble so a human
+    # who genuinely types "review this change for security vulnerabilities" is kept —
+    # the hook always emits its file manifest, a person never does.
+    if (lowered.startswith("review this change for security vulnerabilities")
+            and "changed files" in lowered[:400]):
         return False
     # A bare conversation-id hash captured as a prompt. gemini.google.com's
     # adapter over-captures Gemini's internal batchexecute RPCs (feature flags,
@@ -998,12 +1132,49 @@ def _is_substantive_assistant(message: SessionMessage) -> bool:
     return bool(message.text and message.text.strip())
 
 
+def _attributed_identity(
+    session: SessionRecord,
+    messages: list[SessionMessage],
+    msg_idx: int,
+) -> tuple[str | None, str | None]:
+    """The (model, effort) that answered the user turn at ``msg_idx``.
+
+    Attribution order, and why:
+
+      1. the next substantive assistant message — that IS the answer to this
+         prompt, so its model is the one that ran;
+      2. the previous substantive assistant message — for a trailing prompt
+         the user sent with no reply captured, the model in force is the one
+         that just spoke;
+      3. the session-level pair — the only signal claude.ai captures record,
+         where model + effort live once per conversation.
+
+    The pair is always taken from ONE source. Filling model from the next
+    message and effort from the previous would mint a (model, effort) combo
+    that never ran, and the disagreement ledger keys on exactly that pair.
+    A source that has a model but no effort yields (model, None): effort
+    unknown, not effort defaulted.
+    """
+    for j in range(msg_idx + 1, len(messages)):
+        if _is_substantive_assistant(messages[j]) and messages[j].model:
+            return messages[j].model, messages[j].effort
+    for j in range(msg_idx - 1, -1, -1):
+        if _is_substantive_assistant(messages[j]) and messages[j].model:
+            return messages[j].model, messages[j].effort
+    if session.model:
+        return session.model, session.effort
+    return None, None
+
+
 def iter_prompt_turns(session: SessionRecord) -> Iterator[PromptTurn]:
     """Yield clean user-facing prompts from a session, ready for embedding.
 
     Excludes sidechain (subagent) turns, API-error responses, and empty messages.
     Each yielded turn includes the substantive assistant text immediately before
-    and after, for use when constructing TurnWindow embeddings.
+    and after, for use when constructing TurnWindow embeddings, plus the
+    (model, effort) pair that answered it when the transcript records one
+    (see ``_attributed_identity``). Surfaces that record neither — every
+    gemini.google.com capture — yield None for both.
     """
     messages = session.messages
     user_indices = [i for i, m in enumerate(messages) if _is_user_facing_prompt(m)]
@@ -1020,6 +1191,7 @@ def iter_prompt_turns(session: SessionRecord) -> Iterator[PromptTurn]:
             if _is_substantive_assistant(messages[j]):
                 following = messages[j].text
                 break
+        model, effort = _attributed_identity(session, messages, msg_idx)
         yield PromptTurn(
             transcript_id=session.session_id,
             provider=session.provider,
@@ -1029,6 +1201,8 @@ def iter_prompt_turns(session: SessionRecord) -> Iterator[PromptTurn]:
             timestamp=msg.timestamp,
             preceding_assistant_text=preceding,
             following_assistant_text=following,
+            model=model,
+            effort=effort,
         )
         turn_index += 1
 
@@ -1040,6 +1214,37 @@ def iter_prompt_turns(session: SessionRecord) -> Iterator[PromptTurn]:
 # Each conversation: {uuid, name, summary, created_at, updated_at, account, chat_messages[]}
 # Each chat_message: {uuid, text, content[], sender ("human" or null), created_at, updated_at}
 # Each content block: {type:"text", text, start_timestamp, ...}
+
+
+def _claude_ai_effort(conv: dict[str, Any]) -> str | None:
+    """Reasoning effort for a claude.ai conversation, or None.
+
+    Counted on the live capture corpus 2026-07-31 (152 conversations in
+    ~/.trinity/conversations/claude/, `_`-prefixed sentinels excluded):
+
+      settings.effort_level        109  high 81 / max 22 / xhigh 5 / medium 1
+                                        -> all five words parse
+      settings.thinking_mode       145  auto 108 / extended 37  -> parse to "?"
+      effective_thinking_mode       67  auto 66 / extended 1    -> parse to "?"
+
+    So ``effort_level`` is the real effort field and ``thinking_mode`` is a
+    DIFFERENT axis (whether extended thinking is engaged at all) whose
+    vocabulary does not overlap low/medium/high/xhigh/max at any point. The
+    thinking_mode fields are read as a fallback but gated on
+    ``is_known_effort``, so today they contribute exactly zero values — the
+    43 conversations with no effort_level keep effort=None ("not recorded")
+    instead of being handed a word that only looks like coverage. The gate
+    is what makes this safe to leave wired if Anthropic later moves the
+    effort words into that field.
+    """
+    settings = _as_dict(conv.get("settings"))
+    level = settings.get("effort_level")
+    if isinstance(level, str) and is_known_effort(level):
+        return level
+    for candidate in (conv.get("effective_thinking_mode"), settings.get("thinking_mode")):
+        if isinstance(candidate, str) and is_known_effort(candidate):
+            return candidate
+    return None
 
 
 def _claude_conversation_dict_to_session(
@@ -1058,6 +1263,8 @@ def _claude_conversation_dict_to_session(
     session_id = conv.get("uuid")
     if not isinstance(session_id, str) or not session_id:
         return None
+    conv_model = conv.get("model") if isinstance(conv.get("model"), str) else None
+    conv_effort = _claude_ai_effort(conv)
     messages: list[SessionMessage] = []
     for msg in conv.get("chat_messages", []):
         if not isinstance(msg, dict):
@@ -1071,6 +1278,12 @@ def _claude_conversation_dict_to_session(
             role=role,
             text=text,
             timestamp=msg.get("created_at"),
+            # claude.ai records model + effort ONCE per conversation, not per
+            # message (verified 2026-07-31: no chat_message carries a model
+            # key on any of 152 live captures), so the conversation-level pair
+            # is stamped onto each assistant turn.
+            model=conv_model if role == "assistant" else None,
+            effort=conv_effort if role == "assistant" else None,
             raw_type=sender or "assistant",
         ))
     return SessionRecord(
@@ -1083,7 +1296,8 @@ def _claude_conversation_dict_to_session(
         cwd=None,
         project_hint=None,
         title=(conv.get("name") or conv.get("summary") or "").strip() or None,
-        model=conv.get("model") if isinstance(conv.get("model"), str) else None,
+        model=conv_model,
+        effort=conv_effort,
         cli_name="claude_ai_webapp",
         cli_version=None,
         source_format=source_format,
@@ -1212,6 +1426,7 @@ def _chatgpt_conversation_dict_to_session(
 
     messages: list[SessionMessage] = []
     model: str | None = None
+    effort: str | None = None
     for node_id in ordered_ids:
         node = mapping.get(node_id)
         if not isinstance(node, dict):
@@ -1243,6 +1458,17 @@ def _chatgpt_conversation_dict_to_session(
         model_slug = metadata.get("model_slug") or metadata.get("default_model_slug")
         if isinstance(model_slug, str) and not model:
             model = model_slug
+        # chatgpt's effort field is per-message `metadata.thinking_effort`.
+        # Measured 2026-07-31 across 96 live captures / 5,765 mapping nodes:
+        # extended (4,803), standard (13), xhigh (3). Only "xhigh" is an
+        # effort in the canonical vocabulary — "extended"/"standard" are
+        # OpenAI's product-tier words on a different axis. Gate on
+        # is_known_effort so the 4,816 non-effort rows stay None rather than
+        # inflating an effort-coverage count with a word nothing can read.
+        raw_effort = metadata.get("thinking_effort") or metadata.get("reasoning_effort")
+        msg_effort = raw_effort if isinstance(raw_effort, str) and is_known_effort(raw_effort) else None
+        if msg_effort and not effort:
+            effort = msg_effort
         create_time = msg.get("create_time")
         timestamp = None
         if isinstance(create_time, (int, float)):
@@ -1252,6 +1478,7 @@ def _chatgpt_conversation_dict_to_session(
             text=text,
             timestamp=timestamp,
             model=model_slug if isinstance(model_slug, str) else None,
+            effort=msg_effort,
             raw_type=role,
         ))
 
@@ -1278,6 +1505,7 @@ def _chatgpt_conversation_dict_to_session(
         project_hint=None,
         title=(conv.get("title") or "").strip() or None,
         model=model or conv.get("default_model_slug"),
+        effort=effort,
         cli_name="chatgpt_webapp",
         cli_version=None,
         source_format=source_format,
@@ -1789,6 +2017,23 @@ def parse_gemini_takeout_html(
 # releases — keeping the raw decouples ingest from adapter shape.
 
 
+# Why a parse produced no SessionRecord. A parser that answers only
+# `None` conflates "this file is broken" with "this file is fine and
+# simply carries nothing yet", and the caller then reports the second as
+# the first. Measured 2026-07-31 over the live browser_gemini corpus
+# (4,322 files): 1,582 parsed, 2,739 well-formed with no completed
+# assistant turn, and 1 genuinely unreadable — the `_sidebar.json`
+# sentinel, which is provider metadata rather than a conversation and is
+# no longer walked at all (see watch_runtime._is_conversation_capture).
+# So 2,740 files were reported as parse failures and at most one of them
+# ever was. Parsers that can tell the two apart expose a `*_classified`
+# variant returning one of these; `incremental_ingest` counts them in
+# different buckets.
+PARSE_OK = "ok"
+PARSE_EMPTY = "empty"            # well-formed, carries no completed turn
+PARSE_UNREADABLE = "unreadable"  # unreadable / not a recognizable capture
+
+
 def parse_captured_gemini_conversation(path: Path) -> SessionRecord | None:
     """Parse a v1.8 browser-captured gemini.google.com conversation file.
 
@@ -1796,6 +2041,8 @@ def parse_captured_gemini_conversation(path: Path) -> SessionRecord | None:
     ``browser-extension/adapters/gemini.js`` — see module docstring above.
     Returns None if the file isn't a recognizable Gemini capture (no
     provider field, wrong provider, no conv_id, no assistant_text).
+    Callers that need to know WHICH of those it was should use
+    ``parse_captured_gemini_conversation_classified``.
 
     Each captured file is ONE turn (one batchexecute RPC = one user
     prompt + one assistant reply). Multi-turn conversations land as
@@ -1803,24 +2050,39 @@ def parse_captured_gemini_conversation(path: Path) -> SessionRecord | None:
     only the latest turn on disk by design, mirroring the claude.ai /
     chatgpt.com canonical-write semantics.
     """
+    return parse_captured_gemini_conversation_classified(path)[0]
+
+
+def parse_captured_gemini_conversation_classified(
+    path: Path,
+) -> tuple[SessionRecord | None, str]:
+    """``parse_captured_gemini_conversation`` + WHY it returned nothing.
+
+    Gemini writes one capture file per batchexecute network frame and only
+    some frames close out an assistant turn, so a well-formed capture with
+    no ``assistant_text`` is the NORMAL majority case, not breakage —
+    hence PARSE_EMPTY rather than PARSE_UNREADABLE for that branch.
+    """
     try:
         raw = json.loads(path.read_text(encoding="utf-8", errors="replace"))
     except (OSError, json.JSONDecodeError):
-        return None
+        return None, PARSE_UNREADABLE
     if not isinstance(raw, dict):
-        return None
+        return None, PARSE_UNREADABLE
     if raw.get("provider") != "gemini":
-        return None
+        return None, PARSE_UNREADABLE
     conv_id = raw.get("conv_id")
     if not isinstance(conv_id, str) or not conv_id:
-        return None
+        return None, PARSE_UNREADABLE
     assistant_text = raw.get("assistant_text")
     if not isinstance(assistant_text, str) or not assistant_text.strip():
-        # No prose extracted — adapter shape may have moved. Caller
-        # (incremental_ingest) treats this as skipped_parse; the raw
-        # capture stays on disk so a future ingest run with an
-        # updated extractor can pick it up.
-        return None
+        # No prose extracted. Gemini has no canonical full-conversation
+        # fetch, so the adapter writes a file per RPC frame and only about
+        # half of them carry a finished assistant turn — this branch is the
+        # ordinary shape of the source, NOT a parse failure. The raw capture
+        # stays on disk so a future run with an updated extractor can pick
+        # it up.
+        return None, PARSE_EMPTY
     captured_at = raw.get("captured_at") if isinstance(raw.get("captured_at"), str) else None
     message_id = raw.get("message_id") if isinstance(raw.get("message_id"), str) else None
     user_text = raw.get("user_text") if isinstance(raw.get("user_text"), str) else None
@@ -1870,4 +2132,4 @@ def parse_captured_gemini_conversation(path: Path) -> SessionRecord | None:
             "events_count": raw.get("events_count") if isinstance(raw.get("events_count"), int) else None,
         },
         messages=messages,
-    )
+    ), PARSE_OK

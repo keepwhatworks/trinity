@@ -3,9 +3,9 @@ prefers MCP host sampling over the `claude -p` subprocess when a
 sampling-capable session is active.
 
 This is the production payoff of the mcp_sampling primitive
-(test_mcp_sampling.py covers the primitive itself). Sidesteps the
-post-2026-06-15 Agent SDK credit pool for users running Trinity
-inside Claude Desktop.
+(test_mcp_sampling.py covers the primitive itself). For users running
+Trinity inside Claude Desktop it reuses the live session instead of
+spending the same subscription's quota on a second cold subprocess.
 """
 from __future__ import annotations
 
@@ -109,9 +109,9 @@ class TestClaudeProviderSamplingWireup:
         assert invoked[0][0] == "claude"
 
     def test_gemini_does_not_try_sampling(self, monkeypatch):
-        """Sampling is Claude-only — the user's host can't promise to
-        route to Gemini, and Gemini doesn't have the Agent SDK billing
-        problem yet. Non-claude CLIProviders must NEVER call sampling."""
+        """Sampling is Claude-only — the host session is a Claude session,
+        so it can't be asked to answer as Gemini. Non-claude CLIProviders
+        must NEVER call sampling."""
         from trinity_local.providers import CLIProvider
 
         sampling_calls = []

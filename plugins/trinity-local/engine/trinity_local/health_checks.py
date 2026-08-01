@@ -392,13 +392,16 @@ def _check_embedding_coverage() -> CheckResult:
     if not nodes.exists() or nodes.stat().st_size == 0:
         return CheckResult(name="embedding_coverage", ok=True,
                            detail="no corpus yet (nothing to embed)")
-    total = empty = 0
+    # UNIQUE nodes, not lines. The store is append-only latest-wins-by-id: a node
+    # written cheaply at ingest (no vector) and re-written by the embed pass occupies
+    # two lines, and every such pair is (unembedded, embedded). Counting lines
+    # therefore reported PHANTOM pending nodes that no embed pass can ever clear —
+    # measured 2026-07-25: "78.2% embedded, 10,556 pending" against a true pending
+    # count of ZERO, with a `fix` that could never close its own advice.
     try:
-        with nodes.open("rb") as fh:
-            for line in fh:
-                total += 1
-                if b'"embedding": []' in line or b'"embedding":[]' in line:
-                    empty += 1
+        from .memory.store import count_prompt_nodes
+
+        total, empty = count_prompt_nodes()
     except OSError as exc:
         return CheckResult(name="embedding_coverage", ok=True,
                            detail=f"could not read corpus: {exc.__class__.__name__}")
@@ -661,8 +664,23 @@ def _check_cortex_basin_density() -> CheckResult:
     try:
         from .lens_routing import load_topics_basins, pick_routes
 
-        n_basins = len(load_topics_basins() or []) or None
-        routed = sum(1 for v in data.values() if isinstance(v, dict) and pick_routes(v))
+        basins = load_topics_basins() or []
+        n_basins = len(basins) or None
+        live_ids = {str(b.get("id")) for b in basins if b.get("id")}
+        # A rule keyed to a basin that no longer exists can NEVER route:
+        # `place_query` only ever returns a live basin id. Counting it as
+        # routing overstates liveness — measured 2026-07-31, 1 of the 4
+        # gate-passing rules on the founder's corpus was unreachable. Only
+        # exclude when we actually have a topology to check against; an
+        # unreadable topics.json must not make every rule look dead.
+        routed = sum(
+            1 for bid, v in data.items()
+            if isinstance(v, dict) and pick_routes(v)
+            and (not live_ids or str(bid) in live_ids)
+        )
+        orphans = (
+            sum(1 for bid in data if str(bid) not in live_ids) if live_ids else 0
+        )
         fresh_live = sum(
             1 for v in data.values()
             if isinstance(v, dict) and isinstance(v.get("fresh_n"), int) and v["fresh_n"] >= 3
@@ -673,6 +691,12 @@ def _check_cortex_basin_density() -> CheckResult:
             f"{fresh_live} have >=3 current-model episodes — routing activates as fresh "
             "councils accumulate."
         )
+        if orphans:
+            liveness += (
+                f" {orphans} rule(s) key basins that no longer exist (lens rebuilt "
+                "since the last consolidate) and are excluded from the routing "
+                "count — clear with `trinity-local consolidate --prune-orphans`."
+            )
     except Exception:
         liveness = ""
     # Pre-registered: stable centroids want ~10+ episodes; below 8 = sparse enough

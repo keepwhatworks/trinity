@@ -66,6 +66,38 @@ _PROVIDER_NAME_ALIASES: dict[str, str] = {
 }
 
 
+def same_provider(a: Any, b: Any) -> bool:
+    """True iff two provider identifiers name the SAME lab, comparing canonically.
+
+    USE THIS FOR EVERY PROVIDER COMPARISON. A raw `a == b` is wrong whenever one
+    side came from disk and the other from a normalizing loader, because the same
+    lab is recorded under different names by different entry surfaces: web-capture
+    councils store `chatgpt` / `claude_ai` / `gemini` while CLI councils and
+    `CouncilRoutingLabel.from_dict` store `codex` / `claude` / `antigravity`. So
+    `"chatgpt" != "codex"` is True and *means nothing* — it is the same lab.
+
+    This has now bitten three times (2026-07-24/25): the combine census scored a
+    spurious novelty of 1.00 on ~46% of councils, and the re-chair drift counters
+    reported a 54% "model effect" that was 38% pure aliasing — a wrong finding
+    reported to the founder before the log line `(was chatgpt) -> codex` gave it
+    away. Both bugs came from reading a raw JSON field and comparing it against a
+    normalized one. The standing rule is canonicalize at EVERY boundary, not just
+    display; this function is that rule made callable so the next comparison is
+    correct by construction instead of by remembering.
+
+    Empty/None on either side compares False — "no winner" is not a match.
+    """
+    an, bn = normalize_provider_slug(a), normalize_provider_slug(b)
+    if not isinstance(an, str) or not isinstance(bn, str):
+        return False
+    an, bn = an.strip().lower(), bn.strip().lower()
+    if not an or not bn:
+        return False
+    # normalize_provider_slug is case-sensitive on its alias keys, so fold first
+    # and re-normalize: "ChatGPT" -> "chatgpt" -> "codex".
+    return str(normalize_provider_slug(an)).lower() == str(normalize_provider_slug(bn)).lower()
+
+
 def resolve_provider_alias(name: Any) -> Any:
     """Resolve a user-facing provider name (CLI input) to its internal slug.
 
@@ -229,6 +261,32 @@ class CouncilRoutingLabel:
     # "models agreed on these claims, disagreed on these, here's why"
     agreed_claims: list[str] = field(default_factory=list)
     disagreed_claims: list[dict[str, object]] = field(default_factory=list)
+    # MACHINE-PARSABLE COMBINE (2026-07-24). The chairman's merged answer plus the
+    # provenance of every claim grafted into it. Prose in PART 1 is unusable by an
+    # agent, the MCP surface, or any eval — the value has to be in the JSON.
+    #
+    # `from_dict` filters to DECLARED dataclass fields, so a field that is not
+    # named here is silently dropped no matter what the prompt asks for or the
+    # parse normalizer keeps. That is the third chokepoint on this wire and it is
+    # exactly how `resolution` went missing between shipping the prompt and the
+    # first real council that used it (both fixed 2026-07-24).
+    #
+    # Each graft: {claim, from, basis: "evidence"|"lens", tension?}. `basis` is a
+    # built-in instrument, not decoration — it makes "how often does taste
+    # actually break a tie" countable instead of asserted (the prior estimate was
+    # 1/12 chairman picks, from a one-off ablation).
+    combined_answer: str = ""
+    grafts: list[dict[str, object]] = field(default_factory=list)
+    # FREE-FORM FACETS (2026-07-24). The fixed 7-axis rubric in provider_scores
+    # (planning / execution / evaluation / specificity / user_fit / risk /
+    # conciseness) cannot name the dimension that actually separated the answers on
+    # a given task — "invalidation semantics", "cost realism", "migration risk".
+    # So the chairman names the discriminating facet in its own words and says who
+    # won it. The labels are then EMBEDDED and clustered across councils into an
+    # emergent taxonomy, rather than us guessing the axes up front: the same
+    # division of labour as the lens (geometry finds the structure, the model names
+    # it). Each entry: {name, winner, basis}.
+    facets: list[dict[str, object]] = field(default_factory=list)
     # NOTE: `best_stage_models`, `should_be_hard_case`, and `hard_case_reason`
     # were demoted in iter-3 — zero downstream consumers (verified via grep
     # across personal_routing, chairman_picker, council_review, mcp_server,
@@ -248,6 +306,16 @@ class CouncilRoutingLabel:
             "routing_lesson",
             "eval_seed",
             "major_failure_mode",
+            # The machine-parsable combine. This emit list is the FOURTH chokepoint
+            # on that wire — a field can be asked for in the prompt, kept by the
+            # parse normalizer, and declared on the dataclass, and STILL never
+            # reach disk if it is missing here. Verified by round-tripping all four
+            # layers, which is how this omission was caught (2026-07-24).
+            # Empty-filtered on purpose: no combined_answer means no merge
+            # happened, and an empty key would imply one did.
+            "combined_answer",
+            "grafts",
+            "facets",
         ):
             value = getattr(self, key)
             if value not in (None, "", {}, []):

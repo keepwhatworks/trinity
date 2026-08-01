@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,120 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "slow" in item.keywords:
             item.add_marker(skip_slow)
+
+
+# ───────────────────────────────────────────────────────────────────────
+# Measured-run snapshot (2026-07-31)
+#
+# The published test count used to be FABRICATED: scripts/render_docs.py
+# ran `pytest --collect-only -q`, scraped "N tests collected", then
+# subtracted a hardcoded 4 for "skipped". `--collect-only` never emits a
+# skip summary (skips are a RUNTIME outcome), so the fallback constant
+# always fired and every doc surface published `collected - 4` as
+# "N tests passing + 4 skipped" — two numbers nothing had observed.
+#
+# Fix: the only place that KNOWS the run outcome is the run itself.
+# This hook writes what the terminal summary actually counted; render_docs
+# reads that file and REFUSES (raises) when it is missing, stale, or from
+# a red run. No fallback constants — an unmeasured number is an error,
+# not a default.
+# ───────────────────────────────────────────────────────────────────────
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_TESTS_DIR = _REPO_ROOT / "tests"
+RUN_SNAPSHOT_PATH = _REPO_ROOT / "test-run-snapshot.json"
+
+
+def _is_whole_suite_run(config) -> bool:
+    """True only when this invocation selects the DEFAULT whole suite.
+
+    A partial run (``pytest tests/test_foo.py``, ``-k``, ``-m``, ``--lf``)
+    must never overwrite the snapshot, or the published headline silently
+    becomes "the 12 tests I happened to run". Explicit paths are allowed
+    only when they name the repo root or ``tests/`` itself, because
+    ``pytest tests/ -v`` is the documented dev command.
+    """
+    if getattr(config.option, "collectonly", False):
+        return False  # nothing ran; there is no outcome to record
+    for opt in ("keyword", "markexpr", "last_failed", "failed_first"):
+        if getattr(config.option, opt, None):
+            return False
+    # Use config.args (pytest's PARSED positional paths), never
+    # invocation_params.args (the raw argv). Walking raw argv and skipping
+    # anything that starts with "-" misreads an OPTION'S VALUE as a test path:
+    # `-p no:cacheprovider` made this function resolve "no:cacheprovider" as a
+    # path, find it outside the repo root, and return False. That silently
+    # disqualified the exact command the trinity-discipline skill documents as
+    # the gate, so a red snapshot could never be cleared by running the
+    # prescribed fix — the advice-closure failure this repo has a guard class
+    # for. Any option taking a value (-p/-k/-m/-n/-c/-o/--rootdir) hit it.
+    base = Path(getattr(config.invocation_params, "dir", _REPO_ROOT))
+    for arg in getattr(config, "args", []) or []:
+        candidate = Path(str(arg).split("::", 1)[0])
+        if not candidate.is_absolute():
+            candidate = base / candidate
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            return False
+        if resolved not in (_REPO_ROOT, _TESTS_DIR):
+            return False
+    return True
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """Record the OBSERVED outcome of a whole-suite run to disk.
+
+    Written on green AND red runs — the file carries ``exit_status`` and
+    ``failed``/``errors`` so the consumer can refuse a red run rather
+    than the run being unable to report itself (which would deadlock:
+    a stale-snapshot guard could never be cleared).
+    """
+    if not _is_whole_suite_run(config):
+        return
+    stats = terminalreporter.stats
+
+    def _n(key: str) -> int:
+        return len(stats.get(key, []))
+
+    selected = int(getattr(terminalreporter, "_numcollected", 0))
+    deselected = _n("deselected")
+    snapshot = {
+        # How the numbers were produced — a count is only meaningful
+        # alongside the invocation that produced it.
+        "invocation": "pytest -q (default shard)"
+        if os.environ.get("TRINITY_SLOW") != "1"
+        else "TRINITY_SLOW=1 pytest -q (full shard)",
+        "trinity_slow": os.environ.get("TRINITY_SLOW") == "1",
+        "exit_status": int(exitstatus),
+        # What the terminal summary actually counted.
+        "collected": selected + deselected,
+        "selected": selected,
+        "deselected": deselected,
+        "passed": _n("passed"),
+        "failed": _n("failed"),
+        "errors": _n("error"),
+        "skipped": _n("skipped"),
+        "xfailed": _n("xfailed"),
+        "xpassed": _n("xpassed"),
+        "measured_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+    }
+    try:
+        previous = json.loads(RUN_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        previous = None
+    if isinstance(previous, dict):
+        # Keep the diff quiet: only rewrite when a NUMBER moved, so a
+        # no-op re-run doesn't churn a tracked file with a new timestamp.
+        comparable = {k: v for k, v in snapshot.items() if k != "measured_at"}
+        if all(previous.get(k) == v for k, v in comparable.items()):
+            return
+    try:
+        RUN_SNAPSHOT_PATH.write_text(
+            json.dumps(snapshot, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+    except OSError:
+        pass  # a read-only checkout must not fail the suite over bookkeeping
 
 
 _NM_MANIFEST_NAME = "local.trinity.capture.json"

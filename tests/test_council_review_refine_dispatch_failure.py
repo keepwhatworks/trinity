@@ -14,6 +14,12 @@ Symptom is the live-council-page sibling of the launchpad stuck-launch
 bug. Two-fold fix:
   - chainError (separate state) renders OUTSIDE the chainBusy guard
   - on dispatch failure: roll back optimistic segment + restore prompt
+
+2026-07-24: the Refine / Continue / Auto-chain composer was removed with the
+council-iterate verb, so the four tests pinning that dispatch path went with it.
+The surviving tests still matter — chainError, the reason-specific dispatch
+message, and the stale-extension probe are shared by Stop council and the
+failed-council "Try again" retry, which both still dispatch.
 """
 from __future__ import annotations
 
@@ -66,41 +72,6 @@ def test_chain_error_banner_renders_outside_chainBusy_guard():
     )
 
 
-def test_thread_page_chain_error_banner_is_not_nested_inside_canChainNext():
-    """Regression for iter-15 bug: the thread-page chainError banner was
-    originally nested inside `<section class="card chain-actions" v-if="canChainNext">`,
-    which only becomes truthy after the LAST segment completes. So during
-    a running council (when Stop council is most likely clicked + failed),
-    chainError was correctly populated but the banner was invisible.
-
-    The hoisted layout: a standalone `<section class="card" v-if="chainError">`
-    above the `chain-actions` section, so the banner renders regardless
-    of completion state.
-
-    This test pins the structural choice — pure substring presence isn't
-    enough; the banner must appear BEFORE the chain-actions section."""
-    src = _render_single()
-    # Thread-page chain-actions section has the canChainNext guard.
-    cna_idx = src.index('v-if="canChainNext"')
-    # The hoisted chainError banner appears as a standalone section just
-    # above it. Look backward from cna_idx for the chainError banner.
-    upstream = src[:cna_idx]
-    # The LAST chainError v-if before canChainNext must be a standalone
-    # <section> (the hoisted one), not nested inside the chain-actions
-    # section (which doesn't exist yet at this point in the source).
-    last_chain_error = upstream.rfind('v-if="chainError"')
-    assert last_chain_error != -1, (
-        "Thread-page chainError banner must appear BEFORE the canChainNext "
-        "section in source order (hoisted out, not nested inside)"
-    )
-    # The banner element must be a standalone <section>, not a <div> nested
-    # inside another section.
-    excerpt = src[max(0, last_chain_error - 200):last_chain_error + 100]
-    assert "<section" in excerpt, (
-        "The hoisted chainError banner must use <section> (top-level layout), "
-        "not <div> (which suggests it's still nested inside another container)"
-    )
-
 
 def test_dispatch_failure_sets_chainError_not_chainStatusDetail():
     """Both onResult failure paths must write to chainError (visible outside the
@@ -144,78 +115,7 @@ def test_dispatch_error_message_is_reason_specific():
     )
 
 
-def test_thread_segment_rollback_on_dispatch_failure():
-    """The thread page appends a new segment optimistically. When dispatch
-    fails, that segment must be removed so polling doesn't hammer a
-    non-existent status file + the thread visual stays accurate."""
-    src = _render_single()
-    assert "_pendingChainSegmentToken" in src
-    # The thread onResult failure path uses this token to find + splice the segment.
-    assert "findIndex((s) => s.statusToken === this._pendingChainSegmentToken)" in src
-    assert "this.segments.splice(idx, 1)" in src
 
-
-def test_refine_prompt_restored_on_dispatch_failure():
-    """User shouldn't have to retype the refinement prompt after a
-    dispatch failure — restore it so they can edit + retry."""
-    src = _render_single()
-    # The thread version receives refinementText and restores it.
-    assert "if (refinementText) this.refinePrompt = refinementText" in src
-
-
-def test_chain_dispatch_payload_shape_is_correct():
-    """The chain action (Refine / Continue / Auto-chain) must dispatch the
-    correct extensionAction payload — `kind:'council-iterate'` (the only kind
-    capture_host.ACTION_ALLOWLIST accepts for chaining; any other silently
-    no-ops at the host), the CURRENT council id, a status-token, and the
-    per-action args (refine → prompt, auto-chain → rounds). The failure-handling
-    tests above cover the !ok path but NOT the payload CONSTRUCTION — a
-    regression that broke `kind`, dropped `council`, or lost the refine `prompt`
-    would dispatch a wrong/no-op council and keep every failure test green.
-    Browser-verified 2026-06-02 on a real council: all three payloads correct —
-    Refine carries the prompt, Continue carries none, Auto-chain carries
-    rounds:'3'.
-    """
-    src = _render_single()
-    # The live council page's single-council + thread chain apps build the chain
-    # payload. Assert by COUNT so a mutation to the copy reds the test — a
-    # presence-only `in src` stays green (the
-    # mutation_testing_validates_regression_coverage trap). (Count dropped from 2
-    # to 1 when the static render_unified copy was removed, #311/#8.)
-    assert src.count("kind: 'council-iterate',") == 1, (
-        "the live council page must dispatch kind 'council-iterate' (the only "
-        "ACTION_ALLOWLIST chain kind; any other silently no-ops at capture_host)"
-    )
-    # The live page's chain dispatch targets the LATEST round's council
-    # (last.councilId). (The single-council `council: pageData.councilId` /
-    # `status_token: statusToken` dispatch was render_unified's — removed with it,
-    # #311/#8; on the live page a single council refines INTO a thread, so chain
-    # dispatch always runs through the thread app.)
-    assert src.count("council: last.councilId,") == 1, (
-        "thread app must target the latest round's council (last.councilId)"
-    )
-    # The key MUST be `status_token` (underscore) — capture_host's
-    # ACTION_ALLOWLIST reads payload['status_token']. The hyphen CLI-flag
-    # spelling ('status-token') silently dropped the token, so council-iterate
-    # ran under a fresh bundle_id and the page polled a token nothing was
-    # written under → "council never started" (founder 2026-06-12). Assert the
-    # underscore form AND that the hyphen form is gone.
-    assert src.count("status_token: newToken,") == 1, (
-        "thread payload must carry its (new-round) status token under the underscore key"
-    )
-    assert "'status-token':" not in src and '"status-token":' not in src, (
-        "a chain dispatch payload uses the hyphen 'status-token' key — capture_host "
-        "reads payload['status_token'], so the token is silently dropped (the "
-        "2026-06-12 'council never started' bug)"
-    )
-    # Per-action args folded onto the payload (live council page; the static
-    # render_unified copy that made this count 2 was removed, #311/#8).
-    assert src.count("if (args.prompt) extensionAction.prompt = args.prompt;") == 1, (
-        "the live council page must fold the refine prompt onto the payload"
-    )
-    assert src.count("if (args.max_rounds) extensionAction.rounds = String(args.max_rounds);") == 1, (
-        "the live council page must fold the auto-chain rounds onto the payload"
-    )
 
 
 def test_probe_distinguishes_stale_extension_from_absent():

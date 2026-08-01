@@ -276,45 +276,6 @@ class TestAskRouteMode:
         assert result["chairman_source"] != "cortex"  # not the learned path
 
 
-class TestRunCouncilChainPropagation:
-    """The verification council caught that MCP `run_council(mode='chain')` was
-    silently dispatching parallel because `_run_council` didn't add `mode`/
-    `sequence` to launch_args. Lock that in."""
-
-    def test_chain_mode_threads_through_to_handle_council_launch(self, home: Path, monkeypatch):
-        # Capture what handle_council_launch receives.
-        captured = {}
-
-        def _stub_handle(args):
-            captured["mode"] = getattr(args, "mode", None)
-            captured["sequence"] = getattr(args, "sequence", None)
-            captured["members"] = list(args.members)
-            # Print the JSON that the real handler would print (council_run_id).
-            import json
-            print(json.dumps({
-                "council_run_id": "council_test_chain",
-                "task_path": "/tmp/x",
-                "sync_path": "/tmp/y",
-                "review_path": "/tmp/z",
-            }))
-
-        from trinity_local.commands import council as council_cmd
-        monkeypatch.setattr(council_cmd, "handle_council_launch", _stub_handle)
-
-        result = _call_tool_sync("run_council", {
-            "task": "refactor",
-            "members": ["claude", "codex", "antigravity"],
-            "mode": "chain",
-            "sequence": ["claude", "codex", "claude"],
-        })
-        assert result.get("ok") is True
-        assert result.get("mode") == "chain"
-        # The lock-in: launch_args.mode and launch_args.sequence are populated
-        # so the downstream chain dispatch actually triggers.
-        assert captured["mode"] == "chain"
-        assert captured["sequence"] == ["claude", "codex", "claude"]
-
-
 # TestRecordOutcome class removed 2026-05-21. The record_outcome
 # MCP tool was retired per "we are sunsetting user ratings. Full
 # retirement including MCP." The chairman's pick (routing_label.winner)
@@ -427,40 +388,6 @@ Claude
         assert label.disagreed_claims[0]["claim"] == "Z is needed"
         assert label.disagreed_claims[0]["why_matters"] == "affects the decision"
 
-    def test_chain_step_prompt_includes_prior_outputs(self):
-        from trinity_local.council_runtime import render_chain_step_prompt
-        from trinity_local.council_schema import CouncilChainStep, PromptBundle
-
-        bundle = PromptBundle(
-            bundle_id="b1",
-            task_cluster_id="tc1",
-            task_text="design a router",
-            goal="best answer",
-            created_at="2026-05-03T00:00:00Z",
-        )
-        first_step = CouncilChainStep(
-            step_index=0,
-            model_provider="claude",
-            output_text="My first attempt at a router design...",
-        )
-
-        # Step 0 prompt has no prior outputs
-        prompt0 = render_chain_step_prompt(bundle, step_index=0, prior_steps=[])
-        assert "first model in a chain" in prompt0
-        assert "My first attempt" not in prompt0
-
-        # Step 1 prompt sees claude's output
-        prompt1 = render_chain_step_prompt(bundle, step_index=1, prior_steps=[first_step])
-        assert "step 2 of a chain" in prompt1
-        assert "My first attempt" in prompt1
-        assert "from claude" in prompt1
-
-        # Final step gets the final-step framing
-        prompt_final = render_chain_step_prompt(
-            bundle, step_index=1, prior_steps=[first_step], is_final=True,
-        )
-        assert "FINAL step" in prompt_final
-
     def test_chain_outcome_persists_steps(self, home: Path):
         from trinity_local.council_runtime import (
             create_council_outcome,
@@ -549,8 +476,8 @@ class TestRunCouncilCanonicalizesProviderSlugs:
         ]
         # Falsy / non-str junk is dropped or passed through, never crashes.
         assert _canonicalize_member_slugs(["claude", "", None]) == ["claude"]
-        # dedupe=False (chain sequence): a chain legitimately revisits a provider
-        # across rounds, so repeats must survive — only the brand folds.
+        # dedupe=False: repeats must survive (order- and multiplicity-preserving)
+        # — only the brand folds.
         assert _canonicalize_member_slugs(
             ["claude", "chatgpt", "claude"], dedupe=False
         ) == ["claude", "codex", "claude"]
@@ -698,7 +625,7 @@ class TestHostMemberCouncil:
     def test_dispatch_only_returns_members_for_host_synthesis(self, home: Path, monkeypatch):
         """Flag ON + dispatch_only: Trinity dispatches the non-host members and hands the
         assembled answers + synthesis prompt BACK to the host (no chairman runs here), so the
-        host can synthesize on its full plan. The proof: mode=awaiting_host_synthesis and the
+        host can synthesize in its own session. The proof: mode=awaiting_host_synthesis and the
         member set is complete (host claude + dispatched codex/antigravity)."""
         monkeypatch.setenv("TRINITY_HOST_CLAUDE_MEMBER", "1")
 
@@ -740,7 +667,7 @@ class TestHostMemberCouncil:
     def test_host_synthesis_records_outcome_with_zero_chairman_calls(self, home: Path, monkeypatch):
         """Flag ON: the host already synthesized the verdict in-session, so run_council records
         the outcome with ZERO model calls — make_provider is never invoked at all. This is the
-        recording leg of chairman-on-host: the chairman ran on the host's full plan, not `-p`."""
+        recording leg of chairman-on-host: the chairman ran in the host's session, not `-p`."""
         monkeypatch.setenv("TRINITY_HOST_CLAUDE_MEMBER", "1")
 
         called: list[str] = []

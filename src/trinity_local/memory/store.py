@@ -34,6 +34,50 @@ def upsert_prompt_node(node: PromptNode) -> None:
     _append_jsonl(prompt_nodes_path(), node.to_dict())
 
 
+def count_prompt_nodes() -> tuple[int, int]:
+    """(unique nodes, unique nodes carrying NO embedding on any row).
+
+    COUNT IDS, NOT LINES — this function exists because counting lines is wrong and
+    was shipping wrong numbers to users. The store is append-only with
+    latest-wins-by-id (see `_iter_jsonl_latest_by_id`), so a node written cheaply at
+    ingest without a vector and re-written by the embed pass occupies TWO lines. Every
+    such pair is (unembedded, embedded), which makes a line count overstate the corpus
+    AND invent a backfill queue out of superseded twins.
+
+    Measured on the dev corpus 2026-07-25: 48,337 lines vs 37,781 real nodes (+28%),
+    and 10,556 phantom "pending" nodes against a true pending count of ZERO. The
+    milestone banner reported the inflated corpus size, and `embedding_coverage`
+    reported 78.2% embedded with a `fix` that could never clear — the twins are never
+    removed, so re-running the embedder changed nothing.
+
+    Consumers that require a finite embedding (the ledger's `_load_nodes`, the basin
+    build) dedupe for free, because the filter drops the unembedded twin. Consumers
+    that merely COUNT do not, and those are the ones this serves.
+    """
+    path = prompt_nodes_path()
+    if not path.exists():
+        return (0, 0)
+    embedded: dict[str, bool] = {}
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(record, dict):
+                continue
+            rid = record.get("id")
+            if not rid:
+                continue
+            # A node counts as embedded if ANY of its rows carries a vector — the
+            # same rule `protect_field="embedding"` applies on read.
+            embedded[str(rid)] = embedded.get(str(rid), False) or bool(record.get("embedding"))
+    return (len(embedded), sum(1 for v in embedded.values() if not v))
+
+
 def upsert_turn_window(window: TurnWindow) -> None:
     _append_jsonl(turn_windows_path(), window.to_dict())
 

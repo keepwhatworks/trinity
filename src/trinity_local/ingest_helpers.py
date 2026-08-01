@@ -188,6 +188,8 @@ def flush_chunk(
                 timestamp=turn.timestamp,
                 preceding_assistant_text=turn.preceding_assistant_text,
                 following_assistant_text=turn.following_assistant_text,
+                model=turn.model,
+                effort=turn.effort,
                 themes=[theme] if theme else [],
             )
             upsert_prompt_node(node)

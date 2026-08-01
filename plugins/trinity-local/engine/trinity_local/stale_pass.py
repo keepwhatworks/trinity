@@ -13,8 +13,8 @@ on USAGE, gated on staleness — never on a timer that burns cycles while the
 tool sits idle:
 
   * ``maybe_kick_stale_pass(trigger)`` is called at council launch
-    (run_council / run_consensus_round — auto_chain rides the latter) and from
-    the MCP first-tool-call kick. Cost when not due: one marker read.
+    (run_council) and from the MCP first-tool-call kick. Cost when not
+    due: one marker read.
   * Due = marker missing or older than ``TRINITY_STALE_PASS_HOURS`` (24h,
     Auto-Dream's window). A cross-process lock file (same pattern as
     cold_start's lens_refresh.lock, #234) stops concurrent council launches

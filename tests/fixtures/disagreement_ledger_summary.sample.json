@@ -1,0 +1,81 @@
+{
+  "_fixture_note": "SYNTHETIC. Invented win/loss counts, deliberately unlike the real corpus, so the evidence-claim extractors are exercised in CI where no ~/.trinity exists. Do NOT copy any number from here into a doc. 21/40 = 52.5% exists on purpose: it is the half-up rounding case that banker's rounding would render as 52%.",
+  "resolved": 90,
+  "records": {
+    "claude · opus · 4.8": {
+      "w": 30,
+      "l": 10,
+      "win_rate": 0.75,
+      "ci": [0.6, 0.86],
+      "ci_excludes_half": true
+    },
+    "google · pro · 3.1": {
+      "w": 8,
+      "l": 32,
+      "win_rate": 0.2,
+      "ci": [0.1, 0.35],
+      "ci_excludes_half": true
+    },
+    "openai · flagship · 5.5": {
+      "w": 21,
+      "l": 19,
+      "win_rate": 0.525,
+      "ci": [0.37, 0.67],
+      "ci_excludes_half": false
+    },
+    "fixture · thin · 1.0": {
+      "w": 3,
+      "l": 2,
+      "win_rate": 0.6,
+      "ci": [0.23, 0.88],
+      "ci_excludes_half": false
+    }
+  },
+  "_effort_fixture_note": "The effort breakdown deliberately does NOT look like the live corpus. It carries FOUR cells above MIN_TALLY_N across TWO models (so `ledger_effort_cells_n` renders 4, not the live 3) and gives both models a SECOND level (so `ledger_effort_max_levels_per_model` renders 2, not the live 1) — a fixture that mirrored the live shape could not tell a counter from a hardcoded 1. `medium` sits at n=5, under the floor, and must never be counted: the engine filters thin cells but a hand-edited summary can smuggle one in.",
+  "effort_breakdown": {
+    "openai · flagship · 5.5": {
+      "xhigh": {
+        "w": 13,
+        "l": 7,
+        "win_rate": 0.65,
+        "ci": [0.43, 0.82],
+        "ci_excludes_half": false
+      },
+      "high": {
+        "w": 11,
+        "l": 4,
+        "win_rate": 0.733,
+        "ci": [0.48, 0.89],
+        "ci_excludes_half": true
+      }
+    },
+    "claude · opus · 4.8": {
+      "high": {
+        "w": 18,
+        "l": 6,
+        "win_rate": 0.75,
+        "ci": [0.55, 0.88],
+        "ci_excludes_half": true
+      },
+      "low": {
+        "w": 7,
+        "l": 5,
+        "win_rate": 0.583,
+        "ci": [0.32, 0.81],
+        "ci_excludes_half": false
+      },
+      "medium": {
+        "w": 2,
+        "l": 3,
+        "win_rate": 0.4,
+        "ci": [0.12, 0.77],
+        "ci_excludes_half": false
+      }
+    }
+  },
+  "k3_chairman_agreement": 0.725,
+  "k3_in_band": true,
+  "k4_discriminates": true,
+  "tally_trustworthy": true,
+  "built_at": "2020-01-01T00:00:00+00:00"
+}

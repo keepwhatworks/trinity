@@ -11,16 +11,6 @@ DISPATCH_ACTIONS = {
     "stop_council",
     "open_review",
     "start_council",
-    # Single canonical iteration action. The legacy aliases
-    # (council_continue / council_refine / council_auto_chain) are kept
-    # below as compatibility shims so saved Shortcuts and old launchpad
-    # URLs keep dispatching, but new emitters should use council_iterate
-    # with args={"rounds": int, "prompt": str|None}.
-    "council_iterate",
-    # Compatibility aliases — accepted on input, mapped to council_iterate.
-    "council_continue",
-    "council_refine",
-    "council_auto_chain",
     "open_path",
     "open_url",
     "run_applescript",
@@ -123,39 +113,6 @@ def command_for_dispatch(action: DispatchAction) -> str | None:
                 f"--members {member_args} --primary-provider {shlex.quote(str(primary_provider))} --cwd {shlex.quote(str(cwd))}"
             )
         return None
-    # Canonical iteration: one action, parameterized by (rounds, prompt).
-    # Legacy aliases (council_continue / council_refine / council_auto_chain)
-    # are accepted as input and translated to the canonical (rounds, prompt)
-    # tuple so saved Shortcuts and old launchpad URLs keep working.
-    if action.name in ("council_iterate", "council_continue", "council_refine", "council_auto_chain"):
-        council_id = args.get("council_id")
-        if not council_id:
-            return None
-        prompt = args.get("prompt")
-        if action.name == "council_refine" and not prompt:
-            return None
-        # Compute (rounds, prompt) from the canonical args, falling back to
-        # the legacy alias semantic when args don't carry them explicitly.
-        if action.name == "council_iterate":
-            rounds = int(args.get("rounds") or 1)
-        elif action.name == "council_auto_chain":
-            rounds = int(args.get("max_rounds") or 3)
-        else:
-            rounds = 1  # continue / refine are always one round
-        parts = [
-            f"trinity-local council-iterate --council {shlex.quote(str(council_id))}",
-            f"--rounds {rounds}",
-        ]
-        if prompt:
-            parts.append(f"--prompt {shlex.quote(str(prompt))}")
-        status_token = args.get("status_token")
-        if status_token:
-            parts.append(f"--status-token {shlex.quote(str(status_token))}")
-        # Don't pass --open-browser. Chain dispatches are fired from the live
-        # council page, which polls the status_token and renders the new
-        # round in-place as a fresh segment. Auto-opening the council's review
-        # URL on completion would spawn a duplicate tab on top of that.
-        return " ".join(parts)
     if action.name == "open_path":
         path = args.get("path")
         if path:

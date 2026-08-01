@@ -342,16 +342,10 @@ def _write_capture(provider: str, conv_id: str, conversation: dict[str, Any]) ->
 # Without this, council-launch blocks the popup for the full council
 # duration (30-90s) and times out at 120s with "Failed: unknown error".
 #
-# `council-iterate` (Refine / Continue / Auto-chain on the live council page)
-# is here for the SAME reason: it runs a full council round (30-90s), but the
-# live page's __TRINITY_DISPATCH__ gives up after ACTION_TIMEOUT_MS (8s) and
-# reports "Couldn't reach the Trinity extension." Detaching makes the host ack
-# instantly with the status_token; the page polls run-state for progress, just
-# like launch-council. run_consensus_round writes its run-state early (an
-# init_council_run_state before the slow model calls), so the page's
-# MAX_MISSING_POLLS window sees "running" well before it gives up. Founder
-# report 2026-06-12 (chain dispatch from the live council page).
-_DETACHED_ACTIONS = {"launch-council", "lens-build", "council-iterate"}
+# (`council-iterate` was detached here for the same reason until 2026-07-24,
+# when the verb, its run_consensus_round engine, and the live page's "Continue
+# the thread" composer were all removed together.)
+_DETACHED_ACTIONS = {"launch-council", "lens-build"}
 
 # Action kinds handled in-process (no subprocess). The popup uses
 # `get-council-status` to poll a council's status JSON without the
@@ -428,30 +422,6 @@ ACTION_ALLOWLIST: dict[str, tuple | None] = {
             ("status-token", "status_token", True),
         ],
     ),
-    # Refine / iterate / auto-chain / continue all dispatch to
-    # `trinity-local council-iterate`. The legacy alias names
-    # (council_refine / council_continue / council_auto_chain) map
-    # to council_iterate per dispatch_registry.py L145, so a single
-    # extension allowlist entry covers all four buttons on the
-    # council-review page. council_review.py L519 was firing
-    # shortcuts:// for this until tick 140 — the macOS Shortcut
-    # dispatcher was retired pre-launch (claude.md L578), so the
-    # supervision loop's only signal path was silently dead. This
-    # entry restores it via the Chrome extension dispatch tier.
-    "council-iterate": (
-        "council-iterate",
-        [
-            ("council", "council", True),
-            ("prompt", "prompt", False),
-            ("rounds", "rounds", False),
-            ("status-token", "status_token", False),
-        ],
-    ),
-    # Phase 4b (council_bf1ab3f4dd70f75e residual-drift cleanup): the seven
-    # settings toggles. Each is a no-arg CLI subcommand — the narrowest
-    # possible allowlist surface, satisfying the council's "do NOT add
-    # run_command" verdict. Enum-by-kind so spoofed payloads can't trigger
-    # arbitrary shell commands.
     "telemetry-enable":   ("telemetry-enable",   []),
     "telemetry-disable":  ("telemetry-disable",  []),
     "telemetry-reset-id": ("telemetry-reset-id", []),
@@ -747,9 +717,9 @@ def _run_action(payload: dict[str, Any]) -> dict[str, Any]:
         # Accept BOTH the underscore json_field ('status_token') and the hyphen
         # CLI-flag spelling ('status-token'). The launchpad sends underscore; a
         # dispatch payload that used the hyphen (the live council page did until
-        # 2026-06-12) must not silently drop the value — that made council-iterate
-        # run without its --status-token, so the page polled a token no run was
-        # written under ("council never started"). The in-process handlers
+        # 2026-06-12) must not silently drop the value — that made the since-removed
+        # council-iterate run without its --status-token, so the page polled a token
+        # no run was written under ("council never started"). The in-process handlers
         # (_open_council_page / _read_council_status) already tolerate both; this
         # closes the same gap on the CLI-dispatch path.
         value = payload.get(json_field)

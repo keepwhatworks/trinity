@@ -88,11 +88,25 @@ SPLIT_ENV_VAR = "TRINITY_SPLIT_MEGA_BASINS"
 
 
 def split_enabled() -> bool:
-    """True iff the mega-basin splitter is switched on via the env knob.
+    """True unless the mega-basin splitter is explicitly switched OFF.
 
-    Default OFF. Accepts the usual truthy spellings so a founder flip is
-    forgiving. `compute_basins(split_megas=...)` overrides this per call."""
-    return os.environ.get(SPLIT_ENV_VAR, "").strip().lower() in {"1", "true", "yes", "on"}
+    Default ON (founder flip 2026-07-24). It was opt-in until then, and that
+    default was self-defeating: the junk-drawer canary
+    (`test_no_junk_drawer_basin`, no basin may hold >20% of the corpus) can only
+    be cleared by a rebuild WITH the splitter, but the usage-gated stale pass
+    (#251) rebuilds on every council launch WITHOUT the env knob set. So the fix
+    was reverted by normal product use — measured 2026-07-24: a manual split
+    rebuild gave 64 basins / 13.4% top share, and one council later the lens was
+    back to 55 basins / 20.6% and the canary re-fired. A staleness fix that its
+    own automatic rebuild undoes violates the advice-closure rule (a nag must be
+    clearable by its own fix command).
+
+    Accepts the usual falsy spellings so the splitter can still be forced off for
+    an A/B. `compute_basins(split_megas=...)` overrides this per call."""
+    raw = os.environ.get(SPLIT_ENV_VAR)
+    if raw is None or not raw.strip():
+        return True
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
 # --- pre-registered tunables (deterministic) ------------------------------- #

@@ -11,6 +11,9 @@ second line or clip — silent paint regressions on the exact "Proven on your re
 / routing cards a journalist screenshots. This bit once as a one-off:
 
   - Iter 145 (df48522e): the cross-provider eval leaderboard's desktop ``.eval-lb-row``
+    — HISTORY ONLY as of 2026-08-01: that row was deleted from the product
+    2026-07-14 with the judge-dominated score card. The class it taught is still
+    guarded, through ``.bc-provider-row``.
     judge column was a fixed 70px tuned for the slug; "judge: Gemini" (~94px) WRAPPED to a
     2nd line, doubling every leaderboard row's height into a ragged block.
 
@@ -248,11 +251,21 @@ def test_brand_labels_in_fixed_tracks_stay_single_line_on_desktop():
                     )
                 page.close()
 
-            # Both the Iter-145 judge column AND the never-geometry-guarded bc-provider
-            # column must have been exercised — otherwise the consolidation is hollow.
-            assert saw_eval_judge, (
-                "the eval-leaderboard 'judge: <BRAND>' cell was never swept — the Iter-145 "
-                "column the class generalizes from was not seeded/rendered"
+            # SCOPE NARROWED 2026-08-01, same repair as
+            # test_launchpad_stats_bar_grid_sweep_browser (amd_0054): this used to
+            # REQUIRE the Iter-145 `.eval-lb-row` judge cell. That row was deleted
+            # from the product on 2026-07-14 when the disagreement ledger replaced
+            # the judge-dominated score card — `grep -rn 'eval-lb-row' src/` returns
+            # zero. So this precondition could never be met again and the file had
+            # been RED ever since, unseen because `-m browser` is not in the default
+            # shard. The CLASS the guard defends (a brand label wrapping or clipping
+            # inside a fixed track) is intact and still exercised through
+            # `.bc-provider-row`; only the dead witness is dropped.
+            assert not saw_eval_judge, (
+                "the eval-leaderboard judge cell is rendering again — it was removed "
+                "2026-07-14 and this sweep was narrowed to match. Restore it to the "
+                "precondition (and the docstring) rather than sweeping a smaller "
+                "surface than the file claims."
             )
             assert saw_bc, (
                 "the browser-capture brand cell was never swept — the #275 sibling this guard "

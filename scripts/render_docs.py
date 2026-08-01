@@ -23,6 +23,8 @@ structural fix for the duplicated-fact drift class.
 from __future__ import annotations
 
 import argparse
+import functools
+import json
 import re
 import subprocess
 import sys
@@ -36,12 +38,45 @@ REPO = Path(__file__).resolve().parents[1]
 # Canonical-value extractors
 # ───────────────────────────────────────────────────────────────────────
 
-def canonical_test_count() -> int:
-    """Count tests via `pytest --collect-only -q` line count.
+# ── Measured test counts ───────────────────────────────────────────────
+#
+# HISTORY (fixed 2026-07-31): both counts used to be FABRICATED. The
+# extractor ran `pytest --collect-only -q`, scraped "N tests collected",
+# then searched the SAME output for "(\d+) skipped" and fell back to a
+# hardcoded 4. `--collect-only` never emits a skip summary — skips are a
+# RUNTIME outcome — so the regex never matched, the constant always
+# fired, and every doc surface published `collected - 4` as "N tests
+# passing + 4 skipped". At the time of the fix that shipped 4389/4 while
+# a real `pytest -q` read 3877 passed / 516 skipped: both published
+# numbers were wrong, and 113 doc-consistency guards were green on them
+# because they only ever compared doc-to-doc.
+#
+# The only thing that KNOWS a run's outcome is the run. `tests/conftest.py`
+# writes RUN_SNAPSHOT after every whole-suite run; these extractors read
+# it and RAISE when it is missing, red, or stale. There is deliberately
+# no fallback value — an unmeasured count is an error, not a default.
 
-    Slight nuance: pytest's last "N tests collected" line gives the
-    total. Use that explicitly so we don't double-count skipped tests
-    or rely on stdout shape.
+RUN_SNAPSHOT = REPO / "test-run-snapshot.json"
+
+_RUN_SNAPSHOT_HELP = (
+    "Re-measure with:\n"
+    "  TRINITY_HOME=$(mktemp -d) PYTHONPATH=src .venv/bin/python -m pytest -q\n"
+    "then re-run scripts/render_docs.py."
+)
+
+
+class UnmeasuredCountError(RuntimeError):
+    """A published count has no observed test run behind it."""
+
+
+def _live_collected_count() -> int:
+    """Live `pytest --collect-only -q` total — the staleness anchor.
+
+    Cheap (~8s, collects but runs nothing) and it is the ONE property of
+    the suite that can be checked without a 4-minute run. If it no longer
+    matches what the snapshot recorded, tests have been added or removed
+    since the last measurement and the snapshot's pass/skip counts no
+    longer describe this tree.
     """
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "--collect-only", "-q"],
@@ -52,29 +87,107 @@ def canonical_test_count() -> int:
     )
     m = re.search(r"(\d+) tests collected", result.stdout)
     if not m:
-        raise RuntimeError(
-            f"Couldn't parse test count from pytest output:\n{result.stdout[-500:]}"
+        raise UnmeasuredCountError(
+            "Couldn't parse a collected-test count from pytest output:\n"
+            f"{result.stdout[-500:]}"
         )
-    total = int(m.group(1))
-    # Tests = collected - skipped. The current convention pins
-    # 4 skipped (gated real-Chrome smokes). Trust that for the
-    # render value but bump if pytest output shows otherwise.
-    skipped_match = re.search(r"(\d+) skipped", result.stdout)
-    skipped = int(skipped_match.group(1)) if skipped_match else 4
-    return total - skipped
+    return int(m.group(1))
+
+
+def load_run_snapshot(path: Path | None = None) -> dict:
+    """Return the last whole-suite run's OBSERVED counts, or raise.
+
+    Refuses — never substitutes a default — when:
+      * the snapshot is absent          → nothing was ever measured
+      * the run was red or interrupted  → the counts describe a broken run
+      * `collected` no longer matches a live collect → the test set moved
+    """
+    snapshot_path = RUN_SNAPSHOT if path is None else path
+    if not snapshot_path.exists():
+        raise UnmeasuredCountError(
+            f"No measured test run on disk ({snapshot_path.name} is missing), so "
+            f"the published test counts cannot be derived from anything observed. "
+            f"{_RUN_SNAPSHOT_HELP}"
+        )
+    try:
+        data = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise UnmeasuredCountError(
+            f"{snapshot_path.name} is unreadable ({exc}). {_RUN_SNAPSHOT_HELP}"
+        ) from exc
+    if not isinstance(data, dict):
+        raise UnmeasuredCountError(
+            f"{snapshot_path.name} is not an object. {_RUN_SNAPSHOT_HELP}"
+        )
+    required = ("collected", "passed", "skipped", "failed", "errors", "exit_status")
+    missing = [k for k in required if not isinstance(data.get(k), int)]
+    if missing:
+        raise UnmeasuredCountError(
+            f"{snapshot_path.name} is missing measured field(s) {missing}. "
+            f"{_RUN_SNAPSHOT_HELP}"
+        )
+    if data["exit_status"] != 0 or data["failed"] or data["errors"]:
+        raise UnmeasuredCountError(
+            f"The last measured run was RED (exit_status="
+            f"{data['exit_status']}, failed={data['failed']}, "
+            f"errors={data['errors']}). Publishing 'N tests passing' off a red "
+            f"run would be the same fabrication this file was built to stop. "
+            f"{_RUN_SNAPSHOT_HELP}"
+        )
+    if data["passed"] <= 0:
+        raise UnmeasuredCountError(
+            f"The last measured run recorded passed={data['passed']} — a "
+            f"degenerate run. {_RUN_SNAPSHOT_HELP}"
+        )
+    # A SLOW-shard snapshot cannot back the canonical counts, and must not be
+    # misreported as staleness. `_live_collected_count()` collects WITHOUT
+    # TRINITY_SLOW, so a `TRINITY_SLOW=1` run always mismatches it — and the
+    # staleness message below would then blame "tests were added or removed",
+    # which is false and sends the reader looking for a diff that does not
+    # exist. The canonical claim in CLAUDE.md is explicitly `pytest -q`, the
+    # DEFAULT shard, so the right answer is to name the real cause and the real
+    # fix. (Found 2026-08-01 by running TRINITY_SLOW=1 for the first time.)
+    if data.get("trinity_slow"):
+        raise UnmeasuredCountError(
+            f"{snapshot_path.name} was written by the SLOW shard "
+            f"(invocation: {data.get('invocation', 'TRINITY_SLOW=1')}), which "
+            f"collects a different set than the canonical `pytest -q` claim. "
+            f"Nothing is wrong with the tree — re-measure with the DEFAULT "
+            f"shard so the published counts describe what the docs actually "
+            f"claim:\n"
+            f"  TRINITY_HOME=$(mktemp -d) PYTHONPATH=src "
+            f".venv/bin/python -m pytest -q"
+        )
+    live = _live_collected_count()
+    if live != data["collected"]:
+        raise UnmeasuredCountError(
+            f"Stale measurement: {snapshot_path.name} recorded "
+            f"{data['collected']} collected, this tree now collects {live}. "
+            f"Tests were added or removed since the last run, so its "
+            f"passed/skipped counts no longer describe this tree. "
+            f"{_RUN_SNAPSHOT_HELP}"
+        )
+    return data
+
+
+@functools.lru_cache(maxsize=1)
+def _run_snapshot_cached() -> dict:
+    return load_run_snapshot()
+
+
+def canonical_test_count() -> int:
+    """Tests that were OBSERVED to pass in the last whole-suite run."""
+    return int(_run_snapshot_cached()["passed"])
 
 
 def canonical_skipped_count() -> int:
-    """Count skipped tests separately."""
-    result = subprocess.run(
-        [sys.executable, "-m", "pytest", "--collect-only", "-q"],
-        cwd=REPO,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    m = re.search(r"(\d+) skipped", result.stdout)
-    return int(m.group(1)) if m else 4
+    """Tests that were OBSERVED to skip in the last whole-suite run."""
+    return int(_run_snapshot_cached()["skipped"])
+
+
+def canonical_collected_count() -> int:
+    """Total tests collected in the last whole-suite run."""
+    return int(_run_snapshot_cached()["collected"])
 
 
 def canonical_mcp_tool_count() -> int:
@@ -213,6 +326,7 @@ def canonical_command_module_count() -> int:
 CANONICAL: dict[str, callable] = {
     "test_count": canonical_test_count,
     "skipped_count": canonical_skipped_count,
+    "collected_count": canonical_collected_count,
     "mcp_tool_count": canonical_mcp_tool_count,
     "doc_consistency_guards": canonical_doc_consistency_guard_count,
     "cli_command_count": canonical_cli_command_count,
@@ -239,6 +353,46 @@ finally:
 
 
 # ───────────────────────────────────────────────────────────────────────
+# Evidence claims — the second, CONDITIONAL canonical class
+# ───────────────────────────────────────────────────────────────────────
+#
+# The extractors above are unconditional: they introspect the repo, so they
+# always produce a value. Evidence claims are recomputed from the USER's
+# ~/.trinity/disagreement_ledger/summary.json, which does not exist in CI or on
+# a fresh clone. They therefore travel with a THREE-state status
+# (verified / refused / absent) instead of a value, and this renderer plants
+# them ONLY when verified. In the other two states the placeholders are left
+# byte-identical on disk (render_file leaves unknown names alone) and the
+# renderer says so loudly — an unrendered evidence claim must never read as a
+# rendered-and-agreeing one. See src/trinity_local/evidence_claims.py.
+
+EVIDENCE_UNVERIFIED_EXIT = 2
+
+
+def evidence_exit_code(state: str, require_evidence: bool) -> int | None:
+    """Exit code for `--require-evidence`, or None to keep going.
+
+    A separate, pure function so the control can be tested without a 4-minute
+    render: exit 2 is distinct from `--check`'s exit 1 on purpose, so a caller
+    can tell "docs drifted" from "the evidence numbers were never confirmed".
+    Both non-verified states trip it — REFUSED and ABSENT differ in what they
+    mean, but neither is a basis for publishing."""
+    if require_evidence and state != "verified":
+        return EVIDENCE_UNVERIFIED_EXIT
+    return None
+
+
+def evidence_state() -> tuple[str, dict[str, str], str]:
+    sys.path.insert(0, str(REPO / "src"))
+    try:
+        from trinity_local.evidence_claims import evidence_status  # noqa: E402
+
+        return evidence_status()
+    finally:
+        sys.path.pop(0)
+
+
+# ───────────────────────────────────────────────────────────────────────
 # Renderer
 # ───────────────────────────────────────────────────────────────────────
 
@@ -249,11 +403,20 @@ PLACEHOLDER_PATTERN = re.compile(
 )
 
 
-def render_file(path: Path, values: dict[str, str]) -> tuple[bool, int]:
+def render_file(
+    path: Path, values: dict[str, str], write: bool = True
+) -> tuple[bool, int]:
     """Replace placeholders in `path` with `values`.
 
-    Returns (changed, replacement_count). `changed=True` if file content
-    differs from on-disk.
+    Returns (changed, replacement_count). `changed=True` if the rendered
+    content differs from what is on disk.
+
+    `write=False` makes this a pure comparison — it reports the drift it
+    would fix without touching the file. `--check` passes it. Until
+    2026-07-31 check mode called this with the write unconditional, so the
+    "read-only" verification step silently RE-RENDERED every doc and then
+    reported the drift it had just erased; a second `--check` would then
+    pass. A verifier that repairs what it measures cannot fail twice.
     """
     text = path.read_text(encoding="utf-8")
     original = text
@@ -269,9 +432,22 @@ def render_file(path: Path, values: dict[str, str]) -> tuple[bool, int]:
 
     text = PLACEHOLDER_PATTERN.sub(_replace, text)
     if text != original:
-        path.write_text(text, encoding="utf-8")
+        if write:
+            path.write_text(text, encoding="utf-8")
         return True, replacements
     return False, replacements
+
+
+def _rel(path: Path) -> str:
+    """Repo-relative label for logging, tolerant of paths outside the repo.
+
+    `Path.relative_to` RAISES on a non-subpath, which turned a logging line
+    into a crash whenever the doc set was pointed anywhere else.
+    """
+    try:
+        return str(path.relative_to(REPO))
+    except ValueError:
+        return str(path)
 
 
 def find_placeholders(path: Path) -> list[str]:
@@ -322,17 +498,95 @@ def main() -> int:
         action="store_true",
         help="Print all replacements made.",
     )
+    parser.add_argument(
+        "--require-evidence",
+        action="store_true",
+        help=(
+            "Exit 2 unless every evidence claim was recomputed from the live "
+            "disagreement ledger. Off by default because the ledger artifact "
+            "lives in ~/.trinity and is absent in CI — turn it on locally when "
+            "you are about to publish a doc that quotes those numbers."
+        ),
+    )
+    parser.add_argument(
+        "--allow-unmeasured",
+        action="store_true",
+        help=(
+            "Check only the placeholders that CAN be computed right now, and "
+            "report the measured test counts as UNMEASURED instead of failing "
+            "when no green whole-suite run backs them. For callers that run "
+            "INSIDE the suite that produces the measurement — never for "
+            "publishing (launch-check.sh deliberately omits it)."
+        ),
+    )
     args = parser.parse_args()
 
     print("Computing canonical values...")
     values: dict[str, str] = {}
+    unmeasured: dict[str, str] = {}
     for name, fn in CANONICAL.items():
         try:
             values[name] = str(fn())
+        except UnmeasuredCountError as exc:
+            # NOT an extractor failure: the extractor worked and correctly
+            # refused, because nothing observed this number. Keep it out of
+            # `values` so render_file leaves the placeholder byte-identical
+            # (same contract as a REFUSED evidence claim) and decide below
+            # whether that is fatal for THIS caller.
+            unmeasured[name] = str(exc)
+            continue
         except Exception as exc:  # noqa: BLE001 — surface every extractor failure
             print(f"  ERROR computing {name}: {exc}", file=sys.stderr)
             return 1
         print(f"  {name} = {values[name]}")
+
+    if unmeasured:
+        print(
+            "\nMeasured counts [UNMEASURED] — no green whole-suite run backs "
+            "these, so they keep whatever value is already on disk and nothing "
+            "here confirms it:"
+        )
+        for name in sorted(unmeasured):
+            print(f"    · {name}")
+        print(f"  reason: {sorted(unmeasured.values())[0]}")
+        if not args.allow_unmeasured:
+            print(
+                "\nRefusing to report a clean render while the published test "
+                "counts have no measurement behind them. Re-measure (see above) "
+                "or pass --allow-unmeasured to check only what is computable.",
+                file=sys.stderr,
+            )
+            return 1
+
+    # Evidence claims: planted only in the VERIFIED state. In `refused` /
+    # `absent` the placeholders stay byte-identical and the state is printed
+    # under a heading that cannot be misread as agreement.
+    ev_state, ev_values, ev_reason = evidence_state()
+    print(f"\nEvidence claims [{ev_state.upper()}]: {ev_reason}")
+    if ev_state == "verified":
+        values.update(ev_values)
+        for name in sorted(ev_values):
+            print(f"  {name} = {ev_values[name]}")
+    else:
+        sys.path.insert(0, str(REPO / "src"))
+        try:
+            from trinity_local.evidence_claims import CLAIM_NAMES  # noqa: E402
+        finally:
+            sys.path.pop(0)
+        print(
+            "  NOT CHECKED — the following placeholders keep whatever value is "
+            "already on disk; nothing confirmed them:"
+        )
+        for name in CLAIM_NAMES:
+            print(f"    · {name}")
+    ev_exit = evidence_exit_code(ev_state, args.require_evidence)
+    if ev_exit is not None:
+        print(
+            f"\n--require-evidence: evidence claims are {ev_state.upper()}, not "
+            "verified. Refusing to report a clean render.",
+            file=sys.stderr,
+        )
+        return ev_exit
 
     if args.canonical_only:
         return 0
@@ -349,13 +603,14 @@ def main() -> int:
     changed: list[Path] = []
     print(f"\nScanning {len(docs)} doc(s) with canonical-placeholders...")
     for path in docs:
-        is_changed, count = render_file(path, values)
+        # write=not args.check — `--check` must observe drift, not repair it.
+        is_changed, count = render_file(path, values, write=not args.check)
         if is_changed:
             changed.append(path)
-            print(f"  rendered {count} placeholder(s): {path.relative_to(REPO)}")
+            print(f"  rendered {count} placeholder(s): {_rel(path)}")
         elif args.verbose:
             ph = find_placeholders(path)
-            print(f"  unchanged ({len(ph)} placeholder(s)): {path.relative_to(REPO)}")
+            print(f"  unchanged ({len(ph)} placeholder(s)): {_rel(path)}")
 
     if args.check and changed:
         print(

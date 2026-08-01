@@ -28,14 +28,14 @@
       "type": "cli",
       "enabled": true,
       "label": "Claude",
-      "model": "claude-fable-5",
+      "model": "claude-opus-5",
       "command": [
         "claude",
         "-p"
       ],
       "args": [
         "--model",
-        "claude-fable-5"
+        "claude-opus-5"
       ],
       "task_types": [
         "general",

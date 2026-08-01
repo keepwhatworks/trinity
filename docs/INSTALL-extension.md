@@ -85,7 +85,7 @@ not from the Chrome Web Store). Web Store publish is post-launch.
   `side_panel.default_path` and has NO `default_popup`, so the action
   click opens the panel via `openPanelOnActionClick`)
 - Action dispatch via Native Messaging (replaces the macOS Shortcut
-  dispatcher, works cross-platform). <!-- canonical:chrome_action_allowlist_count -->17<!-- /canonical -->-entry `ACTION_ALLOWLIST` in
+  dispatcher, works cross-platform). <!-- canonical:chrome_action_allowlist_count -->16<!-- /canonical -->-entry `ACTION_ALLOWLIST` in
   `src/trinity_local/capture_host.py` gates which CLI surfaces are
   callable. Defense in depth.
 - Conversation capture content-scripts loaded on claude.ai /

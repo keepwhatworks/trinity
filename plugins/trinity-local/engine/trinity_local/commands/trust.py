@@ -36,6 +36,17 @@ def register(subparsers):
     p.add_argument("--top-k", type=int, default=5, dest="top_k",
                    help="Max recurring disagreements to show (default 5).")
     p.add_argument("--json", dest="as_json", action="store_true", help="Output as JSON.")
+    p.add_argument("--force", action="store_true",
+                   help="With --build: re-resolve EVERY claim instead of carrying settled "
+                        "verdicts forward. Use when the resolver prompt or the evidence "
+                        "knobs change, since carried-forward verdicts came from the OLD "
+                        "instrument. Costs one model call per claim; the default "
+                        "incremental build costs one per new or still-open claim.")
+    p.add_argument("--dissent", action="store_true",
+                   help="Whose DISSENT is worth hearing: per-model upheld rate in "
+                        "two-sided council disputes, plus how often a model's claim was "
+                        "merged even when it LOST the argument. Chairman judgement, not "
+                        "behaviour — the behaviour-validated tally is the default view.")
     p.set_defaults(handler=handle_trust)
 
 
@@ -51,13 +62,54 @@ def _load_summary(home=None) -> dict:
     return d if isinstance(d, dict) else {}
 
 
+def _print_dissent(as_json: bool) -> int:
+    from ..dissent_outcome import summarize
+    s = summarize()
+    if as_json:
+        print(json.dumps(s, indent=2))
+        return 0
+    src = s["sources"]
+    print(f"Dissent outcomes over {s['councils_read']} councils "
+          f"(production {src['production']}, re-chaired {src['rechaired']}).\n")
+    if not s["councils_read"]:
+        print("  No councils carry per-claim `resolution` yet — it ships from 2026-07-22,")
+        print("  and a long-running MCP server keeps serving pre-restart code. Restart it,")
+        print("  then run a council.")
+        return 0
+    # graft-when-lost is NOT printed: withdrawn 2026-07-28 as uncomputable (council-wide
+    # attribution overcounts, per-claim matches 0.4% of grafts, behavioural test net +0).
+    # Printing it as 0% would read as a measurement. Upheld rate is unaffected.
+    print(f"  {'model':14}{'upheld':>8}  {'95% CI':<14}{'disputes':>9}")
+    for m in s["models"]:
+        if not m["trustworthy"]:
+            print(f"  {m['model']:14}{'—':>8}  {'(under floor)':<14}{m['disputes']:>9}")
+            continue
+        lo, hi = m["upheld_ci"]
+        print(f"  {m['model']:14}{m['upheld_rate']:>7.0%}  [{lo:.0%},{hi:.0%}]".ljust(46)
+              + f"{m['disputes']:>9}")
+    print(f"\n  Below {s['min_disputes']} disputes no verdict is published.")
+    print(f"  {s['note']}")
+    print(f"  graft-when-lost: {s['models'][0]['graft_when_lost_uncomputable']}"
+          if s["models"] else "")
+    return 0
+
+
 def handle_trust(args):
+    if getattr(args, "dissent", False):
+        return _print_dissent(bool(getattr(args, "as_json", False)))
     from ..disagreement_ledger import build_ledger, load_disagreements, retrieve_recurring
     from ..embeddings import EmbedderNotReadyError
 
     if getattr(args, "build", False):
         try:
-            agg = build_ledger()
+            force = bool(getattr(args, "force", False))
+            if force:
+                # Loud on purpose: this is the expensive path and the reason it exists
+                # (an instrument change) is exactly when a silent full rebuild would be
+                # mistaken for the cheap one.
+                print("--force: re-resolving every claim (carried-forward verdicts "
+                      "discarded).", file=sys.stderr)
+            agg = build_ledger(force=force)
         except EmbedderNotReadyError as exc:
             print(str(exc), file=sys.stderr)
             sys.exit(1)

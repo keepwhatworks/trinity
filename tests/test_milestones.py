@@ -24,7 +24,13 @@ def _seed_councils(home, n):
 def _seed_prompts(home, n):
     d = home / "prompts"
     d.mkdir(parents=True, exist_ok=True)
-    (d / "prompt_nodes.jsonl").write_text("".join("{}\n" for _ in range(n)), encoding="utf-8")
+    # Real NODES, not bare braces: corpus size counts unique ids (a node written
+    # ingest-then-embed occupies two lines), so a fixture of id-less records counts
+    # as zero. Emitting ids keeps this fixture describing the thing being measured.
+    import json as _json
+    (d / "prompt_nodes.jsonl").write_text(
+        "".join(_json.dumps({"id": f"n{i}", "embedding": [0.1]}) + "\n" for i in range(n)),
+        encoding="utf-8")
 
 
 def test_empty_home_has_no_milestone(_home):

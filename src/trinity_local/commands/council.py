@@ -116,38 +116,6 @@ def register(subparsers):
     )
     council_share_parser.set_defaults(handler=handle_council_share)
 
-    # Single unified iteration command. Replaces the prior trio of
-    # council-continue / council-refine / council-auto-chain — they all
-    # called the same engine (run_consensus_round / auto_chain_council)
-    # with one flag varied. One command keyed by (rounds, prompt) collapses
-    # the surface without losing any behavior:
-    #   council-iterate --rounds 1               → former "continue"
-    #   council-iterate --rounds 1 --prompt P    → former "refine"
-    #   council-iterate --rounds N               → former "auto-chain"
-    council_iterate_parser = subparsers.add_parser(
-        "council-iterate",
-        help="Iterate an existing council. With --prompt, run one round under that "
-             "directive. Without --prompt, auto-iterate up to --rounds, stopping when "
-             "the chairman declares convergence (agreed_claims rich, disagreed_claims "
-             "empty, confidence high).",
-    )
-    council_iterate_parser.add_argument("--council", required=True, help="Parent council_run_id")
-    council_iterate_parser.add_argument(
-        "--rounds", type=int, default=3,
-        help="Max rounds when auto-iterating; ignored when --prompt is set (always 1 round).",
-    )
-    council_iterate_parser.add_argument(
-        "--prompt", default=None,
-        help="New user directive. If set, runs one round under this directive instead of auto-iterating.",
-    )
-    council_iterate_parser.add_argument("--cwd", default=".")
-    council_iterate_parser.add_argument(
-        "--status-token", default=None,
-        help="Reuse this status token so iteration rounds overwrite the same live page.",
-    )
-    council_iterate_parser.add_argument("--open-browser", action="store_true")
-    council_iterate_parser.set_defaults(handler=handle_council_iterate)
-
 
 def handle_council_start(args):
     config = load_config(args.config)
@@ -231,11 +199,6 @@ def handle_council_start(args):
             primary_provider=args.primary_provider,
             cwd=cwd,
             run_state_token=status_token or bundle.bundle_id,
-            # Honor chain mode end-to-end. Without these, the runner ignored
-            # the caller's intent and dispatched parallel — silent drift
-            # between the reported mode and the actual execution.
-            mode=getattr(args, "mode", "parallel") or "parallel",
-            sequence=getattr(args, "sequence", None),
         )
     except Exception as exc:
         if status_token:
@@ -267,12 +230,6 @@ def handle_council_start(args):
             metadata=completed_metadata,
         )
     refresh_launchpad()
-
-    # Auto-chain settings retired 2026-05-17: every-council auto-iterate
-    # was a power-user setting that hid behavior from new users. Users now
-    # click the auto-chain button on the council review page when they
-    # want sequential refinement — the `council_auto_chain` dispatch
-    # action wires that click to `council-iterate` programmatically.
 
     opened = open_path(result.review_path) if args.open_browser else False
     # Interactive terminal users get offered the review page. Gated on a TTY
@@ -328,11 +285,6 @@ def handle_council_launch(args):
         cwd=args.cwd,
         status_token=status_token,
         open_browser=args.open_browser,
-        # Thread chain-mode params through to run_council. Before this fix,
-        # handle_council_start dropped them and silently ran parallel even
-        # when the caller (MCP `run_council(mode='chain')`) reported chain.
-        mode=getattr(args, "mode", "parallel"),
-        sequence=getattr(args, "sequence", None),
     )
     handle_council_start(launch_args)
 
@@ -444,98 +396,4 @@ def handle_council_share(args):
         "agreed_claims_count": len(card_data.agreed_claims),
         "disagreed_claim_present": card_data.disagreed_claim is not None,
         "opened": opened,
-    }, indent=2))
-
-
-# ---------------------------------------------------------------------------
-# Consensus-iteration chain handlers
-# ---------------------------------------------------------------------------
-
-
-def _print_round_summary(result, round_label: str) -> None:
-    outcome = result.outcome
-    label = outcome.routing_label
-    summary = {
-        "round": round_label,
-        "council_run_id": outcome.council_run_id,
-        "review_path": str(result.review_path),
-        "primary_provider": outcome.primary_provider,
-        "winner_provider": outcome.winner_provider,
-        "parent_council_id": outcome.metadata.get("parent_council_id"),
-        "round_number": outcome.metadata.get("round_number"),
-    }
-    if label is not None:
-        summary["winner"] = label.winner
-        summary["confidence"] = label.confidence
-        summary["agreed_claims"] = len(label.agreed_claims)
-        summary["disagreed_claims"] = len(label.disagreed_claims)
-        from ..council_runtime import chairman_says_converged
-        summary["converged"] = chairman_says_converged(label)
-    print(json.dumps(summary, indent=2))
-
-
-def handle_council_iterate(args):
-    """Unified iteration: rounds + optional --prompt directive. Replaces the
-    prior trio of continue/refine/auto-chain handlers; they were all variants
-    of the same `run_consensus_round` / `auto_chain_council` engine."""
-    from ..council_runner import auto_chain_council, run_consensus_round
-
-    config = load_config(args.config)
-    parent = load_council_outcome_or_exit(args.council)
-    cwd = Path(args.cwd).expanduser().resolve()
-    status_token = getattr(args, "status_token", None)
-
-    # When the user asks for a single round (with or without --prompt), they
-    # want a forced continuation — the launchpad's "continue" button must
-    # work even when the parent already converged. Skip auto_chain_council's
-    # convergence gate; run exactly one round.
-    if args.prompt or args.rounds == 1:
-        result = run_consensus_round(
-            config=config,
-            parent_outcome=parent,
-            user_refinement=args.prompt,
-            cwd=cwd,
-            run_state_token=status_token,
-        )
-        if args.open_browser:
-            open_path(result.review_path)
-        _print_round_summary(result, round_label="refine" if args.prompt else "continue")
-        return
-
-    # rounds > 1, no prompt → auto-iterate, stop on convergence.
-    results = auto_chain_council(
-        config=config,
-        initial_outcome=parent,
-        max_rounds=args.rounds,
-        cwd=cwd,
-        run_state_token=status_token,
-    )
-    if results and args.open_browser:
-        open_path(results[-1].review_path)
-
-    # Per-round summary
-    rounds = []
-    for i, r in enumerate(results):
-        outcome = r.outcome
-        label = outcome.routing_label
-        rounds.append({
-            "round_number": outcome.metadata.get("round_number"),
-            "council_run_id": outcome.council_run_id,
-            "review_path": str(r.review_path),
-            "winner": label.winner if label else None,
-            "confidence": label.confidence if label else None,
-            "agreed_claims": len(label.agreed_claims) if label else 0,
-            "disagreed_claims": len(label.disagreed_claims) if label else 0,
-        })
-
-    from ..council_runtime import chairman_says_converged
-    final = results[-1].outcome if results else parent
-    print(json.dumps({
-        "ok": True,
-        "initial_council_run_id": parent.council_run_id,
-        "rounds_run": len(results),
-        "max_rounds": args.rounds,
-        "converged": chairman_says_converged(final.routing_label),
-        "final_council_run_id": final.council_run_id,
-        "rounds": rounds,
     }, indent=2))

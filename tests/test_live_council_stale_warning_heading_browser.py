@@ -202,67 +202,6 @@ def test_proactive_stale_warning_does_not_claim_a_round_failed(tmp_path, monkeyp
         httpd.shutdown()
 
 
-def test_reactive_continue_failure_keeps_its_round_start_heading(tmp_path, monkeypatch):
-    pytest.importorskip("playwright.sync_api")
-    from playwright.sync_api import sync_playwright
-
-    home, cid = _seed_completed_council(tmp_path, monkeypatch)
-    httpd, port = _serve(home)
-    try:
-        with sync_playwright() as p:
-            try:
-                browser = p.chromium.launch()
-            except Exception as exc:  # pragma: no cover - env-dependent
-                pytest.skip(f"no launchable chromium: {exc}")
-            try:
-                # (B) REACTIVE failure — dispatcher present, NOT stale, but the
-                # Continue dispatch fails. The heading MUST be the round-start phrasing.
-                page = browser.new_context(
-                    viewport={"width": 1280, "height": 900}
-                ).new_page()
-                errs: list[str] = []
-                page.on("pageerror", lambda e: errs.append(str(e)[:200]))
-                page.add_init_script(_PRESENT_FAIL_STUB)
-                _open(page, port, cid)
-                assert not errs, f"JS pageerrors: {errs[:3]}"
-
-                # No banner before any click (not stale).
-                pre = page.query_selector("section[role='alert']")
-                assert not (pre and pre.is_visible()), (
-                    "a banner rendered on load with a non-stale dispatcher — the "
-                    "reactive-only precondition failed."
-                )
-                cont = page.query_selector("section.chain-actions button.primary")
-                assert cont and cont.is_visible(), (
-                    "the 'Continue (one round)' button did not render on a completed "
-                    "council — the reactive-failure precondition failed."
-                )
-                cont.click()
-                page.wait_for_timeout(900)
-
-                banner = page.query_selector("section[role='alert']")
-                assert banner and banner.is_visible(), (
-                    "the reactive Continue-failure produced no banner — dispatch "
-                    "failure must give feedback (the NO-FEEDBACK class)."
-                )
-                heading = page.eval_on_selector(
-                    "section[role='alert'] strong", "el => el.textContent.trim()"
-                )
-                # THE COMPLEMENT BITE: the reactive round-start failure keeps its
-                # accurate heading. (A binding that lost the reactive heading would
-                # red here while (A) stays green — the discriminating pair.)
-                assert heading == _PHANTOM, (
-                    "a REACTIVE Continue-failure should be headed "
-                    f"{_PHANTOM!r}, got {heading!r} — the round-start failure heading "
-                    "regressed."
-                )
-                page.close()
-            finally:
-                browser.close()
-    finally:
-        httpd.shutdown()
-
-
 def test_proactive_stale_warning_clears_after_the_extension_recovers(tmp_path, monkeypatch):
     """The proactive stale warning must CLEAR once the user does exactly what it
     prescribes — reload the extension at chrome://extensions — and a focus re-probe

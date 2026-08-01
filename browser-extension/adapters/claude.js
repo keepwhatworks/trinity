@@ -105,6 +105,32 @@
     return null;
   }
 
+  // The model the reply was actually produced by. Anthropic's `message_start`
+  // event carries it on the same `message` object we already read `uuid` from, so
+  // this costs nothing extra — it was simply never extracted.
+  //
+  // WHY IT MATTERS (2026-07-25): captured councils recorded provider but NOT model,
+  // so 73% of member rows on disk have model=null and every per-model analysis
+  // silently collapses to lab granularity — which is the exact blending the trust
+  // ledger moved OFF when it re-keyed to model x version (Opus 4.8 at 77% was
+  // hiding behind Opus 4.7 at 51% inside a single "claude" column). An unstamped
+  // capture is behavioural data that can never gain model fidelity later, so the
+  // stamp has to happen here, at capture time.
+  //
+  // Returns null when absent — never guesses. A wrong model stamp is worse than a
+  // missing one, because a missing one is visibly missing.
+  function extractModel(events) {
+    for (const ev of events) {
+      const d = ev && ev.data;
+      if (!d) continue;
+      if (d.type === "message_start" && d.message && typeof d.message.model === "string") {
+        const m = d.message.model.trim();
+        if (m) return m;
+      }
+    }
+    return null;
+  }
+
   function adapt(input) {
     const url = input.url || "";
     const body_text = input.body_text || "";
@@ -114,6 +140,7 @@
       kind: "adapter_stream",
       conv_id: extractConvId(url),
       message_uuid: extractMessageUuid(events),
+      model: extractModel(events),
       url,
       method: input.method || "POST",
       captured_at: input.captured_at,

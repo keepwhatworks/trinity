@@ -113,16 +113,13 @@ class TestCouncilReviewMarkdown:
         # its refinement directive vanish from the rendered thread.
         assert "seg.refinementText" in html
         assert "rs.metadata?.user_refinement" in html
-        # Quote-into-refinement affordance (tick #60). Lets the user
-        # cherry-pick fragments across member responses and stack them
-        # into the refinement input, matching the user's hand-rolled
-        # flow on bundle_42f8cea9c9e705e5 (took "Own your context" from
-        # Gemini, merged with Claude's response, typed the merged line).
-        # The button must have @click.stop so it doesn't trigger the
-        # parent article's pick-winner click handler.
-        assert "quoteMember(row.provider, row)" in html
-        assert "quote-member-btn" in html
-        assert "@click.stop=" in html
+        # The Quote-into-refinement affordance (tick #60) was removed
+        # 2026-07-24 with the "Continue the thread" composer it fed — the
+        # council-iterate verb behind it is gone, so there is no refinement
+        # input to stack quotes into. Historical rounds still render
+        # (seg.refinementText above); they just can't be extended.
+        assert "quoteMember" not in html
+        assert "quote-member-btn" not in html
         # Phase 3d (2026-05-22): rating click-to-pick UI retired. The
         # "Lens pick" badge is sourced from the chairman's
         # routing_label.winner via lensPickProviderFor; no chooseMember

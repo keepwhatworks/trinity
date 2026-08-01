@@ -51,22 +51,6 @@ class TestResolveWinner:
         )
         assert result == "codex"
 
-    def test_consensus_round_uses_resolve_winner_not_prose_scan(self):
-        """The iter-2 council found that run_consensus_round STILL did its own
-        prose-winner scan on `sections["winner"]` instead of going through
-        `_resolve_winner`. With Routing JSON missing, that path silently
-        picked the first provider mentioned in the prose. Pin the fix."""
-        import inspect
-        from trinity_local import council_runner
-
-        src = inspect.getsource(council_runner.run_consensus_round)
-        # The legacy prose-scan loop is gone:
-        assert "if \"winner\" in sections:" not in src, (
-            "run_consensus_round must use _resolve_winner, not scan sections['winner']"
-        )
-        # And the canonical resolver IS called:
-        assert "_resolve_winner(" in src
-
     def test_no_winner_when_routing_label_missing(self):
         # The prose-section + A/B/C label fallbacks were removed. With Routing
         # JSON parse-success ≥85%, the fallbacks were silently masking parse
@@ -575,82 +559,3 @@ class TestLoadPromptBundleNormalizesOriginProvider:
 
         bundle = load_prompt_bundle("bundle_test_no_origin")
         assert bundle.origin_provider is None
-
-
-class TestChainQuotaErrorHandling:
-    """A rate-limited / token-exhausted member in CHAIN mode must NOT have its
-    stderr quota error ("You've hit your usage limit") fed forward as that step's
-    answer. The PARALLEL member path (_run_member) already gates on
-    `returncode != 0 and not stdout.strip()`; chain mode must mirror it.
-
-    Found 2026-06-06 during the codex-quota outage: parallel councils correctly
-    EXCLUDED the quota'd member (the naming council ran 2-member), but the chain
-    path took `result.stdout or result.stderr`, turning the quota error string
-    into the chain step's output_text — which then poisons the next chain step,
-    the chairman synthesis, AND the re-ingested corpus. This pins the fix."""
-
-    def _config(self):
-        from trinity_local.config import AppConfig, ProviderConfig
-
-        def pc(name, model):
-            return ProviderConfig(
-                name=name, type="cli", enabled=True, label=name.title(),
-                command=[name], args=[], task_types=set(), model=model,
-            )
-
-        return AppConfig(
-            max_turns=1, notifications=False,
-            providers={"claude": pc("claude", "claude-opus-4-8"),
-                       "codex": pc("codex", "gpt-5.5")},
-            task_preferences={},
-        )
-
-    def test_chain_drops_quota_failed_member_not_its_error_string(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        from trinity_local import council_runner as cr
-        from trinity_local.providers import ProviderResult
-        from trinity_local.council_schema import PromptBundle
-
-        QUOTA_ERR = "ERROR: You've hit your usage limit. Upgrade to Pro to continue."
-        CLAUDE_OUT = "Here is my real chain answer: use DuckDB for analytical scans."
-
-        class _Fake:
-            def __init__(self, name):
-                self.name = name
-
-            def run(self, prompt, cwd):
-                if self.name == "codex":
-                    # rate-limited: non-zero exit, empty stdout, error on stderr.
-                    return ProviderResult(provider="codex", stdout="", stderr=QUOTA_ERR, returncode=1)
-                return ProviderResult(provider=self.name, stdout=CLAUDE_OUT, stderr="", returncode=0)
-
-        monkeypatch.setattr(cr, "make_provider", lambda cfg: _Fake(cfg.name))
-        # Canned synthesis so no real chairman dispatches.
-        monkeypatch.setattr(
-            cr, "_synthesize_with_fallback",
-            lambda *a, **k: (
-                'Winner\nclaude\n```routing-json\n{"winner":"claude","confidence":"high"}\n```',
-                {}, None, "claude", "claude-opus-4-8",
-            ),
-        )
-
-        bundle = PromptBundle(
-            bundle_id="b1", task_cluster_id="c1",
-            origin_provider="claude", task_text="Pick a database.",
-        )
-        result = cr._run_chain(
-            config=self._config(), bundle=bundle,
-            sequence=["claude", "codex"], primary_provider="claude", cwd=tmp_path,
-        )
-
-        members = result.outcome.member_results
-        joined = " ".join((m.output_text or "") for m in members)
-        # The quota error string must appear in NO member output (the bug).
-        assert "usage limit" not in joined, (
-            f"the codex quota error leaked into a chain member output: {joined[:200]!r}"
-        )
-        # Only the real (claude) step survives as a member; the quota'd codex
-        # step is dropped, not kept with its error as the 'answer'.
-        provs = [m.provider for m in members]
-        assert provs == ["claude"], f"chain kept the quota-failed codex step: {provs}"
-        assert CLAUDE_OUT in joined, "the real claude step output went missing"

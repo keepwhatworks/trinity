@@ -124,3 +124,50 @@ def test_adapter_skips_malformed_json_without_crashing():
     # First event parsed cleanly; second skipped silently.
     assert result["assistant_text"] == "hi"
     assert result["conv_id"] == "c-1"
+
+
+def test_adapter_stamps_the_model_that_produced_the_reply(adapter_result: dict):
+    """Anthropic's `message_start.message` carries `model` beside the `uuid` the
+    adapter already read, so stamping it is free — and it has to happen at capture
+    time or it can never happen.
+
+    WHY THIS IS GUARDED (2026-07-25): captured councils recorded provider but not
+    model, so 73% of member rows on disk had model=null and every per-model rollup
+    silently collapsed to LAB granularity — the exact blending the trust ledger
+    abandoned when it re-keyed to model x version, where Opus 4.8 at 77% had been
+    hiding behind Opus 4.7 at 51% inside one "claude" column. A capture that ships
+    unstamped is behavioural data that cannot gain model fidelity later."""
+    assert adapter_result.get("model") == "claude-3-opus", (
+        "the adapter must stamp the model from message_start.message.model; "
+        f"got {adapter_result.get('model')!r}"
+    )
+
+
+def test_missing_model_yields_none_never_a_guess(tmp_path):
+    """A stream without a model must produce null, not an inferred value. A wrong
+    model stamp is worse than a missing one: missing is visibly missing, wrong
+    silently corrupts every per-model tally built on it."""
+    import json as _json
+    import shutil as _shutil
+    import subprocess as _subprocess
+
+    node = _shutil.which("node")
+    if not node:
+        pytest.skip("node not on PATH")
+    # a valid stream whose message_start carries no model field
+    body = (
+        'event: message_start\n'
+        'data: {"type":"message_start","message":{"uuid":"msg-nomodel"}}\n\n'
+        'event: content_block_delta\n'
+        'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}\n\n'
+    )
+    script = (
+        'const fs=require("fs");global.window=global;'
+        f'eval(fs.readFileSync({_json.dumps(str(ADAPTER_PATH))},"utf8"));'
+        f'const out=window.__TRINITY_ADAPTERS.claude.adapt({{url:"https://claude.ai/api/organizations/o/chat_conversations/c9/completion",body_text:{_json.dumps(body)},method:"POST"}});'
+        'process.stdout.write(JSON.stringify(out));'
+    )
+    res = _subprocess.run([node, "-e", script], capture_output=True, text=True, check=True)
+    out = _json.loads(res.stdout)
+    assert out["model"] is None, f"absent model must be null, got {out['model']!r}"
+    assert out["message_uuid"] == "msg-nomodel", "the rest of the extraction must still work"

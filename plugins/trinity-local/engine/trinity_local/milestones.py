@@ -24,7 +24,6 @@ from pathlib import Path
 
 from .state_paths import (
     council_outcomes_dir,
-    prompts_dir,
     state_dir,
 )
 from .utils import atomic_write_text
@@ -62,14 +61,6 @@ def _load_marker() -> dict[str, int]:
     return {k: v for k, v in data.items() if isinstance(v, int)}
 
 
-def _count_lines(path: Path) -> int:
-    try:
-        with path.open("r", encoding="utf-8") as fh:
-            return sum(1 for line in fh if line.strip())
-    except OSError:
-        return 0
-
-
 def _count_basins() -> int:
     from .lens_routing import load_topics_basins
 
@@ -83,7 +74,15 @@ def compute_corpus_stats() -> dict[str, int]:
         councils = sum(1 for _ in council_dir.glob("*.json")) if council_dir.exists() else 0
     except OSError:
         councils = 0
-    prompts = _count_lines(prompts_dir() / "prompt_nodes.jsonl")
+    # UNIQUE nodes, not lines: the store is append-only latest-wins-by-id, so an
+    # ingest-then-embed pair occupies two lines. A line count overstated this banner
+    # by 28% on the dev corpus (48,337 shown vs 37,781 real).
+    try:
+        from .memory.store import count_prompt_nodes
+
+        prompts = count_prompt_nodes()[0]
+    except Exception:  # noqa: BLE001 — a milestone banner never blocks a command
+        prompts = 0
     return {"councils": councils, "prompts": prompts, "basins": _count_basins()}
 
 

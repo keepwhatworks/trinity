@@ -2,7 +2,7 @@
 # ───────────────────────────────────────────────────────────
 #  Trinity Local — Launch Verification (T-0 Step 1)
 #
-#  Runs the four programmatic gates that close the public-repo-flip
+#  Runs the five programmatic gates that close the public-repo-flip
 #  risk. Single command, green/red verdict per step, non-zero exit
 #  on any failure.
 #
@@ -57,22 +57,34 @@ run_step() {
 }
 
 # Step 1: full pytest suite
-run_step "Step 1/4: pytest (full suite, ~2 min)" \
+run_step "Step 1/5: pytest (full suite, ~2 min)" \
     $PYTEST -q
 
 # Step 2: doc-consistency guards (the launch-credibility checks)
-run_step "Step 2/4: doc-consistency guards (launch-credibility checks)" \
+run_step "Step 2/5: doc-consistency guards (launch-credibility checks)" \
     $PYTEST tests/test_doc_count_consistency.py -q
 
 # Step 3: install.sh bash syntax check + the install-sh guards
-run_step "Step 3/4: install.sh syntax + structural guards" \
+run_step "Step 3/5: install.sh syntax + structural guards" \
     $PYTEST tests/test_install_sh_and_update.py -q
 
 # Step 4: bash-n the installer end-to-end (one more sanity check that
 # the curl|sh entry point parses cleanly — the actual fresh-machine
 # smoke runs on a real VM).
-run_step "Step 4/4: bash -n scripts/install.sh" \
+run_step "Step 4/5: bash -n scripts/install.sh" \
     bash -n scripts/install.sh
+
+# Step 5: doc-to-REALITY gate. The doc-consistency guards in step 2
+# compare doc-to-doc / doc-to-generator, so they stay green when the
+# GENERATOR is wrong — that is exactly how "4389 tests passing +
+# 4 skipped" shipped past 113 of them (the skip count was a hardcoded
+# fallback that `pytest --collect-only` could never override, 2026-07-31).
+# `render_docs --check` compares the published values to the canonical
+# extractors, and the test counts now read `test-run-snapshot.json` —
+# the terminal summary of the run step 1 just finished. Order matters:
+# this must come AFTER step 1 so it checks against a fresh measurement.
+run_step "Step 5/5: render_docs --check (published values match measured reality)" \
+    .venv/bin/python scripts/render_docs.py --check
 
 # Verdict
 printf "${BOLD}═══════════════════════════════════════════════════════${NC}\n"

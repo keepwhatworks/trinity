@@ -147,13 +147,38 @@ def test_live_council_dismiss_chainerror_does_not_strand_focus(tmp_path, monkeyp
                     "  dispatch: ({onResult}) => { if (onResult) onResult({ok:false, error:'sim fail', reason:'absent'}); }"
                     "};"
                 )
+                # RE-POINTED 2026-08-01. This used to load the SEEDED (completed)
+                # council and click Continue, but the "Continue the thread" composer
+                # was deleted 2026-07-24 with the council-iterate verb, so the click
+                # timed out on a control that no longer exists and this file had been
+                # RED ever since — unseen, because `-m browser` is not in the default
+                # pytest shard. The chainError banner it guards is NOT dead: the
+                # surviving trigger is `retryFailedCouncil`, whose CTA is
+                # `<button class="button primary">Try again</button>` — so the
+                # selector below still fits and only the route to it changed.
+                #
+                # canRetryFailed(seg, i) needs seg.failed && !canceled && LAST segment
+                # && non-empty threadTaskText. Both are reachable from the URL: an
+                # unknown council_id makes the outcome fetch fail → the segment flips
+                # to failed ('Could not load council outcome'), and `task=` supplies
+                # threadTaskText via getParams(). That is why this navigates to a
+                # DELIBERATELY absent council rather than the seeded one.
                 page.goto(
-                    f"http://127.0.0.1:{port}/review_pages/live_council.html?council_id={_CID}",
+                    f"http://127.0.0.1:{port}/review_pages/live_council.html"
+                    f"?council_id=absent_{_CID}&task=Cache+in-process+or+per-call%3F",
                     wait_until="load",
                     timeout=15000,
                 )
                 page.wait_for_timeout(2000)
-                # Fire Continue → failed dispatch → chainError banner appears.
+                # Precondition: the retry CTA must actually be on the page, or the
+                # click below would time out again and the guard would be testing
+                # nothing.
+                assert page.locator("button.primary").count() >= 1, (
+                    "the 'Try again' retry CTA did not render — canRetryFailed() was "
+                    "false, so this guard cannot reach the chainError banner it exists "
+                    "to test (check seg.failed and threadTaskText)"
+                )
+                # Fire Try again → stubbed dispatcher fails → chainError banner appears.
                 page.click("button.primary")
                 page.wait_for_timeout(1000)
                 assert page.evaluate(

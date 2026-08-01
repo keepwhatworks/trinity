@@ -93,6 +93,25 @@ def _version(m: str) -> str:
     return UNKNOWN
 
 
+def known_efforts() -> tuple[str, ...]:
+    """The effort vocabulary this module can parse — the ONE source of truth.
+
+    Ingest needs it to decide whether a provider-side field is really an
+    effort before storing it in an effort slot: claude.ai's
+    ``thinking_mode`` (auto/extended) and chatgpt's ``thinking_effort``
+    (extended/standard) are adjacent-but-different axes, and copying them
+    into `effort` unchecked manufactures the appearance of effort coverage
+    where there is none. Callers gate with ``is_known_effort``; anything
+    that gets stored anyway still degrades to the "?" sentinel here.
+    """
+    return _EFFORTS
+
+
+def is_known_effort(value: str | None) -> bool:
+    """True iff ``value`` is an effort level this module parses."""
+    return (value or "").strip().lower() in _EFFORTS
+
+
 def _effort(m: str, effort: str | None) -> str:
     e = (effort or "").strip().lower()
     if e in _EFFORTS:
