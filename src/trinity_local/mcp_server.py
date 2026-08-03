@@ -428,7 +428,11 @@ async def handle_list_tools() -> list[Tool]:
                 "not a number. Read-only + LLM-free (requires a real embedder; refuses "
                 "on the TF-IDF stub). Build/refresh the tally out-of-band with "
                 "`trinity-local trust --build` (an LLM judges which branch the user's "
-                "later work took, riding the session)."
+                "later work took, riding the session). Pass `silver:true` for the "
+                "opt-in SILVER tier — chairman-adjudicated claim-side win rates from "
+                "the user's own live labels, returned as a SEPARATE `silver` key "
+                "(opinion, not behaviour; never merged into `tally`; below-floor "
+                "cells withheld)."
             ),
             inputSchema={
                 "type": "object",
@@ -436,6 +440,11 @@ async def handle_list_tools() -> list[Tool]:
                     "query": {
                         "type": "string",
                         "description": "Optional. Find recurring cross-provider disagreements on this topic.",
+                    },
+                    "silver": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Include the opt-in SILVER (chairman-adjudicated) tier as a separate key.",
                     },
                     "top_k": {
                         "type": "integer",
@@ -1600,6 +1609,10 @@ async def _trust(args: dict) -> list[Any]:
         return [ErrorData(code=400, message="`top_k` must be numeric")]
 
     payload: dict = {"tally": _load_trust_summary()}
+    if args.get("silver"):
+        from .disagreement_ledger import silver_tally
+
+        payload["silver"] = silver_tally()
     if query:
         try:
             payload["recurring"] = retrieve_recurring(query, top_k=top_k)

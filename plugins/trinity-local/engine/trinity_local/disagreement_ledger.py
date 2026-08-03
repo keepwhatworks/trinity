@@ -19,6 +19,7 @@ evidence, the tally/Wilson-CI aggregation, and the retrieval. No LLM calls here.
 from __future__ import annotations
 
 import json
+import re
 import math
 import os
 import tempfile
@@ -586,6 +587,124 @@ def build_ledger(*, home: str | None = None, config: Any = None, limit: int | No
             f.write(json.dumps({"claim_id": cid, "resolution": r, "quote": quotes.get(cid, "")}) + "\n")
     (d / "summary.json").write_text(json.dumps({**agg, "built_at": now_iso()}, indent=2))
     return agg
+
+
+# ─── SILVER tier: chairman-adjudicated claim-side tally (council_a5ba36c437d492f9) ───
+#
+# Shipped opt-in only (`trust --silver` / MCP `silver:true`), launchpad stays
+# gold-only, and silver is NEVER merged into the gold tally — all three were
+# unanimous council claims. Floor is SEPARATE from gold's MIN_TALLY_N: the
+# adjudicator (the chairman) is ~11% nondeterministic on identical input, so a
+# floor of 10 admits cells a single re-run could flip; 25 is the council-ratified
+# minimum for a cell to mean anything.
+SILVER_MIN_N = 25
+
+# The calibration text NAMES ITS SOURCE — the council's decisive catch: 63% was
+# measured on the single-chairman RE-CHAIRED research corpus, while the cells
+# below come from the user's LIVE labels (a mixed-chairman population), so the
+# number is context, not a property of these cells. Re-measure clock per the
+# council: native n>=150 credited claims or 2026-11-01, whichever first.
+SILVER_CALIBRATION = (
+    "SILVER — chairman-adjudicated (opinion, not behaviour), computed from your "
+    "own live council labels (prosecutor era, 2026-07-24+). Calibration context: "
+    "on a single-chairman research re-chair of 634 historical councils, "
+    "chairman verdicts agreed with behaviourally-settled outcomes 63% (n=123). "
+    "The live labels shown here have NOT been separately calibrated yet; they "
+    "will be re-measured at n>=150 credited claims or 2026-11-01, whichever "
+    "comes first. The behavioural ledger (gold) remains the verdict tier."
+)
+
+_SILVER_FAMILY = {
+    "claude": "claude", "claude_ai": "claude", "anthropic": "claude",
+    "codex": "codex", "chatgpt": "codex", "openai": "codex", "gpt": "codex",
+    "antigravity": "antigravity", "gemini": "antigravity", "google": "antigravity",
+}
+
+
+def _silver_family(text: str) -> str | None:
+    """First token of a resolution/side label -> dispatch family, else None."""
+    head = re.split(r"[\s:;,./]", str(text or "").strip().lower(), maxsplit=1)[0]
+    return _SILVER_FAMILY.get(head)
+
+
+def silver_tally(home: str | None = None) -> dict:
+    """Claim-side chairman-adjudicated win rates from the user's OWN live labels.
+
+    Crediting is by CLAIM SIDE, never member-vs-council-winner: the member-level
+    rule was falsified by its own output (one family read 89% and 23% in two
+    cells whose only difference was OPPONENT POOL). A claim credits only when
+    its `resolution` parses to a single family that sits on one of its sides;
+    everything else is counted in `claims_skipped`, not guessed.
+
+    Green-gate: `cells` contains ONLY rows with n >= SILVER_MIN_N — the
+    disqualifier is in the gate, not a sibling field. Below-floor cells are
+    counted in `withheld_cells`. Zero prosecutor-era claims -> cells={},
+    claims_credited=0: an abstain, never an error and never a fabricated green.
+    """
+    from .model_identity import parse_identity
+
+    base = Path(home).expanduser() if home else trinity_home()
+    outcomes = base / "council_outcomes"
+    raw: dict[str, list[int]] = {}
+    credited = skipped = councils = 0
+    if outcomes.is_dir():
+        for f in sorted(outcomes.glob("council_*.json")):
+            try:
+                doc = json.loads(f.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if not isinstance(doc, dict):
+                continue          # parsed-but-wrong-shape is degenerate data, not input
+            claims = (doc.get("routing_label") or {}).get("disagreed_claims") or []
+            if not claims:
+                continue
+            ident_by_fam: dict[str, Any] = {}
+            for m in doc.get("member_results") or []:
+                fam = _SILVER_FAMILY.get(str(m.get("provider") or "").lower())
+                if fam:
+                    meta = m.get("metadata") or {}
+                    ident_by_fam[fam] = parse_identity(m.get("model"), meta.get("effort"))
+            used_here = False
+            for c in claims:
+                surv = _silver_family(c.get("resolution"))
+                fors = {_silver_family(x) for x in c.get("providers_for") or []} - {None}
+                ags = {_silver_family(x) for x in c.get("providers_against") or []} - {None}
+                if not surv or not fors or not ags or (surv not in fors and surv not in ags):
+                    skipped += 1
+                    continue
+                credited += 1
+                used_here = True
+                win_side, lose_side = (fors, ags) if surv in fors else (ags, fors)
+                for side, won in ((win_side, True), (lose_side, False)):
+                    for fam in side:
+                        ident = ident_by_fam.get(fam)
+                        if ident is None or ident.family == "?":
+                            continue          # identity-unknown members carry no cell
+                        mv = f"{ident.family} · {ident.tier} · {ident.version}"
+                        cell = raw.setdefault(mv, [0, 0])
+                        cell[0 if won else 1] += 1
+            councils += used_here
+    cells: dict[str, dict] = {}
+    withheld = 0
+    for mv, (w, l) in raw.items():
+        n = w + l
+        if n < SILVER_MIN_N:
+            withheld += 1
+            continue
+        lo, hi = wilson_ci(w, n)
+        cells[mv] = {"w": w, "l": l, "win_rate": round(w / n, 3),
+                     "ci": [round(lo, 3), round(hi, 3)],
+                     "ci_excludes_half": bool(lo > 0.5 or hi < 0.5)}
+    return {
+        "source": "live-prosecutor-labels",
+        "claims_credited": credited,
+        "claims_skipped": skipped,
+        "councils": councils,
+        "cells": cells,
+        "withheld_cells": withheld,
+        "silver_min_n": SILVER_MIN_N,
+        "calibration": SILVER_CALIBRATION,
+    }
 
 
 def reaggregate_ledger(home: str | None = None) -> dict:

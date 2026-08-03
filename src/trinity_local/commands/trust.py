@@ -42,6 +42,10 @@ def register(subparsers):
                         "knobs change, since carried-forward verdicts came from the OLD "
                         "instrument. Costs one model call per claim; the default "
                         "incremental build costs one per new or still-open claim.")
+    p.add_argument("--silver", action="store_true",
+                   help="Show the SILVER tier: chairman-adjudicated claim-side win rates "
+                        "from your own live council labels (opt-in; opinion, not behaviour; "
+                        "cells below SILVER_MIN_N are withheld).")
     p.add_argument("--dissent", action="store_true",
                    help="Whose DISSENT is worth hearing: per-model upheld rate in "
                         "two-sided council disputes, plus how often a model's claim was "
@@ -95,6 +99,8 @@ def _print_dissent(as_json: bool) -> int:
 
 
 def handle_trust(args):
+    if getattr(args, "silver", False):
+        return _print_silver(bool(getattr(args, "as_json", False)))
     if getattr(args, "dissent", False):
         return _print_dissent(bool(getattr(args, "as_json", False)))
     from ..disagreement_ledger import build_ledger, load_disagreements, retrieve_recurring
@@ -145,6 +151,44 @@ def handle_trust(args):
         else:
             print("No ledger built yet. Run `trinity-local trust --build` to resolve which model "
                   "your later work sided with, or `trust <topic>` to find recurring splits.")
+        # Council split on a default-output pointer was UNRESOLVED; decided here
+        # (logged in amd_0065): the pointer appears ONLY once a silver cell has
+        # actually cleared its floor — pointing at an all-withheld tier serves
+        # nobody, and silence cannot dilute gold. Never let silver break gold.
+        try:
+            from ..disagreement_ledger import silver_tally
+
+            if silver_tally().get("cells"):
+                print("\n(silver available: `trust --silver` — chairman-adjudicated, "
+                      "opinion tier)")
+        except Exception:
+            pass
+
+
+def _print_silver(as_json: bool) -> None:
+    from ..disagreement_ledger import silver_tally
+
+    sv = silver_tally()
+    if as_json:
+        print(json.dumps(sv, indent=2))
+        return
+    print(sv["calibration"] + "\n")
+    print(f"claims credited: {sv['claims_credited']}  skipped (unresolved/unparseable): "
+          f"{sv['claims_skipped']}  councils: {sv['councils']}")
+    if not sv["cells"]:
+        print(f"\nAll cells WITHHELD — no model×version has reached "
+              f"SILVER_MIN_N={sv['silver_min_n']} credited claims yet "
+              f"({sv['withheld_cells']} accruing). This tier fills itself from every "
+              "new council; nothing to run.")
+        return
+    print()
+    for mv, c in sorted(sv["cells"].items(), key=lambda kv: -kv[1]["win_rate"]):
+        n = c["w"] + c["l"]
+        mark = " (CI excludes 50%)" if c["ci_excludes_half"] else ""
+        print(f"  {mv:34s} {c['w']}-{c['l']}  {c['win_rate']:.0%}  n={n}{mark}")
+    if sv["withheld_cells"]:
+        print(f"\n({sv['withheld_cells']} further cell(s) withheld below "
+              f"SILVER_MIN_N={sv['silver_min_n']})")
 
 
 def _print_pattern(r: dict) -> None:
