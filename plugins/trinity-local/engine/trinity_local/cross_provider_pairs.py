@@ -46,6 +46,14 @@ class ProviderResponse:
     response_text: str
     node_id: str
     timestamp: str | None
+    # Identity carried from the PromptNode (which carries it from the capture:
+    # claude.ai conversation model/effort_level, chatgpt per-message model_slug/
+    # thinking_effort). None on legacy nodes — the 322-member backfill of
+    # 2026-08-02 existed only because THIS hop used to drop identity on the
+    # floor, forcing text-match recovery after the fact. Forward councils are
+    # born stamped instead.
+    model: str | None = None
+    effort: str | None = None
 
 
 @dataclass
@@ -184,6 +192,8 @@ def find_cross_provider_clusters(
                 response_text=_node_response_text(node),
                 node_id=node.id,
                 timestamp=node.timestamp,
+                model=getattr(node, "model", None),
+                effort=getattr(node, "effort", None),
             ))
             kept_sims.append(sim)
         # Cap at max_cluster_size by best similarity to the seed.
@@ -210,10 +220,15 @@ def find_cross_provider_clusters(
 def cluster_to_synthesis_args(cluster: CrossProviderCluster) -> dict:
     """Translate a CrossProviderCluster into the args shape
     `_synthesize_responses` expects."""
+    # model/effort ride only when KNOWN — an absent key is honest, a guessed
+    # one poisons the ledger's identity slice (omit-rather-than-guess is the
+    # standing rule for effort everywhere in this repo).
     return {
         "task": cluster.representative_prompt,
         "responses": [
-            {"provider": m.provider, "content": m.response_text}
+            {"provider": m.provider, "content": m.response_text,
+             **({"model": m.model} if m.model else {}),
+             **({"effort": m.effort} if m.effort else {})}
             for m in cluster.members
         ],
     }

@@ -503,6 +503,44 @@ class OllamaProvider(BaseProvider):
         return result
 
 
+def rotated_effort_config(config: "ProviderConfig | None", council_id: str) -> "ProviderConfig | None":
+    """Deterministic per-council effort rotation — the behavioural effort probe.
+
+    TRINITY_EFFORT_ROTATION="claude:high,xhigh" alternates the named provider's
+    dispatch effort across councils (sha1(council_id) picks the level), so the
+    disagreement ledger accrues a WITHIN-MODEL effort contrast at the
+    behavioural standard — the sibling no model x version has ever had
+    (amd_0060: the chairman-judged probe read xhigh 22/30, but judge-tier
+    evidence can never enter the trust tally; this flag is the path that can).
+
+    Default OFF (env unset -> config returned untouched). The rotated config is
+    used for BOTH dispatch and the member's identity stamp (council_runner
+    stamps `_effective_effort(execution.provider_config)`), so the recorded
+    effort is the dispatched effort by construction — a wrong stamp is worse
+    than no rotation. If config.args carries an explicit
+    `model_reasoning_effort` override, that still wins at dispatch AND at the
+    stamp (both read the same resolver), so rotation is silently ineffective
+    rather than dishonest. Malformed specs are ignored, never fatal: a probe
+    flag must not be able to break council dispatch.
+    """
+    import dataclasses
+    import hashlib
+    import os
+
+    spec = os.environ.get("TRINITY_EFFORT_ROTATION", "").strip()
+    if not spec or config is None:
+        return config
+    try:
+        target, _, levels_s = spec.partition(":")
+        levels = [x.strip() for x in levels_s.split(",") if x.strip()]
+        if config.name != target.strip() or len(levels) < 2:
+            return config
+        pick = levels[int(hashlib.sha1(council_id.encode()).hexdigest(), 16) % len(levels)]
+        return dataclasses.replace(config, effort=pick)
+    except Exception:
+        return config
+
+
 def make_provider(config: ProviderConfig) -> BaseProvider:
     if config.type == "cli":
         return CLIProvider(config)

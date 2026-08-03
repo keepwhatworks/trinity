@@ -368,6 +368,11 @@ def run_council(
 
     def _run_member(provider_name: str) -> MemberExecutionResult:
         provider_config = config.providers.get(provider_name)
+        # Effort rotation (default OFF, TRINITY_EFFORT_ROTATION): must happen
+        # BEFORE dispatch so the same rotated config flows to both the CLI
+        # flags and the identity stamp below — one source, no drift.
+        from .providers import rotated_effort_config
+        provider_config = rotated_effort_config(provider_config, council_id)
         if provider_config is None or not provider_config.enabled:
             update_member_failure(state_token, provider_name, "Provider missing or disabled.")
             return MemberExecutionResult(
