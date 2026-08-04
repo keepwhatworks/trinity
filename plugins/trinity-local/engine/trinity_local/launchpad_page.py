@@ -256,8 +256,47 @@ def write_portal_html(*, title: str = "Trinity · Ask all three") -> Path:
     # canonical home), so every existing caller is unaffected.
     stats_path = pages_dir / "stats.html"
     stats_path.write_text(render_stats_html(title="Trinity · stats"), encoding="utf-8")
-    # The memory viewer is a static page rendered from a hardcoded
-    # allowlist — no per-render data, but write it here so a fresh
-    # install / portal-html run produces both pages.
-    write_memory_viewer()
+    # The memory viewer is NOT static (an older comment here said it was):
+    # it re-reads every allowlisted memory file and inlines the contents —
+    # 1.62MB of a 1.65MB page is `window.__TRINITY_MEMORIES__` (measured
+    # 2026-08-03). Rewriting that on EVERY portal render re-read the whole
+    # cognitive memory for a page whose sources change only on lens builds /
+    # council-driven scoreboard freezes. Mtime-gate it against the exact
+    # files it embeds (same founder-class STALE-AFTER-CHANGE discipline as
+    # the launchpad_data.json cache above — sources, not guesses).
+    if not _memory_viewer_is_fresh(pages_dir):
+        write_memory_viewer()
     return path
+
+
+def _memory_viewer_is_fresh(pages_dir: Path) -> bool:
+    """True when portal_pages/memory.html is newer than every file it embeds.
+
+    Gate on the viewer's OWN resolver map (_FILE_PATH_RESOLVERS) so the
+    watched set can never drift from the embedded set — the launchpad cache's
+    conversations/ blind spot was exactly a hand-maintained watch list going
+    stale. Parent dirs are statted too: deleting a memory file (lens reset)
+    bumps the DIR mtime, not any surviving file's, and the page must re-render
+    to drop the deleted file's stale embedded copy."""
+    out = pages_dir / "memory.html"
+    try:
+        out_mtime = out.stat().st_mtime
+    except OSError:
+        return False  # missing/unreadable output → render it
+    from .memory_viewer import _FILE_PATH_RESOLVERS
+
+    watched: set[Path] = set()
+    for resolver in _FILE_PATH_RESOLVERS.values():
+        try:
+            src = Path(resolver())
+        except Exception:
+            return False  # a resolver failing is not proof of freshness
+        watched.add(src)
+        watched.add(src.parent)
+    for p in watched:
+        try:
+            if p.exists() and p.stat().st_mtime > out_mtime:
+                return False
+        except OSError:
+            return False
+    return True

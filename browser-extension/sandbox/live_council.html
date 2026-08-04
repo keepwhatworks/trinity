@@ -1291,6 +1291,20 @@ th {
                 </li>
               </ul>
             </div>
+            <!-- facets: the free-form dimensions the chairman says ACTUALLY
+                 discriminated between the answers, each with the member that
+                 won it (prosecutor-era field, 2026-07-24; absent on older
+                 councils — v-if degrades this block to nothing). -->
+            <div v-if="routingLabelFor(seg).facets && routingLabelFor(seg).facets.length && !isSoloFor(seg)">
+              <strong>What discriminated</strong>
+              <ul>
+                <li v-for="f in routingLabelFor(seg).facets">
+                  <span>{{ f.name }}</span>
+                  <span v-if="f.winner" class="meta"> — {{ formatProviders([f.winner]) }}</span>
+                  <div v-if="f.basis" class="meta">{{ f.basis }}</div>
+                </li>
+              </ul>
+            </div>
             <div v-if="routingLabelFor(seg).user_likely_values && routingLabelFor(seg).user_likely_values.length">
               <strong>User-fit signals (from /me):</strong> <span class="meta">{{ routingLabelFor(seg).user_likely_values.join(', ') }}</span>
             </div>

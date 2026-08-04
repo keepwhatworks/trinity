@@ -214,3 +214,42 @@ def test_host_query_uses_the_cached_builder():
         "_query_launchpad_data no longer uses the cached builder — every panel open "
         "would rebuild the full analytics payload again"
     )
+
+
+def test_memory_viewer_rewrite_is_mtime_gated(tmp_path, monkeypatch):
+    """memory.html embeds ~1.6MB of memory-file contents and was rewritten on
+    EVERY portal render (the 'static page' comment was stale — it re-reads all
+    seven allowlisted files). The gate must skip the rewrite when no embedded
+    source changed, and MUST rewrite when one does (the founder-class
+    STALE-AFTER-CHANGE failure is the dangerous direction: a lens rebuild that
+    doesn't surface). Gated on the viewer's own resolver map so the watched
+    set can never drift from the embedded set."""
+    import os
+
+    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+    monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
+    monkeypatch.setenv("TRINITY_DISABLE_MLX", "1")
+    from trinity_local.launchpad_page import write_portal_html
+    from trinity_local.state_paths import portal_pages_dir, trinity_home
+
+    write_portal_html()
+    out = portal_pages_dir() / "memory.html"
+    assert out.exists(), "first render must produce memory.html"
+    m1 = out.stat().st_mtime_ns
+
+    write_portal_html()  # nothing changed → the 1.6MB rewrite must be SKIPPED
+    m2 = out.stat().st_mtime_ns
+    assert m2 == m1, "memory.html was rewritten with no source change — the mtime gate is dead"
+
+    lens = trinity_home() / "memories" / "lens.md"
+    lens.parent.mkdir(parents=True, exist_ok=True)
+    lens.write_text("## tension\nnew pole", encoding="utf-8")
+    future = (out.stat().st_mtime) + 5
+    os.utime(lens, (future, future))
+
+    write_portal_html()  # a source the page embeds changed → MUST rewrite
+    m3 = out.stat().st_mtime_ns
+    assert m3 > m2, (
+        "memories/lens.md changed but memory.html was not re-rendered — "
+        "stale-after-change, the exact failure class the gate must not add"
+    )

@@ -1086,16 +1086,22 @@ REFLEX_BEGIN = "<!-- trinity-local reflex v1 BEGIN (managed — edit via `trinit
 REFLEX_END = "<!-- trinity-local reflex v1 END -->"
 
 # ≤80 words, cheap-first ladder, chairman verdict as source of truth.
+# choose is marked CLI-only: it was soft-demoted OFF the MCP surface
+# 2026-07-18, so telling agents to call it as a tool sent them at a name
+# list_tools no longer carries. The closing recall line is the launchpad-
+# is-the-recap arc (2026-08-03): the council record outlives the session,
+# so "what happened" questions read the corpus, not the scrollback.
 REFLEX_TEXT = """## Trinity reflex
 
-Trinity Local is installed (MCP server `trinity-local`). Before presenting
-multi-option product/architectural choices, or committing a contested or
-hard-to-reverse call: `ask(mode="route")` is FREE and says which model to
-trust; `ask` (~1 call) returns a routed answer; `run_council` (~4 calls)
-returns a multi-model verdict through the user's own taste lens; `choose`
-(free, instant) ranks concrete options by the user's measured taste — use
-it before presenting any option list. Skip for trivial bugs, syntax,
-retrieval. Treat `agreed_claims`/`disagreed_claims` as the source of truth."""
+Trinity Local is installed (MCP server `trinity-local`). Before
+multi-option product/architectural choices or contested, hard-to-reverse
+calls: `ask(mode="route")` is FREE and says which model to trust; `ask`
+(~1 call) returns a routed answer; `run_council` (~4 calls) returns a
+multi-model verdict through the user's taste lens; `choose` (CLI, free)
+ranks concrete options by measured taste. Skip for trivial bugs, syntax,
+retrieval. Treat `agreed_claims`/`disagreed_claims` as truth. Asked "what
+happened / why did we decide"? Read `~/.trinity/council_outcomes/` before
+summarizing scrollback."""
 
 
 def handle_install_reflex(args):

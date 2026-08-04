@@ -234,6 +234,33 @@ def _load_recent_councils(limit: int = 10) -> list[dict[str, str | None]]:
             thread["latest_sort_key"] = latest_sort_key
             thread["latest_created_at"] = created_at
             thread["latest_winner"] = raw.get("winner_provider")
+            # Decision signal for the rail chip: how many claims the members
+            # split on and how many the chairman's prosecution settled, from
+            # THIS (the latest) round's routing label. Three-way semantics:
+            # to_dict() filters EMPTY containers out of the outcome JSON, so a
+            # present routing_label with NO disagreed_claims key means the
+            # council was unanimous (n=0) — while a missing/empty routing_label
+            # (legacy or failed synthesis) means "unknown" (None), which the
+            # rail renders chipless rather than claiming a verdict nobody
+            # emitted. A non-list disagreed_claims (hand-mangled outcome, the
+            # #258 class) also degrades to None instead of crashing the rail.
+            if isinstance(routing_label, dict) and routing_label:
+                _dc = routing_label.get("disagreed_claims", [])
+                if isinstance(_dc, list):
+                    _claims = [c for c in _dc if isinstance(c, dict)]
+                    thread["latest_n_splits"] = len(_claims)
+                    thread["latest_n_settled"] = sum(
+                        1
+                        for c in _claims
+                        if c.get("resolution")
+                        and "unresolved" not in str(c.get("resolution")).lower()
+                    )
+                else:
+                    thread["latest_n_splits"] = None
+                    thread["latest_n_settled"] = None
+            else:
+                thread["latest_n_splits"] = None
+                thread["latest_n_settled"] = None
             # Count the latest round's DISTINCT provider slugs so the rail can
             # suppress the winner brand on a solo (1-responder) OR an
             # all-same-provider council (claude·claude·claude — 3 responders,
@@ -269,12 +296,19 @@ def _load_recent_councils(limit: int = 10) -> list[dict[str, str | None]]:
             prompt = (thread.get("root_task_text") or "").strip() or None
         if not prompt:
             prompt = "[Council prompt unavailable]"
+        # First non-empty LINE only: council prompts are often multi-paragraph
+        # briefs, and a raw _truncate let the second paragraph leak into the
+        # one-line rail row ("…IN WHAT SHAPE?\n\nTH" — measured 2026-08-03).
+        # The headline question is line one; the full brief lives one click in.
+        first_line = next(
+            (ln.strip() for ln in prompt.splitlines() if ln.strip()), prompt
+        )
         items.append(
             {
                 "council_id": thread.get("root_council_id") or thread["chain_root_id"],
                 "chain_root_id": thread["chain_root_id"],
                 "bundle_id": thread["root_bundle_id"],
-                "title": _truncate(prompt),
+                "title": _truncate(first_line),
                 "winner_provider": thread["latest_winner"],
                 "created_at": thread["latest_created_at"],
                 "segment_count": thread["segment_count"],
@@ -283,6 +317,10 @@ def _load_recent_councils(limit: int = 10) -> list[dict[str, str | None]]:
                 # 1-responder OR all-same-provider council. See
                 # build_recent_sidebar_html.
                 "member_count": thread["latest_member_count"],
+                # Rail decision chip inputs (see the latest-round extraction
+                # above for the None-vs-0 semantics).
+                "n_splits": thread.get("latest_n_splits"),
+                "n_settled": thread.get("latest_n_settled"),
                 "task_type": thread.get("task_type"),
                 # The per-thread "rated" flag was retired Phase 3d
                 # (2026-05-22) along with the launchpad rating UI;
@@ -2440,6 +2478,40 @@ def build_recent_sidebar_html(recent_councils: list[dict[str, str | None]]) -> s
             f'{segments} rounds — open it to see every round.">{segments} rounds</span>'
             if segments > 1 else ""
         )
+        # Decision chip — the recap signal the rail was missing (founder,
+        # 2026-08-03: "see the recent councils and the decisions made"). A row
+        # showed WHO won but not whether there was a fight or what got
+        # settled. Three-way per the loader's None-vs-0 contract:
+        #   n_splits None  -> no chip (legacy/failed synthesis; claim nothing)
+        #   n_splits == 0  -> "unanimous" (a verdict, not an absence)
+        #   n_splits  > 0  -> "N splits" + "· M settled" only when M > 0
+        #                     ("0 settled" would read as noise on
+        #                     pre-prosecutor councils that never carried a
+        #                     resolution field).
+        try:
+            n_splits = int(item.get("n_splits"))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            n_splits = None
+        try:
+            n_settled = int(item.get("n_settled"))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            n_settled = 0
+        if n_splits is None:
+            decision_chip = ""
+        elif n_splits == 0:
+            decision_chip = (
+                '<span class="rail-council-splits" title="Every member '
+                'independently agreed — no disputed claims.">unanimous</span>'
+            )
+        else:
+            settled_part = f" · {n_settled} settled" if n_settled > 0 else ""
+            decision_chip = (
+                f'<span class="rail-council-splits" title="The members split on '
+                f'{n_splits} claim{"s" if n_splits != 1 else ""}'
+                f'{f"; the chairman&#39;s prosecution settled {n_settled}" if n_settled > 0 else ""}'
+                f' — open to read each side.">'
+                f'{n_splits} split{"s" if n_splits != 1 else ""}{settled_part}</span>'
+            )
         # Wrap the winner/Solo/Failed token so the degenerate cases carry an
         # explanatory tooltip (a bare label with no context reads as a model
         # name). "Failed" must NOT claim "one model answered" (zero did).
@@ -2460,7 +2532,7 @@ def build_recent_sidebar_html(recent_councils: list[dict[str, str | None]]) -> s
             f'title="{_esc(title)}">'
             f'<span class="rail-council-title">{_esc(title)}</span>'
             f'<span class="rail-council-meta">{winner_span} · {_esc(created)}'
-            f'{chain_badge}</span>'
+            f'{decision_chip}{chain_badge}</span>'
             f'</a>'
         )
 

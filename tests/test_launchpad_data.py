@@ -367,3 +367,195 @@ def test_recent_council_latest_round_is_deterministic_on_a_created_at_tie(tmp_pa
         "rail latest-round verdict did not resolve to the round_number=2 round "
         f"(expected codex + member_count 1 → 'Solo'): {verdicts['early_then_late']}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Rail decision chip (2026-08-03, "the launchpad IS the recap"): a rail row
+# showed WHO won but not whether there was a fight or what got settled — the
+# decision signal stopped one click too deep. These tests value-assert at the
+# SURFACE binding (build_recent_sidebar_html output), not just the loader
+# primitives, per the loop-data-correctness rule: the recurring bug class is a
+# value derived correctly at the primitive and dropped/mislabeled at the
+# surface that ships it.
+# ---------------------------------------------------------------------------
+
+
+def _seed_chip_outcome(tmp_path, monkeypatch, *, council_id, routing_label,
+                       task_text="Which provider should answer this?"):
+    from trinity_local.council_runtime import save_council_outcome
+    from trinity_local.council_schema import CouncilMemberResult, CouncilOutcome
+
+    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+    monkeypatch.setenv("TRINITY_DISABLE_MLX", "1")
+    save_council_outcome(
+        CouncilOutcome(
+            council_run_id=council_id,
+            bundle_id=f"bundle_{council_id}",
+            task_cluster_id=f"cluster_{council_id}",
+            primary_provider="claude",
+            winner_provider="claude",
+            metadata={"task_text": task_text},
+            member_results=[
+                CouncilMemberResult(provider="claude", model="opus", output_text="A."),
+                CouncilMemberResult(provider="codex", model="gpt", output_text="B."),
+            ],
+            synthesis_output="Synthesis.",
+            routing_label=routing_label,
+            created_at="2026-06-02T00:00:00+00:00",
+        )
+    )
+
+
+def test_rail_decision_chip_renders_splits_and_settled(tmp_path, monkeypatch):
+    """3 splits, 2 with a survives-resolution + 1 'unresolved' -> the literal
+    chip text '3 splits · 2 settled' must appear in the RAIL HTML (an
+    'unresolved' resolution is a verdict of non-settlement, never counted)."""
+    from trinity_local.council_schema import CouncilRoutingLabel
+    from trinity_local.launchpad_data import (
+        _load_recent_councils,
+        build_recent_sidebar_html,
+    )
+
+    label = CouncilRoutingLabel(
+        winner="claude",
+        confidence="high",
+        task_type="design",
+        disagreed_claims=[
+            {"claim": "A", "providers_for": ["claude"], "providers_against": ["codex"],
+             "resolution": "claude survives: the evidence holds."},
+            {"claim": "B", "providers_for": ["codex"], "providers_against": ["claude"],
+             "resolution": "codex survives on cost ordering."},
+            {"claim": "C", "providers_for": ["claude"], "providers_against": ["codex"],
+             "resolution": "unresolved — the evidence cannot decide."},
+        ],
+    )
+    _seed_chip_outcome(tmp_path, monkeypatch, council_id="council_chip3", routing_label=label)
+    items = _load_recent_councils(limit=10)
+    assert items and items[0]["n_splits"] == 3 and items[0]["n_settled"] == 2, (
+        f"loader primitives wrong: {items[0] if items else 'no rows'}"
+    )
+    html = build_recent_sidebar_html(items)
+    assert ">3 splits · 2 settled<" in html, (
+        "the decision chip's literal text is missing from the rail HTML — the "
+        "loader counted splits but the surface binding dropped them:\n" + html[:400]
+    )
+
+
+def test_rail_decision_chip_unanimous_when_label_has_no_splits(tmp_path, monkeypatch):
+    """A routing label with NO disagreed_claims key (to_dict() filters empty
+    containers out of the JSON) is a UNANIMOUS verdict — the chip must say so,
+    never render empty, and never claim a split happened."""
+    from trinity_local.council_schema import CouncilRoutingLabel
+    from trinity_local.launchpad_data import (
+        _load_recent_councils,
+        build_recent_sidebar_html,
+    )
+
+    label = CouncilRoutingLabel(winner="claude", confidence="high", task_type="design")
+    _seed_chip_outcome(tmp_path, monkeypatch, council_id="council_chipu", routing_label=label)
+    items = _load_recent_councils(limit=10)
+    assert items and items[0]["n_splits"] == 0, f"expected n_splits=0: {items[0] if items else 'no rows'}"
+    html = build_recent_sidebar_html(items)
+    assert ">unanimous<" in html, "zero-split council must render the 'unanimous' chip"
+    assert "split" not in html.split("rail-council-splits", 1)[-1].split("</span>")[0], (
+        "a unanimous council must not render a splits count"
+    )
+
+
+def test_rail_row_chipless_when_no_routing_label(tmp_path, monkeypatch):
+    """No routing label at all (a legacy/imported outcome on disk — the runner
+    itself refuses to SAVE one, so raw-write the file) -> the row still renders
+    but carries NO decision chip: claiming 'unanimous' for a verdict nobody
+    emitted is the green-over-degenerate shape (#35)."""
+    import json
+
+    from trinity_local.launchpad_data import (
+        _load_recent_councils,
+        build_recent_sidebar_html,
+        council_outcomes_dir,
+    )
+
+    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+    monkeypatch.setenv("TRINITY_DISABLE_MLX", "1")
+    out = council_outcomes_dir()
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "council_chipn.json").write_text(json.dumps({
+        "council_run_id": "council_chipn",
+        "bundle_id": "bundle_chipn",
+        "created_at": "2026-06-02T00:00:00+00:00",
+        "winner_provider": "claude",
+        "metadata": {"task_text": "Legacy council with no label?"},
+        "member_results": [
+            {"provider": "claude", "model": "opus", "output_text": "A."},
+            {"provider": "codex", "model": "gpt", "output_text": "B."},
+        ],
+        "synthesis_output": "S.",
+    }), encoding="utf-8")
+    items = _load_recent_councils(limit=10)
+    assert items and items[0]["n_splits"] is None, (
+        f"missing label must yield n_splits=None (unknown), not a number: {items[0] if items else 'no rows'}"
+    )
+    html = build_recent_sidebar_html(items)
+    assert "rail-council-splits" not in html, (
+        "a council with no routing label must render CHIPLESS — neither "
+        "'unanimous' nor a split count can be claimed"
+    )
+    assert "rail-council-title" in html, "the row itself must still render"
+
+
+def test_rail_row_survives_corrupt_disagreed_claims(tmp_path, monkeypatch):
+    """disagreed_claims as a non-list (hand-mangled outcome, the #258
+    hand-editable-state class) must degrade to a chipless row — never crash
+    the rail and never invent a count."""
+    import json
+
+    from trinity_local.launchpad_data import (
+        _load_recent_councils,
+        build_recent_sidebar_html,
+        council_outcomes_dir,
+    )
+
+    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+    monkeypatch.setenv("TRINITY_DISABLE_MLX", "1")
+    out = council_outcomes_dir()
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "council_chipc.json").write_text(json.dumps({
+        "council_run_id": "council_chipc",
+        "bundle_id": "bundle_chipc",
+        "created_at": "2026-06-02T00:00:00+00:00",
+        "winner_provider": "claude",
+        "metadata": {"task_text": "Corrupt label council?"},
+        "member_results": [
+            {"provider": "claude", "model": "opus", "output_text": "A."},
+            {"provider": "codex", "model": "gpt", "output_text": "B."},
+        ],
+        "synthesis_output": "S.",
+        "routing_label": {"winner": "claude", "disagreed_claims": "not-a-list"},
+    }), encoding="utf-8")
+    items = _load_recent_councils(limit=10)
+    assert items and items[0]["n_splits"] is None, (
+        f"corrupt disagreed_claims must yield None, not a fabricated count: {items[0] if items else 'no rows'}"
+    )
+    html = build_recent_sidebar_html(items)
+    assert "rail-council-splits" not in html and "rail-council-title" in html
+
+
+def test_rail_title_is_first_line_only(tmp_path, monkeypatch):
+    """Council prompts are multi-paragraph briefs; the one-line rail row must
+    show the FIRST line only (measured 2026-08-03: second paragraphs leaked
+    into rows as '...IN WHAT SHAPE?\\n\\nTH')."""
+    from trinity_local.council_schema import CouncilRoutingLabel
+    from trinity_local.launchpad_data import _load_recent_councils
+
+    label = CouncilRoutingLabel(winner="claude", confidence="high", task_type="design")
+    _seed_chip_outcome(
+        tmp_path, monkeypatch, council_id="council_chipt", routing_label=label,
+        task_text="SHOULD THE TIER SHIP, AND IN WHAT SHAPE?\n\nTHE CONTEXT: a wall of detail.",
+    )
+    items = _load_recent_councils(limit=10)
+    assert items, "seeded council did not surface"
+    title = str(items[0]["title"])
+    assert title.startswith("SHOULD THE TIER SHIP"), f"unexpected title: {title!r}"
+    assert "THE CONTEXT" not in title and "\n" not in title, (
+        f"second paragraph leaked into the rail title: {title!r}"
+    )

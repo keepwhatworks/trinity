@@ -1760,7 +1760,10 @@ th {
     /* Chain-round count pill — marks a multi-round refine/continue council in the
        rail so it reads distinct from a one-shot. --accent-deep on --accent-soft is
        the AA-pinned small-badge teal pair (palette push-to-AA). */
-    .rail-council-rounds {
+    /* .rail-council-splits is the decision chip ("3 splits · 2 settled" /
+       "unanimous") — same pill as the rounds badge so the meta line stays one
+       visual family; it differs only in what it says, not how it looks. */
+    .rail-council-rounds, .rail-council-splits {
       display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 8px;
       background: var(--accent-soft); color: var(--accent-deep);
       font-size: 10px; font-weight: 600; line-height: 16px; vertical-align: baseline;
@@ -2452,7 +2455,13 @@ th {
            The census-validated moat. The per-model tally shows ONLY when it clears
            its trustworthiness gate (trustData.trustworthy); otherwise the corpus
            count + a build CTA, never an un-earned verdict (green-gate discipline). -->
-      <section class="card stats-card" v-if="trustData">
+      <!-- The trust card renders on BOTH views (untagged — neither home-card nor
+     stats-card) as of 2026-08-03: it is the product's one behaviourally
+     MEASURED claim ("which model you side with when the labs split"), and the
+     view-class split had left the home page with zero trace of it — the hero
+     lived only behind the stats link. v-if="trustData" keeps a cold install's
+     home clean (the card self-hides until a ledger exists). -->
+<section class="card" v-if="trustData">
         <div class="eyebrow" style="display: flex; align-items: center; gap: 8px;">
           <span>Which model you trust</span>
           <button type="button"
@@ -2799,7 +2808,14 @@ th {
         </p>
       </section>
 
-      <section class="card stats-card" v-if="!personalRoutingTable">
+      <!-- Empty-state audit note (2026-08-03): a cross-eyebrow dedup was tried here
+     (gating this card on cortexRules so the !cortexRules card would be the one
+     cold nudge) and REVERTED same-day: Iter 188 founder-ratified this card as
+     the OWNER of the routing cold state (the chart card is the gated one — see
+     test_cold_stats_shows_exactly_one_routing_empty_state_card), and the two
+     nudges describe different mechanisms (lens-basin picks vs the routing
+     table), sharing only the CTA. Not a duplicate; leave both. -->
+<section class="card stats-card" v-if="!personalRoutingTable">
         <div class="eyebrow">Routing</div>
         <h2>Run a few councils to learn which model works best for you</h2>
         <p class="meta">
