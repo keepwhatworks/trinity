@@ -183,10 +183,10 @@ class TestClaimHygiene:
                     f"{name}: external link missing rel=noopener → {url[:60]}"
 
 
-class TestDecalogue:
+class TestPrinciples:
     """The masthead (founder-authored 2026-07-07): the axiom bare at top,
     nine because-derivations, shape 1-2-2-2-2-1, last word 'free'. The card
-    order IS the decalogue order — deliberate, not chronological."""
+    order IS the principles order — deliberate, not chronological."""
 
     HEADLINES = [
         "Design, don&rsquo;t predict.",
@@ -220,17 +220,17 @@ class TestDecalogue:
     # after Oscillate as its payoff clause). Corpus is 12 essays, 1:1 holds.
     def test_masthead_carries_all_ten_in_order(self):
         idx = (DOCS / "index.html").read_text(encoding="utf-8")
-        assert 'class="decalogue"' in idx, "the masthead section is gone"
+        assert 'class="principles"' in idx, "the masthead section is gone"
         pos = -1
         for h in self.HEADLINES:
             i = idx.find(h)
-            assert i > pos, f"decalogue headline out of order or missing: {h!r}"
+            assert i > pos, f"principles headline out of order or missing: {h!r}"
             pos = i
 
     def test_becauses_have_no_terminal_periods(self):
         """Founder typography spec: no terminal periods on the because-lines."""
         idx = (DOCS / "index.html").read_text(encoding="utf-8")
-        for m in re.finditer(r'class="decalogue-because[^"]*">([^<]+)</p>', idx):
+        for m in re.finditer(r'class="principles-because[^"]*">([^<]+)</p>', idx):
             line = m.group(1).strip()
             assert not line.endswith("."), f"because-line grew a period: …{line[-60:]!r}"
             assert line.startswith("because"), f"because-line lost its because: {line[:40]!r}"
@@ -239,33 +239,33 @@ class TestDecalogue:
         """1:1 restored 2026-07-08 (amended 2026-08-18): 12 lines, 12 essays, each line its own
         owner. No line shares an essay; no essay lacks a line."""
         idx = (DOCS / "index.html").read_text(encoding="utf-8")
-        i = idx.index('class="decalogue"'); j = idx.index("</section>", i)
+        i = idx.index('class="principles"'); j = idx.index("</section>", i)
         links = re.findall(r'href="articles/([a-z0-9-]+\.html)"', idx[i:j])
         assert len(links) == len(set(links)) == 12, \
-            f"decalogue must be 12 unique essay links (1:1), got {len(links)}"
+            f"principles must be 12 unique essay links (1:1), got {len(links)}"
         assert set(links) == set(_essays().keys()), \
             "every essay owns exactly one line and vice versa"
 
-    def test_every_decalogue_line_links_to_its_owner_essay(self):
+    def test_every_principles_line_links_to_its_owner_essay(self):
         """Invisible provenance links (2026-07-07): each line is an <a> to the
-        essay where it was earned — the decalogue is the derived layer, the
+        essay where it was earned — the principles is the derived layer, the
         essays are its transcripts. Links must resolve."""
         idx = (DOCS / "index.html").read_text(encoding="utf-8")
-        i = idx.index('class="decalogue"'); j = idx.index("</section>", i)
+        i = idx.index('class="principles"'); j = idx.index("</section>", i)
         block = idx[i:j]
         links = re.findall(r'href="articles/([a-z0-9-]+\.html)"', block)
-        assert len(links) == 12, f"decalogue must carry exactly 12 essay links, got {len(links)}"
+        assert len(links) == 12, f"principles must carry exactly 12 essay links, got {len(links)}"
         for name in links:
-            assert (ARTICLES / name).exists(), f"decalogue links to missing essay {name}"
+            assert (ARTICLES / name).exists(), f"principles links to missing essay {name}"
 
-    def test_card_order_matches_the_decalogue(self):
+    def test_card_order_matches_the_principles(self):
         idx = (DOCS / "index.html").read_text(encoding="utf-8")
         cards = re.findall(r'article-card" href="articles/([a-z0-9-]+)\.html"', idx)
         expected = ["architecture-of-becoming", "utopia-is-a-mechanism", "ai-native-way",
                     "design-the-affordance", "gravity-of-becoming", "coupling-problem",
                     "architecture-of-endurance", "architecture-of-discovery",
                     "causality-is-an-invariance", "you-are-the-specimen", "everyone-a-critic", "free-you-more"]
-        assert cards == expected, f"card order diverged from the decalogue: {cards}"
+        assert cards == expected, f"card order diverged from the principles: {cards}"
 
 
 class TestVoice:
@@ -288,3 +288,67 @@ class TestVoice:
                 "(periods and fragments, colons, parentheses); dashes belong "
                 "in the lineage separators, not the prose"
             )
+
+
+class TestTheStoryTracksThePrinciples:
+    """The boat page retells the principles, and nothing coupled it to them.
+
+    It said "ten" for a month after the count moved, because the number lived in
+    seven places on that page plus the index link and in none of them was it
+    derived. This is the coupling: the spelled count follows the real one.
+    """
+
+    NUM = {10: "ten", 11: "eleven", 12: "twelve", 13: "thirteen", 14: "fourteen"}
+
+    def _count(self) -> int:
+        """Count distinct essay links, not class names.
+
+        Counting `class="principles-line"` reads 11, because the closing
+        principle carries a COMPOUND class (`principles-line principles-close`)
+        that exact-string matching skips. Links are the same measure the 1:1
+        guard above uses, and they cannot be fooled by markup shape.
+        """
+        idx = (DOCS / "index.html").read_text()
+        i = idx.index('class="principles"')
+        j = idx.index("</section>", i)
+        return len(set(re.findall(r'href="articles/([^"]+)"', idx[i:j])))
+
+    def test_the_story_spells_the_real_number(self):
+        n = self._count()
+        story = (DOCS / "the-little-boat-that-learned.html").read_text()
+        word = self.NUM[n]
+        for phrase in (f"{word} principles", f"{word} laws"):
+            assert phrase in story, (
+                f"There are {n} principles but the story does not say "
+                f"{phrase!r}. The count appears in the meta description, both "
+                "social cards, the JSON-LD, the meta line and the closing note "
+                "— update every one."
+            )
+        wrong = [w for k, w in self.NUM.items() if k != n and
+                 (f"{w} principles" in story or f"{w} laws" in story)]
+        assert not wrong, f"the story still says {wrong} somewhere; the real count is {n}"
+
+    def test_the_index_link_spells_the_real_number(self):
+        n = self._count()
+        idx = (DOCS / "index.html").read_text()
+        assert f"the same {self.NUM[n]} as a story" in idx, (
+            f"the link to the story must say {self.NUM[n]}, matching the {n} principles"
+        )
+
+    def test_every_principle_actually_appears_in_the_story(self):
+        """The page claims every line is one of the principles.
+
+        It was two short when this guard was written — 'Pull, don't push' and
+        'Measure the shape' had no beat — so the claim held in one direction
+        only. A count alone would never have caught that.
+        """
+        story = (DOCS / "the-little-boat-that-learned.html").read_text()
+        body = story[story.index("<h1>"):story.index("<hr>")]
+        beats = [b for b in re.findall(
+            r"<(?:p|blockquote)[^>]*>(.*?)</(?:p|blockquote)>", body, re.S) if b.strip()]
+        # One beat per principle at minimum; the story opens with a setup line
+        # and spends several beats on the axiom, so it can only ever exceed it.
+        assert len(beats) >= self._count(), (
+            f"{len(beats)} story beats for {self._count()} principles — the story "
+            "cannot be carrying them all."
+        )
