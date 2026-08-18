@@ -34,7 +34,7 @@ Nothing ever leaves the machine. The MCP server, the embedding model (~600 MB, o
 
 ## From files to embeddings (ingest → index → embed)
 
-Each transcript turn becomes a `PromptNode` row in `~/.trinity/prompts/prompt_nodes.jsonl`: id, provider, role, text, parent_id, created_at. Consecutive nodes get paired into `TurnWindow` records (user → assistant pair) so the analyzer can see what the model said, and what you said next.
+Each transcript turn becomes a `PromptNode` row in `~/.trinity/prompts/prompt_nodes.jsonl`: id, provider, role, text, parent_id, created_at. Each node also carries the assistant text immediately before and after it, so the analyzer can see what the model said and what you said next.
 
 Cursors in `~/.trinity/prompts/cursors.json` track the newest ingested node per source so re-runs are incremental. You can ingest a 50,000-turn corpus once and then top up each day in seconds.
 
@@ -50,7 +50,7 @@ Every node gets passed through `modernbert-embed-base` when a real embedding run
 
 **Phase 2.5, Vocabulary.** Vocabulary now keeps the measured signal: recurring anchors and homonyms. The old synonyms section was cut after real-corpus review showed it mostly captured template co-occurrence, not synonymy.
 
-**Phase 3, Rejection signals.** For each TurnWindow where you turned around and asked a follow-up, extract WHAT you changed: REFRAME (different question), REDIRECT (different output shape), COMPRESSION (shorter), SHARPENING (more precise). These rejection signals (stored in `~/.trinity/me/preference_acts.jsonl` with trigger=model_miss) are the empirical signal of your taste. The load-bearing input the chairman trains against.
+**Phase 3, Rejection signals.** For each prompt where you turned around and asked a follow-up, extract WHAT you changed: REFRAME (different question), REDIRECT (different output shape), COMPRESSION (shorter), SHARPENING (more precise). These rejection signals (stored in `~/.trinity/me/preference_acts.jsonl` with trigger=model_miss) are the empirical signal of your taste. The load-bearing input the chairman trains against.
 
 **Phase 4, Lens-build.** Synthesize the rejections into PAIRED TENSIONS in `~/.trinity/memories/lens.md`. On a working install: things like `mechanism inspection ↔ speculative inference under uncertainty`, `concrete specificity ↔ abstract pattern recognition`. A tension must span ≥3 basins to make the lens. Otherwise it's preserved as "ordering" (topic-local preference) or dropped. That floor is why one weird question can't pollute the lens.
 
@@ -76,7 +76,7 @@ After a few deep builds, your `~/.trinity/` looks like:
 │   ├── topics.json               ← subject basins + centroids
 │   └── vocabulary.md             ← anchors + homonyms
 ├── scoreboard/
-│   ├── picks.json                ← extracted "claude wins on REFRAME" rules
+│   ├── picks.json                ← historical (router removed 2026-08-11; file inert)
 │   └── routing.json              ← per-task-type win-rate
 └── me/
     └── preference_acts.jsonl     ← the empirical training corpus (model_miss + self_expressed acts)
@@ -86,7 +86,7 @@ The folder is the API. Everything in it is human-readable Markdown or JSON. Trin
 
 ## Runtime, using Trinity
 
-You drop a hard question into any harness (Claude Code, Codex, Cursor, Antigravity). The agent there sees Trinity registered as an MCP server and calls one of <!-- canonical:mcp_tool_count -->7<!-- /canonical --> MCP tools. The three that matter most, council first, routing later:
+You drop a hard question into any harness (Claude Code, Codex, Cursor, Antigravity). The agent there sees Trinity registered as an MCP server and calls one of <!-- canonical:mcp_tool_count -->6<!-- /canonical --> MCP tools. The three that matter most, council first, routing later:
 
 - **`run_council(task)`**, the flagship and the day-one lead. Dispatches the question to Claude + ChatGPT + Gemini in parallel, collects three responses, runs chairman synthesis. The chairman emits a Routing JSON: agreed claims, disagreed claims, winner, why. It reads `core.md` first and drills to `lens.md` only if a lens exists yet, so the council is full-fidelity on minute one. Once a lens has warmed up, the chairman weights the synthesis by it, routing to the model you keep siding with on your kind of question. **The council is the value. The lens makes it yours.**
 - **`ask(query)`**, the cheap 90% path that *emerges* once you have a track record of councils. Pulls a high-trust extracted pick if one exists ("looks like a COMPRESSION task → codex wins on those for you") and returns a single answer instead of running a full council. With no council history yet it falls back to a heuristic, so routing is the layer that accrues after the council, not a prerequisite for it.
@@ -129,7 +129,7 @@ The eval is **structurally asymmetric** in your favor. Only Trinity sees your cr
 
 ## The closed loop, how Trinity gets better
 
-The chairman reads your `lens.md` during every synthesis. Each council emits a `routing_label` (winner, agreed/disagreed claims, why). Those outcomes feed the per-basin **routing** tally: `cortex consolidate` places each council into its nearest lens basin and records the recency-weighted winner in `picks.json`, so the next `ask` can route a similar question on that basin's track record. The lens *itself* refreshes separately. Each deep build re-reads new turn-pair signal from your raw prompts (not from how councils turned out. That council→lens re-extraction edge isn't wired). The lens isn't static. It's the slow-changing layer your fast-changing conversations refine.
+The chairman reads your `lens.md` during every synthesis. Each council emits a `routing_label` (winner, agreed/disagreed claims, why). Those outcomes feed the **disagreement ledger** — which side of each split your later work took, tallied per model (the `trust` verb). A per-basin auto-router consumed the same outcomes until 2026-08-11; replayed against its own fallback on 653 councils it scored 42.9% vs a constant's 37.0%, indistinguishable from chance, and was removed. The lens *itself* refreshes separately. Each deep build re-reads new turn-pair signal from your raw prompts (not from how councils turned out. That council→lens re-extraction edge isn't wired). The lens isn't static. It's the slow-changing layer your fast-changing conversations refine.
 
 The taste you build with Trinity is the persistent thing across model generations. When the next frontier model ships, your lens still grades it. That's the layer this thing is.
 

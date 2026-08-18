@@ -17,7 +17,8 @@ inline changed_pct computation on controlled post-scan records.
 """
 from __future__ import annotations
 
-import trinity_local.personal_routing as pr
+import trinity_local.council_analytics as _ca
+
 from trinity_local.council_schema import normalize_provider_slug
 
 
@@ -45,10 +46,10 @@ def test_real_contest_filter_never_inflates_headline(monkeypatch):
         {"chairman_winner": "codex", "primary_provider": "claude", "substantive_members": 1}
     ] * 8
     records = real + walkovers
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (records, True))
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (records, True))
 
     before = _changed_pct(records)                    # no filter — walkover-inflated
-    after = pr.council_value_proof()["changed_pct"]   # the public number (filtered)
+    after = _ca.council_value_proof()["changed_pct"]   # the public number (filtered)
 
     assert before == 70, before          # 14 changed / 20 comparable
     assert after == 50, after            # 6 changed / 12 real comparable
@@ -78,9 +79,9 @@ def test_thin_comparable_base_suppresses_headline_even_when_n_passes(monkeypatch
         [{"chairman_winner": "codex", "primary_provider": "claude", "substantive_members": 2}] * 3
         + [{"chairman_winner": "claude", "substantive_members": 2}] * 13  # no primary_provider
     )
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (records, True))
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (records, True))
 
-    vp = pr.council_value_proof()
+    vp = _ca.council_value_proof()
     assert len([r for r in records if r.get("substantive_members", 2) >= 2]) == 16  # n clears the old gate
     assert vp["ready"] is False, (
         "value proof reported ready on a thin comparable base — the painkiller % "

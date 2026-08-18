@@ -81,7 +81,7 @@ def _check_basins() -> list[str]:
         # duplicate-parser/drifted-predicate trap the canonical reader exists to
         # close. Returns [] for a missing/unreadable/wrong-shape file, and a list
         # of dict basins otherwise, so the sweep degrades to "clean" not "error".
-        from .lens_routing import load_topics_basins
+        from .me.basins import load_topics_basins
 
         hot = []
         for b in load_topics_basins():

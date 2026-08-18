@@ -693,3 +693,62 @@ def basin_for_prompt(basins: list[Basin], prompt_id: str) -> str | None:
         if prompt_id in basin.prompt_ids:
             return basin.id
     return None
+
+
+# ---------------------------------------------------------------------------
+# Readers for the BUILT topology. Moved here from lens_routing.py on
+# 2026-08-10, step 2 of the council-ratified routing removal (amd_0165:
+# rehome non-routing symbols before deleting anything).
+#
+# They were never routing code. An AST check confirmed both have ZERO
+# references to any routing symbol or threshold, and their consumers are the
+# lens, health checks, status and the launchpad -- not `ask`. They sat in a
+# module named lens_ROUTING purely by accident of history, which is the same
+# mistake that filed the lens's geometry under cortex_geometry.py.
+#
+# This module builds the topology; these read it back. Same concept, one file.
+# ---------------------------------------------------------------------------
+_TOPICS_BASINS_CACHE: tuple[str, float, list[dict]] | None = None
+
+def load_topics_basins() -> list[dict]:
+    """The SINGLE shape-guarded reader for `topics.json`'s basin list.
+
+    Returns a list of dict basins (non-dict entries dropped), or ``[]`` for a
+    missing / unreadable / non-JSON / wrong-shape file. Centralizes the guard
+    `#304` added on the launchpad side but that the removed `ask` router,
+    `consolidate_via_lens_basins`, and `milestones._count_basins` each open-coded
+    differently (one with no top-level shape check at all) — a valid-JSON-but-
+    wrong-shape `topics.json` (`{"basins": "x"}`) now degrades UNIFORMLY across
+    every reader instead of crashing one and silently mis-routing another.
+
+    Cached on the file's path + mtime so the repeat readers in one process
+    (ask / consolidate / launchpad render / milestones) don't each re-parse.
+    """
+    global _TOPICS_BASINS_CACHE
+    import json
+
+    from ..state_paths import topics_path
+
+    path = topics_path()
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        _TOPICS_BASINS_CACHE = None
+        return []
+    if _TOPICS_BASINS_CACHE is not None and _TOPICS_BASINS_CACHE[:2] == (str(path), mtime):
+        return _TOPICS_BASINS_CACHE[2]
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        _TOPICS_BASINS_CACHE = None
+        return []
+    raw = data.get("basins") if isinstance(data, dict) else None
+    basins = [b for b in raw if isinstance(b, dict)] if isinstance(raw, list) else []
+    _TOPICS_BASINS_CACHE = (str(path), mtime, basins)
+    return basins
+
+def live_basin_ids() -> set[str]:
+    """The id set of the CURRENT lens topology. Empty when topics.json is
+    missing/unreadable/wrong-shape — callers must treat empty as "unknown",
+    never as "no basins exist"."""
+    return {str(b.get("id")) for b in load_topics_basins() if b.get("id")}

@@ -93,7 +93,7 @@ def test_lens_freshness_current_within_grace(home: Path):
 
 def test_basins_check_degrades_clean_on_wrong_shape_basin_entry(home: Path):
     """Class C duplicate-parser guard: `degeneracy._check_basins` and the
-    canonical `lens_routing.load_topics_basins` parse the SAME topics.json. The
+    canonical `me_basins.load_topics_basins` parse the SAME topics.json. The
     old `_check_basins` open-coded `for b in d.get("basins") or []` with NO
     `isinstance(b, dict)` filter, so a single non-dict basin entry (a valid-JSON-
     but-wrong-shape topics.json) threw inside the loop — "'str' object has no
@@ -106,7 +106,8 @@ def test_basins_check_degrades_clean_on_wrong_shape_basin_entry(home: Path):
     """
     import json
 
-    from trinity_local import lens_routing
+
+    from trinity_local.me import basins as me_basins
     from trinity_local.degeneracy import _check_basins
 
     topics = home / "memories" / "topics.json"
@@ -121,7 +122,7 @@ def test_basins_check_degrades_clean_on_wrong_shape_basin_entry(home: Path):
         ]}),
         encoding="utf-8",
     )
-    lens_routing._TOPICS_BASINS_CACHE = None
+    me_basins._TOPICS_BASINS_CACHE = None
 
     findings = _check_basins()
     # Must NOT crash into a generic sweep error — the founder symptom.
@@ -130,7 +131,7 @@ def test_basins_check_degrades_clean_on_wrong_shape_basin_entry(home: Path):
     assert findings == [], findings
     # The two parsers now AGREE: both skip the non-dict, count the 3 dict basins
     # (id-agnostic), so they read the SAME population from the same bytes.
-    assert len(lens_routing.load_topics_basins()) == 3
+    assert len(me_basins.load_topics_basins()) == 3
 
 
 def test_basins_check_still_fires_on_real_concentration_with_wrong_shape(home: Path):
@@ -139,7 +140,7 @@ def test_basins_check_still_fires_on_real_concentration_with_wrong_shape(home: P
     (the bad entry is skipped, the real one is still judged)."""
     import json
 
-    from trinity_local import lens_routing
+    from trinity_local.me import basins as me_basins
     from trinity_local.degeneracy import _check_basins
 
     (home / "memories" / "topics.json").write_text(
@@ -150,7 +151,7 @@ def test_basins_check_still_fires_on_real_concentration_with_wrong_shape(home: P
         ]}),
         encoding="utf-8",
     )
-    lens_routing._TOPICS_BASINS_CACHE = None
+    me_basins._TOPICS_BASINS_CACHE = None
 
     findings = _check_basins()
     assert any("C/basins" in f and "polluted" in f for f in findings), findings

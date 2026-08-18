@@ -172,10 +172,20 @@ class TestStalenessSkip:
         assert report.get("skipped") is True
         assert "fresh" in report.get("reason", "").lower()
 
-    def test_re_distills_when_a_source_is_newer(self, isolated_home):
+    def test_re_distills_when_a_source_is_newer(self, isolated_home, monkeypatch):
         """If a lens-build / consolidate has touched a memory since the last
         distill, the next distill call MUST run."""
         from trinity_local.distill import distill_via_chairman
+        # These two tests are about STALENESS — does distill RUN when a source is
+        # newer — not about ADMISSION. They assert the write as a proxy for "it
+        # ran", and an isolated_home has no prompt corpus, so core_gate now
+        # correctly KEEPS the incumbent rather than replacing an earned core with
+        # an unscoreable candidate (res_062: an OAuth error string got written as
+        # the founder's identity through exactly that hole). Admission is covered
+        # by tests/test_core_gate_stance.py; here it is stubbed so the staleness
+        # assertion measures staleness.
+        import trinity_local.core_gate as _cg
+        from trinity_local.core_gate import CoreVerdict as _CV
         from trinity_local.state_paths import core_path, lens_path
         import time
 
@@ -185,6 +195,12 @@ class TestStalenessSkip:
         _seed_memory(lens_path(), "# Lens\n→ newer evidence")
 
         fake_result = type("R", (), {"stdout": "you ship leverage now", "stderr": ""})()
+        # monkeypatch.setattr, NOT a bare assignment: a bare `_cg.propose_core = ...`
+        # persists for the rest of the session and silently disarms the gate for
+        # every later test. That is the same leak shape as the settings-reader
+        # coupling fixed earlier today, created here while fixing something else.
+        monkeypatch.setattr(_cg, "propose_core",
+                            lambda *a, **k: _CV(True, "stubbed for staleness test"))
         with patch("trinity_local.providers.make_provider") as make:
             make.return_value.run.return_value = fake_result
             report = distill_via_chairman(provider="claude")
@@ -193,8 +209,18 @@ class TestStalenessSkip:
         assert report.get("skipped") is not True
         assert core_path().read_text(encoding="utf-8").startswith("you ship leverage now")
 
-    def test_force_overrides_freshness_check(self, isolated_home):
+    def test_force_overrides_freshness_check(self, isolated_home, monkeypatch):
         from trinity_local.distill import distill_via_chairman
+        # These two tests are about STALENESS — does distill RUN when a source is
+        # newer — not about ADMISSION. They assert the write as a proxy for "it
+        # ran", and an isolated_home has no prompt corpus, so core_gate now
+        # correctly KEEPS the incumbent rather than replacing an earned core with
+        # an unscoreable candidate (res_062: an OAuth error string got written as
+        # the founder's identity through exactly that hole). Admission is covered
+        # by tests/test_core_gate_stance.py; here it is stubbed so the staleness
+        # assertion measures staleness.
+        import trinity_local.core_gate as _cg
+        from trinity_local.core_gate import CoreVerdict as _CV
         from trinity_local.state_paths import core_path, lens_path
         import time
 
@@ -203,6 +229,12 @@ class TestStalenessSkip:
         _seed_memory(core_path(), "fresh paragraph")
 
         fake_result = type("R", (), {"stdout": "forced rewrite", "stderr": ""})()
+        # monkeypatch.setattr, NOT a bare assignment: a bare `_cg.propose_core = ...`
+        # persists for the rest of the session and silently disarms the gate for
+        # every later test. That is the same leak shape as the settings-reader
+        # coupling fixed earlier today, created here while fixing something else.
+        monkeypatch.setattr(_cg, "propose_core",
+                            lambda *a, **k: _CV(True, "stubbed for staleness test"))
         with patch("trinity_local.providers.make_provider") as make:
             make.return_value.run.return_value = fake_result
             report = distill_via_chairman(provider="claude", force=True)

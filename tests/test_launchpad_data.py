@@ -559,3 +559,55 @@ def test_rail_title_is_first_line_only(tmp_path, monkeypatch):
     assert "THE CONTEXT" not in title and "\n" not in title, (
         f"second paragraph leaked into the rail title: {title!r}"
     )
+
+
+def test_chip_distinguishes_absent_key_from_empty_list(tmp_path, monkeypatch):
+    """An ABSENT disagreed_claims key is UNKNOWN; an EMPTY list is unanimous.
+
+    CouncilRoutingLabel.to_dict() emits `disagreed_claims: []` for a unanimous
+    council — it does NOT omit the key (an earlier comment in launchpad_data
+    claimed the opposite). So defaulting a missing key to [] conflates "the
+    chairman found no disputes" with "this label never carried the field",
+    stamping `unanimous` on legacy/half-written outcomes that rendered no verdict.
+    Two raw-written outcomes, identical but for the key's presence, must chip
+    differently."""
+    import json
+
+    from trinity_local.launchpad_data import (
+        _load_recent_councils,
+        build_recent_sidebar_html,
+        council_outcomes_dir,
+    )
+
+    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+    monkeypatch.setenv("TRINITY_DISABLE_MLX", "1")
+    out = council_outcomes_dir()
+    out.mkdir(parents=True, exist_ok=True)
+
+    def _write(cid, label):
+        (out / f"{cid}.json").write_text(json.dumps({
+            "council_run_id": cid, "bundle_id": f"b_{cid}",
+            "created_at": "2026-06-02T00:00:00+00:00", "winner_provider": "claude",
+            "metadata": {"task_text": f"question for {cid}?"},
+            "member_results": [
+                {"provider": "claude", "model": "opus", "output_text": "A."},
+                {"provider": "codex", "model": "gpt", "output_text": "B."},
+            ],
+            "synthesis_output": "S.", "routing_label": label,
+        }), encoding="utf-8")
+
+    _write("council_empty", {"winner": "claude", "disagreed_claims": []})
+    _write("council_absent", {"winner": "claude"})
+
+    by_id = {str(i["council_id"]): i for i in _load_recent_councils(limit=10)}
+    assert by_id["council_empty"]["n_splits"] == 0, "empty list must read as unanimous (0)"
+    assert by_id["council_absent"]["n_splits"] is None, (
+        "an ABSENT disagreed_claims key must read as UNKNOWN (None), not as unanimous — "
+        "otherwise a legacy label is credited with a verdict it never emitted"
+    )
+    html = build_recent_sidebar_html(list(by_id.values()))
+    assert ">unanimous<" in html, "the genuinely-unanimous council lost its chip"
+    assert html.count(">unanimous<") == 1, (
+        "both councils rendered 'unanimous' — the absent-key case is being conflated "
+        "with the empty-list case"
+    )

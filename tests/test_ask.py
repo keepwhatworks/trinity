@@ -179,16 +179,16 @@ class TestDecideRoute:
         ]
         monkeypatch.setattr(ask_module, "search_prompt_nodes", lambda q, top_k: fake_hits)
         # Isolate from real ~/.trinity/scoreboard/picks.json — without
-        # this, decide_route's _try_cortex_route walks the dev install's
         # real cortex (4s on 40k-prompt corpus). Same fix as the
         # surrounding tests at L1116, L1107 etc.
-        monkeypatch.setattr(ask_module, "_try_cortex_route", lambda q, p: None)
         decision = decide_route("test query", top_k=2)
         assert decision.routed_to == "codex"
 
 
 class TestRunAsk:
-    # All tests in this class set `use_cortex=False` to isolate from the
+    # These tests exercise the kNN path. The lens-basin router that used to
+    # need isolating here was removed 2026-08-11 (council_8817ca0c57a2e4ff);
+    # there is only one path now.
     # contributor's real ~/.trinity/scoreboard/picks.json. Tests were green
     # pre-launch when no cortex patterns existed; post-launch this loop
     # caught silent failures (test set fake_hits → user_winner=claude, but
@@ -203,7 +203,7 @@ class TestRunAsk:
         def fake_dispatch(provider: str, prompt: str) -> str:
             return f"[{provider}]: answer to '{prompt}'"
 
-        result = run_ask("what is the capital of France?", dispatch_fn=fake_dispatch, use_cortex=False)
+        result = run_ask("what is the capital of France?", dispatch_fn=fake_dispatch)
         assert result.routed_to == "claude"
         assert "claude" in result.answer
         assert result.trust_score > 0.8
@@ -217,7 +217,7 @@ class TestRunAsk:
         # can call it directly; "compare" was the spec-v1.5.md proposed name.
         fake_hits = [_hit(prompt_id="p1", chairman_winner="claude")]
         monkeypatch.setattr(ask_module, "search_prompt_nodes", lambda q, top_k: fake_hits)
-        result = run_ask("complex question", dispatch_fn=lambda p, q: "answer", use_cortex=False)
+        result = run_ask("complex question", dispatch_fn=lambda p, q: "answer")
         assert result.escalate_hint == "run_council"
         assert result.trust_score < ESCALATE_HINT_THRESHOLD
 
@@ -227,7 +227,7 @@ class TestRunAsk:
         fake_hits = [_hit(prompt_id=f"p{i}", chairman_winner="claude") for i in range(5)]
         monkeypatch.setattr(ask_module, "search_prompt_nodes", lambda q, top_k: fake_hits)
         long_answer = "x" * 10000
-        result = run_ask("q", dispatch_fn=lambda p, q: long_answer, use_cortex=False)
+        result = run_ask("q", dispatch_fn=lambda p, q: long_answer)
         payload = result.to_dict()
         assert len(payload["answer"]) <= ASK_ANSWER_CHAR_BUDGET
         assert "truncated by Trinity" in payload["answer"]
@@ -235,14 +235,14 @@ class TestRunAsk:
     def test_short_answer_passes_through_unchanged(self, monkeypatch):
         fake_hits = [_hit(prompt_id=f"p{i}", chairman_winner="claude") for i in range(5)]
         monkeypatch.setattr(ask_module, "search_prompt_nodes", lambda q, top_k: fake_hits)
-        result = run_ask("q", dispatch_fn=lambda p, q: "short and clear", use_cortex=False)
+        result = run_ask("q", dispatch_fn=lambda p, q: "short and clear")
         payload = result.to_dict()
         assert payload["answer"] == "short and clear"
 
     def test_to_dict_is_compact(self, monkeypatch):
         fake_hits = [_hit(prompt_id="p1", chairman_winner="codex") for _ in range(5)]
         monkeypatch.setattr(ask_module, "search_prompt_nodes", lambda q, top_k: fake_hits)
-        result = run_ask("q", dispatch_fn=lambda p, q: "a", use_cortex=False)
+        result = run_ask("q", dispatch_fn=lambda p, q: "a")
         payload = result.to_dict()
         # Token-economy: only the keys Claude needs.
         assert set(payload.keys()).issubset(
@@ -273,7 +273,7 @@ def _pick(winner, *, count=4, margin=0.5, evidence=None):
 
 class TestLensBasinRouting:
     """POST-COLLAPSE (#298): ask routes via the lens basins, not the deleted
-    cortex centroid/trust engine. `_try_cortex_route` places the query into a
+    cortex centroid/trust engine. The removed router placed the query into a
     lens basin (topics.json's live centroids via `place_query`) and routes on
     that basin's chairman-winner tally from picks.json. These pin the wired
     ask-side path; the pure tally + placement gates live in test_lens_routing.py.
@@ -290,29 +290,6 @@ class TestLensBasinRouting:
             picks,
         )
 
-    def test_routes_to_basin_winner(self, monkeypatch, tmp_path):
-        """A query that places into b00 routes to that basin's tallied winner,
-        overriding the kNN hits, and the reason names the lens basin."""
-        from trinity_local import ask as ask_module, embeddings
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        self._seed(tmp_path, {"b00": _pick("codex", evidence=["c1", "c2"])})
-        # Query embeds onto b00's centroid → place_query returns "b00".
-        monkeypatch.setattr(embeddings, "embed", lambda text, **kw: self.B00)
-        # treat the injected embed stub as the real embedder (force past the
-        # no-[mlx] abstain gate in _try_cortex_route — this tests routing geometry).
-        monkeypatch.setattr(embeddings, "mlx_actually_loaded", lambda: True, raising=False)
-        # kNN would say claude — verify the lens route OVERRIDES it.
-        knn_hits = [_hit(prompt_id=f"p{i}", chairman_winner="claude") for i in range(5)]
-        monkeypatch.setattr(ask_module, "search_prompt_nodes", lambda q, top_k: knn_hits)
-
-        decision = ask_module.decide_route("design the api surface")
-        assert decision.routed_to == "codex"
-        assert "lens basin b00" in decision.reason
-        assert "codex" in decision.reason
-        # The margin doubles as the routing trust score.
-        assert decision.trust_score == 0.5
-        # Evidence prompt ids flow through from the tally.
-        assert decision.evidence_prompt_ids[:2] == ["c1", "c2"]
 
     def test_abstains_to_knn_without_real_embeddings(self, monkeypatch, tmp_path):
         """The load-bearing abstain gate on the CORE routing action: the SAME query
@@ -347,7 +324,6 @@ class TestLensBasinRouting:
         self._seed(tmp_path, {"b00": _pick("codex", count=MIN_COUNT - 1)})
         monkeypatch.setattr(embeddings, "embed", lambda text, **kw: self.B00)
         # treat the injected embed stub as the real embedder (force past the
-        # no-[mlx] abstain gate in _try_cortex_route — this tests routing geometry).
         monkeypatch.setattr(embeddings, "mlx_actually_loaded", lambda: True, raising=False)
         knn_hits = [_hit(prompt_id=f"p{i}", chairman_winner="claude") for i in range(5)]
         monkeypatch.setattr(ask_module, "search_prompt_nodes", lambda q, top_k: knn_hits)
@@ -369,7 +345,6 @@ class TestLensBasinRouting:
         self._seed(tmp_path, {"b00": _pick("codex", count=6, margin=WINNER_MARGIN_FLOOR - 0.01)})
         monkeypatch.setattr(embeddings, "embed", lambda text, **kw: self.B00)
         # treat the injected embed stub as the real embedder (force past the
-        # no-[mlx] abstain gate in _try_cortex_route — this tests routing geometry).
         monkeypatch.setattr(embeddings, "mlx_actually_loaded", lambda: True, raising=False)
         knn_hits = [_hit(prompt_id=f"p{i}", chairman_winner="claude") for i in range(5)]
         monkeypatch.setattr(ask_module, "search_prompt_nodes", lambda q, top_k: knn_hits)
@@ -378,23 +353,6 @@ class TestLensBasinRouting:
         assert decision.routed_to == "claude"  # kNN, not the coin-flip basin
         assert "lens basin" not in decision.reason
 
-    def test_decisive_basin_at_winner_margin_floor_routes(self, monkeypatch, tmp_path):
-        """The boundary case: a basin exactly AT the winner-margin floor is
-        decisive enough to route (the gate is `< floor`, not `<= floor`)."""
-        from trinity_local import ask as ask_module, embeddings
-        from trinity_local.lens_routing import WINNER_MARGIN_FLOOR
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        self._seed(tmp_path, {"b00": _pick("codex", count=6, margin=WINNER_MARGIN_FLOOR)})
-        monkeypatch.setattr(embeddings, "embed", lambda text, **kw: self.B00)
-        # treat the injected embed stub as the real embedder (force past the
-        # no-[mlx] abstain gate in _try_cortex_route — this tests routing geometry).
-        monkeypatch.setattr(embeddings, "mlx_actually_loaded", lambda: True, raising=False)
-        knn_hits = [_hit(prompt_id=f"p{i}", chairman_winner="claude") for i in range(5)]
-        monkeypatch.setattr(ask_module, "search_prompt_nodes", lambda q, top_k: knn_hits)
-
-        decision = ask_module.decide_route("design the api surface")
-        assert decision.routed_to == "codex"
-        assert "lens basin b00" in decision.reason
 
     def test_winner_margin_floor_is_preregistered(self):
         """Pre-registered floor (green-gate discipline #35): pin the value so a
@@ -404,12 +362,12 @@ class TestLensBasinRouting:
 
     def test_winner_margin_floor_fallback_literals_match_the_source(self):
         """DUPLICATED-CONSTANT-DRIFT guard: every surface that demotes a near-tie
-        basin (`ask` routing, MCP `get_picks`, the launchpad routing cheat-sheet,
-        the memory-viewer picks/topology badges) reads `WINNER_MARGIN_FLOOR` from
-        `lens_routing` — but THREE of them wrap the import in
-        `try: … except Exception: <literal 0.15>` as an import-failure fallback
-        (mcp_server._winner_margin_floor, memory_viewer.render_memory_viewer_html,
-        launchpad_data._load_cortex_rules). Those `except`-branch literals are a
+        basin reads `WINNER_MARGIN_FLOOR` from `lens_routing` — but some wrap the
+        import in `try: … except Exception: <literal 0.15>` as an import-failure
+        fallback. TWO such sites remain (mcp_server._winner_margin_floor,
+        memory_viewer.render_memory_viewer_html); the third,
+        launchpad_data._load_cortex_rules, went with the routing cheat-sheet card
+        on 2026-08-11. Those `except`-branch literals are a
         SECOND copy of the floor: bump `lens_routing.WINNER_MARGIN_FLOOR` to a new
         value and `test_winner_margin_floor_is_preregistered` above forces a
         deliberate update of the source pin — but the three fallback copies stay
@@ -438,9 +396,6 @@ class TestLensBasinRouting:
             "memory_viewer.py": re.compile(
                 r"except\s+Exception:\s*\n\s*winner_margin_floor\s*=\s*([0-9]*\.[0-9]+)"
             ),
-            "launchpad_data.py": re.compile(
-                r"except\s+Exception:\s*\n\s*WINNER_MARGIN_FLOOR\s*=\s*([0-9]*\.[0-9]+)"
-            ),
         }
         seen: dict[str, float] = {}
         for fname, pat in sites.items():
@@ -467,24 +422,6 @@ class TestLensBasinRouting:
             f"the three margin-floor fallback literals disagree with each other: {seen}"
         )
 
-    def test_null_evidence_does_not_crash_route(self, monkeypatch, tmp_path):
-        """A pick entry with an explicit `evidence: null` (not just absent) must
-        route cleanly, not crash — `list(None)` raises TypeError, so the read is
-        `rule.get("evidence") or []`, not `rule.get("evidence", [])`."""
-        from trinity_local import ask as ask_module, embeddings
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        self._seed(tmp_path, {"b00": {"winner": "codex", "count": 4, "margin": 0.5,
-                                      "n_episodes": 4, "evidence": None}})
-        monkeypatch.setattr(embeddings, "embed", lambda text, **kw: self.B00)
-        # treat the injected embed stub as the real embedder (force past the
-        # no-[mlx] abstain gate in _try_cortex_route — this tests routing geometry).
-        monkeypatch.setattr(embeddings, "mlx_actually_loaded", lambda: True, raising=False)
-        knn_hits = [_hit(prompt_id=f"p{i}", chairman_winner="claude") for i in range(5)]
-        monkeypatch.setattr(ask_module, "search_prompt_nodes", lambda q, top_k: knn_hits)
-
-        decision = ask_module.decide_route("design the api surface")
-        assert decision.routed_to == "codex"
-        assert decision.evidence_prompt_ids == []
 
     def test_out_of_domain_query_falls_through(self, monkeypatch, tmp_path):
         """A query that embeds to the zero vector clears no basin's match floor →
@@ -494,7 +431,6 @@ class TestLensBasinRouting:
         self._seed(tmp_path, {"b00": _pick("codex")})
         monkeypatch.setattr(embeddings, "embed", lambda text, **kw: [0.0, 0.0, 0.0])
         # treat the injected embed stub as the real embedder (force past the
-        # no-[mlx] abstain gate in _try_cortex_route — this tests routing geometry).
         monkeypatch.setattr(embeddings, "mlx_actually_loaded", lambda: True, raising=False)
         knn_hits = [_hit(prompt_id=f"p{i}", chairman_winner="claude") for i in range(5)]
         monkeypatch.setattr(ask_module, "search_prompt_nodes", lambda q, top_k: knn_hits)
@@ -511,7 +447,6 @@ class TestLensBasinRouting:
         self._seed(tmp_path, {"b00": _pick("codex")})
         monkeypatch.setattr(embeddings, "embed", lambda text, **kw: self.B00)
         # treat the injected embed stub as the real embedder (force past the
-        # no-[mlx] abstain gate in _try_cortex_route — this tests routing geometry).
         monkeypatch.setattr(embeddings, "mlx_actually_loaded", lambda: True, raising=False)
         knn_hits = [_hit(prompt_id=f"p{i}", chairman_winner="claude") for i in range(5)]
         monkeypatch.setattr(ask_module, "search_prompt_nodes", lambda q, top_k: knn_hits)
@@ -530,7 +465,6 @@ class TestLensBasinRouting:
         self._seed(tmp_path, {"b00": {"count": 5, "margin": 0.8}})
         monkeypatch.setattr(embeddings, "embed", lambda text, **kw: self.B00)
         # treat the injected embed stub as the real embedder (force past the
-        # no-[mlx] abstain gate in _try_cortex_route — this tests routing geometry).
         monkeypatch.setattr(embeddings, "mlx_actually_loaded", lambda: True, raising=False)
         knn_hits = [_hit(prompt_id=f"p{i}", chairman_winner="claude") for i in range(5)]
         monkeypatch.setattr(ask_module, "search_prompt_nodes", lambda q, top_k: knn_hits)
@@ -551,24 +485,6 @@ class TestLensBasinRouting:
         assert decision.routed_to == "codex"
         assert "lens basin" not in decision.reason
 
-    def test_use_cortex_false_skips_basin_routing(self, monkeypatch, tmp_path):
-        """The A/B flag (name is historical) skips the lens-basin lookup even when
-        picks exist — pure kNN."""
-        from trinity_local import ask as ask_module, embeddings
-
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        self._seed(tmp_path, {"b00": _pick("codex")})
-        monkeypatch.setattr(embeddings, "embed", lambda text, **kw: self.B00)
-        # treat the injected embed stub as the real embedder (force past the
-        # no-[mlx] abstain gate in _try_cortex_route — this tests routing geometry).
-        monkeypatch.setattr(embeddings, "mlx_actually_loaded", lambda: True, raising=False)
-        knn_hits = [_hit(prompt_id=f"p{i}", chairman_winner="claude") for i in range(5)]
-        monkeypatch.setattr(ask_module, "search_prompt_nodes", lambda q, top_k: knn_hits)
-
-        with_basin = ask_module.decide_route("design the api", use_cortex=True)
-        assert with_basin.routed_to == "codex"
-        without_basin = ask_module.decide_route("design the api", use_cortex=False)
-        assert without_basin.routed_to == "claude"
 
     def test_embedding_failure_falls_through_safely(self, monkeypatch, tmp_path):
         """If embed() throws (broken model file), placement returns None and ask
@@ -612,7 +528,7 @@ class TestRateLimitAutoRetry:
                 raise RuntimeError("HTTP 429 Too Many Requests")
             return f"[{provider}] success"
 
-        result = run_ask("q", dispatch_fn=dispatch, use_cortex=False)
+        result = run_ask("q", dispatch_fn=dispatch)
         # Claude was tried first, failed with rate-limit, codex was tried next.
         assert calls == ["claude", "codex"]
         # Final route reflects the actually-successful provider.
@@ -632,7 +548,7 @@ class TestRateLimitAutoRetry:
             raise RuntimeError(f"{provider}: rate limit exceeded")
 
         with pytest.raises(RuntimeError, match="All providers failed"):
-            run_ask("q", dispatch_fn=dispatch, use_cortex=False)
+            run_ask("q", dispatch_fn=dispatch)
 
     def test_auth_failure_on_primary_falls_to_runner_up(self, monkeypatch):
         """Auth failure on one provider doesn't tell us anything about
@@ -648,7 +564,7 @@ class TestRateLimitAutoRetry:
                 raise RuntimeError("401 Unauthorized")
             return f"[{provider}] ok"
 
-        result = run_ask("q", dispatch_fn=dispatch, use_cortex=False)
+        result = run_ask("q", dispatch_fn=dispatch)
         assert result.routed_to == "codex"
 
     def test_unknown_failure_does_not_retry(self, monkeypatch):
@@ -664,7 +580,7 @@ class TestRateLimitAutoRetry:
             raise RuntimeError("some weird unclassifiable CLI panic")
 
         with pytest.raises(RuntimeError):
-            run_ask("q", dispatch_fn=dispatch, use_cortex=False)
+            run_ask("q", dispatch_fn=dispatch)
         # Should NOT retry with another provider — only one attempt.
         assert len(calls) == 1
 
@@ -681,7 +597,7 @@ class TestRateLimitAutoRetry:
             raise RuntimeError("Model not found: deprecated-model-name")
 
         with pytest.raises(RuntimeError):
-            run_ask("q", dispatch_fn=dispatch, use_cortex=False)
+            run_ask("q", dispatch_fn=dispatch)
         assert len(calls) == 1  # no retry
 
     def test_max_retries_zero_disables_fallback(self, monkeypatch):
@@ -699,7 +615,7 @@ class TestRateLimitAutoRetry:
             raise RuntimeError("HTTP 429 rate limit")
 
         with pytest.raises(RuntimeError):
-            run_ask("q", dispatch_fn=dispatch, max_retries=0, use_cortex=False)
+            run_ask("q", dispatch_fn=dispatch, max_retries=0)
         assert calls == ["claude"]  # no retry attempted
 
 
@@ -728,7 +644,7 @@ class TestRateLimitSavesMetric:
                 raise RuntimeError("HTTP 429 Too Many Requests")
             return f"[{provider}] success"
 
-        run_ask("design a thing", dispatch_fn=dispatch, use_cortex=False)
+        run_ask("design a thing", dispatch_fn=dispatch)
 
         log_path = tmp_path / "analytics" / "dispatch_outcomes.jsonl"
         assert log_path.exists()
@@ -749,7 +665,7 @@ class TestRateLimitSavesMetric:
         hits = [_hit(prompt_id=f"p{i}", chairman_winner="claude") for i in range(5)]
         monkeypatch.setattr(ask_module, "search_prompt_nodes", lambda q, top_k: hits)
 
-        run_ask("q", dispatch_fn=lambda p, q: "ok", use_cortex=False)
+        run_ask("q", dispatch_fn=lambda p, q: "ok")
 
         log_path = tmp_path / "analytics" / "dispatch_outcomes.jsonl"
         entries = [json.loads(line) for line in log_path.read_text().splitlines() if line.strip()]
@@ -787,153 +703,10 @@ class TestRateLimitSavesMetric:
                 pass
         monkeypatch.setattr(_ask, "_log_dispatch_outcome", safe_wrapper)
 
-        result = run_ask("q", dispatch_fn=lambda p, q: "ok", use_cortex=False)
+        result = run_ask("q", dispatch_fn=lambda p, q: "ok")
         assert result.answer == "ok"
 
 
-class TestMcpGetCortexRules:
-    """The agent-facing introspection tool (`get_picks`). Post-collapse (#298)
-    each rule is the flat lens-basin tally `{winner, count, margin, n_episodes,
-    evidence}`; `min_trust` filters on `margin` (the new confidence proxy).
-    """
-
-    def test_empty_when_no_consolidation_yet(self, tmp_path, monkeypatch):
-        import asyncio
-        import json as _json
-        from trinity_local import mcp_server
-
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        result = asyncio.run(mcp_server._get_picks({}))
-        payload = _json.loads(result[0]["text"])
-        assert payload["rules"] == {}
-        assert "consolidate" in payload["note"]
-
-    def test_returns_all_rules_when_no_filter(self, tmp_path, monkeypatch):
-        import asyncio
-        import json as _json
-        from trinity_local import mcp_server, cortex
-
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        cortex.save_routing_patterns({
-            "b00": _pick("codex", count=30, margin=0.82),
-            "b01": _pick("claude", count=5, margin=0.40),
-        })
-
-        result = asyncio.run(mcp_server._get_picks({}))
-        payload = _json.loads(result[0]["text"])
-        assert set(payload["rules"].keys()) == {"b00", "b01"}
-        assert payload["total_basins"] == 2
-        # Each rule carries the new schema fields, NOT trust_score / routing_rule.
-        rule = payload["rules"]["b00"]
-        assert rule["winner"] == "codex"
-        assert rule["count"] == 30
-        assert rule["margin"] == 0.82
-        assert "trust_score" not in rule and "routing_rule" not in rule
-
-    def test_routes_flag_uses_the_shared_pick_routes_gate_not_margin_only(self, tmp_path, monkeypatch):
-        """Surface-binding guard (2026-07-17, workflow finding): the get_picks
-        TOOL open-coded `routes = margin >= floor`, diverging from the shared
-        lens_routing.pick_routes gate that ask() + the picks RESOURCE use, which
-        also requires effective_n >= MIN_EFFECTIVE_N. On a churn-dead basin
-        (margin over the floor, thin decayed evidence) the tool answered
-        routes:True while ask() abstained — measured 8 live basins. MUTATION:
-        revert to `margin >= winner_margin_floor` and the churn-dead assertion
-        reds (tool vs gate divergence)."""
-        import asyncio
-        import json as _json
-        from trinity_local import mcp_server, cortex
-        from trinity_local.lens_routing import pick_routes
-
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        decisive = {"winner": "claude", "count": 12, "margin": 0.40,
-                    "effective_n": 10.0, "n_episodes": 12, "evidence": []}
-        churn_dead = {"winner": "codex", "count": 9, "margin": 0.30,
-                      "effective_n": 1.5, "n_episodes": 9, "evidence": []}
-        cortex.save_routing_patterns({"b_ok": decisive, "b_churn": churn_dead})
-
-        payload = _json.loads(asyncio.run(mcp_server._get_picks({}))[0]["text"])
-        rules = payload["rules"]
-        # The tool must agree with the gate ask() actually routes on.
-        assert rules["b_ok"]["routes"] is True
-        assert rules["b_ok"]["routes"] == pick_routes(decisive)
-        assert rules["b_churn"]["routes"] is False, (
-            "churn-dead basin (margin 0.30 over floor but effective_n 1.5 < 3) "
-            "must read routes:False — the tool used margin-only and overclaimed"
-        )
-        assert rules["b_churn"]["routes"] == pick_routes(churn_dead)
-        # `routed` reflects the real gate (1), not the margin-only count (2).
-        assert payload["routed"] == 1
-
-    def test_skips_legacy_and_malformed_entries(self, tmp_path, monkeypatch):
-        """A legacy RoutingPattern dict (no `winner`) or junk entry must be
-        skipped — only live lens-basin picks surface to the agent."""
-        import asyncio
-        import json as _json
-        from trinity_local import mcp_server
-        from trinity_local.state_paths import cortex_routing_patterns_path
-
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        cortex_routing_patterns_path().write_text(
-            _json.dumps({
-                "b00": _pick("codex"),
-                "legacy": {  # old RoutingPattern shape — no top-level winner
-                    "routing_rule": {"primary": "claude"},
-                    "trust_score": {"value": 0.8},
-                    "basin_centroid": [0.01] * 768,
-                },
-            }),
-            encoding="utf-8",
-        )
-        result = asyncio.run(mcp_server._get_picks({}))
-        payload = _json.loads(result[0]["text"])
-        assert set(payload["rules"].keys()) == {"b00"}
-        # The legacy entry's 768-float centroid never reaches the agent.
-        assert "basin_centroid" not in _json.dumps(payload["rules"])
-
-    def test_filters_by_basin_id(self, tmp_path, monkeypatch):
-        import asyncio
-        import json as _json
-        from trinity_local import mcp_server, cortex
-
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        cortex.save_routing_patterns({"b00": _pick("codex")})
-
-        result = asyncio.run(mcp_server._get_picks({"basin_id": "b00"}))
-        payload = _json.loads(result[0]["text"])
-        assert "b00" in payload["rules"]
-        # Filter to non-existent basin returns no matches but no error.
-        result = asyncio.run(mcp_server._get_picks({"basin_id": "nonexistent"}))
-        payload = _json.loads(result[0]["text"])
-        assert payload["rules"] == {}
-        assert payload["returned"] == 0
-
-    def test_filters_by_min_trust(self, tmp_path, monkeypatch):
-        """`min_trust` filters on `margin` (the new confidence proxy)."""
-        import asyncio
-        import json as _json
-        from trinity_local import mcp_server, cortex
-
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        cortex.save_routing_patterns({
-            "high": _pick("codex", count=30, margin=0.85),
-            "low": _pick("claude", count=3, margin=0.30),
-        })
-
-        result = asyncio.run(mcp_server._get_picks({"min_trust": 0.5}))
-        payload = _json.loads(result[0]["text"])
-        # Only the wide-margin pick clears the filter.
-        assert set(payload["rules"].keys()) == {"high"}
-        assert payload["returned"] == 1
-        assert payload["total_basins"] == 2  # but both exist
-
-    def test_rejects_bad_input(self):
-        import asyncio
-        from trinity_local import mcp_server
-
-        bad = asyncio.run(mcp_server._get_picks({"basin_id": 123}))
-        assert hasattr(bad[0], "code")  # ErrorData
-        bad = asyncio.run(mcp_server._get_picks({"min_trust": "not-a-number"}))
-        assert hasattr(bad[0], "code")
 
 
 class TestMcpProviderPool:
@@ -1020,10 +793,9 @@ class TestMcpAskHandler:
             lambda provider, prompt: f"[stub-{provider}] {prompt}",
         )
         # Isolate from the contributor's real cortex picks (the MCP _ask
-        # handler doesn't expose use_cortex). Without this, a real
+        # handler has no routing knob). Without this, a real
         # ~/.trinity/scoreboard/picks.json entry whose centroid matches
         # the test query overrides the fake_hits setup.
-        monkeypatch.setattr(ask_module, "_try_cortex_route", lambda q, p: None)
         # Stub mcp_server's preamble work to skip:
         # - _trigger_incremental_ingest: 1s ingest_recent() walk
         # - _full_provider_pool: subprocess detection of ollama/mlx models
@@ -1061,7 +833,6 @@ class TestMcpAskHandler:
         monkeypatch.setattr(mcp_server, "_trigger_incremental_ingest", lambda: None)
         monkeypatch.setattr(mcp_server, "_full_provider_pool", lambda: ["claude", "codex", "antigravity"])
         # Cortex routing patch — isolate from real picks.json.
-        monkeypatch.setattr(ask_module, "_try_cortex_route", lambda q, p: None)
 
         def broken_dispatch(provider, prompt):
             raise RuntimeError("rate limit exceeded")
@@ -1111,7 +882,6 @@ class TestLensPlacementMarginGate:
         q = [0.71, 0.70] + [0.0] * 254
         monkeypatch.setattr(embeddings, "embed", lambda text, **kw: q)
         # treat the injected embed stub as the real embedder (force past the
-        # no-[mlx] abstain gate in _try_cortex_route — this tests routing geometry).
         monkeypatch.setattr(embeddings, "mlx_actually_loaded", lambda: True, raising=False)
         knn_hits = [_hit(prompt_id=f"p{i}", chairman_winner="antigravity") for i in range(5)]
         monkeypatch.setattr(ask_module, "search_prompt_nodes", lambda q, top_k: knn_hits)
@@ -1122,21 +892,6 @@ class TestLensPlacementMarginGate:
         )
         assert decision.routed_to == "antigravity"  # the kNN winner
 
-    def test_well_separated_match_routes(self, monkeypatch, tmp_path):
-        """A query clearly closest to ONE basin (margin ≥ 0.02) routes via that
-        basin's winner."""
-        from trinity_local import ask as ask_module, embeddings
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        self._two_basins(monkeypatch, tmp_path)
-        # cos(q,A)≈0.894, cos(q,B)≈0.447 → margin≈0.447 ≥ 0.02.
-        q = [1.0, 0.5] + [0.0] * 254
-        monkeypatch.setattr(embeddings, "embed", lambda text, **kw: q)
-        # treat the injected embed stub as the real embedder (force past the
-        # no-[mlx] abstain gate in _try_cortex_route — this tests routing geometry).
-        monkeypatch.setattr(embeddings, "mlx_actually_loaded", lambda: True, raising=False)
-        decision = ask_module.decide_route("clearly basin b00", available_providers=["codex", "claude"])
-        assert decision.routed_to == "codex"
-        assert "lens basin b00" in decision.reason
 
     def test_margin_floor_is_preregistered(self):
         """The placement margin floor is pre-registered/provisional at 0.02 (the

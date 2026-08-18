@@ -38,6 +38,8 @@ Slow + browser marked; skips without Playwright/chromium; runs in CI `browser`.
 """
 from __future__ import annotations
 
+import trinity_local.council_analytics as _ca
+
 import functools
 import http.server
 import threading
@@ -45,7 +47,6 @@ from pathlib import Path
 
 import pytest
 
-import trinity_local.personal_routing as pr
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -93,12 +94,12 @@ def test_value_proof_card_paints_correct_derived_numbers(tmp_path, monkeypatch):
 
     # Control exactly what the rendered card sees — the launchpad builder calls
     # council_value_proof() → _scan_outcomes() in-process.
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (_records(), True))
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (_records(), True))
 
     # Sanity: the data layer must agree with the arithmetic this test pins, or the
     # browser assertions would chase a moving target (a value-proof refactor that
     # changes the denominator would fail HERE, loudly, not as a silent DOM drift).
-    vp = pr.council_value_proof()
+    vp = _ca.council_value_proof()
     assert vp["ready"] is True, f"the known 42%/5-flip ledger must clear the value floor: {vp}"
     assert vp["comparable"] == 12 and vp["changed_pct"] == 42, (
         f"value-proof data-layer drifted from the pinned fixture math: {vp}"

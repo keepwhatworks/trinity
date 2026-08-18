@@ -355,12 +355,26 @@ def _check_prompts_seeded() -> CheckResult:
             detail="no transcripts seeded yet (you can still run councils)",
             fix="trinity-local import-export <path-to-export>   # ChatGPT / Claude.ai / Gemini Takeout ingest",
         )
-    # Approximate count from line count
-    line_count = sum(1 for _ in nodes.open())
+    # UNIQUE nodes, not lines — the same correction its sibling
+    # _check_embedding_coverage already carries 25 lines below, and for the same
+    # reason: the store is append-only latest-wins-by-id, so a node written
+    # cheaply at ingest and re-written by the embed pass occupies two lines.
+    # Measured on the live corpus 2026-08-07: 47,536 lines against 36,788 unique
+    # nodes, so this told the user their corpus was 29.2% larger than it is.
+    # Counting lines is the recurring defect in this file; the shared counter is
+    # the fix, not a second bespoke scan.
+    try:
+        from .memory.store import count_prompt_nodes
+
+        total, _empty = count_prompt_nodes()
+    except OSError as exc:
+        return CheckResult(
+            name="prompts_seeded", ok=True,
+            detail=f"could not read corpus: {exc.__class__.__name__}")
     return CheckResult(
         name="prompts_seeded",
         ok=True,
-        detail=f"{line_count} prompt nodes indexed at ~/.trinity/prompts/",
+        detail=f"{total} prompt nodes indexed at ~/.trinity/prompts/",
     )
 
 
@@ -531,223 +545,8 @@ def _check_vendor_published() -> CheckResult:
     )
 
 
-# Cortex-staleness primitives moved to cortex.py (v1.7.299) so the CLI doctor and
-# the launchpad cockpit compute "councils newer than the last consolidate" from ONE
-# implementation and can't drift. Re-exported here under the old private names so
-# existing references + tests keep working.
-from .cortex import (  # noqa: E402
-    count_councils_newer_than as _count_councils_newer_than,
-    freshest_consolidated_at as _freshest_consolidated_at,
-)
 
 
-def _check_cortex_freshness() -> CheckResult:
-    """Soft check: are cortex picks current relative to recent councils?
-
-    `picks.json` carries `consolidated_at` per task_type. If any council
-    outcome on disk is newer than the freshest `consolidated_at`, the
-    cortex layer's routing rules don't yet reflect the new training
-    data — `ask()` will route based on stale signal until the user
-    re-runs `consolidate`. Tick #96 noticed this concretely: real
-    corpus had 19 outcomes but picks.json was based on 2.
-
-    Soft check: ok stays True (stale picks aren't broken, just dated).
-    Detail surfaces the count so the user can decide whether to
-    re-consolidate. Pre-rated user (no chairman verdicts yet) gets
-    a different message than rated-but-stale.
-    """
-    from .state_paths import picks_path
-    picks = picks_path()
-    if not picks.exists():
-        return CheckResult(
-            name="cortex_freshness",
-            ok=True,
-            detail="picks.json not built yet — run `trinity-local consolidate` once you have ≥10 rated councils",
-        )
-    try:
-        picks_data = json.loads(picks.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return CheckResult(
-            name="cortex_freshness",
-            ok=True,
-            detail="picks.json unreadable — re-run `trinity-local consolidate`",
-        )
-    freshest_picks = _freshest_consolidated_at(picks_data)
-    if freshest_picks is None:
-        return CheckResult(
-            name="cortex_freshness",
-            ok=True,
-            detail="picks.json has no task_types yet — re-run `trinity-local consolidate`",
-        )
-    newer, total = _count_councils_newer_than(freshest_picks)
-    if newer == 0:
-        return CheckResult(
-            name="cortex_freshness",
-            ok=True,
-            detail=f"picks.json current ({total} outcomes, all consolidated)",
-        )
-    return CheckResult(
-        name="cortex_freshness",
-        ok=True,  # soft — not a failure, just outdated
-        detail=(
-            f"{newer} of {total} councils are newer than the last consolidate "
-            f"— ask routes on stale rules"
-        ),
-        # `fix` is load-bearing here, not decoration: status' soft-warning loop
-        # (status.py: `if c.ok and c.fix`) keys on `fix`, so WITHOUT it this
-        # stale-cortex result counts toward "all green" and its detail is never
-        # printed. Live 2026-05-31: a 268-of-559-stale cortex was invisible in
-        # `status` (the install-recommended verify command) while the launchpad
-        # surfaced it prominently. Setting fix surfaces it in both, consistently.
-        fix="trinity-local consolidate",
-    )
-
-
-def _check_cortex_basin_density() -> CheckResult:
-    """Soft check: are the cortex basins DENSE enough to route confidently?
-
-    The margin gate (now `lens_routing.MARGIN_FLOOR`, applied by `place_query`)
-    routes only when a query is clearly closest to ONE basin (top1−top2 ≥ floor),
-    abstaining on near-ties. Its
-    strength depends on basin density: sparse basins (few episodes) give
-    under-determined centroids, so real queries align WEAKLY with all of them
-    (~0.38 sim to each) and the margins compress below the gate — routing
-    correctly abstains, but on MORE queries than a dense corpus would. Measured
-    2026-06-02 on the founder's corpus: 9 routing basins, median n_episodes=3,
-    inter-centroid cosine ~0.43 (SEPARATED, not overlapping) — the limit is
-    sparsity, not overlap. The fix is more rated councils per basin (densify),
-    NOT a lower margin floor. This surfaces the lever so a user whose routing
-    "feels conservative" has the reason. Soft (ok=True + fix); best-effort.
-    """
-    from .state_paths import picks_path
-
-    picks = picks_path()
-    if not picks.exists():
-        return CheckResult(name="cortex_basin_density", ok=True,
-                           detail="no cortex basins yet (picks.json not built)")
-    try:
-        data = json.loads(picks.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return CheckResult(name="cortex_basin_density", ok=True, detail="picks.json unreadable")
-    if not isinstance(data, dict):
-        return CheckResult(name="cortex_basin_density", ok=True, detail="picks.json wrong shape")
-    # POST-COLLAPSE (#298): a pick is routing-capable when it carries a `winner`
-    # tally with an episode count — placement reads the lens centroids
-    # (topics.json), so picks no longer carry their own centroid. A legacy/
-    # malformed entry (missing `winner`) is skipped.
-    # `isinstance(..., str)` shape-guards the STRING field: picks.json is a hand-
-    # editable state file, so a corrupt `winner` (a NUMBER from a half-migrated /
-    # mangled entry) would hit `.strip()` on an int and CRASH this status check
-    # (the launchpad-render sibling fixed alongside, Iter 257). Treat non-string as
-    # absent → the basin is skipped, the check still runs.
-    eps = [
-        int(v["n_episodes"])
-        for v in data.values()
-        if isinstance(v, dict) and isinstance(v.get("winner"), str) and v["winner"].strip()
-        and isinstance(v.get("n_episodes"), int)
-    ]
-    if not eps:
-        return CheckResult(name="cortex_basin_density", ok=True,
-                           detail="no routing-capable basins (none carry a winner tally)")
-    import statistics
-
-    median_eps = statistics.median(eps)
-    # Routing-liveness disclosure (architecture council 2026-07-04, item 5 —
-    # measured 6/48 basins live on current-model evidence): report how many
-    # basins actually ROUTE under the shared gate (pick_routes: margin AND
-    # post-churn effective_n) and how many carry >=3 FRESH-model episodes,
-    # so `picks → ask` reads as what it is — dormant-until-densified (the
-    # trajectory-lens honesty) — instead of a silently-live personalization
-    # path. Best-effort: a legacy picks.json without churn fields still
-    # renders density alone.
-    liveness = ""
-    try:
-        from .lens_routing import load_topics_basins, pick_routes
-
-        basins = load_topics_basins() or []
-        n_basins = len(basins) or None
-        live_ids = {str(b.get("id")) for b in basins if b.get("id")}
-        # A rule keyed to a basin that no longer exists can NEVER route:
-        # `place_query` only ever returns a live basin id. Counting it as
-        # routing overstates liveness — measured 2026-07-31, 1 of the 4
-        # gate-passing rules on the founder's corpus was unreachable. Only
-        # exclude when we actually have a topology to check against; an
-        # unreadable topics.json must not make every rule look dead.
-        routed = sum(
-            1 for bid, v in data.items()
-            if isinstance(v, dict) and pick_routes(v)
-            and (not live_ids or str(bid) in live_ids)
-        )
-        orphans = (
-            sum(1 for bid in data if str(bid) not in live_ids) if live_ids else 0
-        )
-        fresh_live = sum(
-            1 for v in data.values()
-            if isinstance(v, dict) and isinstance(v.get("fresh_n"), int) and v["fresh_n"] >= 3
-        )
-        denom = f"/{n_basins}" if n_basins else ""
-        liveness = (
-            f" Liveness: {routed}{denom} basins route under the margin+effective_n gate; "
-            f"{fresh_live} have >=3 current-model episodes — routing activates as fresh "
-            "councils accumulate."
-        )
-        if orphans:
-            liveness += (
-                f" {orphans} rule(s) key basins that no longer exist (lens rebuilt "
-                "since the last consolidate) and are excluded from the routing "
-                "count — clear with `trinity-local consolidate --prune-orphans`."
-            )
-    except Exception:
-        liveness = ""
-    # Pre-registered: stable centroids want ~10+ episodes; below 8 = sparse enough
-    # that query alignment is weak and the margin gate abstains broadly.
-    DENSE_EPISODE_FLOOR = 8
-    if median_eps >= DENSE_EPISODE_FLOOR:
-        return CheckResult(
-            name="cortex_basin_density", ok=True,
-            detail=f"{len(eps)} routing basins, median n_episodes={median_eps:.0f} — dense enough to route confidently.{liveness}",
-        )
-    # Sparse — but WHY? Two causes with OPPOSITE fixes:
-    #   (a) STALE consolidation: councils exist on disk that aren't folded into any
-    #       basin yet → re-consolidate NOW (the corpus is rich, the picks are dated).
-    #   (b) genuinely small corpus: ~everything is already consolidated → density
-    #       only rises as MORE rated councils accumulate.
-    # Measured 2026-06-02 on the founder's corpus this is (a): median n=3 but 271 of
-    # 562 councils were un-consolidated — the basins held only ~36 of the 562. Emitting
-    # the (b) "run more / wait" remedy there is a wrong-fix green (a user reads "corpus
-    # too small" and does nothing, when one `consolidate` would densify ~15×). So we
-    # disambiguate from the same signal the freshness check uses.
-    freshest = _freshest_consolidated_at(data)
-    newer, _ = _count_councils_newer_than(freshest) if freshest else (0, 0)
-    if newer >= DENSE_EPISODE_FLOOR:
-        # (a) stale: re-consolidating would materially densify. This is the strong fix.
-        return CheckResult(
-            name="cortex_basin_density",
-            ok=True,
-            detail=(
-                f"{len(eps)} routing basins are SPARSE (median n_episodes={median_eps:.0f}, "
-                f"recommend ~{DENSE_EPISODE_FLOOR}+), but {newer} councils on disk aren't "
-                "consolidated into basins yet — the sparsity is a STALE consolidation, not a "
-                "small corpus. Re-consolidate to fold them in and densify; the margin gate "
-                "sharpens as density rises — NOT a lower margin floor."
-                + liveness
-            ),
-            fix="trinity-local consolidate",
-        )
-    # (b) genuinely small corpus.
-    return CheckResult(
-        name="cortex_basin_density",
-        ok=True,  # soft — routing still works, just precision-limited
-        detail=(
-            f"{len(eps)} routing basins are SPARSE (median n_episodes={median_eps:.0f}, "
-            f"recommend ~{DENSE_EPISODE_FLOOR}+). The margin gate abstains on near-ties "
-            "until centroids densify, so cortex routing fires on fewer queries than a "
-            "fuller corpus would — the fix is more rated councils per basin, NOT a lower "
-            "margin floor."
-            + liveness
-        ),
-        fix="trinity-local consolidate   # after more rated councils accumulate, to densify basins",
-    )
 
 
 def _check_lens_freshness() -> CheckResult:
@@ -1353,8 +1152,6 @@ def run_doctor() -> DoctorReport:
     report.checks.append(_check_embedding_coverage())
     report.checks.append(_check_lens_built())
     report.checks.append(_check_core_distilled())
-    report.checks.append(_check_cortex_freshness())
-    report.checks.append(_check_cortex_basin_density())
     report.checks.append(_check_lens_freshness())
     report.checks.append(_check_data_degeneracy())
     report.checks.append(_check_browser_capture())

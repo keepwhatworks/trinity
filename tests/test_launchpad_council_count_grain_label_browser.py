@@ -46,6 +46,8 @@ Slow + browser marked; skips without Playwright/chromium; runs in CI `browser`.
 """
 from __future__ import annotations
 
+import trinity_local.council_analytics as _ca
+
 import functools
 import http.server
 import threading
@@ -120,12 +122,12 @@ def test_home_value_proof_and_stats_council_counts_name_their_grain(tmp_path, mo
     from trinity_local.launchpad_page import render_launchpad_html
     from trinity_local.vendor import publish_vendor_files
 
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (_records(), True))
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (_records(), True))
     pr.invalidate_cache()
 
     # Source sanity — the two surfaces genuinely diverge on this seed, or the
     # browser assertion would chase a moving target.
-    vp = pr.council_value_proof()
+    vp = _ca.council_value_proof()
     assert vp.get("ready") and vp.get("comparable") == COMPARABLE, (
         f"seed must make the value-proof comparable == {COMPARABLE}: {vp}"
     )

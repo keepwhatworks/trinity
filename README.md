@@ -97,10 +97,10 @@ Here is the whole system, and it runs on your machine.
 1. **It reads your transcripts, across all three labs.** Your CLI sessions on disk (Claude Code, Codex CLI, Antigravity), the web chats the Chrome extension captures locally (claude.ai, chatgpt.com, gemini.google.com), and any exports you import. Nothing uploads.
 2. **It distills them into your lens.** The pattern in how you rephrase, push back, and decide, turned into a hierarchy of paired tensions and subject basins. It learns from your transcripts, never from how the councils turn out. So the lens stays a record of your judgment, not a mirror of the tool.
 3. **You run a council.** One prompt goes to Claude, ChatGPT, and Gemini in parallel. A chairman reads your lens and returns one verdict: what they agreed on, where they split, and which split matters to you. This works the moment you install.
-4. **Each verdict is scored into its topic.** The chairman's pick drops into the nearest subject basin, building a per-topic record of which model wins your kind of question.
-5. **The next question routes on that record.** A new prompt lands in its basin and goes to the model that has been winning there. Basins that are still a coin-flip get explored rather than forced. Thin ones fall back to a broader match until they earn a winner.
+4. **Each verdict lands in the disagreement ledger.** Every council records what the models agreed on, where they split, and which side the chairman took — a per-claim record on your own questions that no single lab can build, because none of them can see the others.
+5. **`trust` shows you the tally.** Which model's side your later work actually took, split by kind of question, with the sample sizes and caveats attached. It informs the next question you route by hand; it does not route for you. (An automatic per-basin router shipped here until 2026-08-11. We replayed it against its own fallback on 653 of our councils: 42.9% vs a pick-the-leader constant's 37.0%, indistinguishable from chance at that n — so it was removed rather than left implying a learning it couldn't demonstrate.)
 
-The council pays off from minute one. The lens and the routing sharpen with use. The same lens also scores any new model against your past corrections (`eval-run`) and ranks options on demand (the `choose` tool), each with its own accuracy receipt attached.
+The council pays off from minute one. The lens and the ledger sharpen with use. The same lens also scores any new model against your past corrections (`eval-run`) and ranks options on demand (the `choose` tool), each with its own accuracy receipt attached.
 
 > **Anthropic can't recommend ChatGPT. OpenAI can't recommend Claude. Google can't recommend either. The competitive constraint is structural, not technical.** The labs that built the models you trust are commercially blocked from helping you use a competitor. So the cross-provider memory layer has to come from outside the labs. That's what Trinity is.
 
@@ -136,7 +136,7 @@ Walk the chain to the source.
 
 **The folder is the API.** `~/.trinity/` is a CC0 JSON-Schema-validated
 on-disk contract: `memories/lens.md`, `memories/topics.json`,
-`memories/vocabulary.md`, `core.md`, `scoreboard/picks.json`. Any tool
+`memories/vocabulary.md`, `core.md`, `scoreboard/routing.json`. Any tool
 (Aider / Cline / Continue / your own) can read or write through that
 folder without going through Trinity's process, so your taste capture
 outlives Trinity itself. Schema in
@@ -180,7 +180,7 @@ That's the whole point. Every council runs all three in parallel from one prompt
 `trinity-local eval-run --target <provider>` scores it against the prompts you've already rejected: your actual taste, not a synthetic benchmark. The target (claude / codex / antigravity) is the provider you want to benchmark. The underlying model is whatever that provider currently ships. The score defends itself before it prints: every run probes its own judge and eval set with control candidates (can the judge tell your correction from the answer you rejected? does the model actually beat "echo the question back"?) and **refuses the headline** if a dumb baseline matches it. A refused number never ranks on the leaderboard or ships on a share card.
 
 **"I want the right model picked for the right task, automatically."**
-That's steps 4 and 5 above. Every council's chairman-pick is tallied into its topic basin (`scoreboard/picks.json`), and the next question routes on whoever has been winning that basin. No human rating step, no config edit. The launchpad surfaces the table so you can see it forming.
+We built exactly that, measured it, and removed it (2026-08-11). Replayed against its own fallback on 653 real councils, the per-basin router scored 42.9% against a pick-the-leader constant's 37.0% — a lead indistinguishable from chance, the fifth independent kill of per-context routing on this corpus. What survives is honest: the disagreement ledger tells you which model YOU keep siding with, per kind of question, and `eval-run` scores any new model against your own past corrections. The picking stays yours; the evidence is the product.
 
 **"How is this different from Anthropic's Dreaming?"**
 Same verb, different domain. Dreaming consolidates Claude sessions inside Anthropic's runtime. Single-lab. Trinity dreams *across the labs*: `~/.claude/` + `~/.codex/` + `~/.gemini/` + claude.ai + ChatGPT + Gemini exports, on your machine. Even if Anthropic moves Dreaming server-side tomorrow, the server-side version still can't see OpenAI or Google transcripts. The labs are commercially prevented from reading each other. Cross-lab dreaming has to come from outside the labs, by definition. Dreaming makes Claude smarter at being Claude. Trinity learns which model wins which kind of YOUR question.

@@ -114,6 +114,60 @@ class TestReplayValue:
         assert h == pytest.approx(0.35, rel=1e-3)
         assert "trinity" in HIGH_VALUE_THEMES
 
+    def test_theme_bonus_is_unreachable_from_any_live_writer(self):
+        """The guard above is VACUOUS on production data, and this pins why.
+
+        `themes` is written ONLY by `guess_task_type` (ingest_helpers.py:118,
+        incremental_ingest.py:370), whose range is a small TASK-TYPE vocabulary.
+        `theme_score` reads against HIGH_VALUE_THEMES, a disjoint TOPICAL
+        vocabulary. The intersection is empty, so the +0.20 branch has never
+        fired since writer and reader landed in the same commit on 2026-05-06 —
+        measured 0.0 on 47,536/47,536 nodes on disk.
+
+        The test above passes `themes=["trinity","router"]`, values no live
+        writer can emit, so it is permanently green over an impossible input:
+        this repo's #1 named bug class (green while the data is degenerate)
+        living inside its own suite. This test makes the MISMATCH the
+        assertion, so the day either vocabulary is re-pointed at the other,
+        THIS reds and the stale guard above becomes meaningful again.
+
+        The writer's range is read from `guess_task_type`'s own AST rather
+        than by sampling texts through it. Sampling is what this repo calls
+        producer-asserted/consumer-unverified: a first draft of this test
+        exercised eight strings, reached only five of the return values, and
+        would have missed a convergence on any it did not happen to trigger.
+        The AST cannot miss one, and reading the module with a regex is worse
+        still — `task_types.py` also defines VALID_HORIZONS
+        (tactical/strategic/philosophical) for an unrelated function, which a
+        module-wide scan wrongly folds into the writer's range.
+        """
+        import ast
+        import inspect
+
+        from trinity_local import task_types
+
+        tree = ast.parse(inspect.getsource(task_types))
+        fn = next(n for n in ast.walk(tree)
+                  if isinstance(n, ast.FunctionDef) and n.name == "guess_task_type")
+        writable = {n.value.value for n in ast.walk(fn)
+                    if isinstance(n, ast.Return)
+                    and isinstance(n.value, ast.Constant)
+                    and isinstance(n.value.value, str)}
+        assert writable, "could not read guess_task_type's range — fixture is broken, not the code"
+
+        overlap = writable & set(HIGH_VALUE_THEMES)
+        assert not overlap, (
+            f"A live writer can now emit a HIGH_VALUE_THEME ({sorted(overlap)}) — "
+            "the vocabularies have converged, so "
+            "test_infer_hardness_high_value_theme_bonus is no longer vacuous and "
+            "this test should be deleted along with this assertion."
+        )
+        # And the consequence, pinned: every value a real node can carry scores zero.
+        assert all(theme_score([t]) == 0.0 for t in writable), (
+            "theme_score is now non-zero for a writable theme — the dead lookup "
+            "came alive and every replay-value consumer changed behaviour"
+        )
+
     def test_infer_hardness_sums_all_active_terms(self):
         # All scoring terms active: a re-run-worthy node (>1 council, a
         # high-value theme, high importance). The chairman pick is the
@@ -220,3 +274,48 @@ class TestMmr:
         # With lambda=0.5 and close scores, the weather item (zero overlap)
         # should beat the auth near-duplicates
         assert ids[1] == "2"
+
+
+class TestReplayValueInertnessIsReported:
+    """The replay-value quality term is INERT on the real corpus and must say so.
+
+    Measured 2026-08-07: replay_value_score returns exactly 0.084 for 100% of
+    5,000 sampled real nodes. All four inputs are degenerate simultaneously, and
+    three share one root cause — record_council_outcome() is exported, tested,
+    and has ZERO production callers, so council_run_ids / importance /
+    last_replayed_at are null corpus-wide.
+
+    Because base_score ADDS quality to the rejection signal, a constant shifts
+    every candidate equally and changes no ranking. That is precisely what made
+    this invisible for so long: inert, not wrong. These pin the detector so the
+    collapse is reported instead of reading as a working ranking.
+    """
+
+    def test_detector_fires_on_constant_quality(self):
+        from trinity_local.me_builder import _quality_is_inert
+
+        assert _quality_is_inert([0.084] * 50) is True
+
+    def test_detector_silent_when_quality_actually_ranks(self):
+        from trinity_local.me_builder import _quality_is_inert
+
+        assert _quality_is_inert([0.084, 0.084, 0.30, 0.084]) is False, (
+            "a term that DOES vary must not be reported as inert, or the "
+            "warning becomes noise the day the recorder gets wired up"
+        )
+
+    def test_infer_hardness_collapses_without_a_council_recorder(self):
+        """Root-cause pin: with no council_run_ids/themes/importance — the state
+        of every node on the real corpus — hardness is its no-council constant."""
+        from trinity_local.memory.replay_value import infer_hardness
+        from trinity_local.memory.schemas import PromptNode
+
+        bare = PromptNode(
+            id="n1", text="a substantive prompt about architecture",
+            transcript_id="t1", provider="claude", source_path="/tmp/x.jsonl",
+            turn_index=0, embedding=[0.0] * 768, created_at="2026-08-07T00:00:00Z")
+        assert infer_hardness(bare) == 0.15, (
+            "infer_hardness reads only fields that record_council_outcome writes, "
+            "so if this stops being constant the recorder was wired up and the "
+            "me_builder inertness comment needs re-measuring"
+        )

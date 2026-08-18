@@ -65,6 +65,45 @@ class RetirementRecord:
 # date (most recent first) for ease of audit.
 RETIRED: dict[str, RetirementRecord] = {
     # ── 2026-06-05 Stage 4b conflicts retirement (pipeline simplification) ──
+    "src/trinity_local/commands/cortex.py": RetirementRecord(
+        name="src/trinity_local/commands/cortex.py",
+        retired_at="2026-08-11",
+        commit="res_022",
+        replacement="(none — picks.json has no readers)",
+        reason=(
+            "The `consolidate` verb (167 LOC) tallied per-lens-basin chairman "
+            "winners into ~/.trinity/scoreboard/picks.json. Every CONSUMER of that "
+            "file was removed on 2026-08-11 (council_8817ca0c57a2e4ff, amd_0165-67, "
+            "licensed by hq_062: the router fired on 58.6% of held-out councils and "
+            "scored 42.9% against a leader-constant's 37.0% — chance-level). The "
+            "producer survived the removal because the nine staged passes mapped "
+            "consumers BY IMPORTS, and a producer imports nothing from the consumer "
+            "side. Found in a Fable verification pass reading copy rather than code. "
+            "Also removed: `lens --deep`'s Phase 3, which invoked the same handler on "
+            "every deep build, so the pipeline is now 5 phases; and --skip-consolidate."
+        ),
+        kind="module",
+        artifact_persists=True,
+    ),
+    "src/trinity_local/cortex_geometry.py": RetirementRecord(
+        name="src/trinity_local/cortex_geometry.py",
+        retired_at="2026-08-10",
+        commit="7a899de7",
+        replacement="src/trinity_local/me/geometry.py",
+        reason=(
+            "RENAMED, not retired. Step 1 of the council-ratified routing removal "
+            "(council_8817ca0c57a2e4ff, amd_0165: symbol-level extraction, rehome "
+            "non-routing symbols before deleting anything). A symbol map showed all "
+            "five exports — weiszfeld_median, participation_ratio, excess_kurtosis, "
+            "project_onto_first_pc, BIMODALITY_KURTOSIS_THRESHOLD — serve "
+            "me/basin_split.py, the LENS splitter, plus scripts/pca.py. Nothing "
+            "routing. The module imports only `math`. It was filed under a routing "
+            "name it never belonged to, and deleting the routing modules wholesale "
+            "would have removed the lens's own geometry."
+        ),
+        kind="module",
+        artifact_persists=True,
+    ),
     "src/trinity_local/me/conflicts.py": RetirementRecord(
         name="src/trinity_local/me/conflicts.py",
         retired_at="2026-06-05",

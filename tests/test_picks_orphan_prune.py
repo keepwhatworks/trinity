@@ -19,6 +19,8 @@ separate axis, applied by the CALLER that knows the live topology.
 """
 from __future__ import annotations
 
+from trinity_local.me import basins as _mb
+
 import json
 
 
@@ -181,175 +183,26 @@ class TestClassifyBasinsOrphanClass:
 
 class TestLiveBasinIds:
     def test_empty_set_when_topics_missing(self, tmp_path, monkeypatch):
-        import trinity_local.lens_routing as lr
 
         monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        monkeypatch.setattr(lr, "_TOPICS_BASINS_CACHE", None, raising=False)
-        assert lr.live_basin_ids() == set()
+        monkeypatch.setattr(_mb, "_TOPICS_BASINS_CACHE", None, raising=False)
+        assert _mb.live_basin_ids() == set()
 
     def test_reads_ids_from_topics(self, tmp_path, monkeypatch):
-        import trinity_local.lens_routing as lr
 
         monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        monkeypatch.setattr(lr, "_TOPICS_BASINS_CACHE", None, raising=False)
+        monkeypatch.setattr(_mb, "_TOPICS_BASINS_CACHE", None, raising=False)
         memories = tmp_path / "memories"
         memories.mkdir(parents=True)
         (memories / "topics.json").write_text(
             json.dumps({"basins": [{"id": "b00"}, {"id": "b01"}, {"nope": 1}]}),
             encoding="utf-8",
         )
-        assert lr.live_basin_ids() == {"b00", "b01"}
+        assert _mb.live_basin_ids() == {"b00", "b01"}
 
 
-class TestConsolidatePruneOrphansCLI:
-    def _run(self, tmp_path, monkeypatch, rules, basins, *, dry_run=False):
-        import argparse
-
-        import trinity_local.lens_routing as lr
-        from trinity_local.commands.cortex import handle_consolidate
-
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        monkeypatch.setattr(lr, "_TOPICS_BASINS_CACHE", None, raising=False)
-        memories = tmp_path / "memories"
-        memories.mkdir(parents=True, exist_ok=True)
-        (memories / "topics.json").write_text(
-            json.dumps({"basins": [{"id": b} for b in basins]}), encoding="utf-8"
-        )
-        scoreboard = tmp_path / "scoreboard"
-        scoreboard.mkdir(parents=True, exist_ok=True)
-        picks = scoreboard / "picks.json"
-        picks.write_text(json.dumps(rules), encoding="utf-8")
-        args = argparse.Namespace(dry_run=dry_run, prune_orphans=True)
-        rc = handle_consolidate(args)
-        return rc, json.loads(picks.read_text(encoding="utf-8"))
-
-    def test_prunes_and_writes(self, tmp_path, monkeypatch, capsys):
-        rules = {"b00": _entry(), "b01": _entry(), "bDEAD": _entry()}
-        rc, on_disk = self._run(
-            tmp_path, monkeypatch, rules, [f"b{i:02d}" for i in range(10)]
-        )
-        assert rc == 0
-        assert set(on_disk) == {"b00", "b01"}
-        payload = json.loads(capsys.readouterr().out)
-        assert payload["ok"] is True
-        assert payload["orphans_dropped"] == ["bDEAD"]
-        assert payload["rules_before"] == 3 and payload["rules_after"] == 2
-
-    def test_dry_run_writes_nothing(self, tmp_path, monkeypatch, capsys):
-        rules = {"b00": _entry(), "bDEAD": _entry()}
-        rc, on_disk = self._run(
-            tmp_path, monkeypatch, rules, [f"b{i:02d}" for i in range(10)], dry_run=True
-        )
-        assert rc == 0
-        assert set(on_disk) == {"b00", "bDEAD"}, "dry-run must not touch the store"
-        assert json.loads(capsys.readouterr().out)["mode"] == "dry-run"
-
-    def test_refusal_is_a_nonzero_exit_and_leaves_the_store(self, tmp_path, monkeypatch, capsys):
-        """No topology on disk → refuse. The store must survive and the exit
-        code must not read as success."""
-        import argparse
-
-        import trinity_local.lens_routing as lr
-        from trinity_local.commands.cortex import handle_consolidate
-
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        monkeypatch.setattr(lr, "_TOPICS_BASINS_CACHE", None, raising=False)
-        scoreboard = tmp_path / "scoreboard"
-        scoreboard.mkdir(parents=True, exist_ok=True)
-        picks = scoreboard / "picks.json"
-        picks.write_text(json.dumps({"b00": _entry(), "bDEAD": _entry()}), encoding="utf-8")
-        rc = handle_consolidate(argparse.Namespace(dry_run=False, prune_orphans=True))
-        payload = json.loads(capsys.readouterr().out)
-        assert rc == 1
-        assert payload["ok"] is False and "REFUSED" in payload["reason"]
-        assert set(json.loads(picks.read_text(encoding="utf-8"))) == {"b00", "bDEAD"}
 
 
-class TestLaunchpadCardDoesNotCountOrphansAsRoutes:
-    """The SECOND consumer of `classify_basins`, and the one the prior pass
-    missed. `status` was taught the live basin set; `launchpad_data` was not —
-    so the two surfaces whose agreement `classify_basins` exists to guarantee
-    could disagree, and the launchpad (the surface a user actually looks at)
-    was the one over-reporting. Producer-asserted, consumer-unverified.
-    """
-
-    def _card(self, tmp_path, monkeypatch, rules, basins):
-        import trinity_local.lens_routing as lr
-        from trinity_local.launchpad_data import _load_cortex_rules
-
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        monkeypatch.setattr(lr, "_TOPICS_BASINS_CACHE", None, raising=False)
-        memories = tmp_path / "memories"
-        memories.mkdir(parents=True, exist_ok=True)
-        (memories / "topics.json").write_text(
-            json.dumps({"basins": [{"id": b} for b in basins]}), encoding="utf-8"
-        )
-        scoreboard = tmp_path / "scoreboard"
-        scoreboard.mkdir(parents=True, exist_ok=True)
-        (scoreboard / "picks.json").write_text(json.dumps(rules), encoding="utf-8")
-        return _load_cortex_rules()
-
-    def test_a_gate_passing_orphan_is_not_reported_as_decisive(self, tmp_path, monkeypatch):
-        """The exact live shape: an orphan that CLEARS margin>=0.15 AND
-        effective_n>=3. Before the fix it landed in `decisive` and the card
-        told the user a basin routes that `place_query` can never return."""
-        rules = {"b00": _entry(), "bDEAD": _entry(margin=0.35, effective_n=3.06)}
-        card = self._card(tmp_path, monkeypatch, rules, [f"b{i:02d}" for i in range(10)])
-        split = card["routing_split"]
-        assert split["decisive"] == 1, (
-            "the orphan cleared the routing gate and was counted as a route: "
-            f"{split}"
-        )
-        assert split["orphan"] == 1
-        assert split["total"] == 2
-
-    def test_card_and_status_report_the_same_split(self, tmp_path, monkeypatch):
-        """`classify_basins`' whole reason to exist is that these two surfaces
-        cannot disagree. Assert it directly rather than trusting the docstring."""
-        import trinity_local.lens_routing as lr
-        from trinity_local.lens_routing import classify_basins, live_basin_ids
-
-        rules = {"b00": _entry(), "b01": _entry(margin=0.05), "bDEAD": _entry()}
-        card = self._card(tmp_path, monkeypatch, rules, [f"b{i:02d}" for i in range(10)])
-        lr._TOPICS_BASINS_CACHE = None
-        status_split = classify_basins(rules, live_basin_ids() or None)
-        assert card["routing_split"] == status_split
-
-    def test_unreadable_topology_degrades_to_the_three_class_split(self, tmp_path, monkeypatch):
-        """No topics.json → `live_basin_ids()` is empty → `or None` means "not
-        supplied", so the card must fall back to the old split rather than
-        declare every rule orphaned off a failed read."""
-        import trinity_local.lens_routing as lr
-        from trinity_local.launchpad_data import _load_cortex_rules
-
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        monkeypatch.setattr(lr, "_TOPICS_BASINS_CACHE", None, raising=False)
-        scoreboard = tmp_path / "scoreboard"
-        scoreboard.mkdir(parents=True, exist_ok=True)
-        (scoreboard / "picks.json").write_text(
-            json.dumps({"b00": _entry(), "bDEAD": _entry()}), encoding="utf-8"
-        )
-        split = _load_cortex_rules()["routing_split"]
-        assert "orphan" not in split
-        assert split["decisive"] == 2
-
-    def test_template_paints_the_orphan_clause(self):
-        """A count computed and never rendered is the dead-wire half of the same
-        bug class. Pin that the caption reads `routing_split.orphan`."""
-        from pathlib import Path
-
-        tpl = (
-            Path(__file__).resolve().parent.parent
-            / "src" / "trinity_local" / "launchpad_template.py"
-        ).read_text(encoding="utf-8")
-        # Both halves: the v-if GUARD (drop it and the clause paints "0 key
-        # basins that no longer exist" on every clean install) and the
-        # INTERPOLATION (drop it and the count is computed but never shown —
-        # the dead-wire half). Asserting only the interpolation left a
-        # surviving mutant: flipping the v-if to `false` kept the test green.
-        assert 'v-if="cortexRules.routing_split.orphan"' in tpl
-        assert "{{{{ cortexRules.routing_split.orphan }}}}" in tpl
-        assert "consolidate --prune-orphans" in tpl
 
 
 class TestNoStableRekeyingWasSmuggledIn:

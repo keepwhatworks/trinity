@@ -187,6 +187,24 @@ def me_path() -> Path:
     return lens_path()
 
 
+def _quality_is_inert(quality) -> bool:
+    """Did the replay-value term rank anything, or is it the same for everyone?
+
+    An additive constant in `base_score` shifts every candidate equally and so
+    changes no ordering. That makes a collapsed quality term INVISIBLE: the code
+    reads as though it ranks by signal while selection is really driven by the
+    rejection signal alone. This repo's recurring bug is exactly that shape — a
+    component that looks live over degenerate data — so the collapse is reported
+    rather than inferred. Uses a tolerance rather than exact equality because the
+    inputs are floats; the real corpus produces bit-identical values today.
+    """
+    import numpy as np
+
+    if len(quality) < 2:
+        return False
+    return bool(np.ptp(np.asarray(quality, dtype=np.float64)) < 1e-9)
+
+
 def _sample_diverse_with_embeddings(*, top_k: int, candidate_pool: int) -> list:
     """Pull recent PromptNodes and pick top_k via rejection-aware MMR.
 
@@ -238,8 +256,27 @@ def _sample_diverse_with_embeddings(*, top_k: int, candidate_pool: int) -> list:
     if len(nodes) < top_k:
         return None
 
-    # Score each by replay value. The chairman gets prompts that are
-    # high-signal AND diverse, not just diverse.
+    # Score each by replay value.
+    #
+    # MEASURED 2026-08-07 — on the real corpus this term is INERT. It returns
+    # exactly 0.084 for 100% of 5,000 sampled nodes, because all four of its
+    # inputs are degenerate at once, and three share one root cause:
+    #   known_theme  0.0   PromptNodes never get themes assigned
+    #   importance   0.0   never set
+    #   staleness    1.0   last_replayed_at never set
+    #   uncertainty  0.15  infer_hardness reads council_run_ids/themes/importance,
+    #                      so it too collapses to its no-council constant
+    # council_run_ids, importance and last_replayed_at are ALL written by
+    # memory.store.record_council_outcome(), which is exported, tested, and has
+    # ZERO production callers. The writer was built and the read path was wired
+    # into this selection; the two were never connected.
+    #
+    # base_score adds this to the rejection signal, so a constant shifts every
+    # candidate equally and changes NO ranking — selection is really rejection
+    # signal plus MMR diversity. That is why this went unnoticed: inert, not
+    # wrong. The comment here used to claim "high-signal AND diverse, not just
+    # diverse", which was the opposite of what shipped. _quality_is_inert()
+    # below now reports the collapse instead of letting it read as a ranking.
     quality_scores: list[float] = []
     for n in nodes:
         recently_run = 1.0 if staleness_score(n.last_replayed_at) < 0.25 else 0.0
@@ -299,6 +336,15 @@ def _sample_diverse_with_embeddings(*, top_k: int, candidate_pool: int) -> list:
     # pair). Tuned by inspection — the chairman explicitly asks for the
     # rejection cards, so we want those over-represented in the sample.
     REJECTION_WEIGHT = 0.4
+    if _quality_is_inert(quality):
+        # Not a failure — selection still works on rejection signal + diversity.
+        # But a reader must never infer that replay-value ranked anything.
+        print("me_builder: replay-value quality is CONSTANT across all "
+              f"{len(quality)} candidates (value {float(quality[0]):.4f}); "
+              "selection is rejection-signal + diversity only. Root cause: "
+              "record_council_outcome() has no production caller, so "
+              "council_run_ids/importance/last_replayed_at are null corpus-wide.",
+              file=_sys.stderr)
     base_score = quality + REJECTION_WEIGHT * rejection_signal
 
     # Seed: highest combined score. Subsequent picks maximize the standard

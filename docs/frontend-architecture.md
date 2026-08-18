@@ -377,7 +377,7 @@ Keep generated-page code close to the page type. Current shipped modules:
 - `launchpad_template.py`: launchpad HTML/CSS/JS template (settings modal, autofill, personal-routing-table card, lens card, memory-chip card)
 - `launchpad_data.py`: assembles the JSON payload the launchpad reads
 - `launchpad_runtime.py`: refresh + open-in-browser plumbing
-- `memory_viewer.py`: generic memory.html viewer (renders lens.md / picks.json / routing.json / topics.json / vocabulary.md / core.md with inlined contents)
+- `memory_viewer.py`: generic memory.html viewer (renders lens.md / routing.json / topics.json / vocabulary.md / core.md with inlined contents)
 - `council_review.py`: the live council page (`render_live_council_page`, handling both `?status_token=` in-flight and `?council_id=` post-hoc views. No rating UI. Chairman pick is the signal). The static `render_unified_council_page` was removed 2026-07-02. `write_unified_council_page` survives as the redirect-plus-live-page writer
 - `me_lenses.py`: parses `~/.trinity/memories/lens.md` into structured taste lenses for the launchpad card
 - `council_share.py`: was deleted along with the `--safe` Privacy-Safe Share Card. (The `council-share` CLI command lives in `commands/council.py` and renders a 1200×630 PNG share card into `~/.trinity/share/`, same visual language as `me-card` (`eval-share` removed 2026-07-14). The old copy-redirect-HTML-to-Desktop behavior was killed 2026-05-17 as useless off-machine.)

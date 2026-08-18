@@ -8,6 +8,8 @@ omission that hands weak basins back to kNN. Fully synthetic (injected embed_fn)
 """
 from __future__ import annotations
 
+from trinity_local.me import basins as _mb
+
 from trinity_local.lens_routing import compute_basin_routing, place_query
 
 
@@ -165,7 +167,7 @@ def test_recency_weighting_favors_newer_winner():
 
 
 # ── load_topics_basins: the single shape-guarded topics.json reader ──────────
-# Unifies what ask._try_cortex_route / consolidate_via_lens_basins /
+# Unifies what the removed ask router / consolidate_via_lens_basins /
 # launchpad_data._load_topics_basins / milestones._count_basins each open-coded
 # (one with no top-level shape guard). A valid-JSON-wrong-shape topics.json must
 # degrade to [] for EVERY reader, not crash one and mis-route another.
@@ -173,15 +175,14 @@ import json as _json
 
 import pytest as _pytest
 
-from trinity_local.lens_routing import load_topics_basins as _load_topics_basins
+from trinity_local.me.basins import load_topics_basins as _load_topics_basins
 
 
 @_pytest.fixture
 def _topics(tmp_path, monkeypatch):
     monkeypatch.setenv("TRINITY_HOME", str(tmp_path / "trinity"))
-    import trinity_local.lens_routing as lr
 
-    monkeypatch.setattr(lr, "_TOPICS_BASINS_CACHE", None)  # isolate the module cache
+    monkeypatch.setattr(_mb, "_TOPICS_BASINS_CACHE", None)  # isolate the module cache
 
     def _write(obj):
         from trinity_local.state_paths import topics_path
@@ -201,9 +202,8 @@ def test_load_topics_basins_happy_path(_topics):
 
 def test_load_topics_basins_missing_file_is_empty(tmp_path, monkeypatch):
     monkeypatch.setenv("TRINITY_HOME", str(tmp_path / "nope"))
-    import trinity_local.lens_routing as lr
 
-    monkeypatch.setattr(lr, "_TOPICS_BASINS_CACHE", None)
+    monkeypatch.setattr(_mb, "_TOPICS_BASINS_CACHE", None)
     assert _load_topics_basins() == []
 
 
@@ -322,7 +322,7 @@ def test_load_council_records_reads_created_at_from_outcome_not_routing_label(mo
     # _scan_outcomes yields the record WITHOUT created_at (routing_label lacks it,
     # exactly like production); the outcome object carries the true date.
     monkeypatch.setattr(
-        "trinity_local.personal_routing._scan_outcomes",
+        "trinity_local.council_analytics._scan_outcomes",
         lambda: ([{
             "council_run_id": "council_x",
             "chairman_winner": "claude",

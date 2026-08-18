@@ -197,6 +197,7 @@ class TestDecalogue:
         "Anchor fast proxies to slow truths.",
         "Build for endurance, not speed.",
         "Oscillate locally, stabilize globally.",
+        "Ask what survived, not what changed.",
         "Measure the shape, not the assumptions.",
         "Judge with veracity, not ferocity.",
         "Free your attention to learn fast, not to slow down.",
@@ -213,6 +214,10 @@ class TestDecalogue:
     # globally" admitted (passed the admission test: the chain had no
     # exploration organ; changes what you build; arrives with #184's numbers).
 
+    # Amendment 2026-08-18: "Ask what survived, not what changed" admitted
+    # (passed the admission test: the chain had chambers but no selection
+    # criterion for what the chambers yield; changes what you keep; slots
+    # after Oscillate as its payoff clause). Corpus is 12 essays, 1:1 holds.
     def test_masthead_carries_all_ten_in_order(self):
         idx = (DOCS / "index.html").read_text(encoding="utf-8")
         assert 'class="decalogue"' in idx, "the masthead section is gone"
@@ -231,13 +236,13 @@ class TestDecalogue:
             assert line.startswith("because"), f"because-line lost its because: {line[:40]!r}"
 
     def test_eleven_lines_one_per_essay(self):
-        """1:1 restored 2026-07-08: 11 lines, 11 essays, each line its own
+        """1:1 restored 2026-07-08 (amended 2026-08-18): 12 lines, 12 essays, each line its own
         owner. No line shares an essay; no essay lacks a line."""
         idx = (DOCS / "index.html").read_text(encoding="utf-8")
         i = idx.index('class="decalogue"'); j = idx.index("</section>", i)
         links = re.findall(r'href="articles/([a-z0-9-]+\.html)"', idx[i:j])
-        assert len(links) == len(set(links)) == 11, \
-            f"decalogue must be 11 unique essay links (1:1), got {len(links)}"
+        assert len(links) == len(set(links)) == 12, \
+            f"decalogue must be 12 unique essay links (1:1), got {len(links)}"
         assert set(links) == set(_essays().keys()), \
             "every essay owns exactly one line and vice versa"
 
@@ -249,7 +254,7 @@ class TestDecalogue:
         i = idx.index('class="decalogue"'); j = idx.index("</section>", i)
         block = idx[i:j]
         links = re.findall(r'href="articles/([a-z0-9-]+\.html)"', block)
-        assert len(links) == 11, f"decalogue must carry exactly 11 essay links, got {len(links)}"
+        assert len(links) == 12, f"decalogue must carry exactly 12 essay links, got {len(links)}"
         for name in links:
             assert (ARTICLES / name).exists(), f"decalogue links to missing essay {name}"
 
@@ -259,5 +264,27 @@ class TestDecalogue:
         expected = ["architecture-of-becoming", "utopia-is-a-mechanism", "ai-native-way",
                     "design-the-affordance", "gravity-of-becoming", "coupling-problem",
                     "architecture-of-endurance", "architecture-of-discovery",
-                    "you-are-the-specimen", "everyone-a-critic", "free-you-more"]
+                    "causality-is-an-invariance", "you-are-the-specimen", "everyone-a-critic", "free-you-more"]
         assert cards == expected, f"card order diverged from the decalogue: {cards}"
+
+
+class TestVoice:
+    """The em-dash budget (audited 2026-08-18): across the corpus the count
+    per essay runs 6-20, with body prose near zero — the dashes live almost
+    entirely in the lineage-list separators. The first machine-drafted essay
+    arrived carrying 41, twice the corpus max, and sailed through a green
+    suite because this rule lived only in the essay-discipline skill (prose).
+    A checkable rule left as prose gets ignored; this compiles it. Ratchet
+    direction is down: the ceiling pins the audited max and never rises."""
+
+    EM_DASH_CEILING = 20
+
+    def test_em_dash_budget(self):
+        for name, t in _essays().items():
+            count = t.count("&mdash;") + t.count("\u2014")
+            assert count <= self.EM_DASH_CEILING, (
+                f"{name}: {count} em-dashes exceeds the corpus ceiling of "
+                f"{self.EM_DASH_CEILING} — rewrite into the house moves "
+                "(periods and fragments, colons, parentheses); dashes belong "
+                "in the lineage separators, not the prose"
+            )

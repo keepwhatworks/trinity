@@ -106,7 +106,7 @@ same files with the same schemas:
 | `~/.trinity/memories/topics.json` | basins (in-tree) | basins |
 | `~/.trinity/memories/vocabulary.md` | anchors (in-tree) | vocabulary |
 | `~/.trinity/core.md` | distillation (in-tree) | lens post-build distill (`lens --only-distill` for the fast refresh. The standalone `distill` CLI was retired pre-launch) |
-| `~/.trinity/scoreboard/picks.json` | picks (in-tree) | consolidate |
+| `~/.trinity/scoreboard/picks.json` | historical (router removed 2026-08-11) | consolidate (zombie producer — flagged) |
 | `~/.trinity/scoreboard/routing.json` | routing (in-tree) | aggregation |
 | `~/.trinity/me/preference_acts.jsonl` | `schemas/rejection_signal.schema.json` | turn_pairs |
 
@@ -200,9 +200,9 @@ What v1.1 picks up:
 
 The brand pivot is a story about WHERE Trinity lives (Claude Code,
 Codex CLI, Antigravity, Cursor), not WHAT it's compiled into. A
-SKILL.md that calls `trinity-local consolidate` is structurally
+SKILL.md that calls `trinity-local lens` is structurally
 indistinguishable from a SKILL.md that calls `python3 scripts/
-cortex.py` for the user-visible claim "lives inside Claude Code."
+build_lens.py` for the user-visible claim "lives inside Claude Code."
 
 The shared-`scripts/` refactor is an engineering luxury, not a
 launch requirement.

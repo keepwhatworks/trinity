@@ -207,7 +207,7 @@ def handle_status(args):
         # Council value proof (#236) — present only when the ledger clears the
         # headline threshold, so scripts can branch on its presence.
         try:
-            from ..personal_routing import council_category_wedge, council_value_proof
+            from ..council_analytics import council_category_wedge, council_value_proof
             vp = council_value_proof()
             if vp.get("ready"):
                 vp = dict(vp)
@@ -321,7 +321,7 @@ def handle_status(args):
     # answer). Computed from council_outcomes/, no model calls. Stays quiet on
     # a thin ledger (n < threshold).
     try:
-        from ..personal_routing import council_category_wedge, council_value_proof
+        from ..council_analytics import council_category_wedge, council_value_proof
         _brand = {"codex": "GPT", "claude": "Claude", "antigravity": "Gemini"}
         vp = council_value_proof()
         if vp.get("ready"):
@@ -345,11 +345,12 @@ def handle_status(args):
 
     # Lens hierarchy + scoreboards. Per v1.7 architectural collapse,
     # the three thinking memories (lens / topics / vocabulary) + core.md
-    # are what chairman reads as identity context; picks + routing are
-    # operational scoreboards, surfaced separately. Reading paths from
+    # are what chairman reads as identity context; routing is the
+    # operational scoreboard, surfaced separately (picks went with the
+    # router on 2026-08-11). Reading paths from
     # state_paths so auto-migration kicks in transparently.
     from ..state_paths import (
-        core_path, lens_path, picks_path, routing_path,
+        core_path, lens_path, routing_path,
         topics_path, vocabulary_path,
     )
     print("  Memories:  (lens hierarchy — chairman identity context)")
@@ -415,39 +416,18 @@ def handle_status(args):
     print()
     print("  Scoreboards:  (operational model-selection bookkeeping)")
     for label, path in [
-        ("picks.json    ", picks_path()),
         ("routing.json  ", routing_path()),
     ]:
         if path.exists():
             print(f"    ✅ {label} {path.stat().st_size:>8,} bytes")
         else:
             print(f"    · {label} not built")
-    # Honest routing split — so a full picks.json can't read as "N basins
-    # route". Same source of truth (lens_routing.classify_basins) as the
-    # launchpad card. Best-effort: a read failure never breaks status.
-    try:
-        import json as _json
-        from ..lens_routing import classify_basins, live_basin_ids
-        if picks_path().exists():
-            _picks = _json.loads(picks_path().read_text(encoding="utf-8"))
-            _rules = _picks.get("rules", _picks) if isinstance(_picks, dict) else {}
-            # Pass the live basin ids so a rule keyed to a re-drawn basin is
-            # counted as ORPHAN, not as a route. `live_basin_ids()` returns an
-            # empty set when topics.json is unreadable; `or None` then means
-            # "not supplied", so the line degrades to the old three-class split
-            # instead of declaring every rule orphaned off a failed read.
-            s = classify_basins(_rules, live_basin_ids() or None)
-            if s["total"]:
-                line = (f"       routing: {s['decisive']} route decisively · "
-                        f"{s['explored']} near-ties explored · {s['thin']} thin→kNN "
-                        f"(of {s['total']} tallied basins)")
-                if s.get("orphan"):
-                    line += (f"\n       ⚠  {s['orphan']} rule(s) key basins that no "
-                             "longer exist — the lens was rebuilt after the last "
-                             "consolidate. Clear with `trinity-local consolidate "
-                             "--prune-orphans`.")
-                print(line)
-    except Exception:
+    # The honest routing-split line lived here: it existed so a full picks.json
+    # could not read as "N basins route" when most rules were near-ties or
+    # thin. That was real honesty work while there was a router. There is not
+    # one -- removed 2026-08-11 (council_8817ca0c57a2e4ff) -- and a display
+    # that reports how many basins route, when nothing routes, cannot be made
+    # honest by wording.
         pass
     print()
 

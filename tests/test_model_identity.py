@@ -15,7 +15,14 @@ class TestParseIdentity:
         ("claude-opus-4-7", None, ("claude", "opus", "4.7", UNKNOWN)),
         ("claude-sonnet-4-6", "medium", ("claude", "sonnet", "4.6", "medium")),
         ("claude-fable-5", "max", ("claude", "fable", "5", "max")),   # single-int version
-        ("gpt-5.6-sol", "xhigh", ("openai", "flagship", "5.6", "xhigh")),
+        # res_037, 2026-08-16: sol and luna share version 5.6 and are NOT the
+        # same model — luna is this repo's resolver/extraction seat, sol the
+        # general flagship. Pooled under a bare "flagship" tier their win rates
+        # would average into a number describing neither. This assertion used to
+        # encode that pooling; it now encodes the split.
+        ("gpt-5.6-sol", "xhigh", ("openai", "flagship-sol", "5.6", "xhigh")),
+        ("gpt-5.6-luna", "medium", ("openai", "flagship-luna", "5.6", "medium")),
+        ("gpt-5.5", "xhigh", ("openai", "flagship", "5.5", "xhigh")),   # unnamed stays put
         ("gpt-5.3-codex", None, ("openai", "codex", "5.3", UNKNOWN)),
         ("gpt-5.4-mini", "low", ("openai", "mini", "5.4", "low")),
         ("Gemini 3.1 Pro (high)", None, ("google", "pro", "3.1", "high")),  # effort baked in

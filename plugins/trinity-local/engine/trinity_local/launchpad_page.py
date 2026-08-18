@@ -228,6 +228,15 @@ def write_portal_html(*, title: str = "Trinity · Ask all three") -> Path:
     # outcomes-dir mtime, so this reuses the same walk render does — no extra cost.
     # Best-effort: a freeze failure must never break the render (the cheat-sheet is
     # still correct; only the cross-link target would lag).
+    #
+    # SAMPLE THE MEMORY-VIEWER FRESHNESS FIRST. freeze_routing_to_disk() writes
+    # scoreboard/routing.json, which is INSIDE the set _memory_viewer_is_fresh
+    # watches — so asking the gate after this line always sees a source newer than
+    # memory.html and the gate is a no-op for every user who has any routing signal.
+    # The 1.6MB skip it was added for never happened. Sampling before the mutation
+    # is the fix; the alternative (excluding routing.json from the watch set) would
+    # go stale the day something else legitimately updates it.
+    memory_viewer_fresh = _memory_viewer_is_fresh(pages_dir)
     try:
         from .personal_routing import freeze_routing_to_disk
 
@@ -264,7 +273,7 @@ def write_portal_html(*, title: str = "Trinity · Ask all three") -> Path:
     # council-driven scoreboard freezes. Mtime-gate it against the exact
     # files it embeds (same founder-class STALE-AFTER-CHANGE discipline as
     # the launchpad_data.json cache above — sources, not guesses).
-    if not _memory_viewer_is_fresh(pages_dir):
+    if not memory_viewer_fresh:
         write_memory_viewer()
     return path
 

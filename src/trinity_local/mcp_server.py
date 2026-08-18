@@ -378,40 +378,6 @@ async def handle_list_tools() -> list[Tool]:
             inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
-            name="get_picks",
-            description=(
-                "Return the user's lens-derived routing picks from "
-                "`~/.trinity/scoreboard/picks.json` — the per-lens-basin "
-                "chairman-winner tally across past councils. Each basin: "
-                "`{winner, count, margin, n_episodes, evidence}` — the provider "
-                "that wins for that kind of question, how many real-contest "
-                "councils it was tallied from, the margin over the runner-up "
-                "(the confidence proxy), and `routes` — whether ask() actually "
-                "routes on this basin (margin >= `winner_margin_floor`) or treats "
-                "it as a near-tie that falls to kNN. Pull this when planning a "
-                "complex task — it tells you which provider this user prefers for "
-                "THIS kind of question; act on `routes:true` picks as firm "
-                "preferences and `routes:false` picks as weak leans only. Empty "
-                "when no consolidation has run yet (`trinity-local consolidate`). "
-                "Filter to a specific basin with `basin_id`, or to confident picks "
-                "with `min_trust` (a margin floor); omit for the full map."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "basin_id": {
-                        "type": "string",
-                        "description": "Optional. Return only the pick for this lens basin id (e.g. 'b00').",
-                    },
-                    "min_trust": {
-                        "type": "number",
-                        "default": 0.0,
-                        "description": "Filter to picks whose margin (confidence over the runner-up) >= this value (0..1).",
-                    },
-                },
-            },
-        ),
-        Tool(
             name="trust",
             description=(
                 "Which model this user sides with when the labs split, and the "
@@ -659,8 +625,6 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[Any]:
     try:
         if name == "ask":
             return await _ask(arguments)
-        if name == "get_picks":
-            return await _get_picks(arguments)
         if name == "trust":
             return await _trust(arguments)
         if name == "run_council":
@@ -771,13 +735,6 @@ def _resource_catalog() -> list[tuple[str, str, str, str, Any]]:
             lambda: memories / "vocabulary.md",
         ),
         (
-            "trinity://scoreboard/picks.json",
-            "Trinity Picks (Cortex Routing Rules)",
-            "Extracted routing rules per task basin — what model wins on which kind of question, derived from your council history.",
-            "application/json",
-            lambda: scoreboard / "picks.json",
-        ),
-        (
             "trinity://scoreboard/routing.json",
             "Trinity Personal Routing Table",
             "Per-task-type provider track record — aggregated from chairman picks across all your councils.",
@@ -864,8 +821,9 @@ def _canonicalize_resource_routing_slugs(obj: Any) -> Any:
     — which keeps the historical web-era slugs until the next `consolidate`. Without
     this, the resource hands an agent `primary: "chatgpt"` (not a provider it can
     dispatch to) while the tool returns `"codex"` — inconsistent and unactionable.
-    The routing_rule decision fields AND the provider-KEYED scoreboard dicts
-    (winner_distribution / successful_prompts / failure_modes) are folded — both
+    The routing_rule decision fields, the provider-KEYED scoreboard dicts
+    (winner_distribution / successful_prompts / failure_modes), AND
+    routing.json's by_task_type provider keys are folded — both
     exactly as the tool now does (cortex._pattern_from_dict, v1.7.x); only the
     free-text `reason` prose keeps its provenance. Walks the projected (small)
     structure, so topics.json's centroids are already stripped."""
@@ -910,6 +868,35 @@ def _canonicalize_resource_routing_slugs(obj: Any) -> Any:
                 out[k] = rr
             elif k in _PROVIDER_KEYED and isinstance(v, dict):
                 out[k] = _fold_keys(v)
+            elif k == "by_task_type" and isinstance(v, dict):
+                # routing.json's shape: {by_task_type: {task_type: {provider: {...}}}}.
+                # The provider-keyed dict is nested under an ARBITRARY task-type
+                # name, so the key-name matching above cannot reach it — which is
+                # why routing.json went unfolded while picks.json was covered
+                # (res_019, found by trying to REPOINT the picks slug guard here
+                # rather than delete it with its subject).
+                #
+                # _fold_keys is not reusable as-is: its _merge SUMS numbers, which
+                # is right for counts and wrong for `overall`, a score. Two slugs
+                # collapsing to one slug would produce an impossible score like
+                # 15.0 on a 0-10 scale. On collision keep the entry with the
+                # larger `n` instead — the better-evidenced one — rather than
+                # inventing a weighted blend for a case that may never occur.
+                folded: dict = {}
+                for tt, providers in v.items():
+                    if not isinstance(providers, dict):
+                        folded[tt] = providers
+                        continue
+                    inner: dict = {}
+                    for pk, pv in providers.items():
+                        ck = normalize_provider_slug(pk) if isinstance(pk, str) else pk
+                        if ck in inner and isinstance(pv, dict) and isinstance(inner[ck], dict):
+                            if float(pv.get("n", 0) or 0) > float(inner[ck].get("n", 0) or 0):
+                                inner[ck] = pv
+                        else:
+                            inner[ck] = pv
+                    folded[tt] = inner
+                out[k] = folded
             else:
                 out[k] = _canonicalize_resource_routing_slugs(v)
         return out
@@ -929,26 +916,6 @@ def _winner_margin_floor() -> float:
         return 0.15
 
 
-def _annotate_picks_routes(obj: Any, floor: float) -> Any:
-    """Add `routes` (margin >= floor) to each per-basin pick in the picks RESOURCE,
-    so the handshake-time push matches the get_picks TOOL: the agent can tell a firm
-    route from a sub-floor near-tie. Picks-resource only — gated on the resource name
-    by the caller, since routing.json/topics.json have different shapes. Picks.json
-    is flat `{basin_id: {winner, count, margin, ...}}`; a value with a `winner` + a
-    `margin` is a live pick to annotate (a legacy/odd entry is left untouched)."""
-    if not isinstance(obj, dict):
-        return obj
-    out: dict = {}
-    for k, v in obj.items():
-        if isinstance(v, dict) and isinstance(v.get("winner"), str) and "margin" in v:
-            # THE shared predicate (lens_routing.pick_routes): margin floor AND
-            # the model-churn effective-n floor — annotated here so the agent
-            # reads the same verdict ask() would act on.
-            from .lens_routing import pick_routes
-            out[k] = {**v, "routes": pick_routes(v)}
-        else:
-            out[k] = v
-    return out
 
 
 def _canonicalize_member_slugs(seq: list, *, dedupe: bool = True) -> list:
@@ -1046,13 +1013,6 @@ async def handle_read_resource(uri: AnyUrl) -> list[ReadResourceContents]:
             projected = _canonicalize_resource_routing_slugs(
                 _project_json_for_agent(json.loads(raw))
             )
-            # Picks RESOURCE matches the get_picks TOOL: annotate each pick with
-            # `routes` so the handshake-time push doesn't present a sub-floor
-            # near-tie as a firm route (gated to the picks URI — other scoreboards
-            # have different shapes; the catalog `name` is a human title, not the
-            # filename, so gate on the stable URI).
-            if uri_str == "trinity://scoreboard/picks.json":
-                projected = _annotate_picks_routes(projected, _winner_margin_floor())
             raw = json.dumps(projected, ensure_ascii=False, indent=2)
         except (ValueError, TypeError):
             # Malformed JSON on disk — serve it raw rather than 500. The agent
@@ -1500,96 +1460,27 @@ async def _ask(args: dict) -> list[Any]:
     return [_text(payload)]
 
 
-async def _get_picks(args: dict) -> list[Any]:
-    """Handle mcp__trinity-local__get_picks. Returns the user's lens-derived
-    routing picks (the per-lens-basin chairman-winner tally) so the calling agent
-    can inspect which provider wins for which kind of question. Post-collapse
-    (#298) schema: `{winner, count, margin, n_episodes, evidence}` per basin.
-    """
-    from .cortex import load_routing_patterns
-
-    # The real routing gate: ask() only ROUTES on a basin whose margin clears this;
-    # below it the winner is a near-tie and ask falls to kNN. Surfaced per-pick as
-    # `routes` so an agent reading get_picks can tell a confident pick from a
-    # coin-flip (the agent-facing analog of the launchpad #299 / memory-viewer
-    # demote) instead of treating a margin-0.08 tally as a firm "use X" rule.
-    winner_margin_floor = _winner_margin_floor()
-
-    basin_id = args.get("basin_id")
-    if basin_id is not None and not isinstance(basin_id, str):
-        return [ErrorData(code=400, message="`basin_id` must be a string when provided")]
-    try:
-        min_trust = float(args.get("min_trust", 0.0))
-    except (TypeError, ValueError):
-        return [ErrorData(code=400, message="`min_trust` must be numeric")]
-
-    from .lens_routing import pick_routes
-    patterns = load_routing_patterns()
-    if not patterns:
-        return [_text({"rules": {}, "note": "No cortex consolidation yet. Run `trinity-local consolidate`."})]
-
-    # POST-COLLAPSE (#298): each pick is the flat lens-basin tally
-    # `{winner, count, margin, n_episodes, evidence}` — no 768-dim centroid, no
-    # trust score, no internal geometry to strip. `min_trust` filters on
-    # `margin` (the new confidence proxy: how decisively the winner beat the
-    # runner-up). A legacy/malformed entry (a dict missing `winner`) is skipped.
-    filtered: dict[str, dict] = {}
-    for bid, pick in patterns.items():
-        if basin_id is not None and bid != basin_id:
-            continue
-        if not isinstance(pick, dict):
-            continue
-        # isinstance(..., str) shape-guards the STRING field: a corrupt non-string
-        # `winner` (a NUMBER in a hand-edited picks.json) would hit `.strip()` on an
-        # int and crash the `get_picks` tool (the launchpad-render sibling, Iter 257).
-        winner_raw = pick.get("winner")
-        winner = winner_raw.strip() if isinstance(winner_raw, str) else ""
-        if not winner:
-            continue  # legacy RoutingPattern dict (or junk) — not a live pick
-        try:
-            margin = float(pick.get("margin", 0.0) or 0.0)
-        except (TypeError, ValueError):
-            margin = 0.0
-        if margin < min_trust:
-            continue
-        filtered[bid] = {
-            "winner": winner,
-            "count": int(pick.get("count", 0) or 0),
-            "margin": round(margin, 3),
-            # Does ask() route on this basin, or is it a near-tie that falls to kNN?
-            # `False` means "leans winner, but don't treat it as a firm rule."
-            # THE shared gate (lens_routing.pick_routes): margin >= floor AND the
-            # post-decay effective_n clears MIN_EFFECTIVE_N. A margin-only inline
-            # check diverged from ask() + the picks RESOURCE (_annotate_picks_routes)
-            # on churn-dead basins (high margin, thin decayed evidence) — measured
-            # 8 live basins reading routes:True here while ask() abstained.
-            "routes": pick_routes(pick),
-            "n_episodes": int(pick.get("n_episodes", pick.get("count", 0)) or 0),
-            "evidence": list(pick.get("evidence") or [])[:20],
-        }
-
-    routed = sum(1 for p in filtered.values() if p["routes"])
-    return [_text({
-        "rules": filtered,
-        "total_basins": len(patterns),
-        "returned": len(filtered),
-        # The gate ask() routes on. Picks with margin < this are advisory near-ties
-        # (routes=False); ask falls to kNN for them. Don't act on them as firm rules.
-        "winner_margin_floor": round(winner_margin_floor, 3),
-        "routed": routed,
-    })]
 
 
 def _load_trust_summary() -> dict:
     """The built disagreement ledger's aggregate (per-model tally + the K3/K4
     trustworthiness gate). Broad-guarded: a missing/corrupt summary yields {}
     rather than crashing the tool."""
-    from .disagreement_ledger import _ledger_dir
+    from .disagreement_ledger import BEHAVIOURAL_TIER_CAVEAT, _ledger_dir
     try:
         d = json.loads((_ledger_dir() / "summary.json").read_text(encoding="utf-8"))
-        return d if isinstance(d, dict) else {}
+        if not isinstance(d, dict):
+            return {}
     except Exception:  # noqa: BLE001 — absent/corrupt ledger → no tally, not a crash
         return {}
+    # Fails CLOSED. The caveat rides aggregate_tally(), but this reads the
+    # PERSISTED file, and any summary written before that wiring has no such key
+    # — so the agent received per-model rates with no disclosure at all. The
+    # council that ratified the gold->proxy relabel required the caveat on every
+    # per-model number, and an agent reading this payload is exactly the consumer
+    # that cannot see the omission.
+    d.setdefault("caveat", BEHAVIOURAL_TIER_CAVEAT)
+    return d
 
 
 async def _trust(args: dict) -> list[Any]:
@@ -1650,29 +1541,19 @@ async def _route(args: dict) -> list[Any]:
     task_type = chairman_pick.get("task_type") or guess_task_type(task)
     polish = is_polish_task(task)
 
-    # Cortex-first primary (#277 parity): when a learned basin rule matches
-    # this query with sufficient trust, it IS the routing decision — the
-    # heuristic chairman-pick becomes the fallback for queries with no basin.
-    # Without this, ask(mode="route") — the routing call the MCP docs tell
-    # users to PREFER — silently bypassed the learned basins that answer-mode
-    # ask already routes through (run_ask → _route_query → _try_cortex_route).
-    # _try_cortex_route is fully self-gating: it returns None unless a basin
-    # matches (exact or centroid≥floor), trust ≥ fallback floor, the
-    # basin isn't bimodal, and the primary is available — so a non-None result
-    # is always a confident learned route, and the no-MLX path returns None
-    # (centroid fingerprint mismatch) and stays on the heuristic with no regression.
+    # The lens-basin router used to run FIRST here, so ask(mode="route") would
+    # not silently bypass what answer-mode ask routed through. Removed
+    # 2026-08-11 (council_8817ca0c57a2e4ff, amd_0165-67) along with the ask-side
+    # consumer, so there is nothing left to bypass: both paths are now the
+    # ranker plus the heuristic, which is the parity the original comment wanted.
+    #
+    # hq_062 licensed it. Replayed against its own fallback on 653 councils
+    # under a group-disjoint split, the router fired on 58.6% and led 42.9% to
+    # 37.0% — and still missed its pre-registered bar (29 discordant pairs,
+    # McNemar p=0.2649). It failed a bar; it did not reverse.
     cortex_primary = None
     cortex_reason = ""
     cortex_challenger = None
-    try:
-        from .ask import _try_cortex_route
-        _cortex_dec = _try_cortex_route(task, available)
-        if _cortex_dec is not None:
-            cortex_primary = _cortex_dec.routed_to
-            cortex_reason = _cortex_dec.reason
-            cortex_challenger = _cortex_dec.runner_up
-    except Exception:
-        cortex_primary = None
 
     decision = None
     try:

@@ -17,6 +17,8 @@ exist yet.
 """
 from __future__ import annotations
 
+import sys
+
 import json
 from pathlib import Path
 
@@ -167,10 +169,40 @@ def build_distill_prompt() -> str:
     return "\n".join(parts)
 
 
-def write_core(text: str) -> Path:
-    """Persist the distillation to ~/.trinity/core.md."""
+def write_core(text: str, *, gated: bool = True) -> Path:
+    """Persist the distillation to ~/.trinity/core.md — if it EARNS the write.
+
+    Was an unconditional overwrite (amd_0153, 2026-08-10): the only content check
+    anywhere on this path was "provider stdout is non-empty", there was no history,
+    no diff against the incumbent and no rollback, and `lens-build` auto-triggers
+    it — so the core turned over on essentially every build. That inverts
+    `architecture-of-endurance` ("freeze the core, free the skin"), and it is a
+    dramatically lower bar than this repo demands of a compression tactic.
+
+    Now a candidate is a PROPOSAL. `core_gate.propose_core` scores it against the
+    incumbent on held-out founder utterances and admits it only if it does not
+    price them worse. Every candidate is archived to `~/.trinity/core_history/`
+    either way, so a rejected proposal is recoverable — which the previous
+    single-file behaviour made impossible.
+
+    FAILS CLOSED: when the instrument cannot run (too thin a held-out sample), the
+    incumbent is KEPT. For a core, refusing to write is the safe direction.
+
+    `gated=False` restores the raw overwrite for callers that genuinely need it
+    (migrations, tests seeding a fixture). Production distill leaves it True.
+    """
     path = core_path()
-    path.write_text(text.strip() + "\n", encoding="utf-8")
+    if not gated:
+        path.write_text(text.strip() + "\n", encoding="utf-8")
+        return path
+
+    from .core_gate import propose_core
+
+    verdict = propose_core(text)
+    if verdict.admitted:
+        path.write_text(text.strip() + "\n", encoding="utf-8")
+    else:
+        print(f"[distill] core NOT rewritten: {verdict.reason}", file=sys.stderr)
     return path
 
 

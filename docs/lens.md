@@ -29,7 +29,7 @@ chairman's identity context:
 
 | file | what's in it |
 |---|---|
-| `~/.trinity/scoreboard/picks.json` | extracted model-selection rules per task_type |
+| `~/.trinity/scoreboard/picks.json` | historical — router removed 2026-08-11; file inert |
 | `~/.trinity/scoreboard/routing.json` | per-task-type provider track record |
 
 ## Inspect your lens
@@ -44,7 +44,7 @@ together as one document:
   cosine similarity, with each basin's most-representative prompts on click
 - `vocabulary.md` anchors + homonyms tables
 
-Scoreboards (`picks.json` / `routing.json`) surface as schema-aware Reader
+The scoreboard (`routing.json`) surfaces as a schema-aware Reader
 views on the launchpad's routing card, not in the lens viewer.
 
 All inlined at `portal-html` time. Works under `file://`, no server needed.

@@ -93,10 +93,10 @@ def test_kmeans_tier_equivalence_identical_labels():
 
 def test_geometric_median_tier_equivalence():
     """Tier-equivalence floor (c): scripts/pca.weiszfeld_median (Tier 1)
-    and trinity_local.cortex_geometry.weiszfeld_median (Tier 2) return
+    and trinity_local.me.geometry.weiszfeld_median (Tier 2) return
     bit-equal medians (same input → same Weiszfeld iteration)."""
     from scripts.pca import weiszfeld_median as script_median
-    from trinity_local.cortex_geometry import weiszfeld_median as pip_median
+    from trinity_local.me.geometry import weiszfeld_median as pip_median
 
     points = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0],
               [0.5, 0.5], [-1.0, -1.0]]

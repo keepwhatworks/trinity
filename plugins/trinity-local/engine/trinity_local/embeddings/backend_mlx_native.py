@@ -7,7 +7,8 @@ non-Apple path; see #244.) It activates on Apple Silicon when `mlx` +
 
   - nomic-embed-text-v1.5's custom `nomic_bert` arch is unsupported by MLX and
     wedges torch-MPS; **nomic-ai/modernbert-embed-base** is the standard
-    ModernBERT arch — 8192 native context, Matryoshka (truncate via `[:dim]`),
+    ModernBERT arch — 8192 native context BUT SEE THE NOTE BELOW, Matryoshka
+    (truncate via `[:dim]`),
     Apache-2.0, nomic-trained — and runs ~6,300 nodes/s on an M-series GPU
     (vs torch CPU 56/s, MPS 97/s + 77s load). Measured + chosen over Qwen3-0.6B
     (200x slower), gte-modernbert (70x slower), EmbeddingGemma (license-gated),
@@ -78,6 +79,33 @@ def _ensure_doc_prefix(text: str) -> str:
         if stripped.startswith(prefix):
             return text
     return _DOC_PREFIX + text
+
+
+# EFFECTIVE CONTEXT IS 512 TOKENS, NOT 8192 (measured 2026-08-08)
+# ================================================================
+# `mlx_embeddings.generate()` signs as `max_length: int = 512, truncation: bool =
+# True`, and embed_batch below does not pass max_length — so every vector this
+# backend produces is cut at 512 tokens regardless of the model's 8192-token
+# architecture. Verified empirically: appending 200 distinct words to a 3,100-char
+# text leaves cosine at 1.000000, i.e. the tail is never seen.
+#
+# Blast radius on the real corpus (3,000 deduped nodes, real tokenizer;
+# recomputable: internal/experiments/truncation_blast_radius.py writes the
+# artifact these numbers trace to):
+#   11.7% of nodes exceed 512 tokens
+#   those nodes hold 82.4% of all BYTES
+#   64.4% of all tokens in the corpus are discarded before the model sees them
+#
+# This is deliberately NOT "fixed". internal/experiments/context_window_lift.py
+# tested lifting the cap to 8192 against the compression objective and it made
+# grouping WORSE at every k (-10% to -23%): mean-pooling over thousands of tokens
+# washes out what distinguishes a long prompt, while the prefix keeps topic and
+# intent. Lifting it would also cost roughly two orders of magnitude more compute.
+#
+# What is NOT established: retrieval, palate and routing ride these same vectors and
+# none was measured. If one of those is ever found wanting on long documents, this
+# is the first thing to look at — and the fix is a max_length kwarg here, not a
+# model change.
 
 
 def _l2_truncate(vec: list[float], dim: int) -> list[float]:

@@ -253,3 +253,44 @@ def test_memory_viewer_rewrite_is_mtime_gated(tmp_path, monkeypatch):
         "memories/lens.md changed but memory.html was not re-rendered — "
         "stale-after-change, the exact failure class the gate must not add"
     )
+
+
+def test_memory_viewer_gate_is_sampled_before_the_render_mutates_a_watched_file(tmp_path, monkeypatch):
+    """The gate must be sampled BEFORE write_portal_html writes routing.json.
+
+    write_portal_html calls freeze_routing_to_disk(), which writes
+    scoreboard/routing.json — a file inside _memory_viewer_is_fresh's own watched
+    set (it comes from memory_viewer._FILE_PATH_RESOLVERS). Ask the gate after that
+    line and it always sees a source newer than memory.html, so the skip never
+    fires for any user with routing signal and the whole 1.6MB optimisation is a
+    no-op. This pins the ordering: two consecutive renders with NO source change
+    must leave memory.html untouched.
+    """
+    import os
+
+    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+    monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
+    monkeypatch.setenv("TRINITY_DISABLE_MLX", "1")
+    from trinity_local.memory_viewer import _FILE_PATH_RESOLVERS
+    from trinity_local.launchpad_page import write_portal_html
+    from trinity_local.state_paths import portal_pages_dir
+
+    # Give routing.json real content so freeze_routing_to_disk has something to
+    # write on the second pass — a degenerate empty scoreboard would hide the bug.
+    routing = _FILE_PATH_RESOLVERS["routing.json"]()
+    routing.parent.mkdir(parents=True, exist_ok=True)
+    routing.write_text('{"seeded": true}', encoding="utf-8")
+
+    write_portal_html()
+    out = portal_pages_dir() / "memory.html"
+    assert out.exists()
+    first = out.stat().st_mtime_ns
+    os.utime(out, None)  # normalise, then ensure any rewrite is detectable
+    first = out.stat().st_mtime_ns
+
+    write_portal_html()
+    assert out.stat().st_mtime_ns == first, (
+        "memory.html was rewritten on a second render with no source change — the "
+        "freshness gate is being sampled AFTER freeze_routing_to_disk() bumps "
+        "scoreboard/routing.json, which the gate itself watches"
+    )

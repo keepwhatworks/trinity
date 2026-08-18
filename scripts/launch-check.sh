@@ -90,6 +90,10 @@ run_step "Step 5/5: render_docs --check (published values match measured reality
 printf "${BOLD}═══════════════════════════════════════════════════════${NC}\n"
 if [ ${#failed_steps[@]} -eq 0 ]; then
     printf "${GREEN}${BOLD}✓ All gates passed — ready for the public flip.${NC}\n"
+    # A green here attests every test that RAN. Browser-marked guards skip without
+    # Chrome, and measured on this repo's own history (hq_099b/hq_099c) they carry the
+    # entire guard for ~30% of fix commits. Say so rather than let the tick imply it.
+    printf "${DIM}"; .venv/bin/python scripts/coverage_disclosure.py; printf "${NC}"
     printf "${DIM}Next manual steps (need credentials + GitHub): make the repo public + set description/topics via gh.${NC}\n"
     exit 0
 else

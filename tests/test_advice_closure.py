@@ -187,3 +187,20 @@ class TestIngestSourceFreshnessAdviceClosure:
             "`trinity-local ingest-recent`. Use "
             "incremental_ingest.source_scan_ages()."
         )
+
+
+def test_rechaired_evidence_path_is_not_cwd_relative():
+    """`trust --dissent` must read the same evidence wherever it is invoked.
+
+    RECHAIRED was a bare relative path, so it resolved against the process CWD:
+    from the repo root it found 634 re-chaired councils, from anywhere else
+    `.exists()` was False and the dense evidence source silently vanished while
+    the verdict still rendered as if complete. A shipped CLI is almost never run
+    from the repo root, so the common case was the degraded one.
+    """
+    from trinity_local.dissent_outcome import RECHAIRED
+
+    assert RECHAIRED.is_absolute(), (
+        "RECHAIRED is CWD-relative — trust --dissent reads a different evidence "
+        "corpus depending on where the user happens to be standing"
+    )

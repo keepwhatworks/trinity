@@ -190,6 +190,18 @@ def canonical_collected_count() -> int:
     return int(_run_snapshot_cached()["collected"])
 
 
+def canonical_test_measured_at() -> str:
+    """The DATE the counts beside it were observed.
+
+    Planted rather than typed because it drifted: the three counts were
+    re-rendered from a fresh snapshot on 2026-08-11 while the sentence around
+    them still read "observed ... on 2026-08-01". A date whose only job is to
+    say WHEN these numbers were measured is worse than useless when it names a
+    different run than the numbers do.
+    """
+    return str(_run_snapshot_cached()["measured_at"])[:10]
+
+
 def canonical_mcp_tool_count() -> int:
     """Count MCP Tool() registrations in mcp_server.py."""
     mcp = (REPO / "src" / "trinity_local" / "mcp_server.py").read_text()
@@ -323,8 +335,83 @@ def canonical_command_module_count() -> int:
     return len(core) + len(optional)
 
 
+def _amendment_rows() -> list[dict]:
+    """Parse internal/amendment-ledger.jsonl. Shape-guarded per line: a hand-edited
+    or half-written row must not take the whole doc render down."""
+    path = REPO / "internal" / "amendment-ledger.jsonl"
+    rows: list[dict] = []
+    if not path.exists():
+        return rows
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            d = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(d, dict) and d.get("id"):
+            rows.append(d)
+    return rows
+
+
+def _adopted_rows() -> list[dict]:
+    """Only ADOPTED amendments. The published sentence is "N of M adopted
+    amendments held", so a DECLINED proposal belongs to neither side of it.
+
+    This filter was added 2026-08-07, the day the ledger gained its first
+    declined row. Plan item A2 deliberately started recording declined proposals
+    so the hold-rate has a real denominator — and the counters below, written
+    before that existed, took `len(all rows)` as the total and counted any row
+    whose resolution was "failed" as a failure. A declined proposal carries
+    resolution "failed" to mean "we predicted it wrong to adopt", so it would
+    have published as an adopted amendment that failed: denominator inflated AND
+    failure count inflated, in marketing copy, growing with every decline.
+    """
+    return [r for r in _amendment_rows() if r.get("adopted")]
+
+
+def _amendments_by(res: str) -> int:
+    return sum(1 for r in _adopted_rows() if r.get("resolution") == res)
+
+
+# The amendment-ledger numbers exist because launch copy CLAIMED to compute them
+# and did not: internal/launch-copy/social-drafts.md said "COMPUTED from
+# internal/amendment-ledger.jsonl ... never asserted past it" while asserting
+# "6 changes, 5 held, 0 failed" against a file holding 80 rows with 4 FAILED.
+# An uncomputed claim about a computed claim, under-reporting failures in
+# marketing material. These make the sentence true, and the doc gate now keeps
+# it true — the failed count especially, since that is the row a ledger's
+# credibility rests on.
+def canonical_amendment_total() -> int:
+    return len(_adopted_rows())
+
+
+def canonical_amendment_declined() -> int:
+    """Proposals considered and NOT adopted. Published separately so the hold
+    rate keeps an honest denominator without a decline reading as a failure."""
+    return len(_amendment_rows()) - len(_adopted_rows())
+
+
+def canonical_amendment_held() -> int:
+    return _amendments_by("held")
+
+
+def canonical_amendment_failed() -> int:
+    return _amendments_by("failed")
+
+
+def canonical_amendment_pending() -> int:
+    return _amendments_by("pending")
+
+
 CANONICAL: dict[str, callable] = {
+    "amendment_total": canonical_amendment_total,
+    "amendment_declined": canonical_amendment_declined,
+    "amendment_held": canonical_amendment_held,
+    "amendment_failed": canonical_amendment_failed,
+    "amendment_pending": canonical_amendment_pending,
     "test_count": canonical_test_count,
+    "test_measured_at": canonical_test_measured_at,
     "skipped_count": canonical_skipped_count,
     "collected_count": canonical_collected_count,
     "mcp_tool_count": canonical_mcp_tool_count,

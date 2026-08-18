@@ -1829,6 +1829,12 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           </button>
         </div>
         <h2>Which model you side with when the labs split</h2>
+        <!-- The tier's caveat renders WITH the numbers, never beside them. The
+             gold->proxy relabel was council-ratified with the line "do not quote
+             these numbers as settled without that caveat", and this card was one of
+             three surfaces that did exactly that. v-if so a summary written before
+             the caveat existed degrades to today's copy rather than an empty box. -->
+        <p class="meta" v-if="trustData.caveat" style="margin-top: 8px;">{{{{ trustData.caveat }}}}</p>
         <template v-if="trustData.trustworthy && trustData.records.length">
           <p class="meta">
             On the {{{{ trustData.resolved }}}} cross-provider disagreements your own later work settled — which model you actually sided with, per Wilson-CI tally.
@@ -1875,131 +1881,19 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
            .cortex-topology-chip are preserved (smoke Surface 3 / 26 read
            them); the dense Trust/Health/Why columns collapse into one
            compact cell + tooltips so each row reads as a cheat-sheet line. -->
-      <section class="card stats-card" v-if="cortexRules && cortexRules.rules.length">
-        <div class="eyebrow" style="display: flex; align-items: center; gap: 8px;">
-          <span>Your model cheat-sheet</span>
-          <!-- Rebuild chip — same shape as the lens-rebuild chip from
-               tick #76 (forward-arc action-from-view). Re-running
-               consolidate is what makes new councils produce new rules;
-               without an in-page affordance the user had to remember
-               the command or scroll to the explanatory paragraph
-               below. -->
-          <button type="button"
-                  class="lp-rebuild-chip"
-                  @click.stop="copyText('trinity-local consolidate', 'cortex-rebuild')"
-                  title="Copy: trinity-local consolidate">
-            <span v-if="copiedKey === 'cortex-rebuild'">✓ Copied</span>
-            <span v-else>↻ Rebuild</span>
-          </button>
-        </div>
-        <h2>Which model to use for what</h2>
-        <p class="meta">
-          One line per kind of question — the model Trinity recommends, tallied from your own {{{{ cortexRules.total_basins }}}} basin{{{{ cortexRules.total_basins === 1 ? '' : 's' }}}} of council outcomes. The winner is the recency-weighted chairman pick for that basin; margin is how decisively it beat the runner-up. A thin margin is dimmed.
-        </p>
-        <p class="meta" v-if="cortexRules.routing_split && cortexRules.routing_split.total">
-          Of those, <strong>{{{{ cortexRules.routing_split.decisive }}}}</strong> route decisively, <strong>{{{{ cortexRules.routing_split.explored }}}}</strong> {{{{ cortexRules.routing_split.explored === 1 ? 'is a measured near-tie explored' : 'are measured near-ties explored' }}}} (ask samples the posterior instead of committing), and <strong>{{{{ cortexRules.routing_split.thin }}}}</strong> {{{{ cortexRules.routing_split.thin === 1 ? 'is thin' : 'are thin' }}}} → kNN. Only the decisive ones commit to a single model.<span v-if="cortexRules.routing_split.orphan"> The remaining <strong>{{{{ cortexRules.routing_split.orphan }}}}</strong> key basins that no longer exist — the lens was rebuilt after the last consolidate, and basin ids are re-drawn each build — so they can never fire. Clear them with <code>trinity-local consolidate --prune-orphans</code>.</span>
-        </p>
-        <table class="routing-table cortex-rules-table cortex-cheat-sheet" style="margin-top: 16px;">
-          <tbody>
-            <!-- Visually demote the picks ask() WON'T route — a basin whose
-                 winner margin is below the real routing gate
-                 (cortexRules.winner_margin_floor, threaded from
-                 lens_routing.WINNER_MARGIN_FLOOR) is a near-tie that ask
-                 abstains on (falls to kNN). Demoting at the SAME number the
-                 router gates on keeps the card honest: a dimmed row is exactly
-                 a row ask won't act on, never a hardcoded guess that mislabels
-                 a routed basin. -->
-            <tr v-for="r in cortexRules.rules"
-                :style="!r.routes ? 'opacity: 0.55;' : null"
-                :title="!r.routes ? 'Advisory (margin ' + r.margin_str + '): ask falls back to kNN for this basin, either a near-tie under the ' + cortexRules.winner_margin_floor + ' gate or thin/decayed evidence, until more councils sharpen it.' : 'ask routes this basin (margin ' + r.margin_str + ' ≥ ' + cortexRules.winner_margin_floor + ' gate, evidence fresh).'">
-              <td style="font-weight: 500;">
-                <!-- Cross-memory deep-link: basin_id → memory.html with
-                     this basin focused. Plain-text fallback when
-                     no basin_id (defensive — shouldn't happen).
-                     The card headlines "one line per KIND of question", so the
-                     row label must NAME the kind — the basin's top terms (e.g.
-                     "design · arch"), NOT the opaque internal id "b00" (the
-                     _topology_basin_labels docstring itself admits "b03 alone is
-                     opaque"). cheatSheetLabel() resolves the human label from
-                     topologyBasinLabels and falls back to the id only when no
-                     label exists; the id rides the :title for traceability. -->
-                <a v-if="r.basin_id"
-                   :href="'../portal_pages/memory.html?file=picks.json&task=' + encodeURIComponent(r.basin_id)"
-                   style="color: inherit; text-decoration: none; border-bottom: 1px dotted var(--text-muted);"
-                   :title="'Basin ' + r.basin_id + ' — view in memory viewer'">
-                  {{{{ cheatSheetLabel(r) }}}}
-                </a>
-                <span v-else>{{{{ cheatSheetLabel(r) }}}}</span>
-                <!-- → topology chip: the routing basins ARE the topology
-                     basins post-collapse (#298), so this renders whenever the
-                     pick's basin id exists in topics.json. Visually quiet so
-                     the primary basin_id link stays dominant. -->
-                <a v-if="r.topology_basin"
-                   :href="'../portal_pages/memory.html?file=topics.json&basin=' + encodeURIComponent(r.topology_basin)"
-                   class="cortex-topology-chip cross-memory-chip cross-memory-chip--label cross-memory-chip--inline"
-                   :title="basinHoverLabel(r.topology_basin)">
-                  → topology
-                </a>
-              </td>
-              <td class="cheat-arrow" style="text-align: center; opacity: 0.45;">→</td>
-              <td>
-                <!-- Recommended model + the supporting detail folded into a
-                     hover tooltip so the row stays a one-glance cheat line. -->
-                <span class="suggestion-chip"
-                      :title="'margin ' + r.margin_str + ', from ' + r.count + ' real-contest council' + (r.count === 1 ? '' : 's')">{{{{ formatProviderLabel(r.winner) }}}}</span>
-                <span class="meta" style="margin-left: 8px; font-size: 12px;"
-                      :title="'Margin ' + r.margin_str + ' over the runner-up, from ' + r.count + ' council' + (r.count === 1 ? '' : 's')">
-                  margin {{{{ r.margin_str }}}}
-                  <span v-if="r.count"> · {{{{ r.count }}}} council{{{{ r.count === 1 ? '' : 's' }}}}</span>
-                </span>
-                <!-- Evidence chips kept inline but compact — click a council
-                     to see the work behind the recommendation. The chip used to
-                     render `cid.slice(0,8)` — an opaque 8-char hex fragment of the
-                     council id (e.g. "1a5b74fb") that read as a leaked internal id
-                     and told a touch user NOTHING (the full id hid in the
-                     hover-only :title, unreachable on the side panel / phones — the
-                     same opaque-id-as-label class as the Iter-184 basin chip). A
-                     council carries no short human label here (the rail resolves the
-                     prompt via extra I/O the cheat-sheet doesn't do), so LEAD WITH
-                     WHAT THE CHIP IS — "council 1 / council 2", a clear positional
-                     handle scoped to this pick's row. The full id stays in the
-                     :title + href for traceability. -->
-                <span v-if="r.evidence && r.evidence.length" style="margin-left: 6px;">
-                  <span class="meta" style="font-size: 11px; margin-left: 2px;">evidence:</span>
-                  <a v-for="(cid, ei) in r.evidence"
-                     :key="cid"
-                     :href="evidenceUrl(cid)"
-                     class="suggestion-chip"
-                     style="font-size: 11px; margin-left: 4px; text-decoration: none;"
-                     :title="'Open the council behind this pick (' + cid + ')'">
-                    council {{{{ ei + 1 }}}}
-                  </a>
-                </span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <p class="meta" style="margin-top: 12px; font-size: 13px;">
-          The winner is the recency-weighted chairman pick per basin; a wider margin means <code>ask</code> routes there more confidently. Near-ties (thin margin) abstain to kNN until more councils sharpen them. Rebuild with <code>trinity-local consolidate</code> after new councils land.
-        </p>
-      </section>
+      <!-- The "model cheat-sheet" card lived here: one row per basin with the
+           model Trinity recommended, its margin, and a routes/advisory gate.
+           Removed 2026-08-11 with the router that produced it
+           (council_8817ca0c57a2e4ff, amd_0165-67). A card recommending a model
+           per basin, when nothing routes per basin, recommends nothing. -->
 
-      <!-- COLD-START TEACHING CARD. It must name BOTH verbs, in order.
-           Found 2026-08-01: every `trinity-local lens` CTA on this page lives
-           inside a `.home-card`, which the /stats view hides — so a brand-new
-           user landing here was told to run `consolidate` and never told to
-           build the lens it consumes. That is a dead end, not a hint: the copy
-           below already says consolidate "places each one in its nearest lens
-           BASIN", and basins are what `lens` produces, so the prerequisite was
-           described without ever being named. `test_launchpad_cold_start_stats_browser`
-           pins both strings for exactly this reason. -->
-      <section class="card stats-card" v-if="!cortexRules">
-        <div class="eyebrow">What Trinity will learn about you</div>
-        <h2>Run <code>trinity-local lens</code>, then <code>trinity-local consolidate</code></h2>
-        <p class="meta">
-          <code>trinity-local lens</code> reads the transcripts you already have and builds your lens basins — the subject areas you actually work in. Then, after a few councils, <code>consolidate</code> places each one in its nearest basin and tallies the recency-weighted chairman winner per basin. Those picks then drive the next ask call — which provider wins for which kind of question, learned from your own outcomes.
-        </p>
-      </section>
+      <!-- The lens-basin cold nudge lived here ("Run lens, then consolidate...
+           Those picks then drive the next ask call"). It was founder-ratified
+           at Iter 188 as the OWNER of the routing cold state, and its claim was
+           true then. The router was removed 2026-08-11, so nothing drives ask
+           from picks and the sentence became false copy for a mechanism that no
+           longer exists. The sibling !personalRoutingTable nudge STAYS: it
+           describes the routing TABLE, which the same council explicitly kept. -->
 
       <!-- This is the CHART card — it only earns its space once there's routing
            data to plot. In the COLD state it used to degrade to a bare "run a few
@@ -2165,12 +2059,12 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
       </section>
 
       <!-- Empty-state audit note (2026-08-03): a cross-eyebrow dedup was tried here
-     (gating this card on cortexRules so the !cortexRules card would be the one
-     cold nudge) and REVERTED same-day: Iter 188 founder-ratified this card as
-     the OWNER of the routing cold state (the chart card is the gated one — see
-     test_cold_stats_shows_exactly_one_routing_empty_state_card), and the two
-     nudges describe different mechanisms (lens-basin picks vs the routing
-     table), sharing only the CTA. Not a duplicate; leave both. -->
+     (gating this card on cortexRules) and REVERTED same-day: Iter 188
+     founder-ratified this card as the OWNER of the routing cold state, and the
+     two nudges described DIFFERENT mechanisms — lens-basin picks vs the routing
+     table — sharing only the CTA. The lens-basin half was removed 2026-08-11,
+     which settles the old dedup question by subtraction: one mechanism, one
+     nudge, and this is it. -->
 <section class="card stats-card" v-if="!personalRoutingTable">
         <div class="eyebrow">Routing</div>
         <h2>Run a few councils to learn which model works best for you</h2>
@@ -3579,7 +3473,6 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
         benchmarkProviders: pageData.benchmarkProviders || [],
         providerModels: pageData.providerModels || {{}},
         personalRoutingTable: pageData.personalRoutingTable || null,
-        cortexRules: pageData.cortexRules || null,
         trustData: pageData.trustData || null,
         tasteLenses: pageData.tasteLenses || null,
         // Tooltip lookup for cross-memory chips that deep-link to

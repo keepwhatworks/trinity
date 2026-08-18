@@ -26,10 +26,34 @@ class ProviderResult:
     stderr: str
     returncode: int
     elapsed_seconds: float = 0.0
+    # GROUND TRUTH when the CLI states it. Trinity used to record
+    # `providers.<name>.model` from config as "the model that answered", which
+    # for a provider invoked WITHOUT --model is a static label, not an
+    # observation — and nothing verified it or warned. Measured 2026-08-17:
+    # codex prints `model: gpt-5.5` on stderr and it was being discarded, while
+    # claude and antigravity print nothing at all, so their labels have no
+    # ground truth behind them whatsoever. None here means "not stated".
+    model_echo: str | None = None
 
 
 class ProviderError(RuntimeError):
     pass
+
+
+_MODEL_ECHO = re.compile(r"(?im)^\s*model:\s*([A-Za-z0-9][\w.\-]*)\s*$")
+
+
+def parse_model_echo(stderr: str | None) -> str | None:
+    """The model a CLI SAYS it used, or None when it says nothing.
+
+    Only `codex exec` currently announces one (`model: gpt-5.5` on stderr).
+    `claude -p` and `agy -p` announce nothing, which is exactly why their
+    recorded model is an assumption rather than an observation.
+    """
+    if not stderr:
+        return None
+    m = _MODEL_ECHO.search(stderr)
+    return m.group(1) if m else None
 
 
 class BaseProvider:
@@ -92,6 +116,7 @@ class BaseProvider:
             stderr=completed.stderr.strip(),
             returncode=completed.returncode,
             elapsed_seconds=elapsed,
+            model_echo=parse_model_echo(completed.stderr),
         )
 
 
@@ -99,6 +124,103 @@ def _effective_model(config: ProviderConfig) -> str | None:
     """Return the configured model for this provider. Use CLI aliases
     like Claude's `'opus'` in config.json to track latest."""
     return config.model
+
+
+def model_provenance(config: ProviderConfig, echo: str | None = None) -> str:
+    """How much is the recorded model worth? `echoed` > `pinned` > `assumed`.
+
+    The distinction exists because Trinity recorded `config.model` as "the model
+    that answered" and every row looked equally trustworthy. It is not:
+
+      echoed   the CLI stated it (codex prints `model: gpt-5.5` on stderr).
+               An OBSERVATION.
+      pinned   argv carries --model, so the value is enforced even though the
+               CLI never confirms it. A guarantee about the request.
+      configured  read from the PROVIDER'S OWN settings file -- the model it
+               will use, straight from the CLI's config rather than Trinity's.
+               Weaker than `echoed` (not an observation of the run that
+               happened) and stronger than `assumed` (nothing is being taken on
+               faith). agy is the case that needs it: it has no --model flag at
+               all, so `--model` can never be pinned and the CLI never echoes,
+               leaving its own settings.json as the only honest source.
+      assumed  none of the above. `claude -p` announces nothing and is invoked
+               without --model, so the label is a static string that a settings
+               alias or a hand-edit can silently falsify. Exactly how a window
+               of Gemini Flash councils got filed under 3.1 Pro.
+    """
+    if echo:
+        return "echoed"
+    if _has_model_flag(list(config.args or [])) or injects_model_flag(config):
+        return "pinned"
+    if settings_model(config):
+        return "configured"
+    return "assumed"
+
+
+def injects_model_flag(config: ProviderConfig) -> bool:
+    """Does the DISPATCH add `--model`, even though config.args does not carry it?
+
+    This existed as a hole rather than a decision. `model_provenance` inspected
+    config.args only, while CLIProvider injects `--model` for claude at dispatch
+    time -- so claude rows were stamped `assumed` when the flag was on the command
+    line the whole time. The provenance ladder was reading the CONFIG where the
+    thing it describes is the INVOCATION.
+
+    Mirrors CLIProvider's own condition. If that condition moves, this must move
+    with it; the pairing is asserted by test_claude_is_pinned_by_injection.
+    """
+    if config is None or getattr(config, "name", None) != "claude":
+        return False
+    if not getattr(config, "model", None):
+        return False
+    command = list(getattr(config, "command", []) or [])
+    return "--model" not in command and "--model" not in list(config.args or [])
+
+
+def read_claude_settings_model() -> str | None:
+    """The model `claude -p` will use, from claude's own ~/.claude/settings.json.
+
+    Usually an ALIAS ("opus", "sonnet") rather than a full id, which is why the
+    caller prefers Trinity's more precise label when the two AGREE and only
+    overrides when they do not. An imprecise truth beats a precise falsehood, but
+    there is no reason to accept the imprecision when both point the same way.
+
+    Note what this is NOT: an observation of the run. `claude -p --output-format
+    json` does report the model that actually answered, under
+    `modelUsage.<model>.canonicalModel` (measured 2026-08-18) -- but switching the
+    dispatch to JSON moves the answer text into a `result` field and breaks every
+    consumer of stdout, on the most-used provider. That upgrade is worth making
+    deliberately, not as a side effect of a provenance fix.
+    """
+    try:
+        import json as _json
+
+        path = Path.home() / ".claude" / "settings.json"
+        if not path.exists():
+            return None
+        model = _json.loads(path.read_text()).get("model")
+        return model if isinstance(model, str) and model else None
+    except Exception:
+        return None
+
+
+def settings_model(config: ProviderConfig) -> str | None:
+    """The model the provider's OWN config declares, or None.
+
+    agy and claude both publish this; codex's ~/.codex/config.toml does too and is
+    deliberately left out for now, because codex ECHOES its model on stderr and an
+    observation outranks a config reading -- adding it would only matter when the
+    echo is missing, which has not been observed.
+    """
+    name = getattr(config, "name", None) if config is not None else None
+    if name == "antigravity":
+        return read_agy_active_model_raw()
+    # claude is deliberately NOT here. Trinity injects --model for claude, so its
+    # settings.json cannot decide what runs and consulting it would only introduce
+    # a value the dispatch overrides. read_claude_settings_model() is kept for
+    # diagnostics -- knowing Trinity is overriding a user's chosen default is
+    # useful -- but it must never feed the recorded model.
+    return None
 
 
 def _effective_effort(config: ProviderConfig) -> str | None:
@@ -178,6 +300,15 @@ def dispatched_model(config: ProviderConfig) -> str | None:
         agy_model = read_agy_active_model_raw()
         if agy_model:
             return agy_model
+    # claude is NOT the agy case, and an earlier version of this function treated
+    # it as one. CLIProvider INJECTS `--model <config.model>` for claude at
+    # dispatch (see inject_model), so config.model is not a hopeful label -- it is
+    # the flag the CLI receives, and it OVERRIDES whatever ~/.claude/settings.json
+    # says. Reading those settings here and returning them would record a model
+    # Trinity did not dispatch, i.e. make the row LESS true in the name of
+    # provenance. The founder's question "if the claude default is changed, would
+    # it be recorded correctly?" has the answer: changing it does not affect
+    # Trinity at all, because Trinity pins over it.
     return config.model
 
 
@@ -320,6 +451,28 @@ class CLIProvider(BaseProvider):
         )
 
 
+def _has_model_flag(args: list[str]) -> bool:
+    """Does argv already select a model, in ANY spelling Codex accepts?
+
+    A module-level function rather than an inline test because the guard lives in
+    run(), which dispatches a subprocess and so could not be tested — and an
+    untestable guard is how the first version of it shipped wrong. Appending a
+    second --model makes the CLI exit 2 with empty stdout, and the dispatch layer
+    reports that as a MODEL failure rather than as bad argv we built ourselves,
+    which is what made it expensive to diagnose.
+
+    Four spellings, because getopt accepts all four: `--model X`, the `-m X`
+    alias, joined `--model=X`, and clustered `-mX`. The first fix caught only the
+    two separated forms.
+    """
+    for a in args:
+        if a in ("--model", "-m") or a.startswith("--model="):
+            return True
+        if a.startswith("-m") and len(a) > 2 and not a.startswith("--"):
+            return True
+    return False
+
+
 class CodexProvider(BaseProvider):
     # Incident 2026-07-13: this class had NO clean_completion support — the
     # runner's `hasattr(provider, "clean_completion")` guard silently skipped
@@ -354,7 +507,7 @@ class CodexProvider(BaseProvider):
         if "--skip-git-repo-check" not in args:
             args.append("--skip-git-repo-check")
         model = _effective_model(self.config)
-        if model and "--model" not in args:
+        if model and not _has_model_flag(args):
             args.extend(["--model", model])
         # Codex reasoning effort takes a TOML config override:
         #   codex exec -c model_reasoning_effort=xhigh

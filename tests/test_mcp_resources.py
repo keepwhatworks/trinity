@@ -8,7 +8,7 @@ and conditions every response on the lens.
 
 The contract these tests pin:
 
-1. The catalog enumerates exactly the six canonical resources (4
+1. The catalog enumerates exactly the five canonical resources (4
    memories + 2 scoreboards). Adding or removing one should be a
    deliberate spec change, not a silent drift. AGENTS.md was dropped
    2026-05-26 — see _resource_catalog docstring for the rationale.
@@ -62,15 +62,15 @@ def populated_home(isolated_home):
 
 class TestResourceCatalog:
     """The catalog is the contract — adding/removing a resource is a
-    deliberate spec change, not a silent drift. The six canonical
+    deliberate spec change, not a silent drift. The five canonical
     resources MUST be exactly: core / lens / topics / vocabulary /
-    picks / routing. AGENTS.md was on this list briefly but dropped
+    routing (picks went with the router, 2026-08-11). AGENTS.md was on this list briefly but dropped
     2026-05-26 — AGENTS.md is project-scoped by convention (./AGENTS.md
     in the user's repo) and exposing a user-home one was ceremonial;
     every harness that reads AGENTS.md also reads MCP Resources, so
     the lens flows via trinity://memories/lens.md."""
 
-    def test_catalog_has_six_canonical_resources(self, isolated_home):
+    def test_catalog_has_five_canonical_resources(self, isolated_home):
         from trinity_local.mcp_server import _resource_catalog
         catalog = _resource_catalog()
         uris = {entry[0] for entry in catalog}
@@ -79,7 +79,6 @@ class TestResourceCatalog:
             "trinity://memories/lens.md",
             "trinity://memories/topics.json",
             "trinity://memories/vocabulary.md",
-            "trinity://scoreboard/picks.json",
             "trinity://scoreboard/routing.json",
         }, (
             "Resource catalog drifted from the v2 substrate spec. "
@@ -153,7 +152,7 @@ class TestListResources:
     def test_list_returns_all_resources_on_cold_install(self, isolated_home):
         from trinity_local.mcp_server import handle_list_resources
         resources = asyncio.run(handle_list_resources())
-        assert len(resources) == 6, (
+        assert len(resources) == 5, (
             f"Cold install should still advertise all 6 resources (so the "
             f"agent sees them + reads the stubs that explain how to populate); "
             f"got {len(resources)}"
@@ -164,7 +163,7 @@ class TestListResources:
     def test_list_returns_same_resources_when_populated(self, populated_home):
         from trinity_local.mcp_server import handle_list_resources
         resources = asyncio.run(handle_list_resources())
-        assert len(resources) == 6
+        assert len(resources) == 5
 
     def test_resource_objects_have_required_fields(self, isolated_home):
         """Each Resource the harness lists must have uri/name/description/
@@ -184,7 +183,7 @@ class TestReadResourcePopulated:
     """When the file exists on disk, read_resource returns its contents.
 
     Markdown resources (core / lens / vocabulary) are served byte-for-byte —
-    they're already agent-readable. JSON resources (topics / picks / routing)
+    they're already agent-readable. JSON resources (topics / routing)
     are PROJECTED for the agent: embedding centroids and opaque ID/membership
     lists are stripped before serving (see _project_json_for_agent), because
     an LLM reading the resource can't use a 768-float vector and topics.json
@@ -233,13 +232,6 @@ class TestReadResourcePopulated:
         assert json.loads(result[0].content) == {"basins": []}
         assert result[0].mime_type == "application/json"
 
-    def test_picks_json_returns_file_contents_as_json(self, populated_home):
-        from pydantic import AnyUrl
-        from trinity_local.mcp_server import handle_read_resource
-        result = list(asyncio.run(
-            handle_read_resource(AnyUrl("trinity://scoreboard/picks.json"))))
-        assert json.loads(result[0].content) == {"rules": {}}
-        assert result[0].mime_type == "application/json"
 
 
 class TestJsonResourceProjection:
@@ -276,77 +268,7 @@ class TestJsonResourceProjection:
         assert basin["size"] == 42
         assert result[0].mime_type == "application/json"
 
-    def test_picks_resource_strips_basin_centroid_keeps_fingerprint(self, isolated_home):
-        """picks.json rules carry basin_centroid (768 floats, drop it) AND
-        centroid_embedder (a short fingerprint string, KEEP it — it tells the
-        agent which embedding space the rule lives in)."""
-        from pydantic import AnyUrl
-        from trinity_local.mcp_server import handle_read_resource
-        scoreboard = isolated_home / "scoreboard"
-        scoreboard.mkdir(parents=True, exist_ok=True)
-        (scoreboard / "picks.json").write_text(json.dumps({
-            "architecture_decision": {
-                "basin_id": "b07",
-                "routing_rule": "prefer claude",
-                "basin_centroid": [0.02 * i for i in range(768)],  # strip
-                "centroid_embedder": "nomic-ai/modernbert-embed-base:768",  # keep
-                "trust_score": {"value": 0.8},
-            }
-        }), encoding="utf-8")
-        result = list(asyncio.run(
-            handle_read_resource(AnyUrl("trinity://scoreboard/picks.json"))))
-        rule = json.loads(result[0].content)["architecture_decision"]
-        assert "basin_centroid" not in rule, "768-float basin_centroid leaked into served picks.json"
-        assert rule["centroid_embedder"] == "nomic-ai/modernbert-embed-base:768", (
-            "centroid_embedder fingerprint (a short string, not a vector) was "
-            "wrongly stripped — it's informative provenance the agent should see."
-        )
-        assert rule["routing_rule"] == "prefer claude"
 
-    def test_picks_resource_canonicalizes_web_era_routing_slugs(self, isolated_home):
-        """The get_picks/ask TOOLS canonicalize web-era slugs on read
-        (cortex.load_routing_patterns, v1.7.166), but the picks.json RESOURCE reads
-        the RAW file — which keeps the historical chatgpt/claude_ai/gemini slugs
-        until the next consolidate. Without folding them, the resource hands an
-        agent `primary: "chatgpt"` (not a provider it can dispatch to) while the
-        tool returns `"codex"` — inconsistent + unactionable (found 2026-06-01).
-        The resource must fold BOTH the routing-DECISION fields AND the
-        provider-KEYED scoreboard dicts (winner_distribution / successful_prompts /
-        failure_modes) to match the tool — an agent reading the resource at
-        handshake must never see a key it can't dispatch to. Only the free-text
-        `reason` prose keeps its web-era history."""
-        from pydantic import AnyUrl
-        from trinity_local.mcp_server import handle_read_resource
-        scoreboard = isolated_home / "scoreboard"
-        scoreboard.mkdir(parents=True, exist_ok=True)
-        (scoreboard / "picks.json").write_text(json.dumps({
-            "answer_synthesis": {
-                "basin_id": "answer_synthesis",
-                # chatgpt AND codex both present → must merge into one codex bucket.
-                # Dyadic fractions so the merged sum is exact (no float wobble).
-                "winner_distribution": {"chatgpt": 0.5, "codex": 0.25, "claude": 0.25},
-                "successful_prompts": {"chatgpt": ["p1"], "codex": ["p2"]},
-                "failure_modes": {"chatgpt": "verbose"},
-                "routing_rule": {
-                    "primary": "chatgpt", "challenger": "claude_ai",
-                    "reason": "chatgpt wins by …",  # prose keeps history
-                    "subroutes": [{"if_keywords": ["x"], "prefer": "gemini"}],
-                },
-            }
-        }), encoding="utf-8")
-        served = json.loads(list(asyncio.run(
-            handle_read_resource(AnyUrl("trinity://scoreboard/picks.json"))))[0].content)
-        node = served["answer_synthesis"]
-        rr = node["routing_rule"]
-        assert rr["primary"] == "codex"          # chatgpt -> codex (dispatchable)
-        assert rr["challenger"] == "claude"      # claude_ai -> claude
-        assert rr["subroutes"][0]["prefer"] == "antigravity"  # gemini -> antigravity
-        assert "chatgpt" in rr["reason"]         # free-text prose keeps its history
-        # Provider-keyed dicts fold + MERGE colliding slugs (chatgpt+codex -> codex).
-        assert node["winner_distribution"] == {"codex": 0.75, "claude": 0.25}
-        assert set(node["successful_prompts"]["codex"]) == {"p1", "p2"}
-        assert "chatgpt" not in node["successful_prompts"]
-        assert node["failure_modes"] == {"codex": "verbose"}
 
     def test_projection_helper_only_strips_real_vectors(self):
         """_is_numeric_vector must catch 768-float centroids but NOT short
@@ -446,3 +368,49 @@ class TestCorruptedResourceReadDegradesGracefully:
         result = list(asyncio.run(
             handle_read_resource(AnyUrl("trinity://memories/topics.json"))))
         assert "�" in result[0].content
+
+
+class TestRoutingJsonSlugCanonicalization:
+    """res_019 — routing.json is now the only scoreboard resource an agent reads,
+    and until 2026-08-11 it was the one the canonicalizer did not cover.
+
+    picks.json was folded because its provider-keyed dicts sit under fixed key
+    names the walker matches on. routing.json nests providers under an ARBITRARY
+    task-type name, so key-name matching could never reach them. The gap surfaced
+    only because the picks slug guard was REPOINTED here rather than deleted with
+    its subject.
+    """
+
+    def test_web_era_slugs_are_folded_to_dispatchable_ones(self):
+        from trinity_local.mcp_server import _canonicalize_resource_routing_slugs as fold
+
+        out = fold({"by_task_type": {"arch": {
+            "chatgpt": {"overall": 8.0, "n": 3},
+            "gemini": {"overall": 7.0, "n": 2}}}})
+        providers = set(out["by_task_type"]["arch"])
+        assert "chatgpt" not in providers and "gemini" not in providers, (
+            f"an agent would read a provider it cannot dispatch to: {providers}")
+        assert providers == {"codex", "antigravity"}
+
+    def test_a_collision_keeps_the_better_evidenced_entry_not_the_sum(self):
+        """The guard against the obvious wrong fix. The sibling _fold_keys SUMS
+        numbers on collision, which is right for counts and WRONG for `overall`
+        -- a 0-10 score. Summing 8.0 and 6.0 yields 14.0, which is not a score."""
+        from trinity_local.mcp_server import _canonicalize_resource_routing_slugs as fold
+
+        out = fold({"by_task_type": {"arch": {
+            "chatgpt": {"overall": 8.0, "n": 3},
+            "codex": {"overall": 6.0, "n": 9}}}})
+        entry = out["by_task_type"]["arch"]["codex"]
+        assert entry["n"] == 9 and entry["overall"] == 6.0, (
+            f"expected the larger-n entry kept intact, got {entry}")
+        assert entry["overall"] <= 10.0, "a summed score escaped the 0-10 scale"
+
+    def test_non_dict_task_type_values_pass_through(self):
+        """Degenerate shapes must degrade, not crash — a hand-edited or
+        partially-written routing.json still has to render."""
+        from trinity_local.mcp_server import _canonicalize_resource_routing_slugs as fold
+
+        out = fold({"by_task_type": {"arch": "not-a-dict", "other": None}})
+        assert out["by_task_type"]["arch"] == "not-a-dict"
+        assert out["by_task_type"]["other"] is None

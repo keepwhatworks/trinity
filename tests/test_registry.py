@@ -81,7 +81,7 @@ class TestMcpToolDrift:
         up to 10 when `trust` landed 2026-07-18; back to 7 the same day when the
         eval-harness/palate/generators soft-demote pulled `run_eval` / `choose` /
         `lens_generators` off the MCP surface — CLI verbs + engines stay.)"""
-        assert len(MCP_TOOL_NAMES) == 7
+        assert len(MCP_TOOL_NAMES) == 6   # get_picks removed 2026-08-11 with the router it read
 
 
 class TestRegistryAdoption:
@@ -105,3 +105,47 @@ class TestRegistryAdoption:
         from trinity_local.commands import extension_repair
 
         assert hasattr(extension_repair, "CAPTURE_PROVIDERS")
+
+
+class TestPersonalRoutingJoinCoverage:
+    """res_018 — the join that never fired.
+
+    `compute_personal_routing_table` keys buckets on the CHAIRMAN's free-form
+    emitted task_type; `chairman_picker` reads them with `guess_task_type()`, a
+    five-label heuristic. The key spaces do not intersect, so the personal blend
+    has never engaged and every "X% personalized" claim downstream was reporting
+    something that could not occur.
+
+    Both halves work perfectly in isolation. That is exactly why no test caught
+    it: the contract was asserted at the producer and never checked at the
+    consumer. This is that check.
+    """
+
+    def test_the_two_key_spaces_are_disjoint_and_that_is_recorded(self):
+        """Asserts the DEFECT, deliberately. If this ever fails, the join
+        started working and res_018 plus chairman_picker's docstring must be
+        updated together — a silently-fixed defect is as bad as a silent one."""
+        from trinity_local.task_types import guess_task_type
+
+        read_side = {guess_task_type(t) for t in (
+            "fix this failing test", "research the literature on X",
+            "write a blog post", "why is this crashing", "what should I do")}
+        # The write side's labels are the chairman's own, e.g.
+        # 'advisor_bottleneck_triage'. A five-label heuristic cannot produce one.
+        assert read_side <= {"general", "research", "coding", "debugging", "writing"}, (
+            f"guess_task_type now emits {read_side - {'general','research','coding','debugging','writing'}} "
+            "— if the read side gained chairman-style labels the join may fire; "
+            "re-measure coverage and update res_018")
+
+    def test_a_producer_consumer_key_contract_needs_an_executable_check(self):
+        """The generalisable half. Any table written under one key vocabulary
+        and read under another needs coverage asserted somewhere, or it fails
+        open and silently."""
+        from trinity_local.ranker.chairman_picker import _personal_scores
+
+        for task_type in ("general", "research", "coding", "debugging", "writing"):
+            scores, n = _personal_scores(task_type, ["claude", "codex", "antigravity"])
+            assert scores == {} and n == 0, (
+                f"{task_type!r} now joins ({n} councils). The personal blend has "
+                "started firing for the first time — verify it is intended, then "
+                "update res_018, chairman_picker's docstring, and this test.")

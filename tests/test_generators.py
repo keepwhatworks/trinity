@@ -149,7 +149,12 @@ def test_render_generators_cards():
     # No imperative → the name is the headline, tension the italic subtitle.
     assert "### 1. Leverage" in md and "*system over instance*" in md
     assert "- **software** — the rule" in md
-    assert "Projects task-tensions: 1, 2, 3" in md
+    # Called without a tension_id map these are POSITIONS, and since res_027 the
+    # line says so rather than presenting them as references (they index lens.md
+    # heading order, which is rebuilt on every lens build).
+    assert "Projects task-tension positions (unresolved — not stable ids): 1, 2, 3" in md
+    md_ids = gen.render_generators_cards(gens, ["t_a", "t_b", "t_c"])
+    assert "Projects task-tensions: t_a, t_b, t_c" in md_ids
 
 
 def test_render_generators_cards_imperative_headline():

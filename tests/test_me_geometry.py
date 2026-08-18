@@ -1,8 +1,8 @@
-"""Regression tests for `cortex_geometry` — the pure-numerical core of
+"""Regression tests for `me.geometry` — the pure-numerical core of
 cortex consolidation. The module ships as a dependency-free stdlib block
 that underpins basin-shape priors fed to the flagship extraction prompt.
 
-Coverage rationale: cortex_geometry.py was extracted to its own file
+Coverage rationale: me/geometry.py was extracted to its own file
 expressly so the math has a single home, but until now it was only
 exercised transitively via cortex.py. A regression in `weiszfeld_median`
 or `mean_cosine_to` would corrupt the geometric prior silently — every
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from trinity_local.cortex_geometry import (
+from trinity_local.me.geometry import (
     BIMODALITY_KURTOSIS_THRESHOLD,
     compute_basin_geometry,
     euclid,
@@ -266,7 +266,7 @@ def test_underscore_aliases_match_public_names():
     must point at the same function object as its public name — drift
     would mean a caller hits a stale duplicate that doesn't track fixes.
     """
-    from trinity_local import cortex_geometry as cg
+    from trinity_local.me import geometry as cg
 
     assert cg._euclid is cg.euclid
     assert cg._mean_cosine_to is cg.mean_cosine_to

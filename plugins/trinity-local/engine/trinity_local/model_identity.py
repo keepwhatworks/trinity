@@ -68,7 +68,20 @@ def _tier(m: str) -> tuple[str, str]:
     if "codex" in m:
         return "openai", "codex"
     if "gpt" in m or "o1" in m or "o3" in m:
-        return "openai", "mini" if "mini" in m else "flagship"
+        if "mini" in m:
+            return "openai", "mini"
+        # NAMED VARIANTS SHARE A VERSION AND ARE NOT THE SAME MODEL. gpt-5.6-sol
+        # and gpt-5.6-luna both parse to version 5.6, so without this they land
+        # in ONE tally cell and their win rates average into a number describing
+        # neither — this repo dispatches luna as its resolver/extraction seat and
+        # sol as the general flagship, and treats them as distinct everywhere
+        # else. Filed as res_037 while the collision was still LATENT (zero 5.6
+        # rows in the ledger); fixing it before 5.6 lands is cheap, after is a
+        # re-key of every per-model number.
+        for variant in ("sol", "luna"):
+            if re.search(rf"\b{variant}\b|-{variant}\b", m):
+                return "openai", f"flagship-{variant}"
+        return "openai", "flagship"
     if "gemini" in m:
         return "google", "flash" if "flash" in m else "pro"
     if any(x in m for x in ("qwen", "llama", "gemma", "mlx", "mistral", "phi")):
@@ -87,7 +100,15 @@ def _version(m: str) -> str:
         return f"{dash.group(1)}.{dash.group(2)}"
     # bare single-int version at the end of a name (claude-fable-5 -> "5") —
     # fires only when neither dotted nor dashed form matched.
-    bare = re.search(r"(?:^|[- ])([a-z]+)-(\d+)$", m)
+    #
+    # The lookahead, not a bare `$`: councils record the member WITH its effort
+    # suffix ("claude-opus-5 (high)"), and an end-anchor silently dropped the
+    # version off every one of them. Measured 2026-08-16: all 197
+    # `claude · opus · ?` rows in the disagreement ledger are dated on or after
+    # 2026-07-24, the day Opus 5 became the default claude member — the largest
+    # Claude bucket in the ledger, its identity erased by this anchor. The same
+    # bug hid `claude · fable · ? · high` (42 rows).
+    bare = re.search(r"(?:^|[- ])([a-z]+)-(\d+)(?=\s*\(|$)", m)
     if bare:
         return bare.group(2)
     return UNKNOWN

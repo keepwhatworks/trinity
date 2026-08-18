@@ -228,62 +228,6 @@ class TestWireIn:
         )
 
 
-class TestConsolidateOnUsage:
-    """#316: the stale pass rebuilds picks.json from the lens basins on a usage
-    event (council launch) so `ask`'s routing compounds AUTOMATICALLY — no manual
-    `consolidate`/`dream`, no cron (founder usage-gate rule). This makes the
-    README's "the right model picked automatically / gets sharper as you use it"
-    claim literally true.
-    """
-
-    def test_run_stale_pass_rebuilds_routing_picks(self, stale_home, monkeypatch):
-        """A routable lens result is tallied into picks.json during the pass.
-        Mutation: drop the consolidate block in run_stale_pass -> no save, reds."""
-        import trinity_local.stale_pass as sp
-
-        # No-op the heavy phases so we isolate the consolidate wiring.
-        monkeypatch.setattr(
-            "trinity_local.incremental_ingest.ingest_recent",
-            lambda **k: type("R", (), {"to_dict": lambda self: {}})(),
-        )
-        monkeypatch.setattr(sp, "embed_backfill", lambda **k: {})
-        routing = {"b00": {"winner": "claude", "count": 3, "margin": 0.2,
-                           "n_episodes": 3, "evidence": []}}
-        monkeypatch.setattr(
-            "trinity_local.lens_routing.consolidate_via_lens_basins", lambda: routing
-        )
-        saved: dict = {}
-        monkeypatch.setattr(
-            "trinity_local.cortex.save_routing_patterns",
-            lambda patterns, **k: saved.update(patterns),
-        )
-
-        summary = sp.run_stale_pass("test")
-        assert summary["consolidate"] == {"routable_basins": 1}
-        assert saved == routing, "picks.json must receive the lens-derived routing"
-
-    def test_cold_home_consolidate_is_a_noop_not_a_crash(self, stale_home, monkeypatch):
-        """No lens yet -> {} basins -> save is skipped (dodging the clobber guard),
-        and the pass still completes."""
-        import trinity_local.stale_pass as sp
-
-        monkeypatch.setattr(
-            "trinity_local.incremental_ingest.ingest_recent",
-            lambda **k: type("R", (), {"to_dict": lambda self: {}})(),
-        )
-        monkeypatch.setattr(sp, "embed_backfill", lambda **k: {})
-        monkeypatch.setattr(
-            "trinity_local.lens_routing.consolidate_via_lens_basins", lambda: {}
-        )
-        called = {"saved": False}
-        monkeypatch.setattr(
-            "trinity_local.cortex.save_routing_patterns",
-            lambda *a, **k: called.update(saved=True),
-        )
-
-        summary = sp.run_stale_pass("test")
-        assert summary["consolidate"] == {"routable_basins": 0}
-        assert called["saved"] is False, "empty routing must NOT call save (clobber-safe)"
 
 
 class TestIngestFreshness:

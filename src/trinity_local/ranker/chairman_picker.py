@@ -64,13 +64,36 @@ _sigmoid_alpha = sigmoid_alpha
 
 
 def _personal_scores(task_type: str, available: list[str]) -> tuple[dict[str, float], int]:
-    """Return ({provider: overall}, n_councils) from the personal routing table
-    for this task_type. Empty dict + n=0 when no data."""
+    """Return ({provider: overall}, n_councils) from the personal routing table.
+
+    THIS JOIN HAS NEVER FIRED, and the branch below is retained only so the
+    measurement has somewhere to live until the blend is removed outright.
+
+    Measured 2026-08-11 over every council on disk carrying task text:
+    coverage is 0/716. The write side (`compute_personal_routing_table`) keys
+    buckets on the CHAIRMAN's free-form emitted task_type -- 502 distinct labels
+    like `advisor_bottleneck_triage`. The read side keys on `guess_task_type()`,
+    a five-label heuristic: general, research, coding, debugging, writing. The
+    two key spaces do not intersect anywhere, so `bucket` is always empty,
+    `max_n` is always 0, and `sigmoid_alpha(0)` puts the blend at ~100% global.
+
+    Every "X% personalized" badge downstream of this has therefore been
+    reporting a personalization that could not occur. Both halves work
+    perfectly in isolation, which is why no test caught it -- the contract was
+    asserted at the producer and never checked at the consumer. See res_018 and
+    council_df5e0f2dcc5acc76, which ruled: cut the decision authority, keep
+    routing.json as an honest display scoreboard, do not delete it (that would
+    be the scope creep the same council forbade).
+    """
     try:
         data = compute_personal_routing_table()
     except Exception:
         return {}, 0
     bucket = (data.get("by_task_type") or {}).get(task_type) or {}
+    if not bucket:
+        # The measured case, always. Return explicitly rather than falling
+        # through the loop below, so the dead path reads as dead.
+        return {}, 0
     scores: dict[str, float] = {}
     max_n = 0
     for provider, sub in bucket.items():

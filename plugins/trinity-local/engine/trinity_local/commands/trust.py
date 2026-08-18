@@ -154,7 +154,8 @@ def handle_trust(args):
         # Council split on a default-output pointer was UNRESOLVED; decided here
         # (logged in amd_0065): the pointer appears ONLY once a silver cell has
         # actually cleared its floor — pointing at an all-withheld tier serves
-        # nobody, and silence cannot dilute gold. Never let silver break gold.
+        # nobody, and silence cannot dilute the behavioural tier. Never let the
+        # chairman-adjudicated tier break the behavioural one.
         try:
             from ..disagreement_ledger import silver_tally
 
@@ -201,24 +202,42 @@ def _print_pattern(r: dict) -> None:
 
 
 def _tally_lines(agg: dict) -> str:
+    """Render the behavioural tally. ALWAYS prefixed with the tier's caveat.
+
+    The gold->proxy relabel (council-ratified, unanimous) added
+    BEHAVIOURAL_TIER_CAVEAT and wired it to nothing, so this surface kept
+    printing per-model win rates as a settled behavioural verdict while
+    CLAUDE.md said "do not quote these numbers as settled without that caveat".
+    The sibling SILVER tier prints its calibration on every render; this one now
+    does too, and test_trust_surfaces_carry_the_behavioural_caveat pins it.
+    """
     if not agg.get("tally_trustworthy"):
-        from ..disagreement_ledger import K4_MIN_RESOLVED
+        from ..disagreement_ledger import BEHAVIOURAL_TIER_CAVEAT, K4_MIN_RESOLVED
         resolved = int(agg.get("resolved", 0) or 0)
         why = []
         if not agg.get("k3_in_band"):
             why.append("resolver near noise/parroting")
         if not agg.get("k4_discriminates"):
             why.append("no model separates yet")
-        return ("Per-model verdict withheld — " + ("; ".join(why) or "not enough resolved")
+        # A summary.json written before the caveat rode the aggregate has no 'cave
+        # at' key, and every consumer degraded to an empty string — so the live ledger r
+        # endered per-model verdicts with NO caveat at all, which is the state the fix claimed to have closed. Default to the constant: this disclosure must fail CLOSED.
+        head = str(agg.get("caveat") or BEHAVIOURAL_TIER_CAVEAT)
+        return ((head + "\n\n" if head else "")
+                + "Per-model verdict withheld — " + ("; ".join(why) or "not enough resolved")
                 + f" ({resolved}/{K4_MIN_RESOLVED} resolved disagreements). It accrues as you run "
                 "councils; the retrieval + raw council record work now.")
-    from ..disagreement_ledger import MIN_TALLY_N
+    from ..disagreement_ledger import BEHAVIOURAL_TIER_CAVEAT, MIN_TALLY_N
+    caveat = str(agg.get("caveat") or BEHAVIOURAL_TIER_CAVEAT)
     records = agg.get("records") or {}
     shown = sorted(((k, v) for k, v in records.items()
                     if (v.get("w", 0) + v.get("l", 0)) >= MIN_TALLY_N),
                    key=lambda kv: -kv[1].get("win_rate", 0))
-    lines = [f"On {agg.get('resolved', 0)} resolved cross-provider disagreements, which "
-             f"model your work sided with (per model x version, >= {MIN_TALLY_N} decisions):"]
+    lines = []
+    if caveat:
+        lines += [caveat, ""]
+    lines.append(f"On {agg.get('resolved', 0)} resolved cross-provider disagreements, which "
+                 f"model your work sided with (per model x version, >= {MIN_TALLY_N} decisions):")
     for ident, rec in shown:
         ci = rec.get("ci") or [0, 0]
         mark = "  <- clear" if rec.get("ci_excludes_half") else ""

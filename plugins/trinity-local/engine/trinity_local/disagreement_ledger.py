@@ -13,6 +13,14 @@ disagreement:
     reads topic, not stance (measured: an LLM-free resolver agrees with the
     validated reference at chance — see behavioral_resolver_backtest.py).
 
+    THIS TIER IS A PROXY, NOT GROUND TRUTH (relabelled 2026-08-06, unanimous
+    council claim in council_a3196cfdb40680a5). The resolver reproduces its own
+    decided verdicts 45% of the time; the label is COMPOSED by a model rather
+    than extracted from an observed act; and what it measures is taste-
+    consistency inferred at claim elevation. See BEHAVIOURAL_TIER_CAVEAT below
+    for the full statement and the (conservative) direction of the bias. The
+    numbers did not change when the name did — only the claim over them.
+
 This module owns the LLM-FREE halves: loading disagreements, assembling behavioral
 evidence, the tally/Wilson-CI aggregation, and the retrieval. No LLM calls here.
 """
@@ -85,10 +93,34 @@ class DisagreementPattern:
     # finer granularity the tally keys on so Opus 4.8 doesn't hide inside "anthropic".
     models_for: list[str] = field(default_factory=list)
     models_against: list[str] = field(default_factory=list)
+    # HOW THE MODEL STRING WAS OBTAINED, per provider: echoed | pinned | assumed.
+    # The tally keys on model×version, so a row whose model was never verified
+    # is not worth the same as one the CLI stated — and until 2026-08-17 every
+    # row looked identical. Empty for councils recorded before capture existed:
+    # that is UNKNOWN provenance, deliberately not back-filled as "assumed",
+    # because inventing provenance for rows nobody observed is the same defect
+    # in a new costume (res_045).
+    model_sources: dict[str, str] = field(default_factory=dict)
 
     @property
     def is_cross_provider(self) -> bool:
-        return len({*self.providers_for, *self.providers_against}) >= 2
+        """Did the labs actually SPLIT — not merely appear on the claim.
+
+        This tested `len(union of both sides) >= 2`, a PROXY, and so admitted
+        claims that two labs jointly asserted with nobody arguing the other side:
+        agreement counted as disagreement. Measured 2026-08-07 on the live
+        corpus: 6 of 357 admitted patterns (1.7%) had an EMPTY `against` side.
+        Every one of them credited a win to the for-side with no opposing side to
+        lose, which nudges win rates upward — on the ledger that is the product's
+        one defensible claim.
+
+        The invariant is: both sides are occupied, and they are not the same
+        single lab arguing with itself.
+        """
+        f, a = set(self.providers_for), set(self.providers_against)
+        if not f or not a:
+            return False
+        return bool(f - a) or bool(a - f)
 
     def to_dict(self) -> dict:
         d = {k: v for k, v in self.__dict__.items() if v not in (None, "", [], {})}
@@ -122,11 +154,16 @@ def load_disagreements(home: str | None = None) -> list[DisagreementPattern]:
             continue
         rl = rec.get("routing_label") or {}
         member_models = {}
+        model_sources: dict[str, str] = {}
         for m in rec.get("member_results") or []:
             if isinstance(m, dict) and m.get("provider"):
-                eff = (m.get("metadata") or {}).get("effort")
+                meta = m.get("metadata") or {}
+                eff = meta.get("effort")
                 ident = str(m.get("model") or "")
                 member_models[m["provider"]] = f"{ident} ({eff})" if eff and eff not in ident else ident
+                src = meta.get("model_source")
+                if src:
+                    model_sources[m["provider"]] = str(src)
         # lab -> model identity for this council, so a side's lab can be resolved
         # to the actual model that argued it. Include the EFFORT leg when it was
         # captured (model×size×effort — the atomic unit); drop it to model×size when
@@ -157,6 +194,7 @@ def load_disagreements(home: str | None = None) -> list[DisagreementPattern]:
                 chairman_winner=lab_of(rl.get("winner") or ""),
                 task_excerpt=str((rec.get("metadata") or {}).get("task_text") or "")[:200],
                 member_models=member_models,
+                model_sources=model_sources,
                 models_for=_models(c.get("providers_for")),
                 models_against=_models(c.get("providers_against")),
             ))
@@ -167,6 +205,7 @@ def assemble_evidence(
     patterns: list[DisagreementPattern],
     nodes: list[tuple[datetime, str, Any]],
     embed_batch_fn: Callable[[list[str]], list[list[float]]],
+    window_days: int = WINDOW_DAYS,
 ) -> dict[str, list[dict]]:
     """For each pattern, the user's subsequent topically-adjacent prompts (the
     behavioral evidence the resolver reads). LLM-FREE: stored node embeddings +
@@ -203,7 +242,16 @@ def assemble_evidence(
         if t0 is None:
             out[p.claim_id] = []
             continue
-        t1 = t0 + timedelta(days=WINDOW_DAYS)
+        # window_days is a PARAMETER (default = the production WINDOW_DAYS, so
+        # this is inert until a caller opts in) because the 14-day window is the
+        # ledger's hardest-bound knob: a claim whose evidence never reached
+        # MIN_EVIDENCE inside 14 days is filed "unresolved" WITHOUT a model call,
+        # and `_needs_resolve` then refuses to retry it once the window closes —
+        # so evidence-starved and genuinely-ambiguous claims are indistinguishable
+        # on disk. Widening it is a validity question, not a free win (later
+        # prompts may be a different context entirely), which is why the knob
+        # exists for measurement first and the default stays 14.
+        t1 = t0 + timedelta(days=window_days)
         cands = []
         for ts, text, v in nodes:
             if ts <= t0 or ts > t1:
@@ -243,10 +291,65 @@ def _model_version_and_effort(label: str) -> tuple[str, str | None]:
     return label, None
 
 
+# ─── WHY THE BEHAVIOURAL TIER IS NO LONGER CALLED "GOLD" (2026-08-06) ───
+#
+# It was renamed to PROXY on a unanimous council claim (council_a3196cfdb40680a5:
+# "The ledger must be relabeled from gold truth to proxy labels"), backed by
+# measurement rather than taste:
+#
+#   * Re-running THIS resolver over 20 claims it had already DECIDED — same
+#     model, same effort, same evidence — reproduced only 45%, and ~31% of
+#     decided-to-decided pairs FLIPPED DIRECTION. A key whose own instrument
+#     cannot reproduce it is not ground truth.
+#   * The label is COMPOSED by a model reading transcripts, not extracted from
+#     an observed act. Per the coupling essay, "ground truth stops being ground
+#     truth the moment your system can write to it" — and composing is writing.
+#   * What it actually measures is whether the user's later work moved in a
+#     claim's direction: taste-CONSISTENCY inferred at claim elevation. That is
+#     a fast proxy on its own clock, not the slow truth it was standing in for.
+#
+# Nothing about the NUMBERS changed when the name did — only what we claim they
+# are.
+#
+# THE ATTENUATION RESCUE WAS RETRACTED 2026-08-07. This comment, and the user-
+# facing string below, used to say the bias direction was conservative: random
+# label noise attenuates toward 50%, so rates would be understated and the
+# significance tests would survive as rejections of chance. That argument holds
+# only if the noise is NON-DIFFERENTIAL — equally likely whichever model argued
+# the claim — which was asserted and never measured. Measured now on the 27
+# claims resolved twice in internal/experiments/resolver_effort_arms.jsonl: the
+# flip rate is 8/27 = 29.6% overall but runs 0% (GPT-5.5, n=5) to 27% (Gemini
+# 3.1-high, n=11) per model. Two-proportion z=1.30, so differentiality is
+# UNTESTED rather than refuted — and it points the wrong way, because the model
+# with the LOWEST trust rate carries the HIGHEST flip rate, which is what
+# differential noise manufacturing a low score would look like.
+#
+# So the rescue may not be stated to users as fact. The string below says only
+# what is measured. The confidence intervals exclude label noise either way.
+BEHAVIOURAL_TIER_CAVEAT = (
+    "PROXY (behavioural) — inferred by a model reading your later transcripts, "
+    "not extracted from an observed choice. Measured 2026-08-06: this resolver "
+    "reproduces its own decided verdicts 45% of the time and flips direction on "
+    "~31% of decided pairs, so treat per-model rates as directional. Whether "
+    "that noise biases the rates in a particular direction is UNMEASURED — it "
+    "would need to be equally likely across models, and the per-model flip rate "
+    "ranges 0% to 27% on the claims read twice. The intervals shown do NOT "
+    "include label noise."
+)
+
+
 def aggregate_tally(
     patterns: list[DisagreementPattern],
     resolutions: dict[str, str],
 ) -> dict[str, Any]:
+    # NOTE (2026-08-07): the returned dict carries `caveat` =
+    # BEHAVIOURAL_TIER_CAVEAT. The gold->proxy relabel added that constant but
+    # wired it to NOTHING — CLI, MCP and the launchpad card all still shipped the
+    # un-caveated verdict, so the council-ratified line "do not quote these numbers
+    # as settled without that caveat" was violated by three live surfaces while the
+    # sibling SILVER tier carried its calibration everywhere. Emitting it here is
+    # what makes every downstream consumer inherit it: summary.json, `trust --json`,
+    # the MCP tool payload and the launchpad card all read this dict.
     """Per-lab win/loss over resolved disagreements + Wilson CI + the K3/K4 gates.
 
     followed -> credit providers_for as W (against as L); contradicted -> reverse.
@@ -256,6 +359,14 @@ def aggregate_tally(
     by_id = {p.claim_id: p for p in patterns}
     resolved = {cid: r for cid, r in resolutions.items()
                 if r in ("followed", "contradicted") and cid in by_id}
+    # PROVENANCE OF THE THING THE TALLY KEYS ON. Every row used to look equally
+    # trustworthy; a model string is worth less when nobody verified it. Counted
+    # over the RESOLVED claims because those are the ones the rates rest on.
+    prov: dict[str, int] = {}
+    for cid in resolved:
+        srcs = (by_id[cid].model_sources or {}).values()
+        for s_ in (set(srcs) or {"unknown"}):
+            prov[s_] = prov.get(s_, 0) + 1
     tally: dict[str, dict[str, int]] = {}
     eff_tally: dict[str, dict[str, dict[str, int]]] = {}  # model×version -> effort -> {w,l}
     ch_hit = ch_tot = 0
@@ -323,6 +434,22 @@ def aggregate_tally(
         # gates. Otherwise the retrieval + raw record still ship; the per-model
         # verdict is withheld (green-gate: the disqualifier is IN the gate).
         "tally_trustworthy": bool(in_band and k4_pass and len(resolved) >= K4_MIN_RESOLVED),
+        # Rides the aggregate so no consumer can render the tally without it.
+        "caveat": BEHAVIOURAL_TIER_CAVEAT,
+        # How the model strings the tally KEYS ON were obtained, over the
+        # resolved claims. `unknown` means the council predates provenance
+        # capture (2026-08-17) — deliberately not relabelled "assumed", because
+        # inventing provenance for rows nobody observed is the defect it fixes.
+        #
+        # SEMANTICS, because the totals do not sum to `resolved` and a consumer
+        # would otherwise misread them: a claim is counted ONCE PER DISTINCT
+        # SOURCE among its members, so a council mixing an echoed member with an
+        # assumed one adds to BOTH. That is the useful reading — it says how many
+        # claims have any verified member and how many have any unverified one —
+        # but it means sum(model_provenance.values()) >= resolved. Compare each
+        # count against `resolved`, never against the other counts.
+        "model_provenance": dict(sorted(prov.items())),
+        "model_provenance_denominator": len(resolved),
     }
 
 
@@ -592,8 +719,9 @@ def build_ledger(*, home: str | None = None, config: Any = None, limit: int | No
 # ─── SILVER tier: chairman-adjudicated claim-side tally (council_a5ba36c437d492f9) ───
 #
 # Shipped opt-in only (`trust --silver` / MCP `silver:true`), launchpad stays
-# gold-only, and silver is NEVER merged into the gold tally — all three were
-# unanimous council claims. Floor is SEPARATE from gold's MIN_TALLY_N: the
+# behavioural-only, and silver is NEVER merged into the behavioural tally — all
+# three were unanimous council claims. Floor is SEPARATE from the behavioural
+# tier's MIN_TALLY_N: the
 # adjudicator (the chairman) is ~11% nondeterministic on identical input, so a
 # floor of 10 admits cells a single re-run could flip; 25 is the council-ratified
 # minimum for a cell to mean anything.
@@ -611,8 +739,9 @@ SILVER_CALIBRATION = (
     "chairman verdicts agreed with behaviourally-settled outcomes 63% (n=123). "
     "The live labels shown here have NOT been separately calibrated yet; they "
     "will be re-measured at n>=150 credited claims or 2026-11-01, whichever "
-    "comes first. The behavioural ledger (gold) remains the verdict tier."
+    "comes first. The behavioural ledger remains the verdict tier."
 )
+
 
 _SILVER_FAMILY = {
     "claude": "claude", "claude_ai": "claude", "anthropic": "claude",
@@ -655,6 +784,19 @@ def silver_tally(home: str | None = None) -> dict:
                 continue
             if not isinstance(doc, dict):
                 continue          # parsed-but-wrong-shape is degenerate data, not input
+            # EXCLUDE dream/virtual councils, exactly as the behavioural tier does
+            # (load_disagreements: "authored with hindsight over the same
+            # transcripts, so crediting it would be circular"). This tier stamps
+            # itself "computed from your own live council labels (prosecutor era)"
+            # and had no such filter: measured 2026-08-07, 6 of 53 credited claims
+            # (11%) came from 4 mode='synthesis_only' councils, each an experiment
+            # replay run twice, so the claims were correlated duplicates too. The
+            # escalation is what makes it urgent rather than cosmetic — `lens --deep`
+            # mines hundreds of virtual councils and now stamps member identities on
+            # them, so the next deep build would flood the silver cells with
+            # hindsight-authored labels while the stamp still promised live ones.
+            if (doc.get("metadata") or {}).get("mode") == "synthesis_only":
+                continue
             claims = (doc.get("routing_label") or {}).get("disagreed_claims") or []
             if not claims:
                 continue

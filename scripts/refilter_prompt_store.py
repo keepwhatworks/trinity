@@ -80,15 +80,24 @@ def norm(s: str) -> str:
 
 
 def load_store(path: pathlib.Path):
-    rows, bad = [], 0
+    """Parsed rows, plus the RAW text of any line that would not parse.
+
+    The unparseable lines are returned, not merely counted, because --apply
+    rewrites the store from what this returns: counting them while dropping them
+    made the report's own words false ("N unparseable, left alone") and deleted
+    user data on every apply. They are now carried through verbatim, which is what
+    "left alone" has always claimed and what reembed_prompt_store.py already does
+    on its own rewrite path.
+    """
+    rows, unparseable = [], []
     for line in path.open(encoding="utf-8"):
         if not line.strip():
             continue
         try:
             rows.append(json.loads(line))
         except json.JSONDecodeError:
-            bad += 1
-    return rows, bad
+            unparseable.append(line.rstrip("\n"))
+    return rows, unparseable
 
 
 def ledger_blast_radius(rejected, kept):
@@ -133,6 +142,50 @@ def ledger_blast_radius(rejected, kept):
     return out
 
 
+KEEP_BACKUPS = 2
+
+
+def _backup_stamp_key(p) -> str:
+    """Sort key from the timestamp EMBEDDED IN THE FILENAME, not st_mtime.
+
+    shutil.copy2 preserves the SOURCE file's mtime, so every backup inherits the
+    store's mtime rather than its own creation time. Measured 2026-08-07: all four
+    prompt_nodes.jsonl.bak-reembed-* files carry mtime 2026-07-31T22:15:16 despite
+    filename stamps 143207Z/143633Z/145417Z/151721Z, and a same-day sepfix backup
+    inherited an mtime OLDER than a backup taken a week earlier. "Keep the newest N
+    by mtime" therefore selects arbitrarily among ties and can retain the wrong
+    copies. The filename stamp is exact, monotonic, and immune to copy semantics.
+    Files without a parseable stamp sort FIRST (oldest) so a stray hand-made copy is
+    pruned before a real one.
+    """
+    import re
+
+    m = re.search(r"(\d{8}T\d{6}Z)$", p.name)
+    return m.group(1) if m else ""
+
+
+def _prune_refilter_backups(path, keep: int) -> None:
+    """Keep the newest `keep` copies THIS script made; delete older ones.
+
+    The glob is anchored to `.bak-refilter-` rather than the looser `.bak-2*` it
+    shipped with. That earlier pattern also matched
+    `prompt_nodes.jsonl.bak-20260801T163306Z` — the one backup a 2026-08-07 audit
+    explicitly ruled must be KEPT (it is the only surviving copy of the corrected
+    post-reembed corpus) — and matched the sepfix backup too. A pruner that deletes
+    the artefact another instrument depends on is worse than no pruner.
+    """
+    import os
+
+    olds = sorted(path.parent.glob(f"{path.name}.bak-refilter-*"),
+                  key=_backup_stamp_key, reverse=True)
+    for stale in olds[keep:]:
+        try:
+            os.unlink(stale)
+            print(f"pruned old backup: {stale.name}")
+        except OSError as exc:
+            print(f"could not prune {stale.name}: {exc}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     ap.add_argument("--apply", action="store_true",
@@ -148,9 +201,10 @@ def main() -> int:
         print(f"no prompt store at {path}", file=sys.stderr)
         return 2
 
-    rows, bad = load_store(path)
+    rows, unparseable = load_store(path)
     print(f"store            : {path}")
-    print(f"lines            : {len(rows)}" + (f"  ({bad} unparseable, left alone)" if bad else ""))
+    print(f"lines            : {len(rows)}"
+          + (f"  ({len(unparseable)} unparseable, carried through verbatim)" if unparseable else ""))
     if len(rows) < MIN_STORE_LINES:
         print(f"REFUSING: store has {len(rows)} lines < MIN_STORE_LINES={MIN_STORE_LINES}. "
               "Too small to be the real corpus; refusing rather than pruning a test fixture.")
@@ -191,12 +245,29 @@ def main() -> int:
         return 2
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    backup = path.with_suffix(f".jsonl.bak-{stamp}")
+    backup = path.with_suffix(f".jsonl.bak-refilter-{stamp}")
     shutil.copy2(path, backup)
+    # Same unbounded-retention defect as the reembed script (see its
+    # _prune_backups): every apply left a permanent ~1GB copy.
+    _prune_refilter_backups(path, KEEP_BACKUPS)
     tmp = path.with_suffix(".jsonl.tmp")
     with tmp.open("w", encoding="utf-8") as f:
+        # Unparseable lines first, verbatim — dropping them silently deleted user
+        # data while the report claimed they were left alone.
+        for raw in unparseable:
+            f.write(raw + "\n")
         for r in kept:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+            # ensure_ascii=True (the DEFAULT) is load-bearing, not style — the same
+            # lesson reembed_prompt_store.py already carries. The store is written
+            # ESCAPED; json.loads turns an escaped \\u2028/\\u2029 back into the RAW
+            # character, and dumping it with ensure_ascii=False emits that raw
+            # separator, which str.splitlines() counts as a line break. This script
+            # shipped with ensure_ascii=False and a 2026-08-0x --apply re-injected
+            # exactly 555 phantom lines into the live store: 47,536 physical lines
+            # read as 48,091 by splitlines(), and disagreement_ledger._load_nodes()
+            # (which splits that way) silently dropped 557 unparseable fragments from
+            # the resolver's own evidence corpus.
+            f.write(json.dumps(r) + "\n")
     tmp.replace(path)
     print(f"\nbackup written   : {backup}")
     print(f"store rewritten  : {len(kept)} lines kept, {len(rejected)} removed")

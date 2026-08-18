@@ -8,6 +8,8 @@ same first-task-wins rule) — these tests guard the Python half.
 """
 from __future__ import annotations
 
+from trinity_local.me import basins as _mb
+
 import json
 from pathlib import Path
 
@@ -109,51 +111,6 @@ class TestTaskToTopologyBasin:
         assert result == {"b00": "b00", "b01": "b01"}
 
 
-class TestCortexCardTopologyAnnotation:
-    """The launchpad picks card carries a → topology link per pick when that
-    pick's basin id exists in topics.json (post-collapse #298 the routing basins
-    ARE the topology basins). Annotation happens in _load_cortex_rules so the Vue
-    template just reads r.topology_basin."""
-
-    def test_topology_basin_attached_when_match(self, isolated_home, monkeypatch):
-        from trinity_local import launchpad_data
-        # Stub the bridge so the test doesn't need to populate topics.json —
-        # we're testing the annotation, not the identity match (covered above).
-        monkeypatch.setattr(
-            launchpad_data,
-            "_task_to_topology_basin",
-            lambda: {"b07": "b07"},
-        )
-        pick = {"winner": "claude", "count": 5, "margin": 0.7,
-                "n_episodes": 5, "evidence": []}
-        import trinity_local.cortex
-        monkeypatch.setattr(
-            trinity_local.cortex, "load_routing_patterns", lambda: {"b07": pick}
-        )
-        from trinity_local.launchpad_data import _load_cortex_rules
-        payload = _load_cortex_rules()
-        assert payload is not None, "picks payload is None"
-        assert payload["rules"], "no rules in payload"
-        row = next(r for r in payload["rules"] if r["basin_id"] == "b07")
-        assert row.get("topology_basin") == "b07", (
-            f"topology_basin not annotated; got {row.get('topology_basin')!r}"
-        )
-
-    def test_topology_basin_absent_when_no_match(self, isolated_home, monkeypatch):
-        from trinity_local import launchpad_data
-        monkeypatch.setattr(launchpad_data, "_task_to_topology_basin", lambda: {})
-        pick = {"winner": "claude", "count": 1, "margin": 0.5,
-                "n_episodes": 1, "evidence": []}
-        import trinity_local.cortex
-        monkeypatch.setattr(
-            trinity_local.cortex, "load_routing_patterns", lambda: {"b09": pick}
-        )
-        from trinity_local.launchpad_data import _load_cortex_rules
-        payload = _load_cortex_rules()
-        rule_row = payload["rules"][0]
-        assert "topology_basin" not in rule_row, (
-            f"topology_basin should be absent when no match; got {rule_row.get('topology_basin')!r}"
-        )
 
 
 class TestTopicsBasinsCache:
@@ -175,7 +132,7 @@ class TestTopicsBasinsCache:
         # mask the assertion. Module attribute approach matches the
         # implementation; direct attribute reset is the only way.
         import trinity_local.launchpad_data as lpd
-        lpd._TOPICS_BASINS_CACHE = None
+        _mb._TOPICS_BASINS_CACHE = None
 
         # Patch json.loads to count parses through the helper.
         original_loads = json.loads
@@ -201,7 +158,7 @@ class TestTopicsBasinsCache:
             encoding="utf-8",
         )
         import trinity_local.launchpad_data as lpd
-        lpd._TOPICS_BASINS_CACHE = None
+        _mb._TOPICS_BASINS_CACHE = None
 
         first = lpd._load_topics_basins()
         assert first[0]["id"] == "b00"
@@ -227,7 +184,7 @@ class TestTopicsBasinsCache:
         so different homes get different cache slots."""
         import json, os
         import trinity_local.launchpad_data as lpd
-        lpd._TOPICS_BASINS_CACHE = None
+        _mb._TOPICS_BASINS_CACHE = None
 
         home_a = tmp_path / "home_a"
         home_b = tmp_path / "home_b"
@@ -258,14 +215,14 @@ class TestTopicsBasinsCache:
         topics_p = isolated_home / "memories" / "topics.json"
         topics_p.write_text(json.dumps({"basins": [{"id": "b00"}]}), encoding="utf-8")
         import trinity_local.launchpad_data as lpd
-        lpd._TOPICS_BASINS_CACHE = None
+        _mb._TOPICS_BASINS_CACHE = None
         assert lpd._load_topics_basins(), "first read should populate cache"
         # If the file disappears (e.g. user clears state), the helper
         # must return [] AND drop the cached payload so a re-add gets
         # picked up by the next call.
         topics_p.unlink()
         assert lpd._load_topics_basins() == []
-        assert lpd._TOPICS_BASINS_CACHE is None, (
+        assert _mb._TOPICS_BASINS_CACHE is None, (
             "missing file should clear the cache, not keep stale data"
         )
 

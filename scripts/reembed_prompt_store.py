@@ -126,6 +126,48 @@ def _fmt(a) -> str:
             f"median={a['median']:.4f}  <0.999={a['below_0.999']}  <0.95={a['below_0.95']}")
 
 
+KEEP_BACKUPS = 2
+
+
+def _backup_stamp_key(p) -> str:
+    """Sort key from the timestamp EMBEDDED IN THE FILENAME, not st_mtime.
+
+    shutil.copy2 preserves the SOURCE file's mtime, so every backup inherits the
+    store's mtime rather than its own creation time. Measured 2026-08-07: all four
+    prompt_nodes.jsonl.bak-reembed-* files carry mtime 2026-07-31T22:15:16 despite
+    filename stamps 143207Z/143633Z/145417Z/151721Z, and a same-day sepfix backup
+    inherited an mtime OLDER than a backup taken a week earlier. "Keep the newest N
+    by mtime" therefore selects arbitrarily among ties and can retain the wrong
+    copies. The filename stamp is exact, monotonic, and immune to copy semantics.
+    Files without a parseable stamp sort FIRST (oldest) so a stray hand-made copy is
+    pruned before a real one.
+    """
+    import re
+
+    m = re.search(r"(\d{8}T\d{6}Z)$", p.name)
+    return m.group(1) if m else ""
+
+
+def _prune_backups(path, marker: str, keep: int) -> None:
+    """Keep the newest `keep` backups matching `marker`; delete older ones.
+
+    Unbounded retention is how a 0.75GiB store accumulated 6.4GiB of copies —
+    8.9x the live data on a volume at 93%. Newest-first by mtime so an
+    interrupted run cannot strand the most recent good copy.
+    """
+    import os
+
+    olds = sorted(path.parent.glob(f"{path.name}.{marker}*"),
+                  key=_backup_stamp_key, reverse=True)
+    for stale in olds[keep:]:
+        try:
+            size = stale.stat().st_size
+            os.unlink(stale)
+            print(f"pruned old backup: {stale.name} ({size / 1e9:.2f} GB)")
+        except OSError as exc:
+            print(f"could not prune {stale.name}: {exc}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     ap.add_argument("--apply", action="store_true", help="rewrite the store (backs up first)")
@@ -189,10 +231,13 @@ def main() -> int:
         print("      Rebuild after: `trinity-local lens --force` then `trinity-local consolidate`.")
         return 0
 
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    backup = path.with_suffix(f".jsonl.bak-reembed-{stamp}")
-    shutil.copy2(path, backup)
-    print(f"\nbackup written   : {backup}")
+    # NOTE: the backup is NOT taken here. It used to be, and that single ordering
+    # left ~3.5GiB of corpses on disk: this point sits ABOVE the KeyboardInterrupt
+    # handler and both REFUSING gates below, so every run that declined to write —
+    # including three no-op runs after the producer fix landed — still copied the
+    # whole ~900MB store first. A backup exists to protect a WRITE; taking one
+    # before deciding to write protects nothing and costs a gigabyte. It now lives
+    # immediately before the atomic swap (search: BACKUP TAKEN HERE).
 
     # ---- resume from any prior partial run --------------------------------
     ckpt = path.parent / CHECKPOINT_NAME
@@ -223,6 +268,7 @@ def main() -> int:
                 if s % (BATCH * 10) == 0 or done == len(todo):
                     print(f"  re-embedded {done}/{len(todo)} (this run)", flush=True)
     except KeyboardInterrupt:
+        # No backup to clean up: it is now taken below, after the refusal gates.
         print("\ninterrupted — checkpoint retained; re-run to resume. Store untouched.")
         return 130
 
@@ -243,6 +289,20 @@ def main() -> int:
               "this run would be a no-op, which means the producer fix is not in effect. "
               "Store left untouched.")
         return 2
+
+    # BACKUP TAKEN HERE — after the two CONTENT refusal gates (missing-vector,
+    # no-op-run) and immediately before the swap. Precise scope, because the commit
+    # that moved it overstated: ONE gate still fires after this point — the
+    # line-count guard below, which refuses the swap if the rewrite changed the row
+    # count. That path deliberately KEEPS the backup ("backup retained" in its
+    # message) because at that moment a .tmp exists and the store is suspect, so a
+    # copy is exactly what you want. The three corpses this move eliminated came
+    # from the gates ABOVE, which decide not to write at all.
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup = path.with_suffix(f".jsonl.bak-reembed-{stamp}")
+    shutil.copy2(path, backup)
+    print(f"\nbackup written   : {backup}")
+    _prune_backups(path, "bak-reembed-", KEEP_BACKUPS)
 
     # tmp is cleaned on ANY failure path — an interrupted run left a stale
     # multi-hundred-MB .tmp beside the store on 2026-08-01.

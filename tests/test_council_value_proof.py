@@ -11,7 +11,8 @@ that the launchpad/status surfaces self-hide on a thin ledger.
 """
 from __future__ import annotations
 
-import trinity_local.personal_routing as pr
+import trinity_local.council_analytics as _ca
+
 
 
 def test_scan_outcomes_records_distinct_voices_from_disk(monkeypatch, tmp_path):
@@ -56,7 +57,7 @@ def test_scan_outcomes_records_distinct_voices_from_disk(monkeypatch, tmp_path):
     sp.council_outcomes_dir().mkdir(parents=True, exist_ok=True)
     save_council_outcome(same_family)
 
-    records, _clean = pr._scan_outcomes()
+    records, _clean = _ca._scan_outcomes()
     assert len(records) == 1, records
     rec = records[0]
     assert rec["substantive_members"] == 3, rec
@@ -64,7 +65,7 @@ def test_scan_outcomes_records_distinct_voices_from_disk(monkeypatch, tmp_path):
         "a claude·claude·claude chain has THREE substantive members but ONE "
         f"distinct voice — _scan_outcomes must record that: {rec}"
     )
-    assert pr._is_real_contest(rec) is False, (
+    assert _ca._is_real_contest(rec) is False, (
         "a same-family chain is NOT a cross-provider contest — _is_real_contest "
         f"must refuse it on the distinct-voice clause: {rec}"
     )
@@ -86,8 +87,8 @@ def test_changed_pick_and_split(monkeypatch):
         ("claude", "claude"),       # default won — NOT a changed pick
         ("codex", "claude"),
     ) * 5  # 20 councils, clears the n>=10 threshold
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (recs, True))
-    vp = pr.council_value_proof()
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (recs, True))
+    vp = _ca.council_value_proof()
     assert vp["ready"] is True
     assert vp["n"] == 20
     assert vp["comparable"] == 20
@@ -130,8 +131,8 @@ def test_value_proof_refuses_same_family_chain_as_a_changed_pick(monkeypatch):
          "distinct_substantive_providers": 1}
         for _ in range(12)
     ]
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (recs, True))
-    vp = pr.council_value_proof()
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (recs, True))
+    vp = _ca.council_value_proof()
     assert vp["ready"] is False, (
         "FABRICATED PAINKILLER: 12 all-claude chain councils (one distinct voice "
         "each) were counted as cross-provider contests — the value-proof rendered "
@@ -158,8 +159,8 @@ def test_value_proof_still_counts_real_cross_provider_contests(monkeypatch):
          "distinct_substantive_providers": 3}
         for _ in range(12)
     ]
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (recs, True))
-    vp = pr.council_value_proof()
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (recs, True))
+    vp = _ca.council_value_proof()
     assert vp["ready"] is True, f"a real 3-voice contest must still count: {vp}"
     assert vp["changed_pct"] == 100, vp
     assert vp["win_split"]["claude"]["count"] == 12, vp
@@ -175,8 +176,8 @@ def test_value_proof_legacy_records_without_distinct_field_stay_real(monkeypatch
          "primary_provider": "codex", "substantive_members": 2}
         for _ in range(12)
     ]
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (recs, True))
-    vp = pr.council_value_proof()
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (recs, True))
+    vp = _ca.council_value_proof()
     assert vp["ready"] is True, f"legacy records must not be retro-dropped: {vp}"
     assert vp["changed_pct"] == 100, vp
 
@@ -211,8 +212,8 @@ def test_win_split_shares_the_displayed_council_denominator(monkeypatch):
         + [{"chairman_winner": "claude", "winner_provider": "claude",
             "primary_provider": "", "substantive_members": 2} for _ in range(6)]
     )
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (recs, True))
-    vp = pr.council_value_proof()
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (recs, True))
+    vp = _ca.council_value_proof()
     assert vp["ready"] is True, f"the discriminating ledger must clear the value floor: {vp}"
     assert vp["comparable"] == 12, f"comparable must be the default-recorded count: {vp}"
     assert vp["n"] == 18, f"n must count all 18 real contests: {vp}"
@@ -239,8 +240,8 @@ def test_win_split_shares_the_displayed_council_denominator(monkeypatch):
 
 
 def test_thin_ledger_not_ready(monkeypatch):
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (_records(("codex", "claude")), True))
-    vp = pr.council_value_proof()
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (_records(("codex", "claude")), True))
+    vp = _ca.council_value_proof()
     assert vp["ready"] is False
     assert vp["n"] == 1
 
@@ -254,8 +255,8 @@ def test_provider_names_canonicalized_at_boundary(monkeypatch):
         ("claude_ai", "codex"),    # winner→claude, default→codex (changed)
         ("gemini", "claude"),      # → antigravity
     ) * 5
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (recs, True))
-    vp = pr.council_value_proof()
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (recs, True))
+    vp = _ca.council_value_proof()
     assert set(vp["win_split"]) <= {"codex", "claude", "antigravity"}, (
         "brand names must canonicalize; got " + repr(list(vp["win_split"]))
     )
@@ -264,7 +265,7 @@ def test_provider_names_canonicalized_at_boundary(monkeypatch):
 
 def test_substantive_output_completeness_heuristic():
     # #249: a flat 200-char floor misread Gemini's terse-but-complete answers.
-    f = pr._is_substantive_output
+    f = _ca._is_substantive_output
     # complete concise answers (real, just terse) → substantive
     assert f("Unfortunately I can't search routes yet, but here's a 17-minute walk to the park (directions).")
     assert f("That's a good approach, but I'd phrase it to put the liability on him.")
@@ -289,8 +290,8 @@ def test_solo_councils_excluded_from_proof(monkeypatch):
         {"chairman_winner": "claude", "winner_provider": "claude",
          "primary_provider": "claude", "substantive_members": 1},
     ] * 40
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (real + solo, True))
-    vp = pr.council_value_proof()
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (real + solo, True))
+    vp = _ca.council_value_proof()
     assert vp["ready"] is True
     assert vp["total"] == 52          # all councils counted in total
     assert vp["real_contests"] == 12  # but only real contests in the headline
@@ -318,8 +319,8 @@ def test_category_wedge_names_confident_leaders(monkeypatch):
         + _wedge_records("market", "claude", 5)          # tie → excluded
         + _wedge_records("rare", "claude", 3)            # n=3 < floor → excluded
     )
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (recs, True))
-    wedge = pr.council_category_wedge()
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (recs, True))
+    wedge = _ca.council_category_wedge()
     families = {w["family"]: w["leader"] for w in wedge}
     assert families == {"product": "codex"}, f"expected only product→codex, got {families}"
 
@@ -327,8 +328,8 @@ def test_category_wedge_names_confident_leaders(monkeypatch):
 def test_category_wedge_excludes_solo_councils(monkeypatch):
     # Solo councils (1 substantive member) must not feed the wedge either.
     recs = _wedge_records("product", "codex", 20, members=1)
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (recs, True))
-    assert pr.council_category_wedge() == []
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (recs, True))
+    assert _ca.council_category_wedge() == []
 
 
 def test_launchpad_helper_brands_and_hides(monkeypatch):
@@ -336,7 +337,7 @@ def test_launchpad_helper_brands_and_hides(monkeypatch):
 
     # Ready → brand-mapped wins.
     recs = _records(("codex", "claude"), ("claude", "claude")) * 6
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (recs, True))
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (recs, True))
     card = ld._council_value_for_launchpad()
     assert card is not None
     labels = [w["label"] for w in card["wins"]]
@@ -344,5 +345,5 @@ def test_launchpad_helper_brands_and_hides(monkeypatch):
     assert "codex" not in labels  # slugs never leak to the UI
 
     # Thin ledger → None so the card self-hides.
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: ([], True))
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: ([], True))
     assert ld._council_value_for_launchpad() is None

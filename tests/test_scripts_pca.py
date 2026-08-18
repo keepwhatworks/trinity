@@ -1,6 +1,6 @@
 """Tests for scripts/pca.py — geometric primitives.
 
-Phase 2 (council_ff3da1fa84906791). Wraps cortex_geometry primitives;
+Phase 2 (council_ff3da1fa84906791). Wraps me.geometry primitives;
 tests verify dual-interface contract + tier-equivalence with the pip
 tier (same in-process call → same output).
 """
@@ -55,7 +55,7 @@ def test_weiszfeld_median_collinear_points():
     """3 collinear points → median is the middle point. Tier-
     equivalence floor: our wrapper returns the same as the pip tier."""
     from scripts.pca import weiszfeld_median
-    from trinity_local.cortex_geometry import weiszfeld_median as pip_weiszfeld
+    from trinity_local.me.geometry import weiszfeld_median as pip_weiszfeld
 
     points = [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]]
     a = weiszfeld_median(points)

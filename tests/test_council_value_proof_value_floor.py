@@ -25,6 +25,8 @@ case below flips ready:True → the corresponding assert reds.
 """
 from __future__ import annotations
 
+import trinity_local.council_analytics as _ca
+
 import functools
 import http.server
 import threading
@@ -32,7 +34,6 @@ from pathlib import Path
 
 import pytest
 
-import trinity_local.personal_routing as pr
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -56,8 +57,8 @@ def test_zero_changed_rate_refuses_headline(monkeypatch):
     """0% changed across 15 real contests: the card would tout "differed 0% of
     the time — that's how often one tab would've shipped the worse answer," the
     exact self-defeating claim. The value proof must report ready=False."""
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (_records(0, 15), True))
-    vp = pr.council_value_proof()
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (_records(0, 15), True))
+    vp = _ca.council_value_proof()
     assert vp["ready"] is False, (
         "value proof reported ready at a 0% changed-pick rate — the home hero card "
         "would render 'differed 0% of the time, that's how often one tab would've "
@@ -69,8 +70,8 @@ def test_zero_changed_rate_refuses_headline(monkeypatch):
 def test_low_changed_rate_below_floor_refuses(monkeypatch):
     """20% changed (3 of 15): clears the count floor but NOT the 25% rate floor.
     Mutation: drop the rate floor → ready flips True → this reds."""
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (_records(3, 15), True))
-    vp = pr.council_value_proof()
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (_records(3, 15), True))
+    vp = _ca.council_value_proof()
     assert vp["changed_pct"] == 20
     assert vp["ready"] is False, (
         "value proof reported ready at a 20% changed rate (< the 25% floor) — too "
@@ -92,8 +93,8 @@ def test_high_rate_but_too_few_flips_refuses(monkeypatch):
     # → round(100*2/11)=18 (fails rate anyway). The count floor's real job is to
     # keep a 2-flip card off the surface even if a future rate floor is lowered;
     # assert directly that 2 flips is refused regardless.
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (_records(2, 11), True))
-    vp = pr.council_value_proof()
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (_records(2, 11), True))
+    vp = _ca.council_value_proof()
     assert vp["ready"] is False, (
         "value proof reported ready off only 2 changed picks — the count floor "
         "must keep a thin-evidence card off the flagship surface"
@@ -104,8 +105,8 @@ def test_clears_both_floors_reports_ready(monkeypatch):
     """27% changed (4 of 15): clears the 25% rate floor AND the 3-flip count floor.
     The card SHOULD render. Mutation: tighten either floor too far → this reds,
     proving the floors aren't so high they suppress a genuine painkiller."""
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (_records(4, 15), True))
-    vp = pr.council_value_proof()
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (_records(4, 15), True))
+    vp = _ca.council_value_proof()
     assert vp["ready"] is True, "a 27% changed-pick rate over 4 flips is a real painkiller — must render"
     assert vp["changed_pct"] == 27
     assert vp["changed_pick"] == 4
@@ -151,7 +152,7 @@ def test_home_council_value_card_self_hides_at_zero_changed_rate(tmp_path, monke
     # 15 REAL contests, chairman ALWAYS agreed with the claude default → 0% changed.
     # The launchpad builder calls council_value_proof() → _scan_outcomes() in-process,
     # so this controls exactly what the rendered card sees.
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (_records(0, 15), True))
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (_records(0, 15), True))
 
     html = render_launchpad_html()  # live builder reads the (patched) ledger
     pp = tmp_path / "serve" / "portal_pages"

@@ -32,7 +32,6 @@ Surfaces:
        (auto-chain + polish-auto-iterate global toggles retired
        2026-05-18 — auto-chain is now per-council on the review page)
     3. Personal routing table: >=1 row + every row links to routing.json viewer
-       (tick #20); plus cortex basin links → picks.json viewer (tick #19)
     4. Lenses Copy-for-sharing: clipboard write fires with non-empty text
     5. Recent council click: live page loads with chairman synthesis
     6. Live council: Back to Launchpad returns home; winner persists on reload
@@ -46,7 +45,7 @@ Surfaces:
        includes "View full lens →" cross-link to memory viewer (tick #12)
    14. Memory viewer + launchpad link: chip links → memory.html loads + renders file
    15. Memory-health row: 5 drift signals (core stale / picks overrides /
-       picks audit / topology / cortex-stale-vs-new-outcomes per tick #106)
+       topology audit per tick #106)
        surface inline with click-to-copy command chips that capture clipboard correctly
    16. Per-file health banner: same signal travels into the memory viewer when a stale
        file is opened, with chip mirroring Surface 15 + nav-dot indicator (tick #18)
@@ -82,10 +81,6 @@ Surfaces:
        has a centroid match, the card grows a third → topology chip
        alongside → pick and → routing, so the user can jump from a
        council straight to its topology basin (tick #34).
-   26. Cortex picks card → topology chip: each cortex rule row whose
-       basin_id has a centroid match grows a .cortex-topology-chip
-       alongside the basin name (tick #35). Same matcher as Surfaces
-       24 + 25 — three surfaces, one source of truth.
    27. Lens card → basin chips: each paired lens on the launchpad
        renders its basins_spanned[] as small .lens-basin-chip deep-links
        to the topology view focused on that basin (tick #36). Closes the
@@ -455,14 +450,18 @@ def main() -> int:
             print(f"[ ✗ ] Surface 2 settings: {reason}")
             fails.append((2, "settings gear", reason))
 
-        # ─── Surface 3: Personal routing table + cortex basin links ──────────
+        # ─── Surface 3: Personal routing table ───────────────────────────────
+        # The cortex-basin-link half of this surface was removed 2026-08-11
+        # with the picks card. The personal routing table it deliberately
+        # EXCLUDED (`:not(.cortex-rules-table)`) is what survives, so the
+        # selector is now simply `table.routing-table`.
         routing_state = page.evaluate(
             """() => {
-              // Exclude .cortex-rules-table — that's the "what Trinity learned"
+              // The exclusion that used to live here is unnecessary now that the
               // card which shares the .routing-table base class but has its
               // own first-cell shape (plain text, no .benchmark-category div).
               // We want the personal routing table specifically.
-              const personalRows = Array.from(document.querySelectorAll('table.routing-table:not(.cortex-rules-table) tbody tr'));
+              const personalRows = Array.from(document.querySelectorAll('table.routing-table tbody tr'));
               const first = personalRows[0];
               const first_task = first?.querySelector('td:first-child .benchmark-category')?.textContent?.trim();
               // Tick #20: personal routing rows now deep-link to the
@@ -471,38 +470,13 @@ def main() -> int:
                 r.querySelector('td:first-child a[href*="memory.html?file=routing.json&task="]')
               ).length;
               const personalFirstHref = first?.querySelector('td:first-child a')?.getAttribute('href') || null;
-              // Tick #19: cortex basin_id is a deep-link to the picks viewer.
-              // Pull the first basin link's href for assertion. Count only
-              // the basin link per row (not the optional .cortex-topology-chip
-              // anchor added in tick #35).
-              const cortexLink = document.querySelector('.cortex-rules-table tbody tr td:first-child a:not(.cortex-topology-chip)');
-              const cortexHref = cortexLink?.getAttribute('href') || null;
-              const cortexLinkCount = Array.from(document.querySelectorAll('.cortex-rules-table tbody tr'))
-                .filter(r => r.querySelector('td:first-child a:not(.cortex-topology-chip)'))
-                .length;
-              const cortexRowCount = document.querySelectorAll('.cortex-rules-table tbody tr').length;
               return {
                 row_count: personalRows.length,
                 first_task,
                 personalLinkCount,
                 personalFirstHref,
-                cortexHref,
-                cortexLinkCount,
-                cortexRowCount,
               };
             }"""
-        )
-        # Cortex link is optional — installs without cortex consolidation
-        # don't render the table at all (the section is v-if). When the
-        # table IS rendered, every row must carry a memory.html?file=picks.json
-        # deep-link in the first cell.
-        cortex_rows = routing_state.get("cortexRowCount") or 0
-        cortex_links_ok = (
-            cortex_rows == 0  # no cortex table → nothing to assert
-            or (
-                routing_state.get("cortexLinkCount") == cortex_rows
-                and "memory.html?file=picks.json&task=" in (routing_state.get("cortexHref") or "")
-            )
         )
         # Tick #20: personal routing rows must each carry a deep-link
         # to the routing.json viewer. Symmetric with the cortex check.
@@ -517,15 +491,12 @@ def main() -> int:
         if (
             personal_rows >= 1
             and routing_state.get("first_task")
-            and cortex_links_ok
             and personal_links_ok
         ):
-            cortex_note = f" · cortex {cortex_rows} rows w/ basin links" if cortex_rows else ""
-            print(f"[ ✓ ] Surface 3 routing table: {personal_rows} rows (first: '{routing_state['first_task']}', all linked){cortex_note}")
+            print(f"[ ✓ ] Surface 3 routing table: {personal_rows} rows (first: '{routing_state['first_task']}', all linked)")
         else:
             reason = (
                 f"row_count={personal_rows} personal_links_ok={personal_links_ok}"
-                f" cortex_links_ok={cortex_links_ok} cortex_rows={cortex_rows}"
             )
             print(f"[ ✗ ] Surface 3 routing table: {reason}")
             fails.append((3, "routing table", reason))
@@ -1780,38 +1751,10 @@ def main() -> int:
             print(f"[ ✗ ] Surface 25 recent-council cross-memory chips: {reason}")
             fails.append((25, "recent-council cross-memory chips retired", reason))
 
-        # ─── Surface 26: Cortex picks card → topology chip ───────────────────
-        # The cortex picks table on the launchpad annotates each row with
-        # a → topology chip when the rule's basin_id maps to a topology
-        # basin (same matcher as Surfaces 24 + 25). SKIPPED when no
-        # cortex rule matches a topology basin (cold install or no
-        # consolidation). The launchpad is already loaded from Surface 25.
-        cortex_chip_state = page.evaluate(
-            """() => {
-              const chips = Array.from(document.querySelectorAll('a.cortex-topology-chip'));
-              if (!chips.length) return {ok: true, skipped: true, reason: 'no cortex rows have a → topology chip'};
-              const href = chips[0].getAttribute('href') || '';
-              const m = href.match(/[?&]basin=([^&]+)/);
-              return {
-                ok: !!m && href.includes('topics.json'),
-                total: chips.length,
-                href: href,
-                basin: m ? decodeURIComponent(m[1]) : null,
-              };
-            }"""
-        )
-        page.screenshot(path=str(SHOTS_DIR / "26-cortex-topology-chip.png"))
-        if cortex_chip_state.get("skipped"):
-            print(f"[ - ] Surface 26 cortex→topology: SKIPPED ({cortex_chip_state['reason']})")
-        elif cortex_chip_state.get("ok"):
-            print(
-                f"[ ✓ ] Surface 26 cortex→topology: "
-                f"{cortex_chip_state['total']} chip(s) · first → basin={cortex_chip_state['basin']}"
-            )
-        else:
-            reason = f"href={cortex_chip_state.get('href')!r}"
-            print(f"[ ✗ ] Surface 26 cortex→topology: {reason}")
-            fails.append((26, "cortex→topology chip", reason))
+        # Surface 26 (cortex picks card -> topology chip) was removed
+        # 2026-08-11 with the card itself (council_8817ca0c57a2e4ff). The
+        # lens->basin chips it was modelled on survive as Surface 27 below,
+        # which is the assertion that actually covers topology deep-linking.
 
         # ─── Surface 27: Lens card → topology basin chips ────────────────────
         # Each paired lens carries basins_spanned[] (topology basins the

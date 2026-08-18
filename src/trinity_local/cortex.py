@@ -16,16 +16,17 @@ in the live space), no per-basin LLM call.
 
 What survives here is the picks-store I/O: `load_routing_patterns` /
 `save_routing_patterns` (read/write `~/.trinity/scoreboard/picks.json`, with the
-#194 clobber guard), the `cortex_routing_patterns_path` alias, and the
-staleness primitives (`freshest_consolidated_at` / `count_councils_newer_than`)
-the doctor + cockpit share. The picks-store schema is now the flat lens-basin
-tally `{basin_id: {winner, count, margin, n_episodes, evidence}}`.
+#194 clobber guard) and the `cortex_routing_patterns_path` alias. The
+staleness primitives went with the `consolidate` verb on 2026-08-11 — nothing
+can re-consolidate picks.json, so "these picks are stale" had no remedy to
+offer. The picks-store schema is the flat lens-basin tally
+`{basin_id: {winner, count, margin, n_episodes, evidence}}`, now inert.
 """
 from __future__ import annotations
 
 import json
 
-from .state_paths import cortex_routing_patterns_path, council_outcomes_dir
+from .state_paths import cortex_routing_patterns_path
 
 
 def load_routing_patterns() -> dict[str, dict]:
@@ -96,61 +97,7 @@ def save_routing_patterns(
     atomic_write_text(path, json.dumps(serialized, indent=2))
 
 
-def iter_outcomes() -> list[dict]:
-    """Walk all council_outcomes/*.json. Shared council-outcome reader for the
-    staleness primitives below."""
-    out_dir = council_outcomes_dir()
-    items: list[dict] = []
-    if not out_dir.is_dir():
-        return items
-    for path in sorted(out_dir.glob("council_*.json")):
-        try:
-            items.append(json.loads(path.read_text(encoding="utf-8")))
-        except (OSError, json.JSONDecodeError):
-            continue
-    return items
 
 
-def freshest_consolidated_at(picks_data: object) -> str | None:
-    """The newest `consolidated_at` across all basins in a parsed picks.json, or None.
-
-    The single source of truth for "when was the routing scoreboard last
-    rebuilt", shared by the CLI doctor (`_check_cortex_freshness`) and the
-    launchpad cockpit (`_memory_health` cortex-stale signal) so the two surfaces
-    can NEVER disagree about staleness. Takes the already-parsed dict.
-
-    NOTE (#298): the post-collapse picks schema does not carry a
-    `consolidated_at` field, so this returns None for new-schema picks — the
-    staleness check then degrades to "unknown" (a soft, no-fix check). Kept for
-    legacy picks files that still carry the field."""
-    ats = [
-        entry["consolidated_at"]
-        for entry in (picks_data.values() if isinstance(picks_data, dict) else [])
-        if isinstance(entry, dict) and isinstance(entry.get("consolidated_at"), str)
-    ]
-    return max(ats) if ats else None
 
 
-def count_councils_newer_than(freshest_ts: str) -> tuple[int, int]:
-    """(newer, total) council outcomes on disk vs a consolidation timestamp.
-
-    "newer" = un-consolidated: a council the last `consolidate` didn't fold into any
-    basin. Best-effort; unreadable/malformed outcomes are skipped, not fatal. Paired
-    with `freshest_consolidated_at` as the shared cortex-staleness primitive (see its
-    docstring). `ask` routes on stale rules while `newer > 0`.
-    """
-    out_dir = council_outcomes_dir()
-    newer = total = 0
-    if out_dir.is_dir():
-        for path in out_dir.glob("council_*.json"):
-            try:
-                outcome = json.loads(path.read_text(encoding="utf-8"))
-                if not isinstance(outcome, dict):
-                    continue
-            except (OSError, json.JSONDecodeError):
-                continue
-            total += 1
-            created = outcome.get("created_at") or ""
-            if isinstance(created, str) and created > freshest_ts:
-                newer += 1
-    return newer, total

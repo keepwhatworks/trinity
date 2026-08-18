@@ -3,7 +3,7 @@
 
 Phase 2 of the three-tier architecture (council_ff3da1fa84906791).
 
-Wraps the geometric primitives from trinity_local.cortex_geometry:
+Wraps the geometric primitives from trinity_local.me.geometry:
   - Weiszfeld geometric median (robust centroid alternative)
   - Participation ratio (effective manifold dimensionality)
   - Projection onto first principal component (kurtosis check)
@@ -57,11 +57,11 @@ def weiszfeld_median(
 ) -> list[float]:
     """Geometric median via Weiszfeld iteration. Robust to outliers.
 
-    Defaults match trinity_local.cortex_geometry.weiszfeld_median
+    Defaults match trinity_local.me.geometry.weiszfeld_median
     EXACTLY so tier-equivalence holds when both are called with no
     explicit params. v1.1 inverts the dependency; defaults stay.
     """
-    from trinity_local.cortex_geometry import weiszfeld_median as _impl
+    from trinity_local.me.geometry import weiszfeld_median as _impl
     return _impl(points, max_iter=max_iter, eps=eps)
 
 
@@ -71,7 +71,7 @@ def participation_ratio(
 ) -> float:
     """Effective manifold dimensionality via the participation ratio of
     the covariance eigenvalues. Returns a float in [1, dim]."""
-    from trinity_local.cortex_geometry import (
+    from trinity_local.me.geometry import (
         participation_ratio as _impl,
         weiszfeld_median,
     )
@@ -86,7 +86,7 @@ def bimodality_z(
 ) -> float:
     """First-PC kurtosis as bimodality indicator. Negative excess
     kurtosis → bimodal. Returned as z-score; |z| > 1 is a flag."""
-    from trinity_local.cortex_geometry import (
+    from trinity_local.me.geometry import (
         project_onto_first_pc,
         excess_kurtosis,
         weiszfeld_median,
@@ -107,7 +107,7 @@ def basin_geometry(points: list[list[float]]) -> dict:
     """Composite: returns center + manifold_dim + bimodality_z +
     mean_cosine_to_center + n + dim. The full geometric prior the
     cortex consolidation feeds the chairman."""
-    from trinity_local.cortex_geometry import mean_cosine_to
+    from trinity_local.me.geometry import mean_cosine_to
 
     if not points:
         return {"center": [], "manifold_dim": 0.0, "bimodality_z": 0.0,
@@ -164,7 +164,7 @@ def _cli_main(argv: list[str] | None = None) -> int:
         elif operation == "median":
             result = {"center": weiszfeld_median(points)}
         elif operation == "pca":
-            from trinity_local.cortex_geometry import weiszfeld_median, project_onto_first_pc
+            from trinity_local.me.geometry import weiszfeld_median, project_onto_first_pc
             center = weiszfeld_median(points)
             projections = project_onto_first_pc(points, center)
             result = {"center": center, "projections": projections}

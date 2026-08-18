@@ -37,13 +37,13 @@ _W_RECENCY = 0.15
 # spec-v1.5.md proposed name but the shipped tool is `run_council`.)
 ESCALATE_HINT_THRESHOLD = 0.55
 
-# (#298 cortex collapse) The basin-placement gates — the query↔centroid match
-# floor and the top1−top2 margin floor — moved to `lens_routing` (MATCH_FLOOR /
-# MARGIN_FLOOR), where `place_query` applies them against the LENS centroids
-# (topics.json, always in the live embedding space, so #277 is impossible).
-# `_try_cortex_route` below calls `place_query`; the old `_best_centroid_match`
-# (separate cortex centroids + 6-component trust gating) was deleted with the
-# cortex engine.
+# The lens-basin router was removed 2026-08-11 (council_8817ca0c57a2e4ff,
+# amd_0165-67). hq_062 replayed the real consumer against its real fallback on
+# 653 councils under a group-disjoint split: it FIRED on 58.6% and led the
+# leader-constant 42.9% to 37.0% — and still failed its pre-registered bar at
+# McNemar p=0.2649. A directional lead removes when the bar was set first and
+# the burden of proof sits on the complexity. `ask` is now kNN plus a
+# heuristic, with no routing table.
 
 # Token-economy budget for `ask` returns. The answer goes straight into the
 # calling agent's context window — long returns are expensive in tokens AND in
@@ -117,155 +117,22 @@ def decide_route(
     *,
     top_k: int = 5,
     available_providers: list[str] | None = None,
-    use_cortex: bool = True,
 ) -> AskDecision:
     """Pure decision logic — no dispatch. Useful for dry-run / inspection.
 
-    The lens-derived routing (`_try_cortex_route`) is consulted FIRST: place the
-    query into a lens basin and route on that basin's chairman-winner tally
-    (#298). If it returns None (no consolidation, out-of-domain / near-tie
-    placement, thin tally, or winner unavailable) the kNN path takes over.
-
-    `use_cortex=False` disables the basin lookup entirely — pure kNN. Useful for
-    A/B testing during the human-calibration window. (The `cortex` in the name is
-    historical; the engine is now the lens-basin tally.)
+    kNN over the prompt index, then a heuristic. The lens-basin router that ran
+    FIRST here was removed 2026-08-11 — see the module header for the numbers
+    that licensed it. This is the fifth independent kill of per-context routing
+    in this repo, and the widest reading is the one that settles it: on a 3-way
+    choice where chance is ~33%, the BEST arm reached 42.9%. Out-of-sample the
+    chairman's winner is barely predictable by anything.
     """
-    if use_cortex:
-        cortex_decision = _try_cortex_route(query, available_providers)
-        if cortex_decision is not None:
-            return cortex_decision
     hits = search_prompt_nodes(query, top_k=top_k)
     return _decide_from_hits(hits, available_providers=available_providers)
 
 
-def _try_cortex_route(query: str, available_providers: list[str] | None) -> AskDecision | None:
-    """Route this query via the lens-derived picks (#298 cortex collapse).
-    Returns None when no pick applies (no consolidation yet, query out-of-domain
-    or an ambiguous basin placement, the basin's tally is too thin, or its winner
-    isn't in the available pool) — the caller then falls through to kNN.
-
-    How it works:
-      1. Place the query into a LENS basin (`lens_routing.place_query`): embed it
-         and take the nearest basin centroid from topics.json — the live 768-d
-         centroids rebuilt daily WITH the lens. Because the only centroids are the
-         lens's (always in the current embedding space), the #277
-         stale-orthogonal-space failure that made the old cortex routing go
-         silently inert is STRUCTURALLY IMPOSSIBLE. `place_query` applies the
-         match floor (out-of-domain → None) and margin floor (near-tie → None).
-      2. Read that basin's winner tally from picks.json
-         (`{winner, count, margin, ...}`). Require a winner, a count ≥ MIN_COUNT,
-         and that the winner be in `available_providers` (else → None so kNN
-         handles it). The margin doubles as the routing trust score.
-
-    This replaced the old engine: a SEPARATE cortex `basin_centroid` per rule + a
-    6-component `TrustScore` band gate + an LLM flagship extractor. All gone.
-    """
-    try:
-        from .cortex import load_routing_patterns
-        from .embeddings import embed, mlx_actually_loaded
-        from .lens_routing import (
-            load_topics_basins,
-            place_query,
-        )
-    except ImportError:
-        return None
-
-    # Real-embeddings gate: cortex routing places the query against the lens
-    # centroids by cosine. Under the SHA-1 TF-IDF fallback (no [mlx]) both the
-    # query vector and the centroids capture word OVERLAP, not meaning, so a
-    # placement is a degraded semantic route asserted as a learned preference.
-    # Abstain → kNN/heuristic (the always-correct lexical path, CLAUDE.md), the
-    # behavior test_route_falls_back_to_heuristic_when_no_basin already documents
-    # ("no real embedder → returns None"). Parity with the correction-lens /
-    # outlier abstain gates.
-    if not mlx_actually_loaded():
-        return None
-
-    routing = load_routing_patterns()
-    if not routing:
-        return None  # no consolidation has run yet
-
-    # #298 cortex collapse: place the query into a LENS basin using topics.json's
-    # live 768-d centroids (rebuilt daily with the lens), NOT a separate cortex
-    # centroid store. Because the only centroids are the lens's — always in the
-    # current embedding space — the #277 stale-orthogonal-space failure that made
-    # cortex routing go silently inert is structurally impossible. place_query
-    # returns None on an out-of-domain (nearest basin below the match floor) or
-    # ambiguous (top1−top2 below the margin floor) placement → fall to kNN.
-    # Shape-guarded single reader (drops a non-list/non-dict topics.json to []),
-    # so a valid-JSON-wrong-shape file degrades to kNN here exactly as it does on
-    # the launchpad (#304) — instead of place_query iterating a string's chars.
-    basins = load_topics_basins()
-    try:
-        # place_query embeds the query via the injected `embed`. A broken model
-        # file (embed raises) must degrade to kNN, not crash the ask path.
-        basin_id = place_query(query, basins, embed)
-    except Exception:
-        return None
-    if not basin_id:
-        return None
-
-    rule = routing.get(basin_id)
-    if not isinstance(rule, dict):
-        return None  # query landed in a basin with no winner tally → kNN handles it
-    return _decide_from_rule(basin_id, rule, available_providers)
 
 
-def _decide_from_rule(basin_id: str, rule: dict,
-                      available_providers: list[str] | None) -> AskDecision | None:
-    """The pure decision half of the cortex route (extracted 2026-07-14 so the
-    gate + Thompson path are testable without placement I/O): given a basin's
-    picks entry, return the routing decision or None (→ kNN)."""
-    from .lens_routing import MIN_COUNT, pick_routes
-    # isinstance(..., str) shape-guards the STRING field: a corrupt non-string
-    # `winner` (a NUMBER in a hand-edited picks.json) would hit `.strip()` on an int
-    # and crash the ask-route decision (the launchpad-render sibling, Iter 257).
-    winner_raw = rule.get("winner")
-    winner = winner_raw.strip() if isinstance(winner_raw, str) else ""
-    count = int(rule.get("count", 0) or 0)
-    margin = float(rule.get("margin", 0.0) or 0.0)
-    if not winner or count < MIN_COUNT:
-        return None
-    # Quality gate — THE shared predicate (lens_routing.pick_routes): margin
-    # floor (a near-tie is a coin flip, not a learned preference) AND the
-    # model-churn effective-n floor (council_39e25084ea339099 — a basin whose
-    # wins are all from superseded models keeps its margin while the evidence
-    # is dead; that must fall to kNN, not route confidently). One predicate so
-    # ask() and get_picks can never disagree on what routes.
-    if not pick_routes(rule):
-        # Thompson exploration (council 2026-07-14): a MARGIN refusal means the
-        # basin is a measured near-tie — sample the Beta posterior on the
-        # basin's weight masses instead of dropping straight to kNN. Explores
-        # exactly where any pick is defensible; stale/thin basins return None
-        # here and still fall to kNN. Every exploration route is logged so the
-        # exploration itself is measurable.
-        from .lens_routing import thompson_route
-        sampled = thompson_route(rule)
-        if sampled and (not available_providers or sampled in available_providers):
-            _log_exploration_route(basin_id, sampled, rule)
-            return AskDecision(
-                routed_to=sampled,
-                trust_score=float(rule.get("margin", 0.0) or 0.0),
-                runner_up=None,
-                vote_counts={sampled: count},
-                evidence_prompt_ids=list(rule.get("evidence") or [])[:5],
-                reason=(f"lens basin {basin_id} is a measured near-tie → Thompson "
-                        f"sample over its posterior → {sampled} (exploration, logged)"),
-            )
-        return None
-    if available_providers and winner not in available_providers:
-        return None  # the basin's chairman-winner isn't available → let kNN handle it
-
-    return AskDecision(
-        routed_to=winner,
-        trust_score=margin,
-        runner_up=None,
-        vote_counts={winner: count},
-        # `or []` not `, []`: a rule with an explicit `evidence: null` must not
-        # crash list() — the `[]` default only fires when the key is ABSENT.
-        evidence_prompt_ids=list(rule.get("evidence") or [])[:5],
-        reason=f"lens basin {basin_id} → {winner} (n={count}, margin={margin:.2f})",
-    )
 
 
 def _log_exploration_route(basin_id: str, sampled: str, rule: dict) -> None:
@@ -499,13 +366,12 @@ def run_ask(
     top_k: int = 5,
     available_providers: list[str] | None = None,
     elapsed_ms: int | None = None,
-    use_cortex: bool = True,
     max_retries: int = 1,
 ) -> AskResult:
     """End-to-end ask: route → dispatch → return. With auto-retry on
     rate-limit / billing / auth failures: if the primary's dispatch fails
     in a way that classifies as "try a different provider," try the
-    runner_up (cortex challenger or kNN second place). This is the v1.5
+    runner_up (kNN second place). This is the v1.5
     killer flow — when Claude in the harness hits a rate limit, Trinity
     seamlessly continues on Codex / Gemini / local.
 
@@ -514,8 +380,6 @@ def run_ask(
     `providers.make_provider(...).run(prompt, cwd).stdout` and raises
     ProviderError with the stderr embedded for our classifier to read.
 
-    `use_cortex=False` disables cortex routing for A/B testing during the
-    human-calibration window — pure kNN path. Defaults to True.
 
     `max_retries=1` controls how many provider-fallback attempts to try
     after the primary fails. Each retry uses the next-best provider from
@@ -529,7 +393,6 @@ def run_ask(
         query,
         top_k=top_k,
         available_providers=available_providers,
-        use_cortex=use_cortex,
     )
 
     # Build the provider try-order: primary first, then runner_up if any.

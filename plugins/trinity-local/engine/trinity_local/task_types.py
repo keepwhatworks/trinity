@@ -26,7 +26,7 @@ def guess_task_type(text: str, provider: str | None = None) -> str:
     open-ended labels (``architecture_decision``, ``strategic_foresight``,
     ``concept_explanation``, ``market_analysis``, …) which become the cortex
     basin keys in picks.json. So the exact-match fast path in
-    ``ask._try_cortex_route`` (``patterns.get(guess_task_type(query))``) almost
+    the removed lens-basin router (``patterns.get(guess_task_type(query))``) almost
     never hits a fine-grained basin — basin routing relies on the embedding
     centroid fallback. Don't assume this label can address a cortex basin by
     name; it can't.

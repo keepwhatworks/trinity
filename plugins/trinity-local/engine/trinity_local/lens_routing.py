@@ -25,6 +25,13 @@ from typing import Any, Callable
 
 from .embeddings.backend_tfidf import cosine_similarity
 
+# lens_routing still CONSUMES the topology readers it no longer owns.
+# They moved to me/basins.py on 2026-08-10 (step 2a of the routing removal)
+# because their consumers are the lens and its surfaces, not the router --
+# but consolidate_via_lens_basins and prune_orphan_rules read the topology
+# too, and a consumer of a moved symbol is as valid as any other.
+from .me.basins import load_topics_basins
+
 # The LENS-placement gates. These are the SAME floors `ask._best_centroid_match`
 # used for cortex placement — calibrated on the real corpus — kept here as the
 # lens-basin placement gate. MATCH_FLOOR: below this query↔centroid cosine the
@@ -251,11 +258,6 @@ MAX_ORPHAN_DROP_FRACTION = 0.5
 # any re-keying proposal is re-proposing this measurement's null.
 
 
-def live_basin_ids() -> set[str]:
-    """The id set of the CURRENT lens topology. Empty when topics.json is
-    missing/unreadable/wrong-shape — callers must treat empty as "unknown",
-    never as "no basins exist"."""
-    return {str(b.get("id")) for b in load_topics_basins() if b.get("id")}
 
 
 def prune_orphan_rules(
@@ -294,7 +296,7 @@ def prune_orphan_rules(
             f"{len(orphans)}/{len(rules)} rules are orphaned, above "
             f"MAX_ORPHAN_DROP_FRACTION={max_drop_fraction} — REFUSED: that is a "
             "basin-id scheme change, not stale stragglers. Re-run "
-            "`trinity-local consolidate` to rebuild the tally against the "
+            "`the retired consolidate verb` to rebuild the tally against the "
             "current topology instead of deleting most of it"
         )
     kept = {bid: entry for bid, entry in rules.items() if str(bid) in basin_ids}
@@ -304,7 +306,6 @@ def prune_orphan_rules(
     )
 
 
-_TOPICS_BASINS_CACHE: tuple[str, float, list[dict]] | None = None
 
 
 def pick_routes(entry: dict) -> bool:
@@ -331,42 +332,6 @@ def pick_routes(entry: dict) -> bool:
         return False
 
 
-def load_topics_basins() -> list[dict]:
-    """The SINGLE shape-guarded reader for `topics.json`'s basin list.
-
-    Returns a list of dict basins (non-dict entries dropped), or ``[]`` for a
-    missing / unreadable / non-JSON / wrong-shape file. Centralizes the guard
-    `#304` added on the launchpad side but that `ask._try_cortex_route`,
-    `consolidate_via_lens_basins`, and `milestones._count_basins` each open-coded
-    differently (one with no top-level shape check at all) — a valid-JSON-but-
-    wrong-shape `topics.json` (`{"basins": "x"}`) now degrades UNIFORMLY across
-    every reader instead of crashing one and silently mis-routing another.
-
-    Cached on the file's path + mtime so the repeat readers in one process
-    (ask / consolidate / launchpad render / milestones) don't each re-parse.
-    """
-    global _TOPICS_BASINS_CACHE
-    import json
-
-    from .state_paths import topics_path
-
-    path = topics_path()
-    try:
-        mtime = path.stat().st_mtime
-    except OSError:
-        _TOPICS_BASINS_CACHE = None
-        return []
-    if _TOPICS_BASINS_CACHE is not None and _TOPICS_BASINS_CACHE[:2] == (str(path), mtime):
-        return _TOPICS_BASINS_CACHE[2]
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        _TOPICS_BASINS_CACHE = None
-        return []
-    raw = data.get("basins") if isinstance(data, dict) else None
-    basins = [b for b in raw if isinstance(b, dict)] if isinstance(raw, list) else []
-    _TOPICS_BASINS_CACHE = (str(path), mtime, basins)
-    return basins
 
 
 def _to_epoch(iso: str) -> float:
@@ -555,7 +520,7 @@ def place_query(
 
     This is increment B's ask-side primitive: building + testing it in isolation
     (like ``compute_basin_routing`` was for consolidate) means the live flip in
-    ``ask._try_cortex_route`` is just `place_query(...) → routing[basin]['winner']`.
+    the removed `ask` router was just `place_query(...) → routing[basin]['winner']`.
     """
     # Shape guard (#304 sibling): non-dict `basins` entries from a corrupt
     # topics.json crash the `b.get(...)` iteration below. ask wraps place_query
@@ -587,13 +552,13 @@ def _load_council_records() -> list[dict[str, Any]]:
     """Load council outcomes into the shape ``compute_basin_routing`` wants:
     ``{council_id, task_text, winner, substantive_members, created_at}``.
 
-    Reuses ``personal_routing._scan_outcomes`` for the substantive-members count
+    Reuses ``council_analytics._scan_outcomes`` for the substantive-members count
     + chairman winner (the canonical real-contest logic), and pulls task_text
     from the outcome metadata. Best-effort; returns [] on any error so a missing
     corpus never breaks the caller.
     """
     try:
-        from .personal_routing import _scan_outcomes
+        from .council_analytics import _scan_outcomes
         from .council_runtime import load_council_outcome
     except Exception:
         return []

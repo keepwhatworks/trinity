@@ -75,7 +75,19 @@ GRAFT_WHEN_LOST_IS_NOT_COMPUTABLE = (
     "withdrawn 2026-07-28: council-wide attribution overcounts, per-claim matches "
     "0.4% of grafts, and the behavioural test was already net +0"
 )
-RECHAIRED = pathlib.Path("internal/experiments/rechair_backfill.jsonl")
+# Anchored to the package, NOT to the process CWD. This was a bare relative path,
+# so `trinity-local trust --dissent` resolved it against wherever the user happened
+# to be standing: run from the repo root it read 634 re-chaired councils, run from
+# anywhere else `.exists()` was False and the dense evidence source silently
+# vanished — no warning, and the verdict still rendered as though complete. A
+# shipped CLI is almost never invoked from the repo root.
+#
+# The path is also legitimately ABSENT in a real install: internal/ is scrubbed
+# from the public export. So absence is not an error, but it must be DISCLOSED —
+# which is what `sources` in the return value is for. Anchoring makes the outcome
+# deterministic; the disclosure makes it honest.
+RECHAIRED = (pathlib.Path(__file__).resolve().parents[2]
+             / "internal" / "experiments" / "rechair_backfill.jsonl")
 
 
 def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -266,6 +278,11 @@ def load_rows() -> tuple[list[dict], dict[str, int]]:
                 src["production"] += 1
     except Exception:
         pass
+    if not RECHAIRED.exists():
+        # Absent in any install without internal/ (the public export scrubs it).
+        # Record the absence so a caller can tell "no dissent found" apart from
+        # "the dense corpus was never read".
+        src["rechaired_absent"] = 1
     if RECHAIRED.exists():
         for line in RECHAIRED.read_text().splitlines():
             if line.strip():

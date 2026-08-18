@@ -38,6 +38,8 @@ Slow + browser marked; skips without Playwright/chromium; runs in CI `browser`.
 """
 from __future__ import annotations
 
+import trinity_local.council_analytics as _ca
+
 import functools
 import http.server
 import threading
@@ -113,13 +115,13 @@ def test_wedge_and_cheatsheet_name_their_grain_so_they_dont_collide(tmp_path, mo
     from trinity_local.launchpad_page import render_launchpad_html
     from trinity_local.vendor import publish_vendor_files
 
-    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (_records(), True))
+    monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (_records(), True))
     pr.invalidate_cache()  # the routing table caches on the (empty) disk signature
 
     # Source sanity — the two grains genuinely diverge on this seed, or the
     # browser assertion would chase a moving target. Wedge family "code" → Claude;
     # cheat-sheet code_gen → codex (GPT). DIFFERENT leaders, same word "code".
-    wedge = pr.council_category_wedge()
+    wedge = _ca.council_category_wedge()
     code_fam = next((w for w in wedge if w["family"] == "code"), None)
     assert code_fam is not None and code_fam["leader"] == "claude", (
         f"seed must make the wedge family 'code' lead with claude: {wedge}"

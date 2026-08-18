@@ -1,6 +1,17 @@
 """Generators pass (the lens "lift"): abstract task-level lens tensions into the
 cross-domain GENERATING invariants they project from.
 
+SCOPE OF "cross-domain", measured 2026-08-17 (hq_095). The phrase above means
+ACROSS ONE USER'S DOMAINS — software and materials and finance — and that
+reading is untouched. It does NOT mean across people. Two labs assigning 52
+public agent skills (anthropics/skills, mattpocock/skills) to these eight roots
+reached kappa +0.406, while EIGHT RANDOM RULES from the mined 371 reached +0.390
+on the same skills: a margin of +0.016 against a 0.05 kill bar. On foreign
+material the roots do no better than arbitrary buckets. They are a reliable
+description of one person — hq_086 measured that at kappa +0.527 with a +0.222
+margin on his own corrections — and they are not discovered universals. Do not
+let anything downstream read them as a general taxonomy.
+
 Validated 2026-06-04 (real corpus). The lens pipeline mines TASK-LOCAL tensions
 (executable-artifact ↔ explanatory-description, verification-gate ↔ momentum).
 A user's deep preferences are the cross-domain GENERATORS those tensions are
@@ -284,10 +295,42 @@ def _current_tensions() -> list[str]:
     return [f"{a} ↔ {b}" for a, b in iter_lens_tensions(md)]
 
 
+def current_tension_ids() -> list[str]:
+    """Stable `tension_id`s aligned position-for-position with
+    `_current_tensions()`, resolved through the registry by pole text.
+
+    Exists because the projection edges written into generators.md were
+    ORDINALS into lens.md's heading order, and that order is rebuilt by
+    recency-weighted support on every lens build: measured 2026-08-15, zero of
+    23 positions in the surviving 2026-06-11 snapshot still carry the same
+    tension text today. A position is not a reference. Empty list when the
+    registry cannot resolve every position, so a partial map can never be
+    mistaken for a whole one.
+    """
+    import json
+
+    from ..state_paths import trinity_home
+
+    reg = trinity_home() / "me" / "lens_registry.json"
+    texts = _current_tensions()
+    if not texts or not reg.exists():
+        return []
+    try:
+        rows = json.loads(reg.read_text(encoding="utf-8")).get("tensions") or []
+    except (ValueError, OSError):
+        return []
+    by_text = {
+        f"{r.get('pole_a', '')} ↔ {r.get('pole_b', '')}".strip().lower(): r.get("tension_id")
+        for r in rows
+    }
+    ids = [by_text.get(t.strip().lower()) for t in texts]
+    return [i for i in ids if i] if all(ids) else []
+
+
 # ── structured parse + render (the top lens tier as cards) ────────────────────
 
 
-def parse_generators(text: str) -> list[dict] | None:
+def parse_generators(text: str, n_tensions: int | None = None) -> list[dict] | None:
     """Extract the chairman's fenced JSON block into validated generator dicts.
     Tolerant: prefers the last ```json fence, falls back to the outermost {...};
     returns None if nothing parses (the caller degrades to the raw text)."""
@@ -337,15 +380,32 @@ def parse_generators(text: str) -> list[dict] | None:
             if isinstance(tt, list)
             else []
         )
+        # RANGE-CHECK the projection edges against the list the model was shown.
+        # These are ORDINALS into the numbered tension list in the prompt, and
+        # until 2026-08-15 nothing bounded them: a model that cited item 51 of a
+        # 23-item list had the reference admitted verbatim and rendered into
+        # generators.md as fact. The live artifact carries 51 edges that can no
+        # longer be audited, because no lens.md from its own build date survives
+        # (res_027). Fail closed on anything outside 1..n.
+        if n_tensions is not None:
+            tt = [t for t in tt if 1 <= t <= n_tensions]
         if name and tension and proj:
             out.append({"name": name, "imperative": imperative, "tension": tension,
                         "projections": proj, "task_tensions": tt})
     return out or None
 
 
-def render_generators_cards(generators: list[dict]) -> str:
-    """Structured generators -> the top lens tier (markdown cards). The task
-    tensions demote to evidence under each generator (the ``task_tensions`` ids)."""
+def render_generators_cards(
+    generators: list[dict], tension_ids: list[str] | None = None
+) -> str:
+    """Structured generators -> the top lens tier (markdown cards).
+
+    ``task_tensions`` are ORDINALS into the numbered list the model was shown,
+    not ids — the docstring here used to call them ids, which is how the live
+    artifact came to publish unresolvable references. Pass ``tension_ids``
+    (from `current_tension_ids()`) to render stable ids; without it the line
+    renders as positions and SAYS SO.
+    """
     lines = [
         "## Generators (cross-domain invariants)",
         "",
@@ -364,9 +424,19 @@ def render_generators_cards(generators: list[dict]) -> str:
         for dom, ex in g["projections"].items():
             lines.append(f"- **{dom}** — {ex}")
         if g.get("task_tensions"):
-            ids = ", ".join(str(t) for t in g["task_tensions"])
-            lines.append("")
-            lines.append(f"*Projects task-tensions: {ids}*")
+            # Emit STABLE ids when they resolve; otherwise say "positions" out
+            # loud. The old text read "Projects task-tensions: 2, 3, 8" while
+            # carrying heading POSITIONS, and lens.md renumbers on every build,
+            # so the artifact claimed a reference it never held (res_027).
+            if tension_ids:
+                refs = [tension_ids[t - 1] for t in g["task_tensions"] if 1 <= t <= len(tension_ids)]
+                label = "Projects task-tensions"
+            else:
+                refs = [str(t) for t in g["task_tensions"]]
+                label = "Projects task-tension positions (unresolved — not stable ids)"
+            if refs:
+                lines.append("")
+                lines.append(f"*{label}: {', '.join(refs)}*")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -404,7 +474,10 @@ def build_generators(
     final_raw = dispatch(build_critique_prompt(pass1, tensions, evidence)).strip() or pass1
     # The post-critique set is the answer; fall back to pass-1 if the critique's
     # JSON didn't parse.
-    parsed = parse_generators(final_raw) or parse_generators(pass1)
+    n_t = len(tensions)
+    parsed = parse_generators(final_raw, n_t) or parse_generators(pass1, n_t)
+    tids = current_tension_ids()
+    tids = tids if len(tids) == n_t else []
 
     return {
         "ok": bool(parsed),
@@ -412,6 +485,6 @@ def build_generators(
         "evidence_turns": len(evidence),
         "task_tensions": len(tensions),
         "generators": parsed or [],
-        "cards": render_generators_cards(parsed) if parsed else "",
+        "cards": render_generators_cards(parsed, tids) if parsed else "",
         "raw": final_raw,
     }

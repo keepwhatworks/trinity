@@ -2,7 +2,7 @@
 
 Canonical 4: route, run_council (subsumes judge via responses=[...]),
 get_persona, get_council_status. (record_outcome retired 2026-05-21.)
-v1.5 pair: ask, get_picks.
+v1.5 pair: ask (get_picks removed 2026-08-11 with the routing layer).
 In-protocol provider loop: import_provider_memory.
 Lens-lift: lens_generators.
 (handoff retired 2026-05-26 — 0 usage events; lens flows via MCP Resources.
@@ -44,7 +44,8 @@ class TestToolList:
         names = {t.name for t in tools}
         # Canonical 4: route, run_council (subsumes judge via responses=[...]),
         # get_persona, get_council_status.
-        # v1.5 adds: `ask` (single-call routing), `get_picks`
+        # v1.5 adds: `ask` (single-call routing). `get_picks` was removed
+        # 2026-08-11 with the lens-basin router it introspected.
         # (introspection for the agent into the user's extracted routing
         # patterns).
         # In-protocol provider loop: `import_provider_memory` (agent
@@ -62,7 +63,7 @@ class TestToolList:
         # `run_eval` added (7→8) — score a model against the user's taste in-session
         # so the judge rides MCP sampling instead of `claude -p` (the CLI eval-run gap).
         assert names == {
-            "ask", "get_picks", "trust",
+            "ask", "trust",
             "run_council",
             "get_persona", "get_council_status",
             "import_provider_memory",
@@ -221,59 +222,7 @@ class TestAskRouteMode:
         assert mode.get("enum") == ["answer", "route"]
         assert mode.get("default") == "answer"
 
-    def test_route_uses_cortex_basin_when_one_matches(self, home: Path, monkeypatch):
-        """ask(mode='route') must surface the learned cortex basin rule, not just
-        the heuristic chairman pick — parity with answer-mode ask. Regression
-        guard for the gap (found 2026-05-31) where _route() never consulted
-        _try_cortex_route, so the routing call the MCP docs tell users to PREFER
-        silently bypassed the #277 learned basins the answer path already uses.
 
-        _route() does `from .ask import _try_cortex_route` at call time, so
-        patching the attribute on the ask module reaches it."""
-        import trinity_local.ask as askmod
-        from trinity_local.ask import AskDecision
-
-        def fake_cortex(query, available_providers):
-            return AskDecision(
-                routed_to="codex",
-                trust_score=0.7,
-                runner_up="claude",
-                vote_counts={"codex": 6},
-                evidence_prompt_ids=["bundle_x"],
-                reason="cortex rule for basin 'architecture_decision' (centroid match, sim=0.49)",
-            )
-
-        monkeypatch.setattr(askmod, "_try_cortex_route", fake_cortex)
-        result = _call_tool_sync("ask", {
-            "query": "Should I use a monorepo or split repos for the dispatch layer?",
-            "mode": "route",
-            "available_providers": ["claude", "antigravity", "codex"],
-        })
-        # The learned basin primary drives the route — primary, reason, source,
-        # and challenger must all reflect cortex (not a primary/reason mismatch).
-        assert result["primary"] == "codex", (
-            "cortex basin primary must drive the route primary — if it's the "
-            "heuristic pick instead, the primary_pick line wasn't wired to cortex."
-        )
-        assert result["chairman_source"] == "cortex"
-        assert "cortex rule for basin" in result["reason"]
-        assert result["challenger"] == "claude", (
-            "challenger should be the basin rule's challenger, not the kNN runner-up"
-        )
-
-    def test_route_falls_back_to_heuristic_when_no_basin(self, home: Path, monkeypatch):
-        """When _try_cortex_route returns None (no basin matched, trust below
-        floor, or no real embedder), route stays on the heuristic path with no
-        regression — cortex is an override, never a gate."""
-        import trinity_local.ask as askmod
-        monkeypatch.setattr(askmod, "_try_cortex_route", lambda q, a: None)
-        result = _call_tool_sync("ask", {
-            "query": "refactor this Python function to remove duplication",
-            "mode": "route",
-            "available_providers": ["claude", "antigravity", "codex"],
-        })
-        assert result["primary"] == "codex"          # heuristic coding pick
-        assert result["chairman_source"] != "cortex"  # not the learned path
 
 
 # TestRecordOutcome class removed 2026-05-21. The record_outcome

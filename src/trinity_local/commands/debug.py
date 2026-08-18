@@ -27,15 +27,11 @@ from types import SimpleNamespace
 # The power-user verbs we surface under `debug`. Each entry: name +
 # one-line "what this does". The CANONICAL location stays the same
 # (top-level subparser); `debug` just advertises them.
-# (`replay-history` retired 2026-05-27 — see retired_names.py. The
-# personal routing table is now populated by normal council usage;
-# the standalone "re-evaluate top-N" surface was unused.)
+# (`replay-history` retired 2026-05-27 — see retired_names.py. `consolidate`
+# retired 2026-08-11 with the router that read the picks.json it produced;
+# it outlived every consumer because the removal mapped consumers by IMPORTS
+# and a producer imports nothing from the consumer side.)
 _DEBUG_VERBS: list[tuple[str, str]] = [
-    (
-        "consolidate",
-        "Extract routing patterns per basin from council outcomes "
-        "(supports --audit for independent-chairman drift check).",
-    ),
     (
         "vocabulary",
         "Scan prompts for terminology overloads (one word ↔ two "
@@ -52,7 +48,7 @@ _DEBUG_VERBS: list[tuple[str, str]] = [
 def register(subparsers) -> None:
     parser = subparsers.add_parser(
         "debug",
-        help="Power-user verbs: consolidate, vocabulary, import-export.",
+        help="Power-user verbs: vocabulary, import-export.",
     )
     parser.add_argument(
         "subcommand", nargs="?", default=None,

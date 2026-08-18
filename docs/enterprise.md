@@ -60,7 +60,7 @@ Trinity is the layer that decides **which model gets which task**, learned from
 your team's own corrections rather than a vendor's leaderboard. The chairman's pick
 agrees with the side your team's own later work takes 63% of the time, measured
 on the reference corpus. Your team's number accrues from its own councils. The
-per-basin routing tally (`picks.json`)
+per-model trust ledger (`trust`)
 turns that into a reusable rule. Routing to the cheapest model that *still wins
 your work* is where the spend story and the quality story become the same story.
 

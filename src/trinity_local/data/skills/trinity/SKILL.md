@@ -55,9 +55,9 @@ If any required check fails, walk the user through the surfaced fix. Don't proce
 
 The installer in section 2 already ran this. If MCP needs re-registration (after a `trinity-local update`, or to wire a newly-installed harness), run:
 
-Trinity ships <!-- canonical:mcp_tool_count -->7<!-- /canonical --> MCP tools:
+Trinity ships <!-- canonical:mcp_tool_count -->6<!-- /canonical --> MCP tools:
 - **canonical three** — `run_council`, `get_persona`, `get_council_status`
-- **v1.5 pair** — `ask` (cheap default), `get_picks` (introspection)
+- **v1.5** — `ask` (cheap default; `get_picks` removed 2026-08-11 with the per-basin router)
 - **in-protocol provider loop** — `import_provider_memory` (write-back path: agent pipes its own extracted lens tensions / rejection signals into Trinity)
 - **disagreement ledger** — `trust` (which model you side with when the labs split + the recurring cross-provider disagreements a topic maps into; retrieval read-only + LLM-free, per-model tally gated on its trustworthiness check and built via `trust --build`)
   (`run_eval` / `choose` / `lens_generators` soft-demoted off the MCP surface 2026-07-18 — their CLI verbs + engines stay. `search_prompts` retired 2026-05-17; `get_eval_summary` retired 2026-05-18; `record_outcome` retired 2026-05-21 — chairman's pick is the supervision signal now, refinement prompts carry the "what differently" signal. `handoff` retired 2026-05-26 — 0 usage events in production; lens-via-MCP-Resources is the cross-provider continuity path. `route` removed 2026-06-08 — routing is now `ask(mode="route")`.)
@@ -104,7 +104,6 @@ Trinity's lens (`~/.trinity/memories/lens.md`, `core.md`, `topics.json`, `vocabu
 - `trinity://memories/lens.md` — paired tensions (the load-bearing personalization)
 - `trinity://memories/topics.json` — subject basins
 - `trinity://memories/vocabulary.md` — anchors + homonyms
-- `trinity://scoreboard/picks.json` — extracted cortex routing rules
 - `trinity://scoreboard/routing.json` — per-task-type provider track record
 
 The agent reading these BEFORE the user types is the wedge — every response is conditioned on the user's taste without an extra round-trip.
@@ -125,7 +124,6 @@ The marketing-headline form: "Model X scored 0.YZ on YOUR kind of question." Emp
 
 - `trinity-local lens` — rebuild paired-tension lenses from `me/preference_acts.jsonl` plus prompt history (`lens-build` remains an alias)
 - `trinity-local dream` — full memory-rebuild pass (Phase 5 refreshes `~/.trinity/core.md` automatically)
-- `trinity-local consolidate` — extract cortex routing patterns from council outcomes (with `--audit` for second-flagship drift check)
 - `trinity-local me-card --open` — render the strongest lens as a 1200×630 PNG for sharing
 
 ## 10. Trust + privacy (current state, v1.0)

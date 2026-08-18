@@ -109,44 +109,6 @@ def test_build_page_data_survives_corrupt_state(tmp_path, monkeypatch, label, kw
     assert isinstance(data, dict), f"build_page_data degraded wrong for {label}"
 
 
-def test_load_cortex_rules_coerces_wrong_type_numeric_fields(tmp_path, monkeypatch):
-    """A picks.json basin with a `winner` (so it's NOT skipped) but a wrong-type
-    `margin`/`count` must still RENDER as a real numeric pick — not crash the whole
-    launchpad and not get silently dropped. The param sweep above proves no crash;
-    this pins the OBSERVABLE result of the fix so a future revert that re-introduces
-    the bare float()/int() (founder symptom: 'a single corrupt picks.json pick
-    blanked the ENTIRE launchpad with `could not convert string to float`') reds
-    HERE, on the exact code path the fix changed (_load_cortex_rules)."""
-    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-    monkeypatch.setenv("TRINITY_DISABLE_MLX", "1")
-    (tmp_path / "scoreboard").mkdir(parents=True, exist_ok=True)
-    # margin is the non-numeric string "abc"; count/n_episodes are numeric-STRINGS
-    # ("7") that the coercer should RECOVER (a half-migrated entry), not zero out.
-    (tmp_path / "scoreboard" / "picks.json").write_text(
-        json.dumps({
-            "b00": {"winner": "claude", "margin": "abc", "count": "7",
-                    "n_episodes": "7", "evidence": ["bundle_x"]},
-        }),
-        encoding="utf-8",
-    )
-    from trinity_local.launchpad_data import _load_cortex_rules
-
-    out = _load_cortex_rules()  # raised ValueError pre-fix
-    assert out is not None, "the basin has a winner — it must not vanish"
-    rules = out["rules"]
-    assert len(rules) == 1, (
-        "the corrupt-margin pick was DROPPED — a wrong-type field must degrade the "
-        "field, not erase the whole pick"
-    )
-    pick = rules[0]
-    # margin: non-numeric → finite default 0.0 (and renders a real 2dp string).
-    assert isinstance(pick["margin"], float) and pick["margin"] == 0.0
-    assert pick["margin_str"] == "0.00"
-    # count/n_episodes: numeric-STRINGS are recovered to their real ints.
-    assert pick["count"] == 7 and pick["n_episodes"] == 7
-    # The whole payload must stay strict-JSON-serializable (no bare NaN leak that
-    # would break the client's JSON.parse and never mount the launchpad).
-    json.dumps(out, allow_nan=False)
 
 
 @pytest.mark.parametrize("label,kwargs", _CORRUPTIONS, ids=[c[0] for c in _CORRUPTIONS])
@@ -853,35 +815,6 @@ def test_me_card_survives_wrong_type_pole(tmp_path, monkeypatch, label, pole_a, 
     )
 
 
-def test_memory_viewer_picks_margin_map_survives_nonfinite_margin(patch_trinity_home):
-    """The viewer's own picks.json reader `_picks_margin_fmt_map` does
-    `int(round(m, 3))` to build the margin-format map — a NaN/Inf margin (a
-    poisoned/hand-edited picks.json) is a float that passed the isinstance check
-    then raised `ValueError: cannot convert float NaN to integer`, crashing
-    `render_memory_viewer_html` -> `write_portal_html` (the whole served portal).
-    Sibling of `_load_cortex_rules._safe_number` on the launchpad path — both
-    readers of the SAME corrupt file must degrade, not crash."""
-    from trinity_local.state_paths import scoreboard_dir
-    from trinity_local.memory_viewer import (
-        _picks_margin_fmt_map,
-        render_memory_viewer_html,
-    )
-
-    sdir = scoreboard_dir()
-    sdir.mkdir(parents=True, exist_ok=True)
-    # NaN + Inf + non-numeric-str margins beside a valid 0.625 one.
-    (sdir / "picks.json").write_text(
-        '{"b00":{"winner":"claude","margin":NaN,"count":3,"n_episodes":3,"evidence":[]},'
-        '"b01":{"winner":"codex","margin":"abc","count":2,"n_episodes":2,"evidence":[]},'
-        '"b02":{"winner":"antigravity","margin":0.625,"count":4,"n_episodes":4,"evidence":[]}}',
-        encoding="utf-8",
-    )
-    fmt = _picks_margin_fmt_map((sdir / "picks.json").read_text())
-    # The valid margin is kept; the NaN/Inf/non-numeric ones are skipped (not crash).
-    assert fmt == {"0.625": "0.62"}, f"REGRESSION: bad margin not skipped: {fmt!r}"
-    # And the full render does not raise (the portal-write path).
-    html = render_memory_viewer_html()
-    assert "memory" in html.lower() and len(html) > 1000
 
 
 # ---------------------------------------------------------------------------

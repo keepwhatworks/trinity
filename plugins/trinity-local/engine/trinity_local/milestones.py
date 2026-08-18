@@ -62,7 +62,7 @@ def _load_marker() -> dict[str, int]:
 
 
 def _count_basins() -> int:
-    from .lens_routing import load_topics_basins
+    from .me.basins import load_topics_basins
 
     return len(load_topics_basins())
 

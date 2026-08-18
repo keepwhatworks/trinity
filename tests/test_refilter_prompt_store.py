@@ -113,3 +113,102 @@ def test_preserves_embeddings_on_kept_rows(tmp_path: Path):
     kept = [json.loads(x) for x in store.read_text().splitlines() if x.strip()]
     assert len(kept) == 1200
     assert kept[7]["embedding"] == [0.5, -0.25, 7.0]
+
+
+def test_store_writers_never_emit_raw_line_separators():
+    """ensure_ascii is load-bearing in every writer of the prompt store.
+
+    The store is written ESCAPED. json.loads turns an escaped \\u2028/\\u2029 back into
+    the RAW character, and re-dumping with ensure_ascii=False emits that raw separator —
+    which str.splitlines() counts as a line break while the file's physical newline count
+    does not change.
+
+    This is not hypothetical: refilter_prompt_store.py shipped with ensure_ascii=False and
+    a --apply run re-injected exactly 555 phantom lines into the live store (47,536
+    physical read as 48,091 by splitlines()). disagreement_ledger._load_nodes() splits that
+    way, so 557 unparseable fragments were silently dropped from the resolver's own
+    evidence corpus by its `except ValueError: continue`.
+
+    Pins BOTH maintenance writers at source, because the defect is invisible in any test
+    that round-trips through a small ASCII fixture.
+    """
+    import re
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parent.parent
+    for name in ("refilter_prompt_store.py", "reembed_prompt_store.py"):
+        src = (repo / "scripts" / name).read_text(encoding="utf-8")
+        offenders = [
+            ln.strip() for ln in src.splitlines()
+            if "json.dumps" in ln and "ensure_ascii=False" in ln
+        ]
+        assert not offenders, (
+            f"{name} dumps store rows with ensure_ascii=False: {offenders}. That re-injects "
+            "raw U+2028/U+2029 into the store and silently splits nodes for every "
+            "splitlines() reader."
+        )
+        # and the write actually happens (a guard over a file that stopped writing is vacuous)
+        assert re.search(r"json\.dumps\([^)]*\)\s*\+\s*[\"']\\n", src), (
+            f"{name} no longer writes json.dumps(...) + newline — this guard has drifted "
+            "off the real writer and would pass vacuously"
+        )
+
+
+def test_live_store_has_no_phantom_line_breaks():
+    """The store on disk must have splitlines() == physical newline count.
+
+    A degenerate-data guard on real state: if these disagree, some writer re-introduced
+    raw separators and every splitlines() consumer is silently losing node fragments.
+    Skips when no store exists (fresh install / CI)."""
+    import pytest
+
+    from trinity_local.state_paths import trinity_home
+
+    store = trinity_home() / "prompts" / "prompt_nodes.jsonl"
+    if not store.exists() or store.stat().st_size == 0:
+        pytest.skip("no prompt store on this machine")
+    text = store.read_text(encoding="utf-8")
+    physical = text.count("\n")
+    logical = len(text.splitlines())
+    assert logical == physical, (
+        f"prompt store has {logical - physical} phantom line breaks "
+        f"(splitlines={logical}, newlines={physical}) — raw U+2028/U+2029 are present and "
+        "splitlines() readers such as disagreement_ledger._load_nodes are dropping "
+        "fragments. Repair by rewriting each row with json.dumps(obj) (ensure_ascii=True)."
+    )
+
+
+def test_apply_carries_unparseable_lines_through(tmp_path):
+    """--apply must not delete lines it could not parse.
+
+    load_store used to COUNT unparseable lines and discard them, while the report
+    printed "(N unparseable, left alone)" and the rewrite emitted only parsed rows
+    — so every apply silently deleted user data and said the opposite.
+
+    This exercises the WRITER, not just the loader. An earlier version of this test
+    asserted only on load_store()'s return value, which left the three lines that
+    actually carry the rows through the rewrite unguarded — the loader could be
+    correct while --apply still dropped them on the floor.
+    """
+    home = tmp_path / "home"
+    # Past MIN_STORE_LINES: the script refuses to rewrite anything smaller,
+    # correctly, so that a test fixture can never be mistaken for the real corpus.
+    rows = [_human(i) for i in range(1200)] + [_machine(i) for i in range(60)]
+    store = _write_store(home, rows)
+    corrupt = "{not json at all"
+    store.write_text(store.read_text(encoding="utf-8") + corrupt + "\n",
+                     encoding="utf-8")
+
+    r = _run(home, "--apply")
+    assert r.returncode == 0, f"--apply failed: {r.stderr[-600:]}"
+
+    after = store.read_text(encoding="utf-8").splitlines()
+    assert corrupt in after, (
+        "--apply DELETED the unparseable line while reporting it was carried "
+        f"through. Store now holds {len(after)} lines: {after[:3]}"
+    )
+    # And it must still have done its actual job.
+    kept_ids = {json.loads(x)["id"] for x in after if x != corrupt}
+    assert any(i.startswith("h") for i in kept_ids), "human rows were lost"
+    assert not any(i.startswith("m") for i in kept_ids), (
+        "machine rows survived the filter — --apply did not actually filter")

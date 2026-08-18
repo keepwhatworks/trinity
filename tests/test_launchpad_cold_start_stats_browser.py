@@ -128,10 +128,18 @@ def test_cold_start_stats_renders_honest_and_error_free(tmp_path, monkeypatch):
                     "cold /stats promised 'from your own 0 councils' — a card rendered "
                     "a populated-data line it has no data to back on a fresh install"
                 )
-                assert "after a few councils" in low, (
-                    "cold /stats lost its honest routing empty-state ('after a few "
-                    "councils') — the first-run routing card no longer teaches the "
-                    "prerequisite before promising a result"
+                # Copy check, matched on INTENT rather than an exact sentence. This
+                # asserted the literal "after a few councils" and went red when the
+                # empty-state card was rewritten to "Run a few councils to learn which
+                # model works best for you" — same promise, same prerequisite taught,
+                # different words. The card is present and honest (its sibling
+                # test_cold_stats_shows_exactly_one_routing_empty_state_card pins that
+                # exactly one such card renders); only this string was stale. A guard
+                # that reds on a synonym is a guard people learn to ignore.
+                assert "few councils" in low, (
+                    "cold /stats lost its honest routing empty-state — the first-run "
+                    "routing card no longer teaches the prerequisite ('...a few "
+                    "councils') before promising a result"
                 )
 
                 # cold first-run CTAs that teach the build path must be present, so a

@@ -10,7 +10,7 @@ eval-audit cold-home fix.
 Fix: `load_council_outcome` now raises a CLEAN FileNotFoundError (the id, no leaked
 path), and CLI handlers route through `load_council_outcome_or_exit`, which catches it
 and `SystemExit`s with a one-line message. The library function keeps raising so glob-
-scanning callers (personal_routing._scan_outcomes) can still catch + skip.
+scanning callers (council_analytics._scan_outcomes) can still catch + skip.
 
 Mutation-proven: revert a handler to the raw `load_council_outcome` and the
 `pytest.raises(SystemExit)` reds (a FileNotFoundError escapes).

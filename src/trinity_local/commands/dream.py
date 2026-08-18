@@ -12,7 +12,6 @@ Cost model (typical first run):
   - Phase 1 (discover): free, embeddings already on disk
   - Phase 2 (synthesize): ~one flagship call per cross-provider cluster.
     Usually 10–100 clusters.
-  - Phase 3 (consolidate): one flagship call per basin with >= --min-basin-size
     outcomes. Caps at the cortex `--min-basin-size` default (3).
   - Phase 4 (lens-build): three flagship calls total (turn-pairs, decisions,
     pair-mining) per the existing lens-discovery pipeline.
@@ -48,11 +47,6 @@ def register(subparsers):
         type=int,
         default=None,
         help="Cap the number of clusters synthesized this run. Default: all discovered.",
-    )
-    sp.add_argument(
-        "--skip-consolidate",
-        action="store_true",
-        help="Skip the cortex consolidation phase (you'll need to run `trinity-local consolidate` separately).",
     )
     sp.add_argument(
         "--skip-lens-build",
@@ -127,7 +121,7 @@ def handle_dream(args):
                 file=sys.stderr,
             )
             sys.exit(2)
-        print("dream phase 6/6: distilling memories → core.md (only-distill mode)…",
+        print("dream phase 6/5: distilling memories → core.md (only-distill mode)…",
               file=sys.stderr)
         distill_report = _distill(args.primary_provider or "claude")
         elapsed_ms = int((time.monotonic() - started) * 1000)
@@ -159,7 +153,7 @@ def handle_dream(args):
     }
 
     # ── Phase 1: discover ──────────────────────────────────────────────
-    print("dream phase 1/6 (discover): scanning embeddings for cross-provider pairs…", file=sys.stderr)
+    print("dream phase 1/5 (discover): scanning embeddings for cross-provider pairs…", file=sys.stderr)
     nodes = _all_prompt_nodes_uncapped()
     with_emb = sum(1 for n in nodes if n.embedding)
     clusters = find_cross_provider_clusters(
@@ -167,7 +161,11 @@ def handle_dream(args):
         similarity_threshold=args.similarity_threshold,
         min_providers=2,
     )
-    if args.max_clusters:
+    # `is not None`, not truthiness: 0 is falsy, so `--max-clusters 0` used to mean
+    # ALL 419 clusters rather than none — the opposite of what a user asking for
+    # zero wants, and the only flag that can skip a phase that costs one chairman
+    # call per cluster.
+    if args.max_clusters is not None:
         clusters = clusters[: args.max_clusters]
     report["phases"]["discover"] = {
         "checked_nodes": len(nodes),
@@ -203,7 +201,7 @@ def handle_dream(args):
     # ── Phase 2: synthesize each cluster as a virtual council ──────────
     if clusters:
         print(
-            f"dream phase 2/6 (synthesize): {len(clusters)} virtual council(s)…",
+            f"dream phase 2/5 (synthesize): {len(clusters)} virtual council(s)…",
             file=sys.stderr,
         )
         synthesized, failed = _synthesize_all(clusters, args.primary_provider)
@@ -222,21 +220,17 @@ def handle_dream(args):
             "attempted": 0, "synthesized": 0, "failed": 0,
         }
 
-    # ── Phase 3: re-consolidate cortex ─────────────────────────────────
-    if args.skip_consolidate:
-        print("dream phase 3/6 (consolidate): SKIPPED (--skip-consolidate)", file=sys.stderr)
-        report["phases"]["consolidate"] = {"skipped": True}
-    else:
-        print("dream phase 3/6 (consolidate): consolidating routing rules…", file=sys.stderr)
-        consolidate_report = _consolidate(args.primary_provider or "claude")
-        report["phases"]["consolidate"] = consolidate_report
+    # Phase 3 was `consolidate` — rebuilding picks.json from the lens basins.
+    # Removed 2026-08-11 (res_022) with the verb itself: the router that read
+    # picks.json went on the same day, so the phase rebuilt a file with zero
+    # readers on every deep build.
 
     # ── Phase 4: rebuild lenses + freeze routing to disk ───────────────
     if args.skip_me_build:
-        print("dream phase 4/6 (lens-build): SKIPPED (--skip-lens-build)", file=sys.stderr)
+        print("dream phase 4/5 (lens-build): SKIPPED (--skip-lens-build)", file=sys.stderr)
         report["phases"]["me_build"] = {"skipped": True}
     else:
-        print("dream phase 4/6 (lens-build): rebuilding lenses + freezing routing…", file=sys.stderr)
+        print("dream phase 4/5 (lens-build): rebuilding lenses + freezing routing…", file=sys.stderr)
         me_report = _me_build(args.primary_provider or "claude")
         # Freeze the empirical-memory entry to scoreboard/routing.json so the
         # chairman context loader (and Phase 5 distill) sees the routing
@@ -255,10 +249,10 @@ def handle_dream(args):
     # Pure-geometric scan; zero LLM calls. Builds the language-memory
     # entry in the core-memories set.
     if getattr(args, "skip_vocabulary", False):
-        print("dream phase 5/6 (vocabulary): SKIPPED (--skip-vocabulary)", file=sys.stderr)
+        print("dream phase 5/5 (vocabulary): SKIPPED (--skip-vocabulary)", file=sys.stderr)
         report["phases"]["vocabulary"] = {"skipped": True}
     else:
-        print("dream phase 5/6 (vocabulary): scanning for overloads + anchors…", file=sys.stderr)
+        print("dream phase 5/5 (vocabulary): scanning for overloads + anchors…", file=sys.stderr)
         report["phases"]["vocabulary"] = _vocabulary_scan()
 
     # ── Phase 5: distill the three thinking memories (lens, topics,
@@ -267,10 +261,10 @@ def handle_dream(args):
     # were skipped, distill emits a core.md from whatever memories DO
     # exist on disk.
     if getattr(args, "skip_distill", False):
-        print("dream phase 6/6 (distill): SKIPPED (--skip-distill)", file=sys.stderr)
+        print("dream phase 6/5 (distill): SKIPPED (--skip-distill)", file=sys.stderr)
         report["phases"]["distill"] = {"skipped": True}
     else:
-        print("dream phase 6/6 (distill): distilling memories → core.md…", file=sys.stderr)
+        print("dream phase 6/5 (distill): distilling memories → core.md…", file=sys.stderr)
         distill_report = _distill(args.primary_provider or "claude")
         report["phases"]["distill"] = distill_report
 
@@ -300,23 +294,69 @@ def _distill(provider: str) -> dict:
     return distill_via_chairman(provider=provider)
 
 
+def _cluster_fingerprint(cluster) -> str:
+    """Stable id for a cluster: its prompt plus who answered and with what.
+
+    Two clusters are "the same" when the same providers answered the same
+    prompt with the same text. Response text is hashed rather than stored so
+    the sidecar carries no prompt or answer content.
+    """
+    import hashlib
+
+    parts = [str(getattr(cluster, "representative_prompt", ""))]
+    for m in sorted(getattr(cluster, "members", []),
+                    key=lambda x: str(getattr(x, "provider", ""))):
+        parts.append(str(getattr(m, "provider", "")))
+        parts.append(hashlib.sha1(
+            str(getattr(m, "response_text", "")).encode("utf-8", "replace")).hexdigest()[:16])
+    return hashlib.sha1("|".join(parts).encode("utf-8", "replace")).hexdigest()[:24]
+
+
+def _synthesized_ledger():
+    """Path + the set of fingerprints already synthesized."""
+    from ..state_paths import trinity_home
+
+    path = trinity_home() / "dream_synthesized.jsonl"
+    seen = set()
+    if path.exists():
+        for line in path.open(encoding="utf-8"):
+            line = line.strip()
+            if line:
+                seen.add(line.split()[0])
+    return path, seen
+
+
 def _synthesize_all(clusters, primary_provider):
-    """Run one chairman synth per cluster. Reuses the MCP machinery so the
-    persisted CouncilOutcomes flow into personal_routing / consolidate
-    via the standard path."""
+    """Run one chairman synth per cluster, SKIPPING clusters already done.
+
+    The spend pre-flight has always told the user "re-runs only pay for NEW
+    clusters". Until 2026-08-18 that was copy with no mechanism behind it: this
+    function called the chairman for every cluster, every time, with no
+    existence check. A re-run of a 419-cluster corpus paid 419 chairman calls
+    to redo work already on disk (res_069). The claim is now true.
+    """
     import asyncio
     from ..cross_provider_pairs import cluster_to_synthesis_args
     from ..mcp_server import _synthesize_responses
 
+    ledger_path, seen = _synthesized_ledger()
     synthesized = 0
     failed = 0
+    skipped = 0
     for i, cluster in enumerate(clusters, 1):
+        fp = _cluster_fingerprint(cluster)
+        if fp in seen:
+            skipped += 1
+            continue
         synth_args = cluster_to_synthesis_args(cluster)
         if primary_provider:
             synth_args["primary_provider"] = primary_provider
         try:
             asyncio.run(_synthesize_responses(synth_args, synth_args["responses"]))
             synthesized += 1
+            with ledger_path.open("a", encoding="utf-8") as fh:
+                fh.write(fp + "\n")
+            seen.add(fp)
             if i % 10 == 0 or i == len(clusters):
                 print(f"    {i}/{len(clusters)} synthesized…", file=sys.stderr)
         except Exception as exc:
@@ -325,33 +365,12 @@ def _synthesize_all(clusters, primary_provider):
                 f"    ! cluster {i} synth failed: {type(exc).__name__}: {exc}",
                 file=sys.stderr,
             )
+    if skipped:
+        print(f"    {skipped} cluster(s) already synthesized — skipped",
+              file=sys.stderr)
     return synthesized, failed
 
 
-def _consolidate(provider: str) -> dict:
-    """Invoke the `consolidate` handler in-process.
-
-    Post-collapse (#298) consolidate is LLM-free (a lens-basin winner tally), so
-    the `provider` arg is no longer used by the handler — kept in the signature
-    for the dream pipeline's call shape."""
-    from .cortex import handle_consolidate
-
-    consolidate_args = SimpleNamespace(dry_run=False)
-    import io
-    import contextlib
-    buf = io.StringIO()
-    try:
-        with contextlib.redirect_stdout(buf):
-            rc = handle_consolidate(consolidate_args)
-    except SystemExit as exc:
-        return {"ok": False, "error": f"consolidate exited: {exc}"}
-    captured = buf.getvalue().strip()
-    try:
-        payload = json.loads(captured) if captured else {}
-    except json.JSONDecodeError:
-        payload = {"raw": captured}
-    payload["rc"] = rc
-    return payload
 
 
 def _me_build(provider: str) -> dict:
@@ -364,11 +383,29 @@ def _me_build(provider: str) -> dict:
     except ImportError:
         return {"ok": False, "error": "lens-build handler not importable"}
 
+    # sample_size and k_basins are read as args.X DIRECTLY by handle_me_build
+    # (everything else it touches goes through getattr with a default). Omitting
+    # them crashed the whole me/ stage with
+    #   AttributeError: 'types.SimpleNamespace' object has no attribute 'sample_size'
+    # and a `lens --deep` run then completed "successfully" with its central stage
+    # dead — 2.3 hours and 419 chairman calls that changed 87 bytes (res_068).
+    # The defaults mirror the CLI parser's so a deep build behaves like a plain one.
+    # tests/test_dream_me_args_contract.py derives the required set by AST, so a
+    # newly added args.X cannot silently reopen this.
+    from ..me_builder import ME_SAMPLE_SIZE as _ME_SAMPLE_SIZE
+
     me_args = SimpleNamespace(
         provider=provider,
         limit=None,
         stages=None,
         force=False,
+        sample_size=_ME_SAMPLE_SIZE,
+        k_basins=None,
+        # handle_dream returns early when dry_run is set, so reaching this
+        # point means it is False. Passed explicitly because handle_me_build
+        # reads args.dry_run DIRECTLY at me.py:393 (and via getattr elsewhere —
+        # a getattr somewhere is not a shield for a direct read).
+        dry_run=False,
     )
     import io
     import contextlib

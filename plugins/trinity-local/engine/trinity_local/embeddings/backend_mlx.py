@@ -1,10 +1,24 @@
-"""MLX backend for nomic-embed-text-v1.5.
+"""Torch / sentence-transformers embedding backend (the cross-platform fallback).
 
 Uses sentence-transformers with PyTorch for inference.
 Apple Silicon acceleration via MPS when available.
 
-Model: nomic-ai/nomic-embed-text-v1.5 (137M params, 8192 token context)
-Supports Matryoshka dimensions: 768, 512, 256, 128, 64
+Model: nomic-ai/modernbert-embed-base (the header naming nomic-embed-text-v1.5
+survived the #244 model swap for months — the MODEL_ID below is the truth).
+Supports Matryoshka dimensions: 768, 512, 256, 128, 64.
+
+TOKEN-BUDGET INCONSISTENCY WITH THE MLX-NATIVE SIBLING (found 2026-08-08)
+=========================================================================
+This path can see up to the model's 8192-token context. The MLX-native sibling
+(backend_mlx_native.py) is silently capped at 512 tokens by mlx_embeddings'
+generate() default. Same model, different effective input — so for the ~11.7% of
+corpus nodes longer than 512 tokens (which hold ~82% of the bytes), the two
+runtimes produce DIFFERENT vectors, and the comment below claiming "a machine's
+vectors are model-consistent regardless of runtime" is false for long texts.
+Measured consequence and why the 512 cap is deliberately kept:
+internal/experiments/context_window_lift.py (full-context grouping is WORSE).
+If cross-runtime consistency ever matters, cap THIS path at 512 rather than
+lifting the native one.
 """
 from __future__ import annotations
 
@@ -15,9 +29,10 @@ from pathlib import Path
 # #244: modernbert-embed-base (standard ModernBERT arch) — 8192 ctx, Matryoshka,
 # nomic-trained, Apache-2.0. Replaces nomic-embed-text-v1.5, whose custom
 # nomic_bert arch was unsupported by MLX and wedged torch-MPS. ModernBERT is a
-# standard arch, so this torch path runs clean on CUDA/CPU (and MPS) — and the
-# Apple-MLX path (backend_mlx_native.py) uses the SAME model, so a machine's
-# vectors are model-consistent regardless of runtime. Override via TRINITY_EMBED_MODEL.
+# standard arch, so this torch path runs clean on CUDA/CPU (and MPS). The
+# Apple-MLX path (backend_mlx_native.py) uses the SAME model but a 512-token
+# effective cap (see the docstring above), so vectors are consistent across
+# runtimes ONLY for texts under ~512 tokens. Override via TRINITY_EMBED_MODEL.
 import os as _os
 MODEL_ID = _os.environ.get("TRINITY_EMBED_MODEL", "nomic-ai/modernbert-embed-base")
 MAX_TOKENS = 8192

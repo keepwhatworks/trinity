@@ -86,7 +86,6 @@ class TestViewerRebuildChip:
         # CLI is renamed, both this guard and Surface 18 catch it.
         for marker in (
             '"lens.md" || name === "topics.json") return "lens"',
-            '"picks.json") return "consolidate"',
             # core.md: `lens --only-distill` since the 2026-07-04 one-concept
             # fold (distill → dream 2026-05-18 → lens 2026-07-04).
             '"core.md") return "lens --only-distill"',
@@ -142,7 +141,7 @@ class TestViewerRebuildChip:
         # The mapping covers core/lens/topics/picks/routing/vocabulary; the
         # fallback is `return "lens"` (one concept, 2026-07-04). Guard against
         # an empty parse.
-        assert {"lens", "consolidate", "vocabulary"} <= emitted, (
+        assert {"lens", "vocabulary"} <= emitted, (
             f"suggestionFor parsed too few verbs ({emitted}) — regex/format drift"
         )
 

@@ -303,7 +303,7 @@ def build_elo_snapshot(window: str = "all_time") -> dict[str, Any]:
     signature can't observe — so a swapped source MUST miss the cache. Comparing
     the held reference with ``is`` is safe against id-reuse, because the cached
     entry keeps the function object alive for as long as it's the key."""
-    from .personal_routing import _outcomes_signature
+    from .council_analytics import _outcomes_signature
 
     source = _iter_council_payloads
     try:

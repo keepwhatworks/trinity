@@ -2,7 +2,7 @@
 thinking memories: lens.md, topics.json, vocabulary.md).
 
 Writes a single page at ~/.trinity/portal_pages/memory.html that loads
-the requested memory file by query param (?file=lens.md, picks.json...).
+the requested memory file by query param (?file=lens.md, topics.json...).
 JSON is pretty-printed; .md is shown raw. No markdown rendering for now —
 chairman context is the source of truth, this is for human inspection.
 
@@ -61,7 +61,7 @@ ALLOWED_FILES: list[dict[str, str]] = [
     # outcomes (the verdicts you log) and read by the chairman picker.
     # Not cognitive memory, not part of the lens distillation.
     {"name": "picks.json", "brain": "scoreboard (operational)",
-     "tagline": "The recency-weighted chairman winner per lens basin. Written by consolidate; read by ask + chairman picker."},
+     "tagline": "Historical: the per-lens-basin chairman tally. Its writer (consolidate) and reader (the ask-side router) were both removed 2026-08-11."},
     {"name": "routing.json", "brain": "scoreboard (operational)",
      "tagline": "Per-task-type provider track record. Computed from council outcomes; read by ask + launchpad."},
 ]
@@ -69,6 +69,15 @@ ALLOWED_FILES: list[dict[str, str]] = [
 
 _FILE_PATH_RESOLVERS = {
     "lens.md": lens_path,
+    # picks.json is STILL a viewable file and lost its resolver by accident. The
+    # 2026-08-11 router removal took the reader and the writer, and this entry went
+    # with them -- but picks.json stayed in ALLOWED_FILES and stayed in the nav, so
+    # every click answered "Not built yet. Run trinity-local lens to generate it."
+    # permanently, whatever was on disk. That it was meant to remain visible is not a
+    # guess: the same arc REWROTE its tagline to "Historical: the per-lens-basin
+    # chairman tally. Its writer (consolidate) and reader (the ask-side router) were
+    # both removed 2026-08-11." Nobody rewrites the description of a file they are
+    # removing from the viewer.
     "picks.json": picks_path,
     "routing.json": routing_path,
     "topics.json": topics_path,
@@ -124,53 +133,6 @@ def _read_memory_contents() -> dict[str, str | None]:
     return contents
 
 
-def _picks_margin_fmt_map(picks_text: str | None) -> dict[str, str]:
-    """Pre-format every picks.json margin to 2dp with PYTHON rounding (the same
-    `f"{m:.2f}"` the CLI `consolidate` line and the launchpad routing card use),
-    keyed by the JS-canonical string of the raw value (``repr`` of a round-tripped
-    double matches JS ``Number.prototype.toString``).
-
-    The cross-language bug this closes: the viewer reads the raw picks.json float
-    client-side, and JS ``Number.toFixed(2)`` rounds half-UP while Python's float
-    format rounds half-to-EVEN — so an exact dyadic margin like 0.625 painted
-    "0.63" in the viewer (and launchpad pre-fix) while the CLI printed "0.62"
-    (same picks.json, two numbers across surfaces). Re-deriving Python's
-    binary-correct rounding in JS arithmetic is not reliable, so we pre-format
-    here and the viewer renders the string verbatim (see fmtMargin in the JS).
-    Returns {} on any read/parse failure (the JS falls back to toFixed).
-    """
-    if not picks_text:
-        return {}
-    try:
-        data = _json_module().loads(picks_text)
-    except Exception:
-        return {}
-    if not isinstance(data, dict):
-        return {}
-    out: dict[str, str] = {}
-    for entry in data.values():
-        if not isinstance(entry, dict):
-            continue
-        m = entry.get("margin")
-        # bool is an int subclass, and a NaN/Inf margin (a poisoned/hand-edited
-        # picks.json) is a float that passes isinstance but then `int(round(NaN,3))`
-        # raises ValueError ("cannot convert float NaN to integer"), crashing
-        # render_memory_viewer_html → write_portal_html. Skip non-finite/bool so a
-        # corrupt margin can't take down the served portal (sibling of
-        # _load_cortex_rules._safe_number on the launchpad path).
-        if not isinstance(m, (int, float)) or isinstance(m, bool):
-            continue
-        if isinstance(m, float) and m != m or m in (float("inf"), float("-inf")):
-            continue
-        # Key by the SAME value the JS computes: round(value, 3) → toString.
-        # repr() of a round-tripped double matches JS toString for fractional
-        # decimals; normalize the integer-valued case (JS "0"/"1", not "0.0")
-        # so an exactly-0.0 or 1.0 margin keys identically (those never hit the
-        # tie anyway, but the map stays a faithful mirror).
-        rv = round(float(m), 3)
-        key = repr(int(rv)) if rv == int(rv) else repr(rv)
-        out[key] = f"{float(m):.2f}"
-    return out
 
 
 def _json_module():
@@ -299,8 +261,13 @@ def render_memory_viewer_html() -> str:
     memories_payload = _inline(_slim_topics_for_viewer(_memory_contents))
     # Pre-format picks margins server-side (Python 2dp) so the viewer renders the
     # SAME margin string as the CLI + launchpad — never a JS toFixed half-up
-    # divergence on an exact dyadic tie. See _picks_margin_fmt_map / fmtMargin.
-    margin_fmt_json = _inline(_picks_margin_fmt_map(_memory_contents.get("picks.json")))
+    # The Python/JS margin-rounding map lived here. It pre-formatted every
+    # picks.json margin to 2dp with PYTHON rounding so the viewer and the CLI
+    # could not print two different numbers for the same margin on an exact
+    # dyadic tie. Removed 2026-08-11 with picks.json. Checked before deleting:
+    # routing.json, the surviving scoreboard, carries {n, overall, wins} and no
+    # margin field, so the property does not transfer.
+    margin_fmt_json = _inline({})
     # The real routing gate, threaded into the JS so the picks badge + topology
     # basin detail use the SAME confidence threshold `ask` routes on (#299). Local
     # import + literal fallback mirrors launchpad_data.py (avoids a hard module dep
@@ -1904,7 +1871,7 @@ def render_memory_viewer_html() -> str:
       // best-effort via the same fields where they overlap.
       const basins = Object.keys(picks);
       if (basins.length === 0) {{
-        target.appendChild(el("p", "meta", "No picks yet — run trinity-local consolidate."));
+        target.appendChild(el("p", "meta", "picks.json is a historical artifact — the router that read it was removed 2026-08-11."));
         return;
       }}
       // Cross-memory bridge: picks → topology via the shared centroid
@@ -1915,34 +1882,19 @@ def render_memory_viewer_html() -> str:
       const {{ taskToBasinId, basinLabels, basinNames }} = loadCrossMemoryMaps();
       // Deep-link target: ?task=<basin_id> scrolls to + highlights the
       // matching card so cross-links from routing.json land usefully.
-      // If the task isn't yet in picks (cortex hasn't consolidated this
-      // basin), surface a small "not yet" banner — same warm-warning
-      // shape as the per-file health banner — so the user understands
-      // the link landed but the data isn't there.
+      // The "run consolidate to add it" rebuild chip lived here. Both the
+      // verb and the router that read picks.json were removed 2026-08-11
+      // (res_022), so advising a rebuild would point at a retired command --
+      // caught by test_every_suggested_verb_is_a_live_registered_cli_command,
+      // which is the advice-closure guard doing exactly its job.
+      //
+      // What that removal ALSO took, and should not have: `focusTask` was
+      // declared inside the deleted block, while two consumers below still read
+      // it (the focused-card class and the scroll-into-view). And the block's
+      // trailing `}});` + appendChild calls were left behind with nothing opening
+      // them, which is a SYNTAX error -- so the whole viewer script failed to
+      // parse and every file view sat at "Loading…" forever.
       const focusTask = params.get("task");
-      if (focusTask && !basins.includes(focusTask)) {{
-        const banner = el("div", "viewer-health-banner");
-        banner.appendChild(el("span", "viewer-health-status", "not yet"));
-        const hint = el("span", "viewer-health-hint");
-        hint.textContent =
-          'No pick for "' + focusTask + '" yet — this task hasn\\'t been ' +
-          'consolidated. Run trinity-local consolidate to add it.';
-        banner.appendChild(hint);
-        const chip = el("button", "viewer-health-cmd");
-        chip.type = "button";
-        chip.textContent = "trinity-local consolidate";
-        chip.title = "Copy: trinity-local consolidate";
-        chip.addEventListener("click", () => {{
-          if (navigator.clipboard?.writeText) {{
-            navigator.clipboard.writeText("trinity-local consolidate").catch(() => null);
-          }}
-          chip.textContent = "✓ Copied";
-          announceCopy("Copied: trinity-local consolidate");
-          setTimeout(() => {{ chip.textContent = "trinity-local consolidate"; }}, 2200);
-        }});
-        banner.appendChild(chip);
-        target.appendChild(banner);
-      }}
       basins.forEach(basinId => {{
         const p = picks[basinId];
         const card = el("div", "pick-card");
@@ -2971,7 +2923,6 @@ def render_memory_viewer_html() -> str:
       // `lens --only-distill` is the ~20s core.md-only path.
       if (name === "lens.md" || name === "topics.json") return "lens";
       if (name === "generators.md") return "lens-generators";
-      if (name === "picks.json") return "consolidate";
       if (name === "routing.json") return "lens";
       if (name === "vocabulary.md") return "vocabulary";
       if (name === "core.md") return "lens --only-distill";

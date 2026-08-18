@@ -119,6 +119,24 @@ def _reconcile_model_arg(
                 found = tok[len("--model="):]
                 i += 1
                 continue
+            # The Codex CLI's own short alias, separated and clustered. These
+            # were missing, and the gap became SILENT rather than loud on
+            # 2026-08-07: before that, dispatch did not recognise `-m` either, so
+            # it appended a second --model and the CLI exited 2 — a crash, but a
+            # visible one. Teaching dispatch the short form without teaching this
+            # extractor would mean `-m X` runs correctly while `config.model`
+            # keeps the JSON value, so the recording path stamps a model that
+            # never ran. A wrong identity stamp is worse than a failed dispatch:
+            # it lands in the council record and the disagreement ledger keys on
+            # model x version.
+            if tok == "-m" and i + 1 < len(tokens):
+                found = tokens[i + 1]
+                i += 2
+                continue
+            if tok.startswith("-m") and len(tok) > 2 and not tok.startswith("--"):
+                found = tok[2:]
+                i += 1
+                continue
             out.append(tok)
             i += 1
         return found, out

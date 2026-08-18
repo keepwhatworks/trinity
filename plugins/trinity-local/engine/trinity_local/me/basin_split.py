@@ -25,7 +25,7 @@ Three stages, all numpy-only (no sklearn / hdbscan / scipy runtime dep):
      Small or already-coherent basins pass straight through, untouched.
 
   2. DECIDE k (from A09 `bimodality_participation`) — reuse the repo's
-     dependency-free `cortex_geometry` math (geometric median + participation
+     dependency-free `me.geometry` math (geometric median + participation
      ratio + leading-PC excess kurtosis) on a deterministic subsample to decide
      whether the mega is genuinely multi-modal and to derive a k CEILING. A
      mega that reads as a single cone (low participation ratio, no twin-peak
@@ -133,7 +133,7 @@ PARTICIPATION_PER_MODE = 24.0
 MIN_TIGHTEN = 0.005
 # Deterministic subsample caps (keep the O(n^2) / O(n*k*d) work bounded on the
 # big megas; centroids are then applied to EVERY point so coverage is full).
-GEOM_SUBSAMPLE = 400      # rows fed to the pure-Python cortex_geometry decision
+GEOM_SUBSAMPLE = 400      # rows fed to the pure-Python me.geometry decision
 KMEANS_SUBSAMPLE = 800    # rows fed to the k-means centroid fit per mega
 SIL_SUBSAMPLE = 600       # rows fed to the silhouette used to PICK k
 KMEANS_ITERS = 25
@@ -259,15 +259,15 @@ def _cosine_silhouette(X, labels, rng) -> float:
 
 
 # --------------------------------------------------------------------------- #
-# geometry decision — reuse the repo's dependency-free cortex_geometry math    #
+# geometry decision — reuse the repo's dependency-free me.geometry math    #
 # --------------------------------------------------------------------------- #
 def _decide_multimodal_and_ceiling(X, rng) -> tuple[bool, int, float]:
     """A09 decision: is this mega genuinely multi-modal, and what k ceiling?
 
     Returns (multimodal, k_ceiling, participation_ratio). Runs the pure-Python
-    cortex_geometry helpers on a deterministic subsample (they're O(n^2 d) /
+    me.geometry helpers on a deterministic subsample (they're O(n^2 d) /
     O(i n d), so the subsample keeps them cheap on the big megas)."""
-    from ..cortex_geometry import (
+    from .geometry import (
         BIMODALITY_KURTOSIS_THRESHOLD,
         excess_kurtosis,
         participation_ratio,

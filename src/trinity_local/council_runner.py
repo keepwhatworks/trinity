@@ -174,11 +174,143 @@ def _log_routing_label_event(
 
 
 def _provider_model(config, override: str | None) -> str | None:
+    """The model this council will ACTUALLY dispatch, not the config label.
+
+    This used to be `return override or config.model`, and that was the founder's
+    bug report one level deeper than it looked. `providers.dispatched_model()`
+    already exists and its docstring already states the rule -- "what eval/council
+    must RECORD (the recorded == dispatched invariant)" -- because for antigravity
+    `config.model` is a value the CLI IGNORES: agy has no --model flag, so the
+    user's `/model` selection in ~/.gemini/antigravity-cli/settings.json is what
+    runs. ask.py called it. evals/runner.py called it twice. This function, which
+    feeds the disagreement ledger that the whole which-model-to-trust claim rests
+    on, did not.
+
+    Measured 2026-08-18 across the 400 most recent councils: 68 antigravity rows
+    recorded 'Gemini 3.1 Pro (high)' and 3 recorded 'Gemini 3.7 Flash', while agy's
+    live setting was 'Gemini 3.7 Flash (Low)'. Two symptoms, one cause -- the window
+    of Flash results filed under 3.1 Pro, and the missing effort leg, since for agy
+    the effort lives INSIDE the model string and config.model drops it.
+    """
     if override:
         return override
     if config is None:
         return None
-    return config.model
+    from .providers import dispatched_model
+    return dispatched_model(config) or config.model
+
+
+def _model_provenance(config, override: str | None) -> str:
+    """How trustworthy is the model string this run will record?
+
+    Trinity recorded `providers.<name>.model` as "the model that answered" and
+    every ledger row looked equally reliable. For a provider invoked WITHOUT
+    --model that string is a static label — a settings alias or a stale hand-edit
+    silently falsifies it, and a window of Gemini Flash councils was filed under
+    3.1 Pro exactly that way. `pinned` means argv enforces it; `assumed` means
+    nobody checked. `echoed` is only knowable after the member runs and is
+    attached then.
+    """
+    if override:
+        return "pinned"
+    if config is None:
+        return "unknown"
+    try:
+        from .providers import model_provenance
+        return model_provenance(config)
+    except Exception:
+        return "assumed"
+
+
+def stamp_member_model(config, override: str | None,
+                       echo: str | None) -> tuple[str | None, str, str | None]:
+    """(recorded_model, source, label) for one member.
+
+    A module-level function rather than inline in run_council for the reason
+    `_has_model_flag` gives two functions up: the stamping lives inside a
+    subprocess-dispatching loop and so could not be tested there, and an
+    untestable guard is how the first version ships wrong. Mine did — the first
+    provenance fix wrote to run STATE, which the ledger never reads, and the
+    tests I wrote around it reimplemented the logic instead of calling it, so a
+    mutation reverting the behaviour left them green.
+
+    CAPTURE INSTEAD OF ASSUME: a CLI that states its model outranks the config
+    label, because the label is a static string a settings alias or stale
+    hand-edit can silently falsify. The label is kept alongside so drift stays
+    visible rather than being overwritten.
+    """
+    from .providers import model_provenance
+    recorded = _provider_model(config, override)
+    # The LABEL is deliberately the static config string, not the dispatched
+    # model. Setting label = recorded would make drift invisible by definition:
+    # the whole point of carrying both is that a reader can see Trinity's label
+    # disagree with what actually ran, which is how the Flash-under-3.1-Pro
+    # window would have been caught the day it started.
+    label = override or (getattr(config, "model", None) if config is not None else None)
+    if override:
+        return recorded, "pinned", label
+    if config is None:
+        return (echo or recorded), "unknown", label
+    return (echo or recorded), model_provenance(config, echo), label
+
+
+def _warn_model_drift(provider_name: str, config, result) -> None:
+    """Say so at dispatch time whenever the label disagrees with what will run.
+
+    TWO sources can outrank the label, and this used to watch only the first:
+
+      echo        the CLI states what it used. codex prints `model: gpt-5.6-sol`.
+                  Ground truth, because it describes the run that happened.
+      settings    the CLI's OWN config file. agy has no --model flag at all, so
+                  ~/.gemini/antigravity-cli/settings.json is the only honest
+                  source; claude's ~/.claude/settings.json is what a changed
+                  default lands in.
+
+    The early `if not echo: return` meant this warned for codex ONLY -- and codex
+    is the one provider that was never the problem. The two that motivated the
+    whole provenance arc, precisely because they announce nothing, could drift in
+    silence. The record was fixed and the warning was left half-wired.
+
+    Stale docstring corrected with it: claude and agy no longer "stay `assumed`",
+    they stamp `configured` when their settings can be read.
+    """
+    import sys as _sys
+
+    if config is None:
+        return
+    label = getattr(config, "model", None)
+    if not label:
+        return
+
+    echo = getattr(result, "model_echo", None)
+    if echo:
+        if str(label).strip().lower() != echo.strip().lower():
+            print(f"  [{provider_name}] MODEL DRIFT: config says {label!r} but the CLI "
+                  f"reports {echo!r} — the ECHO is ground truth and the label is not.",
+                  flush=True, file=_sys.stderr)
+        return
+
+    from .providers import (injects_model_flag, read_claude_settings_model,
+                            settings_model)
+
+    # A PINNED model is not drift, it is an override -- a different fact deserving a
+    # different sentence. Trinity injects `--model` for claude, so a settings value
+    # that disagrees is the user's chosen default being overridden, not a mislabelled
+    # row. Saying "DRIFT" there would be false, and crying drift on a correct row is
+    # how a warning gets trained out of a reader's attention.
+    if injects_model_flag(config):
+        chosen = read_claude_settings_model()
+        if chosen and chosen.strip().lower() not in str(label).strip().lower():
+            print(f"  [{provider_name}] OVERRIDING your {provider_name} default: your "
+                  f"settings choose {chosen!r}, Trinity dispatches --model {label!r}.",
+                  flush=True, file=_sys.stderr)
+        return
+
+    declared = settings_model(config)
+    if declared and declared.strip().lower() not in str(label).strip().lower():
+        print(f"  [{provider_name}] MODEL DRIFT: config says {label!r} but "
+              f"{provider_name}'s own settings say {declared!r} — the SETTINGS decide "
+              "what runs, and this label does not.", flush=True, file=_sys.stderr)
 
 
 def _synthesize_with_fallback(
@@ -262,6 +394,11 @@ class MemberExecutionResult:
     stderr: str = ""
     stdout: str = ""
     error_payload: dict[str, object] | None = None
+    # What the CLI SAID it ran, when it says anything. Carried this far because
+    # the member record is where the ledger reads the model from, and an
+    # unstamped council can never gain provenance later — the same argument the
+    # effort leg was added under.
+    model_echo: str | None = None
 
 
 def run_council(
@@ -321,6 +458,15 @@ def run_council(
                 "kind": "council",
                 "chairman_provider": primary_provider,
                 "chairman_model": chairman_model,
+                # Not every recorded model is worth the same. See
+                # _model_provenance: `assumed` rows are labels nobody verified.
+                "chairman_model_source": _model_provenance(chairman_config,
+                                                           primary_model_override),
+                "member_model_sources": {
+                    name: _model_provenance(config.providers.get(name), None)
+                    for name in member_providers
+                    if config.providers.get(name) is not None
+                },
             },
         )
         # Register a pending segment so anyone who opens ?thread_id= for this
@@ -434,6 +580,7 @@ def run_council(
                 },
             )
 
+        _warn_model_drift(provider_name, provider_config, result)
         update_member_progress(state_token, provider_name, output_text)
         return MemberExecutionResult(
             provider_name=provider_name,
@@ -442,6 +589,7 @@ def run_council(
             returncode=result.returncode,
             stderr=result.stderr,
             stdout=result.stdout,
+            model_echo=getattr(result, "model_echo", None),
         )
 
     executions: dict[str, MemberExecutionResult] = {}
@@ -475,9 +623,14 @@ def run_council(
         # and effort was the missing leg — every unstamped council is
         # behavioral data that can never gain effort fidelity later.
         from .providers import _effective_effort
+        _model, _source, _label = stamp_member_model(
+            execution.provider_config,
+            member_model_overrides.get(provider_name),
+            execution.model_echo,
+        )
         member = CouncilMemberResult(
             provider=provider_name,
-            model=_provider_model(execution.provider_config, member_model_overrides.get(provider_name)),
+            model=_model,
             session_id=None,
             output_text=execution.output_text,
             metadata={
@@ -485,6 +638,8 @@ def run_council(
                 "stderr": execution.stderr,
                 "stdout": execution.stdout,
                 "effort": _effective_effort(execution.provider_config),
+                "model_source": _source,
+                "model_label": _label,
             },
         )
         member_results.append(member)

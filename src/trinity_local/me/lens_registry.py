@@ -269,6 +269,41 @@ class RegistryEntry:
         )
 
 
+def resolve_spanned_basins(spanned: list[str], live_ids: set[str]) -> set[str]:
+    """Map a tension's `basins_spanned` onto basin ids that CURRENTLY exist.
+
+    THE DEFECT THIS REPAIRS (res_024, measured 2026-08-14). The mega-basin
+    splitter replaces `b04` with `b04a`/`b04b` in topics.json
+    (`me/basin_split.py:560`, default ON since af073886) and nothing migrates
+    this registry. On the live store that left **273 of 526** tension->basin
+    references (52%) naming a basin that no longer exists, and **49 of 167**
+    tensions (29%) with NO live basin at all.
+
+    It was invisible because nothing in production reads `basins_spanned` --
+    council_runtime injects a global slice and never joins to basins. A field
+    written and never read cannot show a symptom, so the breakage surfaced only
+    when hq_078 became its first consumer.
+
+    Resolution is by ID PREFIX rather than by migration: the splitter's own
+    convention is that children extend the parent id with a letter, so `b04`
+    resolves to every live `b04*`. That needs no rewrite of stored data, is
+    idempotent, and stays correct if a basin is split again later.
+
+    A prefix match must be a SPLIT-CHILD match, not any string prefix: `b0`
+    must not sweep up `b01`. Children add letters, so only suffixes that are
+    entirely alphabetic count.
+    """
+    out: set[str] = set()
+    for bid in spanned or []:
+        if bid in live_ids:
+            out.add(bid)
+            continue
+        for live in live_ids:
+            if live.startswith(bid) and live[len(bid):].isalpha():
+                out.add(live)
+    return out
+
+
 def _evidence_ids_for(pair: LensPair) -> list[str]:
     """The distinct evidence ids backing a candidate tension: its decision
     ids plus any ids referenced in dual_evidence. Order-stable + deduped."""

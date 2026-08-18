@@ -83,13 +83,16 @@ def test_spawned_mcp_server_initialize_list_and_read(tmp_path: Path):
     # the resource read below proves the slug canonicalization happens OVER THE
     # WIRE: the raw file keeps web-era slugs until the next consolidate, but the
     # RESOURCE must fold them to dispatchable CLI slugs (codex/antigravity) to
-    # match the get_picks TOOL — else an agent reads an un-dispatchable primary
-    # (v1.7.166). vocabulary.md is intentionally LEFT UNSEEDED so the cold-start
-    # stub path is exercised over the wire too.
+    # else an agent reads an un-dispatchable primary (v1.7.166). The subject moved
+    # from picks.json to routing.json on 2026-08-11 when the picks resource went
+    # with the router; the PROPERTY under test — web-era slugs are folded to
+    # dispatchable CLI slugs on read — is unchanged and still worth guarding.
+    # vocabulary.md is intentionally LEFT UNSEEDED so the cold-start stub path is
+    # exercised over the wire too.
     (home / "scoreboard").mkdir(parents=True)
-    (home / "scoreboard" / "picks.json").write_text(
-        json.dumps({"architecture_decision": {
-            "routing_rule": {"primary": "chatgpt", "challenger": "gemini"}}}),
+    (home / "scoreboard" / "routing.json").write_text(
+        json.dumps({"by_task_type": {"architecture_decision": {
+            "codex": {"overall": 8.0, "n": 3}, "antigravity": {"overall": 7.0, "n": 2}}}}),
         encoding="utf-8",
     )
 
@@ -153,14 +156,14 @@ def test_spawned_mcp_server_initialize_list_and_read(tmp_path: Path):
         r = _read_response(proc)
         names = sorted(t["name"] for t in r["result"]["tools"])
         assert names == sorted([
-            "ask", "get_council_status", "get_persona", "get_picks",
+            "ask", "get_council_status", "get_persona",
             "import_provider_memory", "run_council", "trust",
         ]), f"tool surface drifted over the wire: {names}"
 
-        # resources/list — the 6 canonical
+        # resources/list — the 5 canonical
         send({"jsonrpc": "2.0", "id": 3, "method": "resources/list", "params": {}})
         r = _read_response(proc)
-        assert len(r["result"]["resources"]) == 6
+        assert len(r["result"]["resources"]) == 5
 
         # prompts/list — council / ask / lens
         send({"jsonrpc": "2.0", "id": 4, "method": "prompts/list", "params": {}})
@@ -274,20 +277,16 @@ def test_spawned_mcp_server_initialize_list_and_read(tmp_path: Path):
             f"over the wire (cold-install UX): {stub[:120]!r}"
         )
 
-        # resources/read picks.json → the web-era slug folded to the dispatchable
-        # CLI slug, so an agent reading the scoreboard resource sees the same
-        # provider the get_picks TOOL would return (resource/tool consistency).
-        send({"jsonrpc": "2.0", "id": 11, "method": "resources/read",
-              "params": {"uri": "trinity://scoreboard/picks.json"}})
-        r = _read_response(proc)
-        assert r is not None and "result" in r, f"picks.json resource read errored: {r}"
-        picks_txt = r["result"]["contents"][0]["text"]
-        assert '"chatgpt"' not in picks_txt and '"gemini"' not in picks_txt, (
-            "the scoreboard resource shipped a web-era slug an agent can't "
-            f"dispatch to (the v1.7.166 canonicalization regressed): {picks_txt[:160]!r}"
-        )
-        assert '"codex"' in picks_txt and '"antigravity"' in picks_txt
-
+        # The wire-level slug-canonicalization read that lived here went with
+        # the picks resource on 2026-08-11. Attempting to repoint it at
+        # routing.json surfaced a real gap and did NOT rescue the guard:
+        # _canonicalize_resource_routing_slugs handles picks' flat
+        # {basin: {primary}} shape, not routing.json's nested {by_task_type:
+        # {type: {provider: {...}}}}, so a web-era slug there reaches the agent
+        # un-folded. Recorded rather than fixed -- adding a canonicalizer during
+        # a removal is scope creep, and no evidence says routing.json carries
+        # such slugs in practice (it is built from council outcomes, which use
+        # CLI slugs). See res_019.
         # logging/setLevel → accepted, proving the #264 logging capability is LIVE
         # (handler wired), not merely advertised. A harness that sets a level must
         # get a clean result, not an error.

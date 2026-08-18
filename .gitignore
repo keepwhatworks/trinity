@@ -15,6 +15,14 @@ state/
 
 # Session / dev artifacts — playwright traces, ad-hoc screenshots, agent state
 .claude/
+# ...EXCEPT the skill files, which are the method contract CLAUDE.md points at.
+# Two were force-added years ago and stayed tracked (an ignore does not apply to
+# an already-tracked file); council-review-plan was created later and silently
+# was not, so the known-failure-modes list lived untracked and a fresh clone
+# would not have carried it. Negating the directory ignore for this one path is
+# what makes the omission impossible to repeat by accident.
+!.claude/skills/
+!.claude/skills/**/SKILL.md
 .claude.json
 .playwright-mcp/
 *.png

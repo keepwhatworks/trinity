@@ -261,26 +261,16 @@ def run_stale_pass(trigger: str = "manual") -> dict:
         summary["backfill"] = embed_backfill()
     except Exception as exc:  # noqa: BLE001
         summary["backfill"] = {"error": f"{type(exc).__name__}: {exc}"}
-    # Routing compounds AUTOMATICALLY (#316 journey-audit): rebuild picks.json
-    # from the lens basins + accumulated council outcomes so `ask`'s basin
-    # routing reflects recent winners WITHOUT a manual `consolidate`/`lens --deep`.
-    # This is the usage event that makes the README's "the right model picked
-    # automatically / gets sharper as you use it" claim literally true — fired on
-    # a council launch (the same trigger that kicks this pass), not a cron (the
-    # founder's usage-gate rule). Cheap + LLM-FREE: a deterministic recency-
-    # weighted tally over topics.json's live centroids. A no-op cold (no lens →
-    # {} basins → save skipped, also dodging the clobber guard). Best-effort: a
-    # routing rebuild must never break the heal it piggybacks on.
-    try:
-        from .cortex import save_routing_patterns
-        from .lens_routing import consolidate_via_lens_basins
-
-        routing = consolidate_via_lens_basins()
-        if routing:
-            save_routing_patterns(routing)
-        summary["consolidate"] = {"routable_basins": len(routing)}
-    except Exception as exc:  # noqa: BLE001
-        summary["consolidate"] = {"error": f"{type(exc).__name__}: {exc}"}
+    # The routing rebuild that used to run here is gone. It rebuilt picks.json
+    # from the lens basins on every usage event so `ask`'s basin routing would
+    # compound automatically -- and the router it fed was removed 2026-08-11
+    # (council_8817ca0c57a2e4ff, amd_0165-67, licensed by hq_062). Rebuilding a
+    # table nothing reads is pure cost, and keeping it would also keep the
+    # claim it existed to make true.
+    #
+    # Checked before removing: the README no longer carries the "right model
+    # picked automatically / gets sharper as you use it" line this block was
+    # written to support, so nothing downstream is left asserting it.
     summary["completed_at"] = now_iso()
     try:
         marker_path().parent.mkdir(parents=True, exist_ok=True)

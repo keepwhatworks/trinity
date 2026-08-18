@@ -236,16 +236,23 @@ def _load_recent_councils(limit: int = 10) -> list[dict[str, str | None]]:
             thread["latest_winner"] = raw.get("winner_provider")
             # Decision signal for the rail chip: how many claims the members
             # split on and how many the chairman's prosecution settled, from
-            # THIS (the latest) round's routing label. Three-way semantics:
-            # to_dict() filters EMPTY containers out of the outcome JSON, so a
-            # present routing_label with NO disagreed_claims key means the
-            # council was unanimous (n=0) — while a missing/empty routing_label
-            # (legacy or failed synthesis) means "unknown" (None), which the
-            # rail renders chipless rather than claiming a verdict nobody
-            # emitted. A non-list disagreed_claims (hand-mangled outcome, the
-            # #258 class) also degrades to None instead of crashing the rail.
+            # THIS (the latest) round's routing label.
+            #
+            # Three-way semantics, and the KEY'S PRESENCE is what separates the
+            # first two. A prior version of this comment claimed to_dict() filters
+            # empty containers so an absent key meant unanimous — that is FALSE:
+            # CouncilRoutingLabel.to_dict() emits `disagreed_claims: []` for a
+            # unanimous label (verified). Defaulting an ABSENT key to [] therefore
+            # conflated two different states and would stamp "unanimous" on a
+            # legacy or half-written label that never emitted the field at all —
+            # claiming a verdict nobody rendered, which is the exact class the
+            # chipless branch exists to prevent. So:
+            #   key present + list  -> its length is the truth (0 == unanimous)
+            #   key ABSENT          -> unknown (None) -> chipless
+            #   key present, non-list (hand-mangled, the #258 class) -> None
             if isinstance(routing_label, dict) and routing_label:
-                _dc = routing_label.get("disagreed_claims", [])
+                _MISSING = object()
+                _dc = routing_label.get("disagreed_claims", _MISSING)
                 if isinstance(_dc, list):
                     _claims = [c for c in _dc if isinstance(c, dict)]
                     thread["latest_n_splits"] = len(_claims)
@@ -1012,7 +1019,6 @@ def build_page_data(
         "statusScriptBaseUrl": "./status",
         "councilLoadingMessages": COUNCIL_LOADING_MESSAGES,
         "personalRoutingTable": personal_routing,
-        "cortexRules": _load_cortex_rules(),
         "trustData": _load_trust_data(),
         "tasteLenses": taste_lenses,
         # Embedder-degraded honesty for the embedding-derived cards (taste /
@@ -1198,7 +1204,7 @@ def _council_value_for_launchpad() -> dict | None:
     read failure) so the card self-hides rather than touting a thin number.
     """
     try:
-        from .personal_routing import council_category_wedge, council_value_proof
+        from .council_analytics import council_category_wedge, council_value_proof
         vp = council_value_proof()
         if not vp.get("ready"):
             return None
@@ -1572,17 +1578,15 @@ def _vocabulary_status() -> dict:
 
 
 def _memory_health() -> dict:
-    """Aggregate the seven staleness signals the launchpad surfaces:
+    """Aggregate the six staleness signals the launchpad surfaces:
       - core.md staleness (vs the three thinking memories) via _core_status
       - vocabulary.md staleness (older than lens/topics) via _vocabulary_status
         — a bare `lens` run rebuilds lens+topics but not vocab
       - topics.json prompt_ids round-trip integrity (legacy pre-thread-aware)
-      - picks.json cortex freshness: councils newer than last consolidate
-        (Pillar 3 drift surfacing — `ask` routes on stale rules until
-        re-consolidate; doctor.py `_check_cortex_freshness` mirrors this).
-        (The picks centroid embedder-drift #277 and chairman-audit-disagreed
-        signals were retired 2026-06-06 with the cortex collapse #298 — the new
-        lens-basin routing has no separate cortex centroids to drift, no audit.)
+        (The picks centroid embedder-drift #277, chairman-audit-disagreed and
+        cortex-freshness signals were all retired with the cortex collapse #298
+        and the 2026-08-11 consolidate retirement — the lens-basin routing has
+        no separate cortex centroids to drift, no audit, and picks.json is inert.)
       - lens.md pending user edits (#140 slice 3): live diff between
         current lens.md and the post-last-build snapshot. Surfaced so
         the user knows their hand-edits will be picked up by the next
@@ -1702,36 +1706,6 @@ def _memory_health() -> dict:
     except Exception:
         pass
 
-    # 5. picks.json cortex freshness — councils newer than the last
-    #    consolidate mean `ask` is routing on stale rules. Doctor's
-    #    _check_cortex_freshness reports the same shape from the CLI
-    #    side; this is the launchpad-facing surface so the user sees it
-    #    without having to run `doctor`. Pillar 3 (drift surfacing)
-    #    + Pillar 4 (supervision signal — stale picks waste the
-    #    verdict signal that just came in).
-    try:
-        from .state_paths import picks_path
-        # Shared cortex-staleness primitive (v1.7.299) — the CLI doctor's
-        # `_check_cortex_freshness` computes "councils newer than the last
-        # consolidate" from these SAME two functions, so the cockpit and `status`
-        # can't disagree about staleness (they used to inline independent copies).
-        from .cortex import freshest_consolidated_at, count_councils_newer_than
-        picks_p = picks_path()
-        if picks_p.exists():
-            picks_data = json.loads(picks_p.read_text(encoding="utf-8"))
-            freshest = freshest_consolidated_at(picks_data)
-            if freshest:
-                newer, _ = count_councils_newer_than(freshest)
-                if newer > 0:
-                    issues.append({
-                        "name": "picks.json",
-                        "status": "cortex-stale",
-                        "hint": f"{newer} council(s) newer than the last consolidate — `ask` routes on stale rules.",
-                        "command": "trinity-local consolidate",
-                        "href": None,
-                    })
-    except Exception:
-        pass  # cortex freshness check must never break launchpad
 
     # 6. lens.md pending edits — #140 slice 3. Live diff between current
     # lens.md and snapshot baseline. Not a "staleness" issue per se but
@@ -1876,7 +1850,11 @@ def _load_trust_data() -> dict | None:
     like the cortex card so a hand-edited summary never blanks the launchpad.
     """
     try:
-        from .disagreement_ledger import _ledger_dir, load_disagreements
+        from .disagreement_ledger import (
+            BEHAVIOURAL_TIER_CAVEAT,
+            _ledger_dir,
+            load_disagreements,
+        )
     except Exception:
         return None
     try:
@@ -1895,6 +1873,13 @@ def _load_trust_data() -> dict | None:
         except Exception:
             summary = {}
     trustworthy = bool(summary.get("tally_trustworthy"))
+    # The tier's own caveat travels with the card. Without it the launchpad HOME
+    # page called this "the product's one behaviourally MEASURED claim" while the
+    # council-ratified relabel had already retracted exactly that framing.
+    # Fails CLOSED: a summary.json predating the caveat has no such key, and an
+    # empty string makes the template's v-if drop the paragraph while the tally
+    # rows still render — the numbers without the disclosure they require.
+    caveat = str(summary.get("caveat") or BEHAVIOURAL_TIER_CAVEAT)
     records_raw = summary.get("records")
     records = records_raw if isinstance(records_raw, dict) else {}
     rows = []
@@ -1922,139 +1907,10 @@ def _load_trust_data() -> dict | None:
         "built": sp.exists(),
         "trustworthy": trustworthy,
         "records": rows,
+        "caveat": caveat,
     }
 
 
-def _load_cortex_rules() -> dict | None:
-    """Surface the lens-derived routing picks for the launchpad (#298 collapse).
-
-    Returns a compact dict the template can render as the "what Trinity has
-    learned about you" headline card — the visible artifact of the consolidation
-    pass (`trinity-local consolidate`). Each pick is the lens-basin tally
-    `{winner, count, margin, n_episodes, evidence}`; sorted by margin desc so the
-    highest-confidence picks render first.
-
-    Degrades gracefully on a malformed/legacy entry (a dict missing `winner` is
-    skipped). Returns None when no consolidation has run yet — the launchpad
-    shows an empty-state CTA pointing at `trinity-local consolidate`.
-    """
-    try:
-        from .cortex import load_routing_patterns
-    except Exception:
-        return None
-    patterns = load_routing_patterns()
-    if not patterns:
-        return None
-    # Compact view for the template — only the fields the launchpad card needs.
-    from .lens_routing import pick_routes
-    rules = []
-    for basin_id, p in patterns.items():
-        # POST-COLLAPSE picks are plain dicts; a legacy RoutingPattern dict (or
-        # any entry missing `winner`) is skipped so the card never crashes.
-        if not isinstance(p, dict):
-            continue
-        # _safe_text shape-guards the STRING field the same way _safe_number does
-        # the numeric ones below: a corrupt non-string winner (a NUMBER / OBJECT
-        # from a hand-edited or half-migrated picks.json) used to hit `.strip()`
-        # on an int and blank the whole launchpad. Now it degrades to "" → skip.
-        winner = _safe_text(p.get("winner"))
-        if not winner:
-            continue
-        # Shape-guard the NUMERIC fields (guard_shape_not_just_parse / #304):
-        # picks.json is a hand-editable state file with a documented migration
-        # chain (cortex/routing_patterns.json → memories/picks.json →
-        # scoreboard/picks.json), so a `margin`/`count`/`n_episodes` can land as
-        # a string ("0.4") or other non-numeric value (a half-migrated or
-        # hand-mangled entry). `float("abc")` / `int("five")` raised a bare
-        # ValueError that bubbled out of build_page_data and BLANKED THE WHOLE
-        # launchpad (the same #304 wrong-type-shape class as the by_rejection_type
-        # / NaN-eval-score fixes). Coerce defensively — a bad value degrades that
-        # one field to 0, the pick still renders, the page still mounts.
-        margin = round(_safe_number(p.get("margin"), 0.0), 3)
-        rules.append({
-            "basin_id": basin_id,
-            "winner": winner,
-            "margin": margin,
-            # Pre-formatted (Python 2dp / banker's round) so the routing card
-            # renders the SAME margin string as the CLI `consolidate` line
-            # (cortex.py `f"{:.2f}"`) and the memory-viewer picks Reader — never
-            # JS `Number.toFixed(2)` (round-half-UP), which paints a 0.625 margin
-            # as "0.63" while the CLI prints "0.62" (same picks.json, two numbers
-            # across surfaces). The raw float `margin` above stays for the
-            # numeric `< winner_margin_floor` gate; only the DISPLAY is the
-            # string. Same cross-language fix as _fmt_score for eval scores.
-            "margin_str": _fmt_score(margin, 2),
-            # Does ask() actually route this basin? THE shared gate
-            # (lens_routing.pick_routes): margin >= floor AND effective_n clears
-            # MIN_EFFECTIVE_N. The row demotion binds on this, not margin alone —
-            # a churn-dead basin (high margin, thin decayed evidence) must dim
-            # like the card's own routing_split summary (classify_basins) already
-            # counts it, and like ask()/get_picks abstain on it.
-            "routes": pick_routes(p),
-            "count": int(_safe_number(p.get("count"), 0.0)),
-            "n_episodes": int(_safe_number(p.get("n_episodes"), _safe_number(p.get("count"), 0.0))),
-            # First few council thread-bundle IDs the pick was tallied
-            # from (bundle_<hash>, links to the live council page). Deduped
-            # order-preserving — a basin can cite the same council more than
-            # once (one council can contribute multiple episodes), but the
-            # user wants distinct evidence chips, not the same link 3×.
-            # Capped at 5 (the full set is in council_outcomes/ — only need
-            # a peek). Empty list when the consolidator didn't record IDs.
-            # Coerce evidence ids to clean strings (string shape-guard): a corrupt
-            # entry (a number/object in the list) would otherwise produce a bad
-            # href + an "[object Object]" in the chip title tooltip.
-            "evidence": [c for c in dict.fromkeys(_safe_text(e) for e in (p.get("evidence") or [])) if c][:5],
-        })
-    # Highest margin first — that's what the user wants to see at the top.
-    # Tie-broken on basin_id so the routing card is a TOTAL order: two basins
-    # at an equal (rounded) margin would otherwise keep the picks.json dict
-    # order, so the rows would swap positions on re-read. basin_id is the stable
-    # per-basin id; the template renders `cortexRules.rules` in server order
-    # (no JS re-sort), so this IS the painted order.
-    rules.sort(key=lambda r: (-r["margin"], str(r["basin_id"])))
-    # Annotate each pick with the topology basin it bridges to. Post-collapse
-    # the routing basins ARE the topology basins (both keyed b00..), so this is
-    # an identity map read straight off the picks keys (no centroid match).
-    task_to_basin = _task_to_topology_basin()
-    for r in rules:
-        bid = task_to_basin.get(str(r["basin_id"]))
-        if bid:
-            r["topology_basin"] = bid
-    # Thread the REAL routing gate so the template demotes exactly the basins
-    # ask() abstains on — never a hardcoded guess. A basin at margin >= this
-    # floor is routed by `ask._try_cortex_route`; below it ask falls to kNN, so
-    # the card must dim/label only the sub-floor rows. (Without this single
-    # source of truth the card drifts from the router — e.g. a 0.16-margin basin
-    # that ask routes but a hardcoded 0.2 demote-threshold mislabels "abstains".)
-    try:
-        from .lens_routing import WINNER_MARGIN_FLOOR, classify_basins, live_basin_ids
-        # Classify the RAW picks (`patterns`: {basin_id: entry} with
-        # effective_n/weights), NOT the display `rules` list — the router
-        # predicates need the churn + weight fields the compact rows drop.
-        #
-        # Thread the LIVE basin ids for the same reason `status` does: basin ids
-        # are positional and re-drawn on every lens build, so a rule can outlive
-        # its basin. `place_query` only ever returns a live id, so such a rule is
-        # unreachable — counting it "decisive" tells the user a basin routes when
-        # it cannot fire. Measured 2026-07-31: 6 of 31 rules were orphaned and one
-        # (`b01d`, margin 0.35, effective_n 3.06) cleared the routing gate, so the
-        # card read 4 decisive where only 3 were reachable. `or None` keeps a
-        # failed topics.json read meaning "not supplied" (three-class split)
-        # rather than "every rule is orphaned".
-        split = classify_basins(patterns, live_basin_ids() or None)
-    except Exception:
-        WINNER_MARGIN_FLOOR = 0.15
-        split = {"decisive": 0, "explored": 0, "thin": 0, "total": len(rules)}
-    return {
-        "rules": rules,
-        "total_basins": len(rules),
-        "winner_margin_floor": WINNER_MARGIN_FLOOR,
-        # The honest split so "total_basins" can't read as "N basins route":
-        # decisive = ask() routes the winner; explored = ask() Thompson-samples
-        # a measured near-tie; thin = falls to kNN. One source of truth
-        # (lens_routing.classify_basins) shared with the status liveness line.
-        "routing_split": split,
-    }
 
 
 def _load_decisions_by_id() -> dict:
@@ -2305,12 +2161,12 @@ def _format_relative_date(iso: str) -> str:
 # same second-level mtime don't leak cached basins across each other.
 def _load_topics_basins() -> list[dict]:
     """Shape-guarded basin list for the launchpad render. Thin alias for the
-    single canonical reader `lens_routing.load_topics_basins()` (which owns the
+    single canonical reader `me_basins.load_topics_basins()` (which owns the
     mtime cache + the dict-root/list/dict-entry guard that #304 hardened here).
     Kept as a local name so `_topology_basin_labels`/`_task_to_topology_basin`
     read through one function and a single launchpad render re-parses topics.json
     at most once."""
-    from .lens_routing import load_topics_basins
+    from .me.basins import load_topics_basins
 
     return load_topics_basins()
 

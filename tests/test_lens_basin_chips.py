@@ -39,7 +39,7 @@ class TestCrossMemoryChipSharedClass:
         assert ".cross-memory-chip--inline" in html, "--inline modifier missing"
         assert ".cross-memory-chip--pill" in html, "--pill modifier missing"
 
-    def test_cortex_chip_uses_shared_class(self, isolated_home):
+    def test_lens_chip_uses_shared_class(self, isolated_home):
         from trinity_local.launchpad_template import render_launchpad_html
         page_data = _minimal_page_data_with_lens(basins_spanned=[])
         html = render_launchpad_html(page_data=page_data)
@@ -47,7 +47,7 @@ class TestCrossMemoryChipSharedClass:
         # rules with topology_basin) gets the shared class even if not
         # rendered — it's the literal class attribute we check.
         assert "cortex-topology-chip cross-memory-chip" in html, (
-            "cortex chip not threading the shared base — will lose its "
+            "lens basin chip not threading the shared base — will lose its "
             "consistent styling when the CSS gets bumped"
         )
 
@@ -138,9 +138,6 @@ class TestTopologyBasinLabels:
             "pageData.topologyBasinLabels not threaded into Vue data"
         )
         assert "basinHoverLabel(bid)" in html, "lens chip doesn't call basinHoverLabel"
-        assert "basinHoverLabel(r.topology_basin)" in html, (
-            "cortex chip doesn't call basinHoverLabel"
-        )
 
 
 class TestLensBasinChipTemplate:

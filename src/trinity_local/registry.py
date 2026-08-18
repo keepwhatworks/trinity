@@ -105,7 +105,7 @@ def extension_origin_ids() -> tuple[str, ...]:
 CHROME_WEB_STORE_URL: str = ""
 
 
-# The 8 MCP tools registered in mcp_server.py's handle_list_tools().
+# The 6 MCP tools registered in mcp_server.py's handle_list_tools().
 # Order matches the registration order. Tested for drift against the
 # live tool list in tests/test_registry.py — adding/removing/renaming
 # a tool MUST keep both surfaces in sync.
@@ -113,7 +113,6 @@ MCP_TOOL_NAMES: tuple[str, ...] = (
     "ask",
     "run_council",
     "get_persona",
-    "get_picks",
     "trust",
     "get_council_status",
     "import_provider_memory",
@@ -121,5 +120,10 @@ MCP_TOOL_NAMES: tuple[str, ...] = (
     # eval-harness / palate / generators): `run_eval`, `choose`, and
     # `lens_generators` remain as CLI verbs + internal engines (eval as the
     # floor-gate, palate feeding lens-health, generators behind `lens --deep`),
-    # just no longer on the agent tool surface. Surface = 7 tools.
+    # just no longer on the agent tool surface.
+    #
+    # `get_picks` removed 2026-08-11 with the lens-basin router it
+    # introspected (council_8817ca0c57a2e4ff, amd_0165-67): a tool that
+    # reads a routing table cannot outlive the routing table.
+    # Surface = 6 tools.
 )
