@@ -171,7 +171,7 @@ def render_member_prompt(bundle: PromptBundle) -> str:
         "You are one member of a multi-model council.",
         f"Task:\n{bundle.task_text}",
     ]
-    lens_block = _member_lens_constraints()
+    lens_block = _member_lens_constraints(bundle.task_text)
     if lens_block:
         sections.append(lens_block)
     if bundle.goal:
@@ -186,7 +186,7 @@ def render_member_prompt(bundle: PromptBundle) -> str:
     return "\n\n".join(sections)
 
 
-def _member_lens_constraints() -> str:
+def _member_lens_constraints(query: str = "") -> str:
     """The user's named tensions as GENERATION constraints (compact, ≤6,
     never the 25KB lens.md — same budget as the chairman's block).
 
@@ -206,7 +206,10 @@ def _member_lens_constraints() -> str:
 
         lp = lens_path()
         lens_md = lp.read_text(encoding="utf-8") if lp.exists() else ""
-        tensions = _TENSION_HEADING.findall(lens_md)[:6]
+        from .lens_routing import scope_for_query
+
+        tensions = (scope_for_query(query, 6)
+                    or _TENSION_HEADING.findall(lens_md)[:6])
         if not tensions:
             return ""
         lines = "\n".join(
@@ -393,7 +396,13 @@ def render_primary_council_prompt(
         from .state_paths import lens_path
 
         lens_md = lens_path().read_text(encoding="utf-8") if lens_path().exists() else ""
-        tensions = _TENSION_HEADING.findall(lens_md)[:6]
+        # Scoped read first, global slice as the fallback. scope_for_query
+        # returns [] for every degradation (flag off by default), so this is
+        # exactly today's behaviour until TRINITY_DAG_SCOPED_LENS is set.
+        from .lens_routing import scope_for_query
+
+        tensions = (scope_for_query(bundle.task_text, 6)
+                    or _TENSION_HEADING.findall(lens_md)[:6])
         if tensions:
             tension_lines = "\n".join(
                 f"  {i}. {a} ↔ {b}" for i, (a, b) in enumerate(tensions, 1)

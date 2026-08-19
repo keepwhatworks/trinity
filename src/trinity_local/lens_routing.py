@@ -657,3 +657,85 @@ def _current_models() -> dict[str, str]:
     except Exception:
         return {}
     return out
+
+
+def scope_for_query(
+    query: str,
+    k: int = 6,
+    *,
+    embed_fn: Callable[[str], list[float]] | None = None,
+) -> list[tuple[str, str]]:
+    """The k tensions belonging to the query's own basin, or [] to defer.
+
+    Today every council is handed ``_TENSION_HEADING.findall(lens_md)[:6]`` --
+    the first six of 167, ranked globally and INDEPENDENT of the question, with
+    161 discarded per council. This selects by terrain instead.
+
+    MEASURED before it was built (hq_078, `internal/experiments/
+    terrain_scope_gate.py`, artifact `terrain_scope_gate_results.json`):
+    permuting the basin label changes the payload by 96.7% against a
+    pre-registered 25pp bar, over 109 councils with a resolvable basin. The
+    basin is doing the selecting, so this tracks terrain rather than churning
+    context. That was the whole point of the gate -- the 8.8%-overlap number
+    that preceded it was disqualified by amd_0171 precisely because churn is
+    not success.
+
+    What the PASS does NOT license, and this docstring exists to hold the line
+    (amd_0169/0170): no store, no CLI verb, no MCP resource, no ranking. And it
+    says nothing about whether a chairman reading scoped tensions DECIDES
+    differently -- that is unmeasured, against a consumer measured at 1/12
+    causal, and needs its own registration.
+
+    Flag-gated OFF (``TRINITY_DAG_SCOPED_LENS``). Returns [] for EVERY
+    degradation -- flag off, no query, no basins, no registry, stub embedder,
+    unplaceable query, empty scope -- so the caller keeps the global slice and
+    the worst case is exactly today's behaviour.
+
+    Reads lens artifacts and writes nothing back to them (founder-lock #1).
+    """
+    import os
+
+    if os.environ.get("TRINITY_DAG_SCOPED_LENS", "0").strip().lower() not in ("1", "true"):
+        return []
+    if not (query or "").strip() or k <= 0:
+        return []
+    try:
+        from .embeddings import embed, require_real_embedder
+        from .me.basins import load_topics_basins
+        from .me.lens_registry import registry_path, resolve_spanned_basins
+
+        # Placement is semantic. Under the SHA-1 TF-IDF fallback the nearest
+        # centroid is noise, and this repo's rule is that such flows ABSTAIN
+        # rather than ship an inverted-TF-IDF answer.
+        require_real_embedder()
+
+        import json
+
+        rp = registry_path()
+        tensions = json.loads(rp.read_text(errors="replace")).get("tensions", []) if rp.exists() else []
+        basins = load_topics_basins()
+        if not tensions or not basins:
+            return []
+
+        basin = place_query(query, [dict(b) for b in basins], embed_fn or embed)
+        if not basin:
+            return []
+
+        live_ids = {str(b.get("id") or "") for b in (dict(x) for x in basins)}
+        out: list[tuple[str, str]] = []
+        # Registry order IS lens.md order, which is the order the gate measured.
+        # Re-ranking here would be a ranking layer, which amd_0169 killed.
+        for t in tensions:
+            if basin not in resolve_spanned_basins(t.get("basins_spanned") or [], live_ids):
+                continue
+            a, b = str(t.get("pole_a") or ""), str(t.get("pole_b") or "")
+            if not a or not b:
+                continue
+            out.append((a, b))
+            if len(out) >= k:
+                break
+        return out
+    except Exception:
+        # Any failure defers to the global slice. A scoped read is an
+        # improvement on the margin; it is never worth a dead council.
+        return []
