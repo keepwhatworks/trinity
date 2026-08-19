@@ -352,3 +352,46 @@ class TestTheStoryTracksThePrinciples:
             f"{len(beats)} story beats for {self._count()} principles — the story "
             "cannot be carrying them all."
         )
+
+
+class TestTheInvarianceSieveNumberIsTheShippedOne:
+    """The causality essay states the lens's entry precondition as a NUMBER.
+
+    It shipped saying "three or more topical basins". The gate that actually
+    decides lens entry is `_MIN_BASINS_FOR_LENS = 2`; the 3 in the codebase is
+    `ROBUST_BASINS_MIN`, a different gate that exempts cross-domain tensions
+    from RECENCY decay rather than admitting them. 64 of 176 live tensions span
+    exactly 2 basins, so the published number excluded a third of the lens it
+    was describing.
+
+    This couples the sentence to the constant so the two cannot drift again.
+    """
+
+    WORD = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five"}
+
+    def _threshold(self) -> int:
+        src = (DOCS.parent / "src" / "trinity_local" / "me" / "pair_mining.py").read_text()
+        m = re.search(r"^_MIN_BASINS_FOR_LENS\s*=\s*(\d+)", src, re.M)
+        assert m, "_MIN_BASINS_FOR_LENS is gone — the essay's claim has no owner"
+        return int(m.group(1))
+
+    def test_the_essay_states_the_gate_that_actually_admits_a_tension(self):
+        n = self._threshold()
+        # The sentence wraps across source lines, so compare on normalised
+        # whitespace — a guard that only matches one line-wrapping is a guard
+        # that a reflow silently disables.
+        essay = " ".join((ARTICLES / "causality-is-an-invariance.html").read_text().split())
+        want = f"ratifies across {self.WORD[n]} or more topical basins"
+        assert want in essay, (
+            f"_MIN_BASINS_FOR_LENS is {n}, so the essay must say {want!r}. "
+            "Change the copy to match the code, or change the code deliberately "
+            "and measure what dropping tensions does — not the other way round."
+        )
+
+    def test_it_does_not_quote_the_recency_gate_by_mistake(self):
+        """ROBUST_BASINS_MIN=3 is the trap that produced the original error."""
+        essay = " ".join((ARTICLES / "causality-is-an-invariance.html").read_text().split())
+        n = self._threshold()
+        wrong = [w for k, w in self.WORD.items() if k != n
+                 and f"ratifies across {w} or more topical basins" in essay]
+        assert not wrong, f"essay quotes {wrong}, but the admitting gate is {n}"
