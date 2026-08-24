@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import re
 import subprocess
 import time
@@ -14,9 +16,21 @@ from .runtime_env import run_with_runtime_env, which_on_runtime_path
 # we hit was inherited-stdin causing codex to block forever; that's fixed by
 # `input=""` in `_run_command`. This timeout catches anything else that goes
 # wrong (network, model server hang, etc.) without holding up the council.
-# 8 minutes is comfortable headroom for codex on xhigh on a hard prompt; a
-# single member taking longer is almost certainly stuck.
-DEFAULT_PROVIDER_TIMEOUT_SECONDS = 8 * 60
+# 8 minutes was described here as "comfortable headroom for codex on xhigh on a
+# hard prompt", with a single member taking longer being "almost certainly
+# stuck". MEASURED FALSE on council_2797722d0cf6e1e3 (2026-08-18): on a long
+# premise-review task BOTH claude and codex hit 480.1s and were killed, while
+# Gemini 3.7 Flash finished. They were not stuck, they were thinking — and the
+# council degraded to ONE member whose only distinction was being the fastest,
+# then named that member the winner. A timeout that selects on speed does not
+# produce a weak council, it produces a fake one.
+#
+# So the ceiling is now overridable for the tasks that genuinely need it, and
+# the default stays put because raising it globally makes a truly stuck member
+# hold up every council instead.
+DEFAULT_PROVIDER_TIMEOUT_SECONDS = float(
+    os.environ.get("TRINITY_PROVIDER_TIMEOUT_SECONDS") or 8 * 60
+)
 
 
 @dataclass

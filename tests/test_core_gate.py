@@ -43,7 +43,28 @@ def _heldout(n: int = 60) -> list[str]:
 
 
 class TestEarnsItsPlace:
-    def test_better_candidate_is_admitted(self, isolated_home):
+    def test_a_better_candidate_is_NOT_admitted_in_production(self, isolated_home):
+        """The shipped contract since res_079: a live incumbent is never replaced.
+
+        The bits ruler ranks LENGTH, so "better" is not a quality claim — the
+        same admission path put an OAuth error in core.md on 2026-08-18 and a
+        session-limit notice on 2026-08-24, both because they were short.
+        """
+        held = _heldout()
+        core_path().write_text("Unrelated boilerplate about aardvarks.\n", encoding="utf-8")
+        good = "you compress over convenience and ship the smallest verifiable thing"
+        v = core_gate.propose_core(good, heldout=held)
+        assert not v.admitted and "LENGTH-CONFOUNDED" in v.reason
+        assert v.archived, "the candidate must stay recoverable for human review"
+
+    def test_better_candidate_is_admitted(self, isolated_home, monkeypatch):
+        """The DORMANT path: what the gate does once a ruler earns trust again.
+
+        Kept alive so the mechanism does not rot while it waits. It re-activates
+        by clearing LENGTH_CONFOUNDED_RULER, which requires a ruler that beats a
+        length-matched control (res_079's acceptance test).
+        """
+        monkeypatch.setattr(core_gate, "LENGTH_CONFOUNDED_RULER", False)
         held = _heldout()
         core_path().write_text("Unrelated boilerplate about aardvarks.\n", encoding="utf-8")
         good = "you compress over convenience and ship the smallest verifiable thing"
@@ -167,6 +188,9 @@ def test_mutation_proof(isolated_home, monkeypatch, mutation):
     if mutation == "tolerance":
         # A huge tolerance is the mutation: degradations would sail through.
         monkeypatch.setattr(core_gate, "TOLERANCE_BITS", 10 ** 9)
+        # exercised on the dormant path — with the production fail-closed on,
+        # NOTHING is admitted and the tolerance bar would be untestable
+        monkeypatch.setattr(core_gate, "LENGTH_CONFOUNDED_RULER", False)
         v = core_gate.propose_core("Aardvark musings.", heldout=held)
         assert v.admitted, "mutation should admit — proving the real bar is what refuses"
     else:

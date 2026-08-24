@@ -11,6 +11,7 @@ Companion skill (how to edit without tripping these):
 """
 from __future__ import annotations
 
+import html
 import pathlib
 import re
 
@@ -395,3 +396,65 @@ class TestTheInvarianceSieveNumberIsTheShippedOne:
         wrong = [w for k, w in self.WORD.items() if k != n
                  and f"ratifies across {w} or more topical basins" in essay]
         assert not wrong, f"essay quotes {wrong}, but the admitting gate is {n}"
+
+
+class TestTheStoryCarriesEachPrincipleByName:
+    """Which principles the story actually carries — a ratchet, not a vibe.
+
+    The sibling test above counts BEATS, which a 30-paragraph story passes
+    trivially while silently dropping principles. The 2026-08-24 rewrite is
+    better prose in every respect and dropped two: "Build for endurance" (the
+    old repairability beat) and "Judge with veracity" (the old "did not get
+    angry / what did we learn" beat).
+
+    The page's closing note claims every LINE is one of the principles, which is
+    one-directional and still true. But the story is used as a mnemonic for all
+    twelve, and a reader following it comes up two short. So the coverage is
+    pinned here and may only INCREASE.
+
+    Rewording is fine: update the phrase, keep the count. Dropping a principle
+    reds.
+    """
+
+    CARRIED = {
+        "Design, don't predict":       "drew a new map",
+        "Find errors, not goals":      "notice its own drift",
+        "Loop, don't ask":             "good at fixing them",
+        "Build the affordance":        "shape did the remembering",
+        "Pull, don't push":            "boat came to the light",
+        "Anchor fast proxies":         "stars do not drift",
+        "Oscillate locally":           "keel heavy and still",
+        "Ask what survived":           "started asking what survived",
+        "Measure the shape":           "believed the logbook",
+        "Free your attention":         "hands back in her lap",
+    }
+    # Known gaps, 2026-08-24. Removing a name from here (because the story now
+    # carries it) is the only legal edit; adding one reds the floor below.
+    KNOWN_GAPS = {"Build for endurance", "Judge with veracity"}
+    FLOOR = 10
+
+    def _body(self) -> str:
+        s = (DOCS / "the-little-boat-that-learned.html").read_text()
+        body = s[s.index("<h1>"):s.index("<hr>")]
+        return " ".join(re.sub(r"<[^>]+>", " ", html.unescape(body)).split())
+
+    def test_every_pinned_principle_is_still_carried(self):
+        body = self._body()
+        lost = [k for k, phrase in self.CARRIED.items() if phrase not in body]
+        assert not lost, (
+            f"the story no longer carries: {lost}. Either restore the beat, or "
+            "update its phrase here if it was only reworded."
+        )
+
+    def test_coverage_only_ratchets_up(self):
+        assert len(self.CARRIED) >= self.FLOOR
+        assert len(self.CARRIED) + len(self.KNOWN_GAPS) == 12, (
+            "every principle must be either carried or listed as a known gap — "
+            "silence about one is how the mnemonic rots"
+        )
+
+    def test_the_gaps_are_named_and_not_quietly_growing(self):
+        assert len(self.KNOWN_GAPS) <= 2, (
+            f"the story dropped another principle: {self.KNOWN_GAPS}. The gap "
+            "list is frozen at the 2026-08-24 rewrite and may only shrink."
+        )

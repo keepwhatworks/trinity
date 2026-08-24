@@ -350,6 +350,60 @@ def stance_prefers_candidate(candidate: str, incumbent: str,
             f"{STANCE_MODEL} prefers the candidate on {wins}/{scored} held-out prompts")
 
 
+# --- the length confound, measured 2026-08-24 (res_079) -----------------------
+# `score_bits` conditions held-out text on the candidate and returns perplexity.
+# It never charges L(candidate) and never subtracts a no-candidate baseline, so
+# it is monotone in LENGTH and nearly blind to content. Measured on 400 held-out
+# prompts with the neural ruler:
+#
+#   no core at all ....... 11,732 bits   <- strictly the best "core" available
+#   a single space ....... 12,215
+#   a quota error ........ 12,597
+#   an OAuth error ....... 13,061
+#   the REAL 1,187-char core 13,213
+#
+# Every candidate scores WORSE than no core, and shorter junk beats longer truth
+# every time. At MATCHED length the artifact cancels and nothing is left: the
+# real core loses to its own word-shuffle by 381 bits and beats character-level
+# gibberish by 1.0 bit in 13,000 (0.008%).
+#
+# So this ruler cannot rank cores. It ranked length, and every historical
+# admission was won on brevity — which is how an OAuth error became the
+# founder's identity on 2026-08-18 and a session-limit notice replaced it on
+# 2026-08-24. The 2026-08-18 fix repaired a genuine fail-open, but its stated
+# rationale ("with a real corpus present the ruler rejects that string outright,
+# so the ruler was never the problem") is FALSIFIED: with 400 held-out texts the
+# neural ruler admitted the OAuth string at 13,973 against the real core's
+# 14,222.
+#
+# Until a ruler exists that survives a length-matched control, the gate FAILS
+# CLOSED: it never admits over a live incumbent on ruler evidence alone.
+LENGTH_CONFOUNDED_RULER = True
+
+_ERROR_SHAPES = (
+    "session limit", "usage limit", "rate limit", "quota",
+    "failed to authenticate", "oauth", "session expired",
+    "please try again", "api error", "overloaded",
+)
+
+
+def looks_like_provider_error(text: str) -> bool:
+    """Defence in depth: a provider error must never reach the ruler.
+
+    Both corrupted cores were provider errors that the distill stage returned as
+    if they were answers, with ok=true. The gate below fails closed anyway, but a
+    core is the founder's identity and this class of input deserves a named
+    refusal rather than a generic one.
+    """
+    t = " ".join((text or "").lower().split())
+    if not t:
+        return False
+    # Short AND matching an error shape. Length alone is not suspicious (a terse
+    # core is legitimate) and a shape alone is not either (a real core could
+    # discuss rate limits) -- it is the conjunction that identifies the failure.
+    return len(t) < 400 and any(shape in t for shape in _ERROR_SHAPES)
+
+
 def propose_core(candidate: str, *, heldout: list[str] | None = None,
                  stance_fn: Callable[[str, str, list[str]], tuple[bool, str] | None]
                  | None = None) -> CoreVerdict:
@@ -361,6 +415,15 @@ def propose_core(candidate: str, *, heldout: list[str] | None = None,
     cand = (candidate or "").strip()
     if not cand:
         return CoreVerdict(False, "empty candidate", archived=None)
+
+    if looks_like_provider_error(cand):
+        return CoreVerdict(
+            False,
+            "candidate looks like a PROVIDER ERROR, not a distillation — refused "
+            "before scoring. Two cores were lost this way (OAuth 2026-08-18, "
+            "session limit 2026-08-24); the distill stage returned the error as "
+            "an answer and reported ok=true.",
+            archived=_archive(cand, "refused-provider-error", {"len": len(cand)}))
 
     incumbent = ""
     cp = core_path()
@@ -412,6 +475,26 @@ def propose_core(candidate: str, *, heldout: list[str] | None = None,
     cb, ruler = score_bits(texts, cand.encode("utf-8"))
     ib, _ = score_bits(texts, incumbent.encode("utf-8"))
     ok = cb <= ib + TOLERANCE_BITS
+
+    if LENGTH_CONFOUNDED_RULER and ok:
+        # The ruler said "admit". Measured, it says that whenever the candidate
+        # is SHORTER, so the recommendation carries no information about quality
+        # and a live incumbent must not be replaced on it. Numbers are still
+        # computed and archived, because the day a ruler passes a length-matched
+        # control this becomes evidence again.
+        ok = False
+        return CoreVerdict(
+            False,
+            f"[{ruler} ruler] candidate prices {len(texts)} held-out prompts at "
+            f"{cb:.0f} bits vs incumbent {ib:.0f}, which the ruler reads as an "
+            "improvement — but this ruler is LENGTH-CONFOUNDED (res_079: it "
+            "prefers a single space to the real core, and prefers the real "
+            "core's own word-shuffle to the real core). Incumbent kept, "
+            "candidate archived for human review.",
+            candidate_bits=int(cb), incumbent_bits=int(ib), heldout_n=len(texts),
+            archived=_archive(cand, "refused-length-confounded-ruler",
+                              {"candidate_bits": cb, "incumbent_bits": ib,
+                               "heldout_n": len(texts), "ruler": ruler}))
 
     # SECOND AXIS (res_026). Bits cannot see stance, so a candidate asserting the
     # opposite of the incumbent in the same vocabulary passes the ruler. Ask a

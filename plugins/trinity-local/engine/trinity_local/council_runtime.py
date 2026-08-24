@@ -624,13 +624,38 @@ def save_council_outcome(outcome: CouncilOutcome) -> Path:
             f"councils only."
         )
     if outcome.routing_label is None:
+        # QUARANTINE BEFORE REFUSING (res_080). Refusing is right — an outcome
+        # without a routing_label must never reach the ledger. But the raw
+        # chairman text was DISCARDED with it, and a `lens --deep` run on
+        # 2026-08-24 lost 49 of 433 syntheses (11.3%) this way: three hours of
+        # quota spent, zero examples kept, so the failure could not be
+        # diagnosed and a rerun would void identically. The archive costs one
+        # file and makes the next occurrence explicable.
+        try:
+            from .state_paths import trinity_home
+
+            qdir = trinity_home() / "council_quarantine"
+            qdir.mkdir(parents=True, exist_ok=True)
+            atomic_write_text(
+                qdir / f"{outcome.council_run_id}.json",
+                json.dumps({
+                    "council_run_id": outcome.council_run_id,
+                    "reason": "routing_label is None — chairman emitted no parseable routing JSON",
+                    "quarantined_at": now_iso(),
+                    "synthesis_output": outcome.synthesis_output,
+                    "primary_provider": getattr(outcome, "primary_provider", None),
+                    "primary_model": getattr(outcome, "primary_model", None),
+                }, indent=2))
+        except Exception:
+            pass  # quarantine is diagnostic; it must never mask the refusal below
         raise ValueError(
             f"save_council_outcome refused: routing_label is None for "
             f"council {outcome.council_run_id!r}. The schema declares "
             f"this field required. Chairman synthesis emits the "
             f"routing_label inline; outcomes without it indicate a "
             f"parse failure that should be surfaced loudly, not "
-            f"silently written."
+            f"silently written. Raw synthesis quarantined under "
+            f"council_quarantine/ for diagnosis."
         )
 
     payload = outcome.to_dict()

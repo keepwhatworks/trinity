@@ -15,12 +15,31 @@ gate STRICTER, and a missing judge must change nothing.
 
 Mutation-proven 2026-08-17: deleting `ok = ok and stance_ok` REDs
 `test_stance_veto_refuses_a_candidate_bits_would_admit`.
+
+COMPLETED 2026-08-24 (res_079). The content-blindness above was diagnosed
+correctly and treated with a VETO, which can only reject. It could not stop the
+bits ruler from PROMOTING junk, and a missing judge changes nothing by design —
+so the promotion path stayed open and admitted an OAuth error into core.md one
+day after this fix landed. The gate now fails closed on the promoter itself;
+these tests run against the dormant path via the fixture below.
 """
 from __future__ import annotations
 
 import pytest
 
 from trinity_local import core_gate
+
+
+@pytest.fixture(autouse=True)
+def _dormant_ruler(monkeypatch):
+    """The stance axis runs only when the bits ruler is allowed to admit.
+
+    res_079 measured that ruler as length-confounded and shipped the gate
+    fail-closed, so in production stance is never consulted — there is nothing
+    to veto when nothing is promoted. These tests keep the mechanism honest for
+    the day a ruler passes a length-matched control and the flag clears.
+    """
+    monkeypatch.setattr(core_gate, "LENGTH_CONFOUNDED_RULER", False)
 
 
 def test_no_judge_reachable_returns_none_rather_than_a_verdict(monkeypatch):
@@ -123,8 +142,14 @@ class TestTheGateFailsClosedWhenItCannotScore:
         (tmp_path / "core.md").write_text("a real, earned core", encoding="utf-8")
         monkeypatch.setattr(core_gate, "core_path", lambda: tmp_path / "core.md")
         monkeypatch.setattr(core_gate, "heldout_texts", lambda: [])
+        # A PLAUSIBLE candidate, deliberately. This test names the
+        # unreadable-corpus branch, and the OAuth string it used to carry now
+        # trips the provider-error tripwire first (res_079) — still refused, but
+        # by a different mechanism, which would leave this branch untested under
+        # a name that claims otherwise.
         v = core_gate.propose_core(
-            "Failed to authenticate: OAuth session expired and could not be refreshed")
+            "you reason from the constraint that actually binds, and you would "
+            "rather hold a runnable artifact than an explanation of one")
         assert not v.admitted, "an unscoreable candidate must not replace an earned core"
         assert "incumbent EXISTS" in v.reason
 

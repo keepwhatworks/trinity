@@ -326,6 +326,12 @@ def _synthesized_ledger():
     return path, seen
 
 
+# Five is comfortably above the isolated-failure rate measured before the
+# 2026-08-24 quota event (2 failures in 378 clusters = 0.53%, so five in a
+# row is ~1 in 10^11 by chance) and well below the 47 that actually ran.
+_CONSECUTIVE_FAILURE_ABORT = 5
+
+
 def _synthesize_all(clusters, primary_provider):
     """Run one chairman synth per cluster, SKIPPING clusters already done.
 
@@ -343,6 +349,19 @@ def _synthesize_all(clusters, primary_provider):
     synthesized = 0
     failed = 0
     skipped = 0
+    # CIRCUIT BREAKER (res_081). On 2026-08-24 the provider hit its session
+    # limit at cluster ~378 of 433. Every later chairman call returned the quota
+    # notice instead of a synthesis, which carries no routing-json fence, so all
+    # 47 were correctly refused — and the loop kept dispatching anyway, spending
+    # quota it no longer had on work that could not succeed, for another 55
+    # clusters. The same error string then reached the distill stage and was
+    # admitted into core.md as the founder's identity.
+    #
+    # Isolated failures are normal and must not stop a 3-hour run (the true
+    # parse failure rate before the event was 2/378 = 0.53%). A RUN of them is
+    # not a rate, it is a regime change, and the only useful response is to
+    # stop.
+    consecutive = 0
     for i, cluster in enumerate(clusters, 1):
         fp = _cluster_fingerprint(cluster)
         if fp in seen:
@@ -354,6 +373,7 @@ def _synthesize_all(clusters, primary_provider):
         try:
             asyncio.run(_synthesize_responses(synth_args, synth_args["responses"]))
             synthesized += 1
+            consecutive = 0
             with ledger_path.open("a", encoding="utf-8") as fh:
                 fh.write(fp + "\n")
             seen.add(fp)
@@ -361,10 +381,22 @@ def _synthesize_all(clusters, primary_provider):
                 print(f"    {i}/{len(clusters)} synthesized…", file=sys.stderr)
         except Exception as exc:
             failed += 1
+            consecutive += 1
             print(
                 f"    ! cluster {i} synth failed: {type(exc).__name__}: {exc}",
                 file=sys.stderr,
             )
+            if consecutive >= _CONSECUTIVE_FAILURE_ABORT:
+                print(
+                    f"    ✗ ABORTING: {consecutive} consecutive synthesis failures. "
+                    f"This is a regime change (provider quota, auth, or outage), not "
+                    f"a run of bad luck — continuing would spend quota on calls that "
+                    f"cannot succeed. {synthesized} cluster(s) completed and are "
+                    f"recorded; re-run when the provider recovers and only the "
+                    f"remaining clusters are paid for.",
+                    file=sys.stderr,
+                )
+                break
     if skipped:
         print(f"    {skipped} cluster(s) already synthesized — skipped",
               file=sys.stderr)

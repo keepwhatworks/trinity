@@ -46,6 +46,18 @@ def _snapshot_path():
     return trinity_home() / "me" / "palate_snapshot.json"
 
 
+def _act_sha256(a) -> str:
+    """Stable content key for a preference act: hash of the two poles.
+
+    Survives corpus regens that re-mint act ids, so a trial stays auditable
+    against WHAT it scored even after every id it knew is gone.
+    """
+    import hashlib
+
+    basis = f"{(a.privileged or '').strip()}\x1f{(a.sacrificed or '').strip()}"
+    return hashlib.sha256(basis.encode("utf-8", "replace")).hexdigest()[:16]
+
+
 def _trials_path():
     return trinity_home() / "me" / "palate_trials.jsonl"
 
@@ -163,6 +175,15 @@ def score_prospective(embed_fn: Callable | None = None) -> dict[str, Any]:
             gap = float(np.dot(pv / pn, d) - np.dot(sv / sn, d))
             rows.append({
                 "act_id": a.id,
+                # Regen-proof audit keys (res_077): a corpus re-mine mints fresh
+                # act ids, which orphaned 198 of 354 trials. The content hash
+                # re-joins a trial to the same text under any future id, and
+                # prompt_id is stable across regens (nodes persist; acts are
+                # re-mined) and carries the provider join the per-environment
+                # invariance slice reads. Ids + numbers only — the file's
+                # no-text property is deliberate and unchanged.
+                "act_sha256": _act_sha256(a),
+                "prompt_id": getattr(a, "prompt_id", None) or None,
                 "verdict": "abstain" if abs(gap) < ABSTAIN_GAP else ("correct" if gap > 0 else "incorrect"),
                 "gap": round(gap, 4),
                 "scored_at": now_iso(),
