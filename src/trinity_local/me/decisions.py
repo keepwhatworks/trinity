@@ -211,7 +211,8 @@ CHUNKS:
 """
 
 
-def parse_decisions(raw: str, basins: list[Basin]) -> list[Decision]:
+def parse_decisions(raw: str, basins: list[Basin], *,
+                    mint_r_ids: bool = False) -> list[Decision]:
     """Parse chairman output into Decision objects.
 
     Tolerates: trailing/leading text, partial markdown fences, malformed
@@ -260,14 +261,36 @@ def parse_decisions(raw: str, basins: list[Basin]) -> list[Decision]:
             else:
                 basin_id = None
 
-        d_id = (obj.get("id") or "").strip()
-        if not d_id or d_id in seen_ids:
-            d_id = f"d_{next_auto_id:03d}"
-            while d_id in seen_ids:
-                next_auto_id += 1
+        if mint_r_ids:
+            # Option (c), council_93a6710f0e3c71d2 (amd_0186), DORMANT default
+            # False. Content-derived ids instead of chairman-supplied or
+            # sequential ones. Three properties, each load-bearing:
+            #   JOINABLE — stage-2 decisions export to the unified ledger
+            #     keeping their ids (me_builder save_preference_acts), so a
+            #     tension citing this id cites a row the palate can score.
+            #     Today's d_* ids give 0/80 joinable tension evidence (res_071).
+            #   REGEN-PROOF — the same content re-mints the same id, so the
+            #     res_077 orphaning class (fresh ids on every rebuild stranding
+            #     198 of 354 palate trials) dissolves for these rows.
+            #   COLLISION-SAFE — stable_id hashes content; two genuinely
+            #     different decisions cannot land on one id, and an exact
+            #     duplicate SHOULD land on the same id (the dedup below keeps
+            #     the first).
+            from ..utils import stable_id
+
+            d_id = stable_id("r", privileged[:200], sacrificed[:200], prompt_id or "")
+            if d_id in seen_ids:
+                continue                      # exact content duplicate — keep first
+            seen_ids.add(d_id)
+        else:
+            d_id = (obj.get("id") or "").strip()
+            if not d_id or d_id in seen_ids:
                 d_id = f"d_{next_auto_id:03d}"
-        seen_ids.add(d_id)
-        next_auto_id += 1
+                while d_id in seen_ids:
+                    next_auto_id += 1
+                    d_id = f"d_{next_auto_id:03d}"
+            seen_ids.add(d_id)
+            next_auto_id += 1
 
         # Optional new fields (back-compat: missing → defaults).
         would_flip_if = (obj.get("would_flip_if") or "").strip()

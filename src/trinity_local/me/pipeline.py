@@ -229,10 +229,13 @@ def stage2_extraction_prompt(samples: list[dict[str, Any]], basins: list[Basin])
     return render_extraction_prompt(enriched, basins)
 
 
-def stage2_parse(raw_output: str, basins: list[Basin]) -> list[Decision]:
+def stage2_parse(raw_output: str, basins: list[Basin], *,
+                 mint_r_ids: bool = False) -> list[Decision]:
     # Pure parse — no disk write. Decisions flow in-memory into the unified
     # ledger save (legacy decisions.jsonl retired in #209).
-    return parse_decisions(raw_output, basins)
+    # mint_r_ids is INJECTED (env read lives at the me_builder caller): the
+    # dormant option-(c) switch, amd_0186/0187.
+    return parse_decisions(raw_output, basins, mint_r_ids=mint_r_ids)
 
 
 def stage3_pair_mining_prompt(decisions: list[Decision]) -> str:

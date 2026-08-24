@@ -198,7 +198,15 @@ def write_core(text: str, *, gated: bool = True) -> Path:
 
     from .core_gate import propose_core
 
-    verdict = propose_core(text)
+    # TRINITY_STANCE_ADMITTER lives HERE, not in core_gate — that module's own
+    # guard forbids env flags (founder-lock hygiene), so arming is injected.
+    # Default OFF: shipped dormant, measured matrix in stance_margin_admits.
+    import os as _os
+
+    verdict = propose_core(
+        text,
+        stance_admitter=_os.environ.get("TRINITY_STANCE_ADMITTER", "0")
+        .strip().lower() in ("1", "true"))
     if verdict.admitted:
         path.write_text(text.strip() + "\n", encoding="utf-8")
     else:

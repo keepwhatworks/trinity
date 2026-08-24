@@ -983,7 +983,14 @@ def build_me_via_lens_pipeline(
     from .state_paths import neutral_dispatch_dir
 
     stage2_result = _stage_run_with_fallback(stage2_prompt, config, chairman, neutral_dispatch_dir(), low_effort=True)
-    decisions = stage2_parse(stage2_result.stdout or "", basins)
+    # TRINITY_STAGE2_R_IDS: the dormant option-(c) switch (amd_0186/0187).
+    # Read HERE and injected down, same pattern as the stance admitter. ARMING
+    # REQUIRES stamping the palate epoch boundary first (amd_0189) — the first
+    # armed build is a new epoch regardless of how little the tension set moves.
+    import os as _os
+
+    _mint_r = _os.environ.get("TRINITY_STAGE2_R_IDS", "0").strip().lower() in ("1", "true")
+    decisions = stage2_parse(stage2_result.stdout or "", basins, mint_r_ids=_mint_r)
 
     # Prepend high-weight decisions from two sources:
     #   1. user-authored `~/.trinity/me/decision_log.jsonl` → user_logged

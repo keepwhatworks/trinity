@@ -295,6 +295,64 @@ THE AUTHOR'S LATER SENTENCE:
 """
 
 
+def stance_counts(candidate: str, incumbent: str,
+                  texts: list[str]) -> tuple[int, int] | None:
+    """(wins, scored) for candidate-vs-incumbent under the local judge.
+
+    The margin gate needs COUNTS in both directions, not the majority bool —
+    an 8/9 and a 5/9 are the same bool and completely different evidence.
+    Delegates to the same prompt/parse path as stance_prefers_candidate by
+    parsing its note, so the two can never disagree about what the judge said.
+    """
+    r = stance_prefers_candidate(candidate, incumbent, texts)
+    if r is None:
+        return None
+    import re as _re
+
+    m = _re.search(r"on (\d+)/(\d+) held-out prompts", r[1])
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+# ── The dormant admitter (default OFF) ────────────────────────────────────────
+# Measured 2026-08-24 across res_092/094/096, n=9 prompts per call:
+#   garbage vs good incumbent .... refused 0-1/9  (OAuth, quota, space, shuffle)
+#   good vs garbage incumbent .... admitted 9/9
+#   good vs good (3 candidates) .. coin flip, 3-5/9 both directions
+# Under the margin rule below that matrix makes the gate SELF-HEALING against a
+# garbage incumbent (the OAuth string would have been displaced the next day
+# instead of sitting six days) and FROZEN among equals (good-vs-good never
+# clears the margin, so the core cannot churn). Ships dormant per this repo's
+# pattern; arm with TRINITY_STANCE_ADMITTER=1. When the judge is unreachable
+# the gate stays closed — a missing judge must never admit.
+STANCE_ADMIT_MIN_FRACTION = 8 / 9    # forward wins required
+STANCE_ADMIT_MIRROR_MAX_FRACTION = 1 / 9   # mirror wins tolerated
+
+
+def stance_margin_admits(candidate: str, incumbent: str,
+                         texts: list[str]) -> tuple[bool, str]:
+    """Decisive-margin admission: forward >= 8/9 AND mirror <= 1/9 (scaled).
+
+    Two judge calls (forward + mirror). The mirror is not a formality: it is
+    what separates "the judge prefers the candidate" from "the judge says yes
+    to whatever is in the candidate slot" — the position-bias failure hq_104
+    measured at 53% against a 70% bar, kept honest here per call.
+    """
+    fwd = stance_counts(candidate, incumbent, texts)
+    if fwd is None:
+        return False, "no local judge reachable — a missing judge must never admit"
+    k, n = fwd
+    if n == 0 or k < n * STANCE_ADMIT_MIN_FRACTION:
+        return False, f"forward margin {k}/{n} below the decisive bar"
+    mir = stance_counts(incumbent, candidate, texts)
+    if mir is None:
+        return False, "mirror unavailable — refusing rather than admitting one-sided"
+    mk, mn = mir
+    if mn == 0 or mk > mn * STANCE_ADMIT_MIRROR_MAX_FRACTION:
+        return False, (f"forward {k}/{n} but mirror {mk}/{mn} — not decisive "
+                       "both ways, and one-sided decisiveness is position bias")
+    return True, f"decisive: forward {k}/{n}, mirror {mk}/{mn}"
+
+
 def stance_prefers_candidate(candidate: str, incumbent: str,
                              texts: list[str]) -> tuple[bool, str] | None:
     """Does a LOCAL reader think the candidate captures this author better?
@@ -427,7 +485,8 @@ def looks_like_provider_error(text: str) -> bool:
 
 def propose_core(candidate: str, *, heldout: list[str] | None = None,
                  stance_fn: Callable[[str, str, list[str]], tuple[bool, str] | None]
-                 | None = None) -> CoreVerdict:
+                 | None = None,
+                 stance_admitter: bool = False) -> CoreVerdict:
     """Gate a candidate core. Admitted only if it does not price held-out text worse.
 
     ALWAYS archives, whatever the verdict — the pre-gate behaviour kept exactly one
@@ -498,6 +557,29 @@ def propose_core(candidate: str, *, heldout: list[str] | None = None,
     ok = cb <= ib + TOLERANCE_BITS
 
     if LENGTH_CONFOUNDED_RULER and ok:
+        # DORMANT ADMITTER (default False): when the CALLER arms it, a candidate
+        # may replace a live incumbent on a decisive two-way stance margin — the
+        # one instrument that passed every control the bits ruler failed. The
+        # bits numbers stay recorded either way; they just never decide.
+        # INJECTED like stance_fn above and for the same reason: this module
+        # grows no env flags (its own guard enforces that), so the
+        # TRINITY_STANCE_ADMITTER read lives at the caller (distill).
+        if stance_admitter:
+            admit, why = stance_margin_admits(cand, incumbent, texts)
+            if admit:
+                arch_a = _archive(cand, "admitted",
+                                  {"candidate_bits": cb, "incumbent_bits": ib,
+                                   "heldout_n": len(texts), "ruler": ruler,
+                                   "stance_margin": why})
+                return CoreVerdict(
+                    True,
+                    f"stance-margin admission ({why}); bits recorded "
+                    f"({cb:.0f} vs {ib:.0f}) but not deciding",
+                    candidate_bits=int(cb), incumbent_bits=int(ib),
+                    heldout_n=len(texts), archived=arch_a)
+            # armed but not decisive: fall through to the fail-closed refusal,
+            # carrying the reason so the archive explains itself
+
         # The ruler said "admit". Measured, it says that whenever the candidate
         # is SHORTER, so the recommendation carries no information about quality
         # and a live incumbent must not be replaced on it. Numbers are still
