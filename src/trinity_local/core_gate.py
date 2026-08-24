@@ -155,7 +155,22 @@ def _neural_bits(texts, artifact: bytes | None) -> float:
         lg = model(x[:, :-1]).astype(mx.float32)
         lp = nn.losses.cross_entropy(lg.reshape(-1, lg.shape[-1]),
                                      x[:, 1:].reshape(-1), reduction="none")
-        total += float(mx.sum(lp[max(len(ctx) - 1, 0):]).item()) / math.log(2)
+        # TOKEN-MATCHED START (res_082). `lp[i]` is the loss for predicting
+        # seq[i+1]. The old slice was `max(len(ctx)-1, 0)`, which scores
+        # len(ids) tokens when a context exists and len(ids)-1 when it does
+        # not — so the no-artifact baseline scored ONE FEWER TOKEN PER TEXT
+        # than every candidate it was compared against.
+        #
+        # That is not a rounding error. Measured on 120 held-out prompts it was
+        # the dominant term and it inverted the sign of the answer: the real
+        # core priced 3,010 bits WORSE than no-core under the old slice and 58
+        # bits BETTER once the arms score the same tokens.
+        #
+        # Starting at len(ctx) drops the first text token from every arm, so
+        # each scores exactly len(ids)-1. The cost is one unscored token per
+        # text, paid identically everywhere; the benefit is that the comparison
+        # is between artifacts rather than between token counts.
+        total += float(mx.sum(lp[len(ctx) if ctx else 0:]).item()) / math.log(2)
     return total
 
 
@@ -366,6 +381,12 @@ def stance_prefers_candidate(candidate: str, incumbent: str,
 # every time. At MATCHED length the artifact cancels and nothing is left: the
 # real core loses to its own word-shuffle by 381 bits and beats character-level
 # gibberish by 1.0 bit in 13,000 (0.008%).
+#
+# The token-count asymmetry that made the BASELINE look unbeatable was fixed
+# 2026-08-24 (res_082) and was worth ~3,068 bits, enough to invert the
+# core-versus-baseline sign. Necessary and NOT sufficient: token-matched, the
+# real core still loses to its own word-shuffle by 334 bits and a single space
+# still prices better than both. The gate therefore stays closed.
 #
 # So this ruler cannot rank cores. It ranked length, and every historical
 # admission was won on brevity — which is how an OAuth error became the

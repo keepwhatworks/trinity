@@ -89,7 +89,20 @@ def aggregate_routing_table(councils: Iterable[dict[str, Any]]) -> dict[str, Any
     # drift from the value-proof / picks.json gate.
     by_task_real_contests: dict[str, int] = {}
     materialised = list(councils)
+    skipped_degraded = 0
     for c in materialised:
+        # DEGRADED COUNCILS DO NOT TEACH ROUTING (founder feedback doc v3,
+        # 2026-08-24, confirmed on council_2797722d0cf6e1e3: two of three
+        # members timed out, the sole survivor was named winner, and the
+        # outcome carried a routing_lesson — a verdict selected by latency,
+        # not quality). metadata.failed_members records the casualties; until
+        # this line, nothing downstream read it, so provider_scores silently
+        # shrank and the aggregation counted a walkover as a win.
+        _meta = c.get("metadata")
+        _failed = _meta.get("failed_members") if isinstance(_meta, dict) else None
+        if isinstance(_failed, list) and _failed:
+            skipped_degraded += 1
+            continue
         label = c.get("routing_label") or {}
         # `task_type` and the chairman winner BOTH become dict keys below
         # (by_task_real_contests[task_type], by_task_wins[task_type][winner],
@@ -247,7 +260,12 @@ def aggregate_routing_table(councils: Iterable[dict[str, Any]]) -> dict[str, Any
 
     return {
         "computed_at": now_iso(),
-        "councils_aggregated": len(materialised),
+        "councils_aggregated": len(materialised) - skipped_degraded,
+        # Disclosed, not silent: a degraded council (a member failed mid-run)
+        # is excluded because its chairman pick is partly a walkover. The count
+        # keeps the exclusion visible in routing.json rather than making rows
+        # quietly disappear.
+        "councils_skipped_degraded": skipped_degraded,
         "by_task_type": by_task_type,
         "best_per_task_type": best_per_task_type,
         # Per-task-type chairman wins; the launchpad table can render

@@ -542,7 +542,9 @@ def build_me_via_council(*, budget_chars: int = ME_BUDGET_CHARS, sample_size: in
     # `cwd` is required by the provider runtime (it gets str()'d into
     # subprocess), but lens-build is corpus-driven, not project-driven, so
     # we use the current working directory.
-    result = primary.run(prompt, cwd=Path.cwd())
+    from .state_paths import neutral_dispatch_dir
+
+    result = primary.run(prompt, cwd=neutral_dispatch_dir())
     me_doc = (result.stdout or "").strip()
     if not me_doc:
         # Chairman returned nothing — almost always a transient empty
@@ -878,7 +880,9 @@ def build_me_via_lens_pipeline(
 
         def _run_stage0_batch(idx: int):
             prompt = stage0_turn_pair_prompt(batches[idx], basins)
-            return idx, _stage_run_with_fallback(prompt, config, chairman, Path.cwd(), low_effort=True)
+            from .state_paths import neutral_dispatch_dir
+
+            return idx, _stage_run_with_fallback(prompt, config, chairman, neutral_dispatch_dir(), low_effort=True)
 
         if batches:
             with concurrent.futures.ThreadPoolExecutor(
@@ -976,7 +980,9 @@ def build_me_via_lens_pipeline(
           f"{len(augmented_samples)} samples)…", flush=True, file=_sys.stderr)
     stage2_prompt = stage2_extraction_prompt(augmented_samples, basins)
     # Mechanical extraction → low effort (same rationale as Stage 0 above).
-    stage2_result = _stage_run_with_fallback(stage2_prompt, config, chairman, Path.cwd(), low_effort=True)
+    from .state_paths import neutral_dispatch_dir
+
+    stage2_result = _stage_run_with_fallback(stage2_prompt, config, chairman, neutral_dispatch_dir(), low_effort=True)
     decisions = stage2_parse(stage2_result.stdout or "", basins)
 
     # Prepend high-weight decisions from two sources:
@@ -1039,7 +1045,9 @@ def build_me_via_lens_pipeline(
     write_progress("stage3")
     print(f"  Stage 3: pair mining (chairman: {chairman})…", flush=True, file=_sys.stderr)
     stage3_prompt = stage3_pair_mining_prompt(decisions)
-    stage3_result = _stage_run_with_fallback(stage3_prompt, config, chairman, Path.cwd())
+    from .state_paths import neutral_dispatch_dir
+
+    stage3_result = _stage_run_with_fallback(stage3_prompt, config, chairman, neutral_dispatch_dir())
     pairs = stage3_parse(stage3_result.stdout or "")
     print(f"           → {len(pairs)} candidate pairs proposed", flush=True, file=_sys.stderr)
 

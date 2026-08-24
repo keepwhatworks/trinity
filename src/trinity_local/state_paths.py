@@ -491,3 +491,27 @@ def embedder_install_command() -> str:
         pip = str(venv_pip) if venv_pip.exists() else "pip"
         return f"{pip} install '{code}[mlx]'"
     return "pip install 'trinity-local[mlx]'"
+
+
+def neutral_dispatch_dir():
+    """An empty directory for DATA-PRODUCING provider dispatches (res_090).
+
+    A `claude -p` spawned with cwd inside the project inherits that project's
+    Claude Code context: its CLAUDE.md, its memory files, and its git history.
+    Measured 2026-08-24 on an open-ended prompt — the same shape distill sends —
+    the subprocess opened its answer with a model-disclosure header taken from a
+    founder instruction meant for interactive REPLIES, and recited recent commit
+    messages as if they were its own knowledge. From a neutral cwd it did
+    neither.
+
+    That is fine for a council answering a question about the repo and wrong for
+    a stage whose output becomes a stored artifact: `core.md` is supposed to
+    distil the FOUNDER, not the working notes of whoever last committed.
+
+    An earlier probe concluded the opposite and was invalid: it used a prompt
+    that dictated the exact output ("reply with exactly this"), which suppresses
+    the formatting behaviour under test. Open-ended prompts are the control.
+    """
+    d = trinity_home() / "dispatch_neutral"
+    d.mkdir(parents=True, exist_ok=True)
+    return d

@@ -93,3 +93,52 @@ class TestTheGateFailsClosedWhileTheRulerIsConfounded:
         core_gate.core_path().parent.mkdir(parents=True, exist_ok=True)
         v = core_gate.propose_core("a genuine first distillation of the founder")
         assert v.admitted and "first write" in v.reason
+
+
+class TestTheRulerScoresTheSameTokensInEveryArm:
+    """The no-artifact baseline must not score less text than the candidates.
+
+    res_082: `lp` holds one loss per predicted token, so a slice of
+    `max(len(ctx)-1, 0)` scores len(ids) tokens with a context and len(ids)-1
+    without one. The baseline was scoring ONE FEWER TOKEN PER TEXT than every
+    candidate it was compared against.
+
+    Measured on 120 held-out prompts, that asymmetry was the dominant term and
+    inverted the answer's sign: the real core priced 3,010 bits WORSE than
+    no-core before the fix and 58 bits BETTER after it. It did not rescue the
+    ruler — token-matched, the real core still loses to its own word-shuffle by
+    334 bits — but a comparison between token counts is not a comparison
+    between artifacts, whatever it concludes.
+    """
+
+    def _scored(self, ctx_len: int, ids_len: int) -> int:
+        """Losses summed, mirroring the slice in _neural_bits."""
+        lp_len = ctx_len + ids_len - 1
+        start = ctx_len if ctx_len else 0
+        return lp_len - start
+
+    def test_every_arm_scores_the_same_number_of_tokens(self):
+        ids = 40
+        counts = {c: self._scored(c, ids) for c in (0, 1, 12, 241)}
+        assert len(set(counts.values())) == 1, (
+            f"arms score different token counts: {counts}. The baseline (ctx=0) "
+            "scoring fewer tokens is exactly the res_082 defect."
+        )
+        assert set(counts.values()) == {ids - 1}
+
+    def test_the_old_slice_is_what_produced_the_asymmetry(self):
+        """Characterise the bug so a revert is recognisable, not just red."""
+        old = lambda c, n: (c + n - 1) - max(c - 1, 0)
+        assert old(0, 40) == 39 and old(241, 40) == 40, (
+            "if this no longer holds, the historical diagnosis in res_082 needs "
+            "re-deriving rather than trusting"
+        )
+
+    def test_the_source_uses_the_matched_slice(self):
+        import inspect
+
+        from trinity_local import core_gate
+
+        src = inspect.getsource(core_gate._neural_bits)
+        assert "lp[len(ctx) if ctx else 0:]" in src
+        assert "max(len(ctx) - 1, 0)" not in src, "the asymmetric slice is back"

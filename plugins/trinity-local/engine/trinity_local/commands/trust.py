@@ -246,6 +246,22 @@ def _tally_lines(agg: dict) -> str:
     omitted = len(records) - len(shown)
     if omitted:
         lines.append(f"  (+{omitted} model(s) under {MIN_TALLY_N} decisions — too thin to call.)")
+    # PROVENANCE DISCLOSURE (founder feedback doc v3 §1: "flag pre-provenance
+    # ledger rows as coarse"). The summary has carried model_provenance counts
+    # since the stamping shipped, but no user surface rendered them — and the
+    # split is 99.4% unverified: rows whose model string is a config label
+    # nobody observed, from before stamp_member_model existed. A rate keyed on
+    # model × version owes the reader how many of its rows have a verified key.
+    prov = agg.get("model_provenance") or {}
+    denom = int(agg.get("model_provenance_denominator") or 0)
+    if prov and denom:
+        verified = sum(v for k, v in prov.items() if k in ("echoed", "pinned"))
+        unverified = denom - verified
+        if unverified > 0:
+            lines.append(
+                f"  provenance: {verified}/{denom} resolved claims carry a verified "
+                f"model identity (echoed/pinned); the other {unverified} predate "
+                f"verification and key on recorded labels.")
     # Effort as a SECONDARY read: only sub-cells that independently clear chance
     # (ci_excludes_half) — a non-significant effort split never surfaces as a claim.
     eb = agg.get("effort_breakdown") or {}

@@ -242,7 +242,11 @@ def distill_via_chairman(*, provider: str = "claude", force: bool = False) -> di
 
     runner = make_provider(provider_config)
     try:
-        result = runner.run(prompt, _Path("."))
+        # NEUTRAL CWD (res_090): core.md must distil the founder, not the
+        # project's CLAUDE.md, memory files and recent commit messages.
+        from .state_paths import neutral_dispatch_dir
+
+        result = runner.run(prompt, neutral_dispatch_dir())
     except ProviderError as exc:
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
     except Exception as exc:
