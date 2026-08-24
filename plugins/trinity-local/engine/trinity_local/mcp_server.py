@@ -241,7 +241,16 @@ async def handle_list_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {
                     "task": {"type": "string"},
-                    "goal": {"type": "string", "default": "Find the strongest answer."},
+                    "goal": {"type": "string", "default": "Find the strongest answer.",
+                             "description": "STEERS MEMBERS MORE THAN A HINT SHOULD "
+                             "(founder measurement, 2026-08-24: a goal naming a "
+                             "specific mechanism produced that mechanism from all "
+                             "three members — the field can smuggle the answer into "
+                             "the question). Name the DECISION UNDER TEST, not the "
+                             "outcome you hope for: 'decide whether X or Y' elicits "
+                             "a comparison; 'ensure X' elicits X from everyone and "
+                             "the disagreement the council exists to surface never "
+                             "happens."},
                     "members": {
                         "type": "array",
                         "items": {"type": "string"},

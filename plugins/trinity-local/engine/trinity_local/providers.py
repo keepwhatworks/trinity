@@ -276,6 +276,32 @@ def _effective_effort(config: ProviderConfig) -> str | None:
     return config.effort
 
 
+def effort_provenance(config: ProviderConfig) -> str:
+    """How trustworthy is the effort string this run will record?
+
+    The model got this ladder first (`model_provenance`) after a window of
+    Flash councils filed under 3.1 Pro. Effort had the same defect and no
+    ladder: the founder's feedback doc (v3, 2026-08-24) reports a council that
+    recorded "high" and ran xhigh, and the 2026-07-03 note on
+    `_effective_effort` documents the same shape from the args-override side.
+
+      pinned      argv enforces it. claude gets --effort injected; codex gets
+                  -c model_reasoning_effort appended (or carries it in args,
+                  which _effective_effort already treats as authoritative).
+      configured  Trinity's config string, with NO enforcement at dispatch.
+                  antigravity: agy exposes no effort flag — the user's /model
+                  selection inside agy decides, and config.effort is a label
+                  that can drift from it silently.
+      unknown     no effort recorded at all.
+    """
+    if config is None or not _effective_effort(config):
+        return "unknown"
+    name = (getattr(config, "name", "") or "").lower()
+    if name in ("claude", "codex"):
+        return "pinned"
+    return "configured"
+
+
 def read_agy_active_model_raw() -> str | None:
     """The raw model SKU agy will ACTUALLY dispatch (e.g. ``"Gemini 3.5 Flash
     (High)"``), read from agy's own ``~/.gemini/antigravity-cli/settings.json``.

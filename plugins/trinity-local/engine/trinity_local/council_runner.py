@@ -623,6 +623,7 @@ def run_council(
         # and effort was the missing leg — every unstamped council is
         # behavioral data that can never gain effort fidelity later.
         from .providers import _effective_effort
+        from .providers import effort_provenance as _effort_source
         _model, _source, _label = stamp_member_model(
             execution.provider_config,
             member_model_overrides.get(provider_name),
@@ -638,6 +639,7 @@ def run_council(
                 "stderr": execution.stderr,
                 "stdout": execution.stdout,
                 "effort": _effective_effort(execution.provider_config),
+                "effort_source": _effort_source(execution.provider_config),
                 "model_source": _source,
                 "model_label": _label,
             },
