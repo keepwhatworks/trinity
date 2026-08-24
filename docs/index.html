@@ -24,10 +24,43 @@
 <script type="application/ld+json">
 {
  "@context": "https://schema.org",
- "@type": "WebSite",
- "name": "Keep What Works",
- "url": "https://keepwhatworks.com/",
- "description": "Essays on building durable systems in an age of disposable answers. And the tools that come out of writing them."
+ "@graph": [
+  {
+   "@type": "WebSite",
+   "name": "Keep What Works",
+   "url": "https://keepwhatworks.com/",
+   "description": "Essays on building durable systems in an age of disposable answers. And the tools that come out of writing them."
+  },
+  {
+   "@type": "SoftwareApplication",
+   "name": "Trinity Local",
+   "url": "https://keepwhatworks.com/#trinity",
+   "applicationCategory": "DeveloperApplication",
+   "operatingSystem": "macOS, Linux",
+   "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+   },
+   "description": "Send one prompt to Claude, ChatGPT, and Gemini in parallel. A chairman shows you what they agreed on and where they split. Free and local, on the subscriptions you already pay for. No API key. Your transcripts never leave your machine.",
+   "softwareHelp": "https://github.com/keepwhatworks/trinity",
+   "license": "https://opensource.org/license/mit/"
+  },
+  {
+   "@type": "Organization",
+   "name": "Keep What Works",
+   "url": "https://keepwhatworks.com/",
+   "logo": "https://keepwhatworks.com/favicon.png",
+   "sameAs": [
+    "https://github.com/keepwhatworks/trinity"
+   ],
+   "contactPoint": {
+    "@type": "ContactPoint",
+    "contactType": "customer support",
+    "url": "https://github.com/keepwhatworks/trinity/issues"
+   }
+  }
+ ]
 }
 </script>
 <link rel="stylesheet" href="style.css">
@@ -351,7 +384,10 @@
   <div>
     <a href="https://github.com/keepwhatworks/trinity" target="_blank" rel="noopener">GitHub</a> ·
     <a href="#principles">Principles</a> ·
-    <a href="https://github.com/keepwhatworks/trinity/blob/main/docs/enterprise.md" target="_blank" rel="noopener">For teams</a>
+    <a href="https://github.com/keepwhatworks/trinity/blob/main/docs/enterprise.md" target="_blank" rel="noopener">For teams</a> ·
+    <a href="about.html">About</a> ·
+    <a href="privacy.html">Privacy</a> ·
+    <a href="contact.html">Contact</a>
   </div>
 </footer>
 

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · Keep What Works</title>
+<meta name="description" content="What Trinity Local reads, what it stores, and what leaves your machine: nothing but categorical labels, and only if you leave telemetry on.">
+<link rel="canonical" href="https://keepwhatworks.com/privacy.html">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="./">keepwhatworks</a>
+  <nav>
+    <a href="./#articles">Essays</a>
+    <a href="./#trinity">Trinity</a>
+    <a href="https://github.com/keepwhatworks/trinity" target="_blank" rel="noopener">GitHub</a>
+  </nav>
+</header>
+<main class="container">
+<article class="essay">
+<header>
+  <div class="meta">Policy · plain words, checkable claims</div>
+  <h1>Privacy</h1>
+</header>
+
+<p>Trinity Local's pitch is a privacy claim, so this page is the product page.
+Every sentence here is checkable against the source, which is open.</p>
+
+<h2>What Trinity reads</h2>
+<p>Your AI conversation transcripts, on your disk: Claude Code, Codex CLI, and
+Antigravity session files, plus chats the Chrome extension captures from
+claude.ai, chatgpt.com, and gemini.google.com. It reads them to build a local
+index and a lens of how you decide. All of it stays in <code>~/.trinity/</code>
+on your machine.</p>
+
+<h2>What leaves your machine</h2>
+<p>Prompt content: nothing, ever. There is no hosted service, no account, no
+API key, and councils dispatch through the CLI tools you already authenticated,
+riding your own subscriptions. The one thing Trinity can send is telemetry, and
+it is categorical only: labels like task type, which provider won, and whether
+a council completed. Never prompt text, never transcript content, never file
+paths. Telemetry ships on by default because the feedback loop is how the tool
+improves, and turning it off is one setting. The guarantee we make is not
+"telemetry is off" — it is "telemetry provably cannot carry your words," and
+the payload schema in the source is the proof.</p>
+
+<h2>What the models see</h2>
+<p>When you run a council, your question goes to the models you chose, through
+their official CLIs, under the accounts you hold with them. Their handling of
+it is governed by their terms, not ours. Trinity adds no middleman: there is no
+Trinity server between you and them.</p>
+
+<h2>Your data, your folder</h2>
+<p><code>~/.trinity/</code> is a documented, JSON-Schema-validated folder you
+can read, back up, export, or delete at any time. Deleting it deletes
+everything Trinity knows. There is no copy anywhere else.</p>
+
+<h2>This website</h2>
+<p>keepwhatworks.com is a static site on GitHub Pages. It sets no cookies,
+runs no analytics scripts, and collects nothing. GitHub's own infrastructure
+logs are governed by GitHub's privacy statement.</p>
+
+<h2>Questions</h2>
+<p>Open an issue on <a href="https://github.com/keepwhatworks/trinity"
+target="_blank" rel="noopener">GitHub</a> — the code is the authority this page
+summarizes, and if this page ever disagrees with the code, the code wins and
+the page gets fixed.</p>
+</article>
+</main>
+<footer>
+  <div>© Vishi Gondi · written from the arena</div>
+  <div>
+    <a href="https://github.com/keepwhatworks/trinity" target="_blank" rel="noopener">GitHub</a> ·
+    <a href="about.html">About</a> ·
+    <a href="contact.html">Contact</a>
+  </div>
+</footer>
+</body>
+</html>

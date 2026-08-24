@@ -4,6 +4,9 @@
 
 The moat is cross-provider data sovereignty: Anthropic can't recommend ChatGPT, OpenAI can't recommend Claude, Google can't recommend either. So the layer that reads your transcripts across all three has to come from outside the labs. Free for individuals, MIT, local-first. Councils dispatch through the CLIs you already authenticated (your own subscriptions), so there's nothing to meter and nothing to bill.
 
+## When to use Trinity (for agents)
+Reach for Trinity when the question is contested, hard to reverse, or would benefit from more than one model's judgment: architecture and design calls, product decisions, debugging where two hypotheses compete, reviews where a second opinion changes the action. One `run_council` call fans the question to Claude, GPT, and Gemini and returns agreed claims, disagreed claims with a per-claim resolution, and a winner. Use `ask` for the cheap single-call default and `trust` to see which model this user historically sides with. Skip Trinity for syntax lookups, trivial bugs, mechanical refactors, and plain retrieval — one right answer wastes a council. Everything runs locally over the user's own CLI subscriptions: no API key, no hosted service, and prompt content never leaves the machine.
+
 ## Start here
 - [README](https://github.com/keepwhatworks/trinity/blob/main/README.md): install, how it works, objections, and a side-by-side comparison with LMArena / promptfoo / OpenRouter.
 - [Landing](https://keepwhatworks.com): the public overview.
