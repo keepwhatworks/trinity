@@ -41,10 +41,31 @@ API key, and councils dispatch through the CLI tools you already authenticated,
 riding your own subscriptions. The one thing Trinity can send is telemetry, and
 it is categorical only: labels like task type, which provider won, and whether
 a council completed. Never prompt text, never transcript content, never file
-paths. Telemetry ships on by default because the feedback loop is how the tool
-improves, and turning it off is one setting. The guarantee we make is not
-"telemetry is off" — it is "telemetry provably cannot carry your words," and
-the payload schema in the source is the proof.</p>
+paths.</p>
+
+<p>Two properties make that a structure rather than a promise. The payload is
+<strong>allowlisted</strong>: a fixed set of four field names, enforced at the
+one place events reach the wire, so a field nobody reviewed cannot be added by
+accident. And the identifier <strong>rotates</strong>: the install id on your
+disk never leaves, and what ships is a one-way hash of it plus the current
+month. Two events from you in the same month share an id, so we can count how
+many people use Trinity. Two events a month apart do not, so nobody — including
+us — can assemble a picture of your work over time.</p>
+
+<p>You do not have to take that on faith. Run
+<code>trinity-local telemetry-show --wire</code> and it prints the exact bytes a
+completed council would send, including a demonstration that a prompt field
+handed to the emitter is stripped before the wire. <code>telemetry-disable</code>
+turns it off; <code>telemetry-reset-id</code> starts a new anonymous id
+immediately.</p>
+
+<p><strong>What we get, and what you get.</strong> Honesty is worth more here
+than reassurance: today this telemetry mostly helps us, not you. It tells us
+whether anyone beyond the author is running Trinity and which kinds of questions
+people bring to a council. It does not yet come back to you as anything. It ships
+on by default because a tool nobody can see is a tool nobody can improve — and if
+that trade does not sound fair for what you get today, turning it off is one
+command and costs you no functionality at all.</p>
 
 <h2>What the models see</h2>
 <p>When you run a council, your question goes to the models you chose, through

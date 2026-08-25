@@ -224,6 +224,47 @@ def save_telemetry_settings(settings: TelemetrySettings) -> Path:
     return path
 
 
+# ─── Rotating outbound identity (2026-08-25) ────────────────────────────────
+# The payload contract above was always strong: allowlisted categorical labels,
+# never text. The IDENTIFIER was the weak half. `share_install_id` is a
+# permanent random token, so every event from one install linked to every other
+# event from that install FOREVER — months of {task_type, winner} under one key
+# is a behavioural profile of one person's work, even with zero PII in any
+# single row.
+#
+# The fix keeps what measurement actually needs and drops what it does not.
+# What it needs: distinct-install counting inside a window ("did a second human
+# activate", "which channel"). What it does not need: linking August's events
+# to November's.
+#
+# So the local id NEVER leaves the machine. What ships is
+# sha256(local_id + period)[:16] — stable within a period, uncorrelatable
+# across periods, and impossible to reverse to the local id.
+#
+# THE TRADE, STATED: GA4 sees a returning install as a new client each period,
+# so long-horizon retention analytics degrade by construction. That is the
+# point — long-horizon linkage IS the thing being removed. Distinct-count,
+# activation, and channel questions are unaffected.
+ROTATION_PERIOD = "%Y-%m"   # monthly. Tighten to "%Y-W%W" for weekly.
+
+
+def outbound_client_id(local_id: str, *, now=None) -> str:
+    """The id that leaves the machine: rotating, derived, non-reversible.
+
+    ``now`` is an aware datetime (injected in tests). Deliberately unannotated:
+    a string annotation here needed a module-scope datetime import that this
+    module does not otherwise want, and the guard that caught it is right —
+    an annotation naming a symbol the module lacks is a latent NameError.
+    """
+    import hashlib
+    from datetime import datetime as _dt, timezone as _tz
+
+    if not local_id:
+        return ""
+    period = (now or _dt.now(_tz.utc)).strftime(ROTATION_PERIOD)
+    return hashlib.sha256(f"{local_id}|{period}".encode("utf-8")).hexdigest()[:16]
+
+
 def ensure_share_install_id(settings: TelemetrySettings) -> TelemetrySettings:
     if settings.share_install_id:
         return settings
@@ -616,7 +657,9 @@ def _send_event_to_ga4(
     # Enforce the disclosed-param allowlist at the wire boundary (#231a) —
     # NOT a bare dict(params) — so an upstream caller can't leak free text.
     payload = {
-        "client_id": settings.share_install_id,
+        # ROTATING, not the local id (see outbound_client_id): the permanent
+        # token stays on disk and only a period-scoped derivation ships.
+        "client_id": outbound_client_id(settings.share_install_id),
         **build_outbound_event_payload(event_name, params),
     }
     body = json.dumps(payload).encode("utf-8")
