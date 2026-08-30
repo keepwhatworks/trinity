@@ -1054,6 +1054,53 @@ def format_one_line(report: DoctorReport) -> str:
     return f"green — {fully_green}/{total} checks pass"
 
 
+def _check_telemetry_destination() -> CheckResult:
+    """Sharing can be ON while nothing can possibly arrive.
+
+    `_send_event_to_ga4` returns False when `_ga4_credentials()` is None, which
+    is the documented behaviour for a contributor without GA4 env vars. On a
+    SHIPPED install nobody has those vars, so the default `sharing_enabled=True`
+    produces a system that reports healthy and transmits nothing, with no
+    surface saying why. That is this repo's signature failure — a green over
+    degenerate data — sitting on the one instrument the distribution plan
+    depends on. The check attests the INVARIANT (a destination exists), not the
+    proxy (the setting is on).
+    """
+    try:
+        from . import telemetry as _t
+
+        settings = _t.load_telemetry_settings()
+        if not settings.sharing_enabled:
+            return CheckResult(
+                name="telemetry_destination",
+                ok=True,
+                detail="sharing is off — nothing is sent, which is consistent.",
+            )
+        if _t._browser_send_enabled():
+            return CheckResult(
+                name="telemetry_destination",
+                ok=True,
+                detail="sharing is on and a destination is configured.",
+            )
+        return CheckResult(
+            name="telemetry_destination",
+            ok=False,
+            detail=("sharing is ON but no destination is configured, so every "
+                    "event is silently discarded. Counting activations will "
+                    "report zero users whether or not anyone installed."),
+            fix=("set TRINITY_TELEMETRY_ENDPOINT, or provide the GA4 "
+                 "measurement_id + api_secret env vars, or turn sharing off "
+                 "so the state is honest"),
+        )
+    except Exception as exc:  # never let a health check crash the report
+        return CheckResult(
+            name="telemetry_destination",
+            ok=False,
+            detail=f"could not resolve telemetry destination: {exc}",
+            fix="inspect ~/.trinity/settings/ — the telemetry settings may be malformed",
+        )
+
+
 def _check_retired_dirs_reclaimable() -> CheckResult:
     """Surface disk + FILE COUNT held by directories no live code reads.
 
@@ -1157,6 +1204,7 @@ def run_doctor() -> DoctorReport:
     report.checks.append(_check_browser_capture())
     report.checks.append(_check_vendor_published())
     report.checks.append(_check_retired_dirs_reclaimable())
+    report.checks.append(_check_telemetry_destination())
     return report
 
 
