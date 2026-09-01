@@ -2483,7 +2483,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
                   class="suggestion-chip"
                   style="margin-left: auto; padding: 4px 10px; font-size: 12px; cursor: pointer;"
                   :disabled="refreshMemoryStatus === 'running'"
-                  title="Runs dream: ~10+ model calls over several minutes on your own subscription"
+                  title="Rebuilds your lens (lens --deep): ~10+ model calls over several minutes on your own subscription"
                   @click="refreshMemory">
             <span v-if="refreshMemoryStatus === 'running'">
               <span class="spinner" aria-hidden="true" style="display: inline-block; width: 10px; height: 10px; border-width: 1px; vertical-align: -1px; margin-right: 4px;"></span>
@@ -2523,7 +2523,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
              like a free one-click refresh, so this line discloses the real
              cost honestly (lead with the answer, no scaremongering). -->
         <p class="meta" style="margin-top: 4px; font-size: 11px;">
-          Refresh memory runs <code>dream</code> — ~10+ model calls over several minutes; Repair extension dispatches a full council. Both run on your own subscription.
+          Refresh memory rebuilds your lens (<code>lens --deep</code>) — ~10+ model calls over several minutes; Repair extension dispatches a full council. Both run on your own subscription.
         </p>
         <!-- Co-located failure detail (#242(a) class): the WHY a Refresh /
              Repair dispatch failed stays on this card. Before, the bare button

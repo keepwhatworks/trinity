@@ -29,12 +29,22 @@ _PATTERNS = (
 )
 
 
+# Health checks are the LARGEST class of green in the repo and were invisible to
+# the name patterns above: `CheckResult(ok=True, …)` carries no `_recommended`
+# suffix. That blind spot is how the telemetry no-op sat under a green for
+# months with this ratchet passing (res_112 era, fixed 2026-08-30). Every
+# `_check_*` in health_checks.py is now a registered green or a red test.
+_HEALTH_CHECK = re.compile(r"^def (_check_[a-z_]+)\(", re.M)
+
+
 def _decision_greens_in_src() -> set[str]:
     names: set[str] = set()
     for py in _SRC.rglob("*.py"):
         text = py.read_text(encoding="utf-8", errors="replace")
         for pat in _PATTERNS:
             names.update(pat.findall(text))
+    hc = (_SRC / "health_checks.py").read_text(encoding="utf-8", errors="replace")
+    names.update(_HEALTH_CHECK.findall(hc))
     return names
 
 

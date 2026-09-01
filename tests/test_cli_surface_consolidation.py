@@ -25,7 +25,7 @@ from trinity_local.main import (
 class TestUserFacingSurface:
     # trust added 2026-07-18 — the founder's council/trust/search spine makes the
     # disagreement-ledger verb headline. dream/lens demotion is the next surface pass.
-    _EXPECTED = ("lens", "council", "trust", "dream", "status", "install")
+    _EXPECTED = ("lens", "council", "trust", "status", "install")
 
     def test_user_facing_set_is_exactly_six(self):
         """Surface guard: exactly the 6 user-facing verbs, in product-first order

@@ -30,11 +30,16 @@ from types import SimpleNamespace
 
 
 def register(subparsers):
+    _ALIAS = ("(Compatibility alias for `lens --deep`, 2026-07-04 — one concept.) "
+              "Mine your history: discover cross-provider question pairs, synthesize "
+              "each as a virtual council, rebuild the lens.")
     sp = subparsers.add_parser(
         "dream",
-        help="(Compatibility alias for `lens --deep`, 2026-07-04 — one concept.) "
-             "Mine your history: discover cross-provider question pairs, synthesize "
-             "each as a virtual council, re-consolidate routing, rebuild the lens.",
+        help=_ALIAS,
+        # `dream` is hidden from the top-level --help (main.USER_FACING_COMMANDS), so
+        # the description is the only place a power user typing `dream --help`
+        # learns it is the same thing as `lens --deep`.
+        description=_ALIAS,
     )
     sp.add_argument(
         "--similarity-threshold",

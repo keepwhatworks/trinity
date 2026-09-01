@@ -585,6 +585,10 @@ class TestSoftDegradedSurfacing:
         checks read "(0 optional gaps)"/"green" above 3 warnings."""
         import re
         from trinity_local.health_checks import CheckResult
+        from trinity_local.commands import status as status_mod
+        # This test is about a USED install. On a fresh one the first-run rung
+        # collapses the cold-start checks — that case is pinned by the sibling below.
+        monkeypatch.setattr(status_mod, "_first_run_rung", lambda *a, **k: None)
         out = self._run(tmp_path, monkeypatch, capsys, [
             CheckResult(name="trinity_home_writeable", ok=True, detail="ok"),
             CheckResult(name="provider:claude", ok=True, detail="ready"),
@@ -601,6 +605,28 @@ class TestSoftDegradedSurfacing:
             f"header claims {header_gaps} gaps but {warning_count} ⚠ shown "
             f"(3 soft-degraded checks): {health_block!r}"
         )
+
+    def test_fresh_install_header_counts_only_what_the_rung_leaves_visible(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Same invariant on a FRESH home: the first-run rung subsumes lens_built
+        and core_distilled, so the header must count the one ⚠ that still
+        prints (vocab), not the three the doctor reported — and say 'first run'."""
+        import re
+        from trinity_local.health_checks import CheckResult
+        out = self._run(tmp_path, monkeypatch, capsys, [
+            CheckResult(name="trinity_home_writeable", ok=True, detail="ok"),
+            CheckResult(name="provider:claude", ok=True, detail="ready"),
+            CheckResult(name="lens_built", ok=True, detail="lens not built", fix="trinity-local lens"),
+            CheckResult(name="core_distilled", ok=True, detail="core not distilled", fix="trinity-local lens"),
+            CheckResult(name="vocab", ok=True, detail="vocab not built", fix="trinity-local lens"),
+        ])
+        health_block = out.split("Health:")[1].split("Schema:")[0]
+        assert "▶ First run" in health_block and "first run" in health_block.split("\n")[0]
+        assert "lens not built" not in health_block and "core not distilled" not in health_block
+        warning_count = health_block.count("⚠")
+        m = re.search(r"\((\d+) optional gap", health_block)
+        assert m and int(m.group(1)) == warning_count == 1, health_block
 
     def test_fully_healthy_install_shows_no_degradation_noise(
         self, tmp_path, monkeypatch, capsys

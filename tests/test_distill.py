@@ -450,9 +450,16 @@ class TestDeepFlagDelegation:
         parser = main_module.build_parser()
         sub = next(a for a in parser._actions
                    if isinstance(a, argparse._SubParsersAction))
-        dream_help = next(ca.help for ca in sub._choices_actions
-                          if ca.dest == "dream")
-        assert "lens --deep" in dream_help and "alias" in dream_help.lower()
+        # Hidden from the advertised list (2026-08-31: a first-time user saw
+        # `dream` and `lens --deep` as two things) …
+        assert all(ca.dest != "dream" for ca in sub._choices_actions), (
+            "`dream` is advertised in --help again; it folded into `lens --deep`"
+        )
+        # … still callable for launchpad dispatch and old scripts …
+        assert "dream" in sub.choices
+        # … and `trinity-local dream --help` itself says it is an alias.
+        desc = sub.choices["dream"].description or ""
+        assert "lens --deep" in desc and "alias" in desc.lower()
 
 
 class TestLensSatelliteFlags:

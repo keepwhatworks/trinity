@@ -64,3 +64,7 @@ internal/experiments/memory_bakeoff/*.jsonl
 internal/experiments/memory_bakeoff/results/retrieval_*.jsonl
 internal/experiments/memory_bakeoff/results/retr_*.jsonl
 internal/experiments/memory_bakeoff/*.npz
+
+# GA4 ingestion credentials are injected into the WHEEL at publish time,
+# never committed — this repo mirrors publicly.
+src/trinity_local/_ga4_bundled.py

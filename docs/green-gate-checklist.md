@@ -76,6 +76,24 @@ with its classification and gate.
 
 | Green | File | Classification | Gate |
 |---|---|---|---|
+| `_check_trinity_home` | `health_checks.py` | hard (ok=False blocks) | `~/.trinity` resolves AND is writeable — a read-only parent raises inside `state_dir()` and is caught as the failure, not swallowed |
+| `_check_provider` | `health_checks.py` | hard, per provider | installed → auth indicator present → dispatch shape; any leg missing is ok=False with the exact login/install command |
+| `_check_config` | `health_checks.py` | hard | config parses AND ≥1 provider enabled; an empty provider set is refused, not treated as "nothing to do" |
+| `_check_mcp_available` | `health_checks.py` | hard | the `mcp` extra imports; without it `--mcp` cannot start, so this cannot be soft |
+| `_check_skill_freshness` | `health_checks.py` | soft (ok=True + fix) | cloned skill SHA vs remote; informational — a stale skill degrades, it does not break |
+| `_check_dispatch_ready` | `health_checks.py` | hard when the extension is installed | Native Messaging host registered AND resolvable; absent extension = not-applicable, not green |
+| `_check_prompts_seeded` | `health_checks.py` | soft | ≥1 prompt node indexed; suppressed under the first-run rung (status.py `_COLD_START_CHECKS`) |
+| `_check_embedding_coverage` | `health_checks.py` | soft, data floor | FRACTION of nodes embedded (#235); a green requires the fraction, never "the embedder exists" |
+| `_check_lens_built` | `health_checks.py` | soft | `lens.md` exists with ≥1 tension heading; an empty file is not built |
+| `_check_core_distilled` | `health_checks.py` | soft | `core.md` exists AND is not a provider error string (core_gate `looks_like_provider_error`, res_08x) |
+| `_check_vendor_published` | `health_checks.py` | soft | every `VENDORED_FILES` entry present under `portal_pages/vendor/` — the list is the invariant |
+| `_check_lens_freshness` | `health_checks.py` | soft, time floor | vocabulary/topics mtime vs newest council; advice-closure test pins that `trinity-local lens` clears it |
+| `_check_data_degeneracy` | `health_checks.py` | soft, data-directive | runs `degeneracy.sweep()`; green only when the sweep returns zero findings, and the sweep itself refuses on the TF-IDF stub |
+| `_check_embedding_backend` | `health_checks.py` | soft, degraded-honesty (#238) | real MLX/torch embedder produces a 768-d vector on a probe string; the SHA-1 fallback is reported, never counted as embedded |
+| `_check_council_breadth` | `health_checks.py` | soft, degraded-honesty (#238) | ≥2 authed providers; below that a council is a monologue and `run_council` emits `reduced_mode` |
+| `_check_browser_capture` | `health_checks.py` | soft | v1.6 preflight: host registered + extension id accepted; absence is disclosed, not green |
+| `_check_telemetry_destination` | `health_checks.py` | **hard when sharing is on** | a destination RESOLVES (custom endpoint or GA4 pair, env then bundled); sharing-on with no destination is ok=False. Degenerate test: `tests/test_telemetry_destination_guard.py` (mutation-proven both ways) |
+| `_check_retired_dirs_reclaimable` | `health_checks.py` | soft, informational | byte + file counts of dirs no live code reads; the `rm -rf` fix is printed with exact paths |
 | `flip_recommended` | `me/holdout_scorer.py` | **data-directive** (promote geometry to spine) | `wins_all AND coverage ≥ COVERAGE_FLOOR (0.5)` + `N_C_FLOOR=5` + `MIN_DISCORDANT_PAIRS=10`, all pre-registered |
 | `auto_iterate_recommended` | `mcp_server.py` | heuristic hint (task *shape*, no data floor) | `polish` — polish-shaped task detection; offers iteration, no data-quality claim |
 | `should_auto_council` | `mcp_server.py` | heuristic hint (route *mode*, no data floor) | `mode == "council"` — derived from the routing decision, no data-quality claim |

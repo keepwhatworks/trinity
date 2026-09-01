@@ -9,7 +9,6 @@ the same backstop now:
   - lens_registry.save_registry
   - basins.save_basins            (also made atomic)
   - pair_mining.save_lenses       (lenses + orderings)
-  - cortex.save_routing_patterns  (refuse cliff-drop of populated picks)
   - me_builder.build_me empty-chairman branch (preserve lens.md, don't clobber)
 
 One clobber-guard test per store. All share the threshold semantics from
@@ -160,53 +159,6 @@ class TestLensesClobberGuard:
         save_lenses(self._pairs(6), [], allow_shrink=True)
         save_lenses(self._pairs(8), [])
         assert len(load_lenses()) == 8
-
-
-# ---------------------------------------------------------------------------
-# cortex.save_routing_patterns (refuse cliff-drop of populated picks)
-# ---------------------------------------------------------------------------
-@pytest.mark.usefixtures("patch_trinity_home")
-class TestRoutingPatternsClobberGuard:
-    def _patterns(self, n):
-        # POST-COLLAPSE (#298): picks are the flat lens-basin tally. The clobber
-        # guard is schema-agnostic (it counts entries), so the invariant
-        # "refuse a cliff-drop of a populated picks store" holds on plain dicts.
-        return {
-            f"b{i:02d}": {
-                "winner": "claude",
-                "count": 10,
-                "margin": 0.5,
-                "n_episodes": 10,
-                "evidence": [],
-            }
-            for i in range(n)
-        }
-
-    def test_cliff_drop_refused_and_picks_preserved(self):
-        from trinity_local.cortex import (
-            load_routing_patterns,
-            save_routing_patterns,
-        )
-        from trinity_local.state_paths import cortex_routing_patterns_path
-
-        save_routing_patterns(
-            self._patterns(_CLOBBER_MIN_EXISTING + 1), allow_shrink=True
-        )
-        with pytest.raises(DegenerateExtractionError):
-            save_routing_patterns({})  # consolidation produced nothing
-        assert len(load_routing_patterns()) == _CLOBBER_MIN_EXISTING + 1
-        path = cortex_routing_patterns_path()
-        assert (path.parent / (path.name + ".degenerate")).exists()
-
-    def test_allow_shrink_escape_hatch(self):
-        from trinity_local.cortex import (
-            load_routing_patterns,
-            save_routing_patterns,
-        )
-
-        save_routing_patterns(self._patterns(6), allow_shrink=True)
-        save_routing_patterns({}, allow_shrink=True)
-        assert load_routing_patterns() == {}
 
 
 # ---------------------------------------------------------------------------

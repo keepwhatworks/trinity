@@ -262,8 +262,10 @@ def _seed_topics_and_picks(tmp_path, basins, picks):
     (tmp_path / "memories" / "topics.json").write_text(
         json.dumps({"basins": basins}), encoding="utf-8"
     )
-    from trinity_local import cortex
-    cortex.save_routing_patterns(picks, allow_shrink=True)
+    from trinity_local.state_paths import cortex_routing_patterns_path
+    path = cortex_routing_patterns_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(picks), encoding="utf-8")
 
 
 def _pick(winner, *, count=4, margin=0.5, evidence=None):
@@ -754,6 +756,23 @@ class TestMcpProviderPool:
         pool = mcp_server._full_provider_pool()
         # Should still return the local-model list even though config failed.
         assert pool == ["ollama:qwen3:32b"]
+
+    def test_full_pool_refuses_an_empty_pool_instead_of_routing_to_nobody(self, monkeypatch):
+        """Config unreadable AND no local models: the old code returned [] and
+        `ask` proceeded with nobody to route to and nothing said why (2026-08-31
+        silent-failure census — the one MCP swallow that hid a contract failure).
+        A broken config still falls through to local models; an EMPTY result is
+        a hard error the handler turns into ErrorData."""
+        from trinity_local import mcp_server, local_models
+        import trinity_local.config as cfg_mod
+
+        def broken_load():
+            raise RuntimeError("config file missing")
+        monkeypatch.setattr(cfg_mod, "load_config", broken_load)
+        monkeypatch.setattr(local_models, "detect_local_models", lambda: [])
+
+        with pytest.raises(RuntimeError, match="no providers available.*config unreadable"):
+            mcp_server._full_provider_pool()
 
     def test_full_pool_handles_detection_error_gracefully(self, monkeypatch):
         """Broken Ollama daemon shouldn't crash the pool either."""

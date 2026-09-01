@@ -40,6 +40,8 @@ remain importable for the launchpad but are not exposed via MCP.
 """
 from __future__ import annotations
 
+import sys
+
 import json
 import threading
 from typing import Any
@@ -86,7 +88,8 @@ def members_from_responses(responses: list) -> list:
     corpus. Effort is part of the identity unit (model x size x effort), so a dropped
     leg is lost resolution, not bookkeeping: three effort sub-cells clear MIN_TALLY_N
     on the clean tally (Fable high 15W-7L, Gemini 3.1 high 30W-57L, GPT-5.5 xhigh
-    17W-12L = 58.6%, CI [0.41, 0.75], includes chance) and NOT ONE has a sibling —
+    35W-31L = 53% on the current key, CI [0.41, 0.75], includes chance — the
+    17W-12L = 58.6% this once read was an earlier, smaller tally) and NOT ONE has a sibling —
     no model x version has a second level on file, precisely because the other legs
     were never recorded, so there is no within-model pair a contrast could be read
     from. (This comment said "exactly ONE effort sub-cell" until 2026-07-31; that
@@ -1340,13 +1343,21 @@ def _full_provider_pool() -> list[str]:
     from .local_models import detect_local_models
 
     pool: list[str] = []
+    config_error: str | None = None
+    # A broken config falls through to local models (an Ollama-only user has a
+    # legitimate pool with no config) — but the failure is no longer SILENT: it
+    # goes to stderr, and if NOTHING is left after both legs the call errors
+    # instead of proceeding with nobody to route to (2026-08-31 review,
+    # silent-failure census: this was the one swallow that hid a contract failure).
     try:
         config = load_config()
         for p in config.providers.values():
             if p.enabled:
                 pool.append(p.name)
-    except Exception:
-        pass
+    except Exception as exc:
+        config_error = f"{type(exc).__name__}: {exc}"
+        print(f"trinity-local: provider config unreadable ({config_error}); "
+              "falling through to local models only", file=sys.stderr)
     try:
         for m in detect_local_models():
             pool.append(m.provider_name)
@@ -1363,6 +1374,12 @@ def _full_provider_pool() -> list[str]:
         sick = [p for p in pool if p in unhealthy]
         pool = healthy + sick
 
+    if not pool:
+        raise RuntimeError(
+            "no providers available: "
+            + (f"config unreadable ({config_error}) and " if config_error else "")
+            + "no local models detected"
+        )
     return pool
 
 
@@ -1403,7 +1420,10 @@ async def _ask(args: dict) -> list[Any]:
     # pool (config providers + detected local models). This is what makes
     # ask aware of Ollama / MLX without each call having to declare them.
     if available is None:
-        available = _full_provider_pool()
+        try:
+            available = _full_provider_pool()
+        except Exception as exc:  # config unreadable — say so instead of routing to nobody
+            return [ErrorData(code=500, message=f"provider config unreadable: {exc}")]
 
     top_k = int(args.get("top_k", 5))
 

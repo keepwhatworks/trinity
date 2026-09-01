@@ -50,7 +50,7 @@ refreshes every thinking memory: the routing freeze, the LLM-free
 `vocabulary.md` scan (folded in 2026-07-04 so the staleness warning's own
 advice can clear it), and the `core.md` distill. `lens --deep` first mines
 your history (discover cross-provider question pairs, synthesize each as a
-virtual council, re-consolidate routing basins), then runs the same build:
+virtual council), then runs the same build:
 the one-command cold start. (`dream` survives only as a compatibility alias
 for `--deep`, folded 2026-07-04. `lens --only-distill` is the ~20s core.md
 refresh.) Rule of thumb: `lens` = refresh what you have. `lens --deep` = also
@@ -90,8 +90,9 @@ measured at zero real uses ever, and is wire-compat only). The personal routing
 table is computed on demand from `~/.trinity/council_outcomes/*.json`. The
 chairman's pick per council is the supervision signal. (The user-verdict
 override layer, `council_feedback.jsonl`, was retired 2026-06-05. The user
-never picks, rates, or vetoes.) `consolidate` additionally tallies the
-recency-weighted chairman winner per lens basin into `scoreboard/picks.json`. (The `ask`-side consumer of that tally was removed 2026-08-11 — replayed at 42.9% vs a constant's 37.0%, chance-level — so the tally is bookkeeping, not a router.)
+never picks, rates, or vetoes.) A `consolidate` stage once tallied the
+recency-weighted chairman winner per lens basin into `scoreboard/picks.json`; it
+left with the router on 2026-08-11 and that file is now an inert historical artifact. (The `ask`-side consumer of that tally was removed 2026-08-11 — replayed at 42.9% vs a constant's 37.0%, chance-level — so the tally is bookkeeping, not a router.)
 `ask` then routes future queries through the same basin centroids on that
 winner.
 

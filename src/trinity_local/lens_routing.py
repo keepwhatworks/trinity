@@ -204,7 +204,7 @@ def classify_basins(rules: dict, basin_ids: set[str] | None = None) -> dict[str,
 #   * more than MAX_ORPHAN_DROP_FRACTION of the rules would go → that is not a
 #     few stragglers, it is a whole-scheme change (renamed ids, a different
 #     splitter). Keep everything and surface it; a human decides.
-# Same shape as the #194 clobber guard on `save_routing_patterns`.
+# Same shape as the #194 clobber guard on `save_preference_acts`.
 MIN_BASINS_FOR_PRUNE = 5
 MAX_ORPHAN_DROP_FRACTION = 0.5
 

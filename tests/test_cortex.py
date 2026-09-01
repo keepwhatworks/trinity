@@ -13,10 +13,8 @@ from __future__ import annotations
 
 import json
 
-from trinity_local.cortex import (
-    load_routing_patterns,
-    save_routing_patterns,
-)
+from trinity_local.cortex import load_routing_patterns
+from trinity_local.state_paths import cortex_routing_patterns_path
 
 
 def _pick(winner: str, *, count: int = 4, margin: float = 0.5, evidence=None) -> dict:
@@ -41,7 +39,9 @@ class TestLoadSaveRoundtrip:
             "b00": _pick("claude", count=6, margin=0.42, evidence=["c1", "c2"]),
             "b01": _pick("codex", count=3, margin=0.2),
         }
-        save_routing_patterns(picks)
+        path = cortex_routing_patterns_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(picks), encoding="utf-8")
         loaded = load_routing_patterns()
         assert set(loaded.keys()) == {"b00", "b01"}
         assert loaded["b00"]["winner"] == "claude"

@@ -14,9 +14,10 @@ recency-weighted chairman winner. No trust score, no separate cortex centroids
 (so #277 is structurally impossible — the only centroids are the lens's, always
 in the live space), no per-basin LLM call.
 
-What survives here is the picks-store I/O: `load_routing_patterns` /
-`save_routing_patterns` (read/write `~/.trinity/scoreboard/picks.json`, with the
-#194 clobber guard) and the `cortex_routing_patterns_path` alias. The
+What survives here is READ-ONLY: `load_routing_patterns` (read
+`~/.trinity/scoreboard/picks.json`) and the `cortex_routing_patterns_path` alias.
+`save_routing_patterns` was retired 2026-08-31 — after the 2026-08-11 consumer
+removal it had no production caller, only tests (retired_names.py). The
 staleness primitives went with the `consolidate` verb on 2026-08-11 — nothing
 can re-consolidate picks.json, so "these picks are stale" had no remedy to
 offer. The picks-store schema is the flat lens-basin tally
@@ -50,54 +51,4 @@ def load_routing_patterns() -> dict[str, dict]:
     if not isinstance(data, dict):
         return {}  # corrupted-but-parseable wrong shape (list/str) → no patterns
     return {bid: raw for bid, raw in data.items() if isinstance(raw, dict)}
-
-
-def save_routing_patterns(
-    patterns: dict[str, dict], *, allow_shrink: bool = False
-) -> None:
-    """Write the lens-derived routing picks to `~/.trinity/scoreboard/picks.json`
-    atomically. (Function name preserved; file path moved during pre-launch
-    migrations — see `load_routing_patterns()` for lineage.)
-
-    POST-COLLAPSE (#298): values are plain dicts
-    (`{winner, count, margin, n_episodes, evidence}`) from
-    `lens_routing.compute_basin_routing` — no `RoutingPattern.to_dict()` step.
-
-    Carries the #194 clobber guard: refuse to overwrite a populated picks
-    store with a cliff-drop (empty when >= _CLOBBER_MIN_EXISTING patterns
-    exist, or below _CLOBBER_MIN_FRACTION of the existing count). A
-    consolidation that produced no patterns (every basin fell below
-    min_count, or the lens hasn't been built) would otherwise erase the live
-    routing scoreboard — the chairman's accumulated picks. The live file is
-    preserved and the would-be result lands in a `.degenerate` sidecar.
-    `allow_shrink=True` is the escape hatch."""
-    from .utils import atomic_write_text
-    from .me.turn_pairs import (
-        _CLOBBER_MIN_EXISTING,
-        _CLOBBER_MIN_FRACTION,
-        DegenerateExtractionError,
-    )
-    path = cortex_routing_patterns_path()
-    serialized = {basin_id: dict(p) for basin_id, p in patterns.items()}
-    existing = len(load_routing_patterns())
-    floor = max(1, int(existing * _CLOBBER_MIN_FRACTION))
-    if not allow_shrink and existing >= _CLOBBER_MIN_EXISTING and len(patterns) < floor:
-        sidecar = path.parent / (path.name + ".degenerate")
-        try:
-            sidecar.write_text(json.dumps(serialized, indent=2), encoding="utf-8")
-        except OSError:
-            pass
-        raise DegenerateExtractionError(
-            f"Refusing to overwrite {existing} routing patterns with "
-            f"{len(patterns)} (cliff-drop below {floor}). Live picks "
-            f"preserved; degenerate result written to "
-            f"{sidecar.name}. Pass allow_shrink=True only if the basin set "
-            f"genuinely shrank."
-        )
-    atomic_write_text(path, json.dumps(serialized, indent=2))
-
-
-
-
-
 

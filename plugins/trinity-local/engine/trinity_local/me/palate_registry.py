@@ -246,8 +246,7 @@ def rank_options(options: list[str], embed_fn=None) -> dict:
     advisory_only, live_accuracy, decided_trials, reason?}. LLM-free: two
     local embeddings per option. Never raises."""
     try:
-        import json as _json
-
+    
         import numpy as np
 
         if not options or len(options) < 2:

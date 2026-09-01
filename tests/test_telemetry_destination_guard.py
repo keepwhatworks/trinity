@@ -74,3 +74,55 @@ class TestTelemetryDestinationGuard:
         assert "telemetry_destination" in names, (
             "the check exists but nothing calls it — a guard nobody runs is decoration"
         )
+
+
+class TestBundledCredentials:
+    """A shipped wheel must be able to report; a git checkout must not leak.
+
+    `pip install trinity-local` sets no env vars, so env-only lookup shipped an
+    install that discarded every event. The pair now travels in the wheel and is
+    gitignored, because this repo mirrors publicly and a committed api_secret is
+    a published one.
+    """
+
+    def test_absent_bundle_leaves_the_env_path_unchanged(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        monkeypatch.delenv("TRINITY_GA4_MEASUREMENT_ID", raising=False)
+        monkeypatch.delenv("TRINITY_GA4_API_SECRET", raising=False)
+        monkeypatch.setattr(telemetry, "_bundled_ga4_credentials", lambda: None)
+        assert telemetry._ga4_credentials() is None, (
+            "with no env and no bundle the documented no-op must still hold"
+        )
+
+    def test_bundle_is_used_when_env_is_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        monkeypatch.delenv("TRINITY_GA4_MEASUREMENT_ID", raising=False)
+        monkeypatch.delenv("TRINITY_GA4_API_SECRET", raising=False)
+        monkeypatch.setattr(telemetry, "_bundled_ga4_credentials",
+                            lambda: ("G-BUNDLED01", "bundled"))
+        assert telemetry._ga4_credentials() == ("G-BUNDLED01", "bundled"), (
+            "a shipped install has only the bundle — if it is ignored the wheel "
+            "is back to silently discarding every event"
+        )
+
+    def test_env_wins_over_bundle(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+        monkeypatch.setenv("TRINITY_GA4_MEASUREMENT_ID", "G-ENVWINS01")
+        monkeypatch.setenv("TRINITY_GA4_API_SECRET", "envsecret")
+        monkeypatch.setattr(telemetry, "_bundled_ga4_credentials",
+                            lambda: ("G-BUNDLED01", "bundled"))
+        assert telemetry._ga4_credentials() == ("G-ENVWINS01", "envsecret"), (
+            "a developer must be able to point a checkout at their own property "
+            "without rebuilding the package"
+        )
+
+    def test_the_generated_module_is_gitignored(self):
+        import subprocess
+        r = subprocess.run(
+            ["git", "check-ignore", "src/trinity_local/_ga4_bundled.py"],
+            capture_output=True, text=True)
+        assert r.returncode == 0, (
+            "src/trinity_local/_ga4_bundled.py is NOT gitignored. This repo "
+            "mirrors to a public repository, so committing it publishes the "
+            "ingestion secret."
+        )

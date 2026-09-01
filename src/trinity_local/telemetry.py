@@ -603,9 +603,33 @@ def launchpad_telemetry_state() -> dict[str, Any]:
 #   - Best-effort: HTTP failures are swallowed; telemetry must never
 #     fail-open into a user-visible error.
 
+def _bundled_ga4_credentials() -> tuple[str, str] | None:
+    """Credentials shipped INSIDE the wheel, absent from git.
+
+    A pip install has no GA4 env vars, so env-only lookup meant every shipped
+    install silently sent nothing (see health_checks._check_telemetry_destination).
+    The fix cannot be to COMMIT the pair: this repo mirrors to a public
+    repository, so a committed api_secret is a published one.
+
+    So the module is written at PUBLISH time from the maintainer's environment
+    and is gitignored. Absent — every dev checkout, every contributor — this
+    returns None and the env path below is unchanged. A GA4 api_secret is a
+    write-only ingestion key by design: the worst case is junk events in the
+    property, not data disclosure. It is not a password and must never be
+    treated as one.
+    """
+    try:
+        from . import _ga4_bundled  # type: ignore[attr-defined]
+    except Exception:
+        return None
+    mid = str(getattr(_ga4_bundled, "MEASUREMENT_ID", "") or "").strip()
+    sec = str(getattr(_ga4_bundled, "API_SECRET", "") or "").strip()
+    return (mid, sec) if mid and sec else None
+
+
 def _ga4_credentials() -> tuple[str, str] | None:
-    """Return (measurement_id, api_secret) when both env vars are set,
-    else None (causes silent no-op).
+    """Return (measurement_id, api_secret) from env, else the bundled pair,
+    else None (which causes the documented silent no-op).
 
     Measurement ID format is `G-XXXXXXXXXX` (not the numeric property
     ID — different field in GA4 admin). API secret is created at
@@ -613,9 +637,12 @@ def _ga4_credentials() -> tuple[str, str] | None:
     """
     measurement_id = os.environ.get("TRINITY_GA4_MEASUREMENT_ID", "").strip()
     api_secret = os.environ.get("TRINITY_GA4_API_SECRET", "").strip()
-    if not measurement_id or not api_secret:
-        return None
-    return measurement_id, api_secret
+    if measurement_id and api_secret:
+        return measurement_id, api_secret
+    # ENV WINS so a developer can always point a checkout at their own property
+    # without rebuilding. The bundled pair is the fallback that makes a shipped
+    # install able to report at all.
+    return _bundled_ga4_credentials()
 
 
 def _send_event_to_ga4(

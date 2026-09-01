@@ -61,6 +61,45 @@ def _topics_summary(path) -> str:
         return ""
 
 
+# The soft checks a first-run rung subsumes. Each of these is CORRECT on its
+# own; together on an empty home they are five answers to "what do I do first".
+_COLD_START_CHECKS = frozenset({
+    "prompts_seeded", "lens_built", "core_distilled", "lens_freshness",
+    "embedding_coverage", "data_degeneracy",
+    # NOT embedding_backend: running on the TF-IDF fallback is a capability
+    # degradation with its own fix, and #273 forbids it ever going silent.
+})
+
+
+def _first_run_rung(health, council_count: int, total_transcripts: int) -> dict | None:
+    """One next command for a fresh install, or None once the install has history.
+
+    Fresh = no council has ever run AND the lens has never been built. The rung
+    depends on whether the harness dirs already hold transcripts: with history,
+    the deep build is the whole cold start in one command; with none, there is
+    nothing to mine yet and the honest first step is a council, which needs
+    nothing. Returns None (no rung, no suppression) the moment either signal
+    shows the install is no longer fresh, so a used install never sees this.
+    """
+    try:
+        lens_missing = any(c.name == "lens_built" and c.ok and c.fix for c in health.checks)
+    except Exception:
+        return None
+    if council_count > 0 or not lens_missing:
+        return None
+    if total_transcripts > 0:
+        return {
+            "detail": (f"First run. You already have {total_transcripts:,} transcripts across "
+                       "your CLIs — build your lens from them in one command (~5-15 min)."),
+            "fix": "trinity-local lens --deep",
+        }
+    return {
+        "detail": ("First run. Nothing to build from yet — start with a council; it "
+                   "needs no history. Your lens builds itself once you have some."),
+        "fix": 'type /trinity in Claude Code   # or: trinity-local council "<a question you would ask three models>"',
+    }
+
+
 def handle_status(args):
     # Health (absorbed from former `doctor` command).
     health = run_doctor()
@@ -196,6 +235,7 @@ def handle_status(args):
             "todos": task_count,
             "reviews": review_count,
             "councils": council_count,
+            "first_run": _first_run_rung(health, council_count, total_transcripts),
             "drift_alerts": len(drift_alerts),
             # Empty list when no signals fire — parallel to human
             # surface staying silent. Always present in payload so
@@ -227,7 +267,16 @@ def handle_status(args):
     # Health (one-line verdict from doctor checks). Full per-check
     # detail surfaces on health failure via `--json` or by calling
     # run_doctor() / format_human() directly.
-    print(f"  Health:    {format_one_line(health)}")
+    first_run = _first_run_rung(health, council_count, total_transcripts)
+    # The header must count the ⚠ lines actually printed beneath it (test_status
+    # pins that invariant). When the first-run rung subsumes the cold-start checks,
+    # the header is computed over the checks that stay visible, and says so.
+    if first_run:
+        from ..health_checks import DoctorReport
+        shown = DoctorReport(checks=[c for c in health.checks if c.name not in _COLD_START_CHECKS])
+        print(f"  Health:    {format_one_line(shown)} · first run")
+    else:
+        print(f"  Health:    {format_one_line(health)}")
     # Soft-degraded checks PASS (ok=True) but carry a fix — the embedding
     # backend on the SHA-1 TF-IDF fallback is the load-bearing one (#273):
     # the one-line verdict says "all green", and format_human only prints
@@ -235,7 +284,19 @@ def handle_status(args):
     # "all green while embeddings silently degraded". Surface them right under
     # the verdict so a thin lens / keyword-shaped tensions have a visible
     # explanation. Empty on a fully-wired install (no soft check has a fix).
+    # FIRST RUN COLLAPSE. On an empty home every soft check fires at once and a
+    # brand-new user sees five ⚠ lines pointing at five different commands, with
+    # the one meant to be "the one-command cold start" listed last (verified on
+    # a real curl|bash install into a throwaway HOME, 2026-08-31). A ladder has
+    # exactly one next rung. While the install is fresh, print that rung and
+    # suppress the cold-start checks it subsumes; everything unrelated (telemetry
+    # destination, reclaimable dirs, skill freshness) still prints.
+    if first_run:
+        print(f"             ▶ {first_run['detail']}")
+        print(f"               └─ run: {first_run['fix']}")
     for c in health.checks:
+        if first_run and c.name in _COLD_START_CHECKS:
+            continue
         if c.ok and c.fix:
             print(f"             ⚠ {c.detail}")
             print(f"               └─ run: {c.fix}")
@@ -474,6 +535,8 @@ def handle_status(args):
                 have_eval = eval_set_available()
             except Exception:
                 have_eval = True  # never let the gate itself suppress the news
+            if _first_run_rung(health, council_count, total_transcripts):
+                new_models = []   # a zero-council install has no taste to score a model against yet
             print("  New models:")
             for ev in new_models:
                 if have_eval:

@@ -64,6 +64,23 @@ class RetirementRecord:
 # Add entries in the SAME commit as the deletion. Sorted by retirement
 # date (most recent first) for ease of audit.
 RETIRED: dict[str, RetirementRecord] = {
+    "trinity_local.cortex.save_routing_patterns": RetirementRecord(
+        name="trinity_local.cortex.save_routing_patterns",
+        retired_at="2026-08-31",
+        commit="cleanup-2026-08-31",
+        replacement="(none — picks.json is an inert historical artifact; load_routing_patterns stays for the two display readers)",
+        reason=(
+            "The picks.json WRITER outlived the 2026-08-11 consumer removal for the "
+            "same reason the `consolidate` verb had: a producer imports nothing from "
+            "the consumer side, so removal-by-imports never reaches it. After the verb "
+            "went, the only callers were three test files exercising a clobber guard "
+            "on a file nothing writes. CLAUDE.md and docs/architecture.md still "
+            "described `lens --deep -> consolidate -> cortex.py` as a live stage; "
+            "found in the 2026-08-31 coherence sweep and corrected in the same commit."
+        ),
+        kind="function",
+        artifact_persists=True,
+    ),
     # ── 2026-06-05 Stage 4b conflicts retirement (pipeline simplification) ──
     "src/trinity_local/commands/cortex.py": RetirementRecord(
         name="src/trinity_local/commands/cortex.py",

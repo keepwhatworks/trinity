@@ -147,10 +147,12 @@ USER_FACING_COMMANDS = (
     "lens",
     "council",
     "trust",
-    "dream",
     "status",
     "install",
 )
+# `dream` is deliberately NOT here: it folded into `lens --deep` on 2026-07-04
+# (one concept). It stays registered so launchpad dispatch keeps working, but
+# advertising both in --help showed a first-time user two names for one thing.
 
 
 def _hide_non_canonical_from_help(subparsers: argparse._SubParsersAction) -> None:

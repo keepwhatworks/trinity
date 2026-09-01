@@ -239,7 +239,6 @@ def distill_via_chairman(*, provider: str = "claude", force: bool = False) -> di
     if not prompt:
         return {"ok": False, "skipped": True, "reason": "empty prompt (no readable memories)"}
 
-    from pathlib import Path as _Path
     from .config import load_config
     from .providers import make_provider, ProviderError
 

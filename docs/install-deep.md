@@ -59,7 +59,7 @@ bloating the agent's tool list.
 <!-- canonical:install_command -->curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash<!-- /canonical -->
 
 # Then, in Claude Code, just type:  /trinity
-# The skill walks you through status + ingest + dream + your first council.
+# The skill walks you through status + ingest + lens --deep + your first council.
 ```
 
 The `/trinity` skill is the primary entry point. It teaches the full CLI
