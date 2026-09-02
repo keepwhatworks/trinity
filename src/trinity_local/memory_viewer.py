@@ -624,6 +624,11 @@ def render_memory_viewer_html() -> str:
        user can rebuild a memory before staleness signals it (e.g.,
        after a milestone session adds new prompts the lens should see).
        Warm-brown accent reads as "additive" rather than a warning. */
+    .viewer-historical-chip {{
+      display: inline-block; margin-left: 8px; padding: 2px 8px; font-size: 11px;
+      border-radius: 10px; border: 1px solid var(--border);
+      color: var(--meta); background: transparent; cursor: default;
+    }}
     .viewer-rebuild-chip {{
       font-family: "JetBrains Mono", ui-monospace, monospace;
       font-size: 12px;
@@ -1451,7 +1456,12 @@ def render_memory_viewer_html() -> str:
       titleRow.style.flexWrap = "wrap";
       titleRow.style.gap = "6px";
       titleRow.appendChild(el("h2", null, file.name));
-      const rebuildCmd = "trinity-local " + suggestionFor(file.name);
+      // picks.json is HISTORICAL: its writer (consolidate) and reader (the
+      // ask-side router) were removed 2026-08-11, so no command rebuilds it. A
+      // chip that copied `trinity-local lens` here promised a rebuild that
+      // never happens (caught by browser_smoke Surface 18, 2026-09-01).
+      const historical = suggestionFor(file.name) === null;
+      const rebuildCmd = historical ? null : "trinity-local " + suggestionFor(file.name);
       // ↻ Build / ↻ Rebuild — unified copy with launchpad lens-rebuild
       // (tick #76) and cortex-rebuild (tick #77) chips. Tick #79 brought the
       // memory viewer chip in line so the user sees the same affordance
@@ -1475,7 +1485,14 @@ def render_memory_viewer_html() -> str:
         announceCopy("Copied: " + rebuildCmd);
         setTimeout(() => {{ rebuildChip.textContent = buildLabel; }}, 2200);
       }});
-      titleRow.appendChild(rebuildChip);
+      if (historical) {{
+        const hist = el("span", "viewer-historical-chip", "Historical — nothing rebuilds this");
+        hist.title = "Writer and reader removed 2026-08-11; the file is kept for the record.";
+        hist.dataset.file = file.name;
+        titleRow.appendChild(hist);
+      }} else {{
+        titleRow.appendChild(rebuildChip);
+      }}
       wrap.appendChild(titleRow);
       wrap.appendChild(el("p", "meta", file.brain + " · " + file.tagline));
       // Lens-TRUST banner (embedder honesty) — fires BEFORE the staleness banner
@@ -2924,6 +2941,7 @@ def render_memory_viewer_html() -> str:
       if (name === "lens.md" || name === "topics.json") return "lens";
       if (name === "generators.md") return "lens-generators";
       if (name === "routing.json") return "lens";
+      if (name === "picks.json") return null;   // historical: nothing rebuilds it (2026-08-11)
       if (name === "vocabulary.md") return "vocabulary";
       if (name === "core.md") return "lens --only-distill";
       return "lens";

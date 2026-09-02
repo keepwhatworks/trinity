@@ -1259,11 +1259,15 @@ def main() -> int:
         # Every memory's header carries a .viewer-rebuild-chip that copies
         # the corresponding trinity-local subcommand. This is the always-on
         # action affordance (vs the staleness chip which only fires when
-        # _memory_health flags an issue). Walk three memories with distinct
-        # rebuild CLIs to verify the per-file mapping isn't broken.
+        # _memory_health flags an issue). Walk three memories: two with distinct
+        # rebuild CLIs, and one HISTORICAL file that must NOT offer a command —
+        # picks.json lost its writer (consolidate) and reader on 2026-08-11, and a
+        # chip copying `trinity-local lens` there promised a rebuild that never
+        # happens. `None` = assert the rebuild chip is absent and the historical
+        # marker is present.
         rebuild_targets = [
             ("lens.md", "trinity-local lens"),
-            ("picks.json", "trinity-local consolidate"),
+            ("picks.json", None),
             # core.md previously suggested `distill` (hidden in c9b1f9d),
             # then `dream` (folded into `lens --deep` 2026-07-04); the
             # rebuild chip now points at the fast core.md refresh.
@@ -1277,6 +1281,20 @@ def main() -> int:
                 timeout=10000,
             )
             page.wait_for_timeout(200)
+            if expected_cmd is None:
+                r = page.evaluate(
+                    """() => ({
+                      ok: !document.querySelector('.viewer-rebuild-chip')
+                          && !!document.querySelector('.viewer-historical-chip'),
+                      copied: null, expected: None,
+                      reason: document.querySelector('.viewer-rebuild-chip')
+                          ? 'a rebuild chip is offered for a file nothing rebuilds'
+                          : (document.querySelector('.viewer-historical-chip') ? null : 'no historical marker'),
+                      file: (document.querySelector('.viewer-historical-chip') || {}).dataset?.file,
+                    })""".replace("None", "null"),
+                )
+                rebuild_results.append((file_name, r))
+                continue
             r = page.evaluate(
                 """(expected) => new Promise(resolve => {
                   const chip = document.querySelector('.viewer-rebuild-chip');
