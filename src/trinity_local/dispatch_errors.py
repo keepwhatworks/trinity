@@ -20,6 +20,7 @@ we don't accidentally over-match.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 
@@ -48,14 +49,21 @@ class DispatchFailure:
     provider: str
     raw_stderr_excerpt: str
     retry_with_other_provider: bool
+    # When the CLI states when the wall lifts ("try again at 4:12 AM"), keep
+    # it verbatim. A user told "quota exhausted until 4:12 AM" can plan; one
+    # told "member failed" reads it as a Trinity bug.
+    retry_after: str | None = None
 
     def to_dict(self) -> dict:
-        return {
+        out = {
             "kind": self.kind.value,
             "provider": self.provider,
             "retry_with_other_provider": self.retry_with_other_provider,
             "excerpt": self.raw_stderr_excerpt[:200],
         }
+        if self.retry_after:
+            out["retry_after"] = self.retry_after
+        return out
 
 
 # Pattern markers — case-insensitive substring matches. Ordered by recovery
@@ -70,7 +78,17 @@ _PATTERNS_RATE_LIMITED = (
     "429,",
     "request limit",
     "throttle",
-    "usage limit reached",
+    # CAPTURED, not imagined. Until 2026-09-02 this tuple held only
+    # "usage limit reached" -- a phrasing no CLI emits. The string codex
+    # actually prints, observed twice on 2026-08-30 and 2026-08-31, is
+    # "You've hit your usage limit. Upgrade to Pro (...) or try again at
+    # 4:12 AM." It matched NOTHING here, so a real quota wall classified as
+    # UNKNOWN with retry_with_other_provider=False -- the one classification
+    # that tells the caller not to try anyone else. "usage limit" subsumes
+    # both phrasings; the marker stays narrow because this function only
+    # ever sees text from a FAILED dispatch.
+    "usage limit",
+    "purchase more credits",
 )
 
 _PATTERNS_BILLING = (
@@ -116,6 +134,25 @@ _PATTERNS_TIMEOUT = (
 )
 
 
+# "try again at 4:12 AM" / "try again at 09:22" — the reset time codex states.
+# The capture stops at the meridiem so the sentence's own full stop stays out
+# of the value ("try again at 4:12 AM." -> "4:12 AM", not "4:12 AM.").
+_RETRY_AT = re.compile(r"try again at\s+([0-9]{1,2}:[0-9]{2}\s*(?:[AaPp]\.?[Mm])?)")
+
+
+def parse_retry_after(stderr: str | None) -> str | None:
+    """The reset time the CLI stated, verbatim, or None when it stated none.
+
+    Deliberately returns the CLI's own string rather than a parsed datetime:
+    the banner carries no date or timezone, so anything richer would be a
+    guess presented as a fact.
+    """
+    if not stderr:
+        return None
+    m = _RETRY_AT.search(stderr)
+    return m.group(1).strip() if m else None
+
+
 def classify_dispatch_failure(
     *,
     provider: str,
@@ -153,6 +190,7 @@ def classify_dispatch_failure(
             provider=provider,
             raw_stderr_excerpt=stderr,
             retry_with_other_provider=True,
+            retry_after=parse_retry_after(stderr),
         )
 
     if _matches_any(haystack, _PATTERNS_BILLING):
@@ -161,6 +199,7 @@ def classify_dispatch_failure(
             provider=provider,
             raw_stderr_excerpt=stderr,
             retry_with_other_provider=True,
+            retry_after=parse_retry_after(stderr),
         )
 
     if _matches_any(haystack, _PATTERNS_AUTH):

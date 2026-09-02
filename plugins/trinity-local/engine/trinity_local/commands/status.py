@@ -311,6 +311,14 @@ def handle_status(args):
     print()
 
     # Adapters
+    # A provider skipped for quota must SAY so here; a council that quietly
+    # consulted two of three models is the silent-degradation shape (2026-09-02).
+    try:
+        from ..provider_quota import exhausted as _walls
+        for _w in _walls().values():
+            print(f"  Quota:     ⚠ {_w.describe()} — skipped until then; other providers unaffected")
+    except Exception:
+        pass
     print(f"  Adapters:  {len(ready_adapters)}/{len(adapters)} ready, {total_transcripts:,} transcripts total")
     for a in adapters:
         icon = "✅" if a.installed else "❌"

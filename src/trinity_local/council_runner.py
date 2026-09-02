@@ -512,6 +512,36 @@ def run_council(
             # MUST NOT crash the dispatch path.
             pass
 
+    def _note_quota_wall(provider_name: str, stderr_text: str, why: str) -> tuple[str, bool]:
+        """Classify a member failure and remember a usage wall for this process.
+
+        The classifier had the wrong string until 2026-09-02: it carried
+        "usage limit reached", which nothing emits, while codex actually prints
+        "You've hit your usage limit ... try again at 4:12 AM". That real banner
+        classified as UNKNOWN with retry_with_other_provider=False — the one
+        verdict that tells the caller not to try anybody else. Fixed in
+        dispatch_errors from a captured sample.
+
+        Returns the message to show (quota walls get a plain-language one) and
+        whether this was a wall.
+        """
+        from .dispatch_errors import DispatchErrorKind, classify_dispatch_failure
+        from .provider_quota import mark_exhausted
+        try:
+            failure = classify_dispatch_failure(
+                provider=provider_name, returncode=1, stderr=stderr_text
+            )
+        except Exception:
+            return why, False
+        if failure.kind not in (
+            DispatchErrorKind.RATE_LIMITED, DispatchErrorKind.BILLING_EXCEEDED
+        ):
+            return why, False
+        entry = mark_exhausted(
+            provider_name, kind=failure.kind.value, retry_after=failure.retry_after
+        )
+        return entry.describe(), True
+
     def _run_member(provider_name: str) -> MemberExecutionResult:
         provider_config = config.providers.get(provider_name)
         # Effort rotation (default OFF, TRINITY_EFFORT_ROTATION): must happen
@@ -530,12 +560,35 @@ def run_council(
                 },
             )
 
+        # QUOTA WALL ALREADY OBSERVED THIS PROCESS. Dispatching again buys a
+        # second copy of the same banner. The skip is DISCLOSED, never silent:
+        # it lands in metadata.failed_members and in the payload below, so a
+        # council that consulted two of three models says which one it lost
+        # and why (2026-09-02; the same shape that cost res_081/098/112).
+        from .provider_quota import exhausted as _exhausted_providers
+        _wall = _exhausted_providers().get(provider_name)
+        if _wall is not None:
+            update_member_failure(state_token, provider_name, _wall.describe())
+            return MemberExecutionResult(
+                provider_name=provider_name,
+                provider_config=provider_config,
+                error_payload={
+                    "provider": provider_name,
+                    "stage": "member",
+                    "reason": "quota_exhausted",
+                    "detail": _wall.describe(),
+                    "retry_after": _wall.retry_after,
+                    "dispatched": False,
+                },
+            )
+
         provider = make_provider(provider_config)
         try:
             start_member_progress(state_token, provider_name)
             result = provider.run(member_prompt, cwd)
         except Exception as exc:
             error_text = str(exc)
+            error_text, _quota = _note_quota_wall(provider_name, error_text, error_text)
             update_member_failure(state_token, provider_name, error_text)
             _log_council_member_failure(
                 provider_name,
@@ -558,6 +611,7 @@ def run_council(
             why = describe_provider_failure(
                 result.stdout, result.stderr, result.returncode, provider=provider_name
             )
+            why, _quota = _note_quota_wall(provider_name, result.stderr or "", why)
             update_member_failure(state_token, provider_name, why)
             _log_council_member_failure(
                 provider_name,
