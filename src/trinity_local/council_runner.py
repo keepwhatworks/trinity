@@ -399,6 +399,11 @@ class MemberExecutionResult:
     # unstamped council can never gain provenance later — the same argument the
     # effort leg was added under.
     model_echo: str | None = None
+    # What the run COST, when the CLI reports it. Carried for the same reason as
+    # model_echo: the member record is where the ledger reads, and a council
+    # that recorded no cost can never gain it later. None means the CLI said
+    # nothing, never zero (plan item 1B, 2026-09-03).
+    usage: dict | None = None
 
 
 def run_council(
@@ -644,6 +649,7 @@ def run_council(
             stderr=result.stderr,
             stdout=result.stdout,
             model_echo=getattr(result, "model_echo", None),
+            usage=getattr(result, "usage", None),
         )
 
     executions: dict[str, MemberExecutionResult] = {}
@@ -696,6 +702,9 @@ def run_council(
                 "effort_source": _effort_source(execution.provider_config),
                 "model_source": _source,
                 "model_label": _label,
+                # Absent when the CLI reported nothing. to_dict() drops None,
+                # so "no cost recorded" and "cost was zero" stay distinguishable.
+                "usage": execution.usage,
             },
         )
         member_results.append(member)

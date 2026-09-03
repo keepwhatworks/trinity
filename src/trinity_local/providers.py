@@ -48,6 +48,11 @@ class ProviderResult:
     # claude and antigravity print nothing at all, so their labels have no
     # ground truth behind them whatsoever. None here means "not stated".
     model_echo: str | None = None
+    # What the run COST, when the CLI reports it. claude states dollars and a
+    # token breakdown under `--output-format json`; codex states a token total
+    # on stderr; agy states nothing. None means "the CLI did not say", never
+    # zero -- a zero here would read as free (2026-09-03, plan item 1B).
+    usage: dict | None = None
 
 
 class ProviderError(RuntimeError):
@@ -55,6 +60,72 @@ class ProviderError(RuntimeError):
 
 
 _MODEL_ECHO = re.compile(r"(?im)^\s*model:\s*([A-Za-z0-9][\w.\-]*)\s*$")
+
+
+def parse_claude_json(stdout: str | None) -> dict | None:
+    """Unwrap `claude -p --output-format json`, or None if this is not that.
+
+    Returns `{text, usage, model}`. `text` is the `result` field, which is where
+    JSON mode moves the answer -- the reason this switch was deferred until it
+    could be made deliberately rather than as a side effect (see
+    `claude_settings_model`). Every failure path returns None so the caller
+    keeps the raw stdout: a CLI output-format change must not break dispatch on
+    the most-used provider.
+    """
+    if not stdout:
+        return None
+    s = stdout.lstrip()
+    if not s.startswith(("{", "[")):
+        return None
+    try:
+        import json as _json
+
+        d = _json.loads(s)
+        if isinstance(d, list):
+            d = d[-1] if d else {}
+        if not isinstance(d, dict) or "result" not in d:
+            return None
+        u = d.get("usage") or {}
+        usage = {
+            "cost_usd": d.get("total_cost_usd"),
+            "input_tokens": u.get("input_tokens"),
+            "output_tokens": u.get("output_tokens"),
+            "cache_read_tokens": u.get("cache_read_input_tokens"),
+            "cache_creation_tokens": u.get("cache_creation_input_tokens"),
+            "source": "claude_json",
+        }
+        # GROUND TRUTH for claude at last. Until now claude echoed no model at
+        # all, so every trust-ledger row for it carried an ASSUMED label with
+        # nothing behind it. `modelUsage` keys the models that actually ran.
+        model = None
+        mu = d.get("modelUsage")
+        if isinstance(mu, dict) and mu:
+            first = next(iter(mu.values()), None)
+            if isinstance(first, dict):
+                model = first.get("canonicalModel")
+            model = model or next(iter(mu), None)
+        return {"text": str(d.get("result") or ""), "usage": usage, "model": model}
+    except Exception:
+        return None
+
+
+_CODEX_TOKENS = re.compile(r"tokens\s+used\s*[\r\n]+\s*([\d,]+)", re.I)
+
+
+def parse_codex_usage(blob: str | None) -> dict | None:
+    """codex prints `tokens used` then a comma-grouped total. No cost figure.
+
+    Returns cost_usd=None rather than multiplying tokens by a price nobody
+    measured. The meters are NOT comparable across CLIs: codex's total appears
+    to exclude the cache reads that dominate claude's count (res_116).
+    """
+    if not blob:
+        return None
+    m = _CODEX_TOKENS.search(blob)
+    if not m:
+        return None
+    return {"cost_usd": None, "total_tokens": int(m.group(1).replace(",", "")),
+            "source": "codex_stderr"}
 
 
 def parse_model_echo(stderr: str | None) -> str | None:
@@ -124,13 +195,27 @@ class BaseProvider:
                 elapsed_seconds=elapsed,
             )
         elapsed = time.monotonic() - t0
+        out, err = completed.stdout.strip(), completed.stderr.strip()
+        usage = None
+        model_echo = parse_model_echo(err)
+        # claude answers in JSON when asked to; unwrap it back to prose so every
+        # existing consumer of stdout is unaffected, and keep the cost and the
+        # model it reports. A parse miss keeps raw stdout untouched.
+        parsed = parse_claude_json(out) if self.config.name == "claude" else None
+        if parsed is not None:
+            out = parsed["text"].strip() or out
+            usage = parsed["usage"]
+            model_echo = parsed["model"] or model_echo
+        elif self.config.name == "codex":
+            usage = parse_codex_usage(err + "\n" + out)
         return ProviderResult(
             provider=self.config.name,
-            stdout=completed.stdout.strip(),
-            stderr=completed.stderr.strip(),
+            stdout=out,
+            stderr=err,
             returncode=completed.returncode,
             elapsed_seconds=elapsed,
-            model_echo=parse_model_echo(completed.stderr),
+            model_echo=model_echo,
+            usage=usage,
         )
 
 
@@ -440,6 +525,13 @@ class CLIProvider(BaseProvider):
         # #270: clean-completion mode (eval dispatch) — strip MCP + tools so the
         # item is answered, not executed agentically. Flags land before the
         # prompt-consuming tail flag, like --model/--effort.
+        # 1B: ask claude for JSON so the run reports its cost and the model
+        # that actually answered. parse_claude_json unwraps `result` back into
+        # stdout, so consumers see prose exactly as before. Placed with the
+        # other pre-tail flags because --output-format takes a value and must
+        # not land between -p and the prompt.
+        if self.config.name == "claude" and "--output-format" not in command:
+            command.extend(["--output-format", "json"])
         if self.clean_completion:
             command.extend(_CLEAN_COMPLETION_FLAGS.get(self.config.name, []))
         if tail is not None:
