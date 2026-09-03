@@ -142,6 +142,33 @@ def append_launch_event(event: LaunchEvent) -> None:
         handle.write(json.dumps(event.to_dict()) + "\n")
 
 
+# The optional sections render_member_prompt may add, in render order. The
+# framing label is built from THIS tuple and the same conditionals the renderer
+# uses, so a section added to one without the other is caught by
+# tests/test_council_records_framing.py rather than silently mislabelling a run.
+_FRAMING_SECTIONS = ("goal", "context_excerpt", "comparison_instructions")
+
+
+def member_prompt_framing(bundle: PromptBundle) -> str:
+    """Which optional sections this bundle's member prompt actually carries.
+
+    Registered in the compression-turn plan (§2, "framing in the ledger key")
+    and unbuilt until now: RECORDING framing is instrumentation and safe;
+    SELECTING framing from outcomes is a policy and stays behind the airgap.
+
+    Measured 2026-09-03 across 10,375 bundles on disk: three distinct framings
+    at 74.3% / 20.6% / 5.0%. Unlike effort -- whose rotation was never switched
+    on, so no model ever had a second level -- framing already varies. The
+    contrast was there the whole time and simply never recorded, so a council
+    could never be joined to the shape of the prompt its members answered.
+
+    Returns a stable "+"-joined label, or "task_only" when the bundle carries
+    nothing but the task.
+    """
+    present = [name for name in _FRAMING_SECTIONS if getattr(bundle, name, None)]
+    return "+".join(present) if present else "task_only"
+
+
 def render_member_prompt(bundle: PromptBundle) -> str:
     """Build the council-member prompt (shared across providers) — now
     lens-conditioned at GENERATION.

@@ -102,6 +102,7 @@ def _maybe_auto_open(review_path) -> None:
     except Exception:
         return
 from .council_runtime import (
+    member_prompt_framing,
     append_launch_event,
     create_council_outcome,
     create_launch_event,
@@ -802,6 +803,12 @@ def run_council(
         "cwd": str(cwd),
         "failed_members": failed_members,
         "member_failures": member_failures,
+        # §2 of the compression-turn plan. Framing is a property of the COUNCIL
+        # (every member answers the same rendered prompt), so it is recorded
+        # here rather than per member. DisagreementPattern already carries
+        # council_id, so the ledger-key change (§2's schema half, still not
+        # built) has the join it needs whenever it is funded.
+        "framing": member_prompt_framing(bundle),
     }
     if synthesis_error:
         final_metadata["synthesis_error"] = synthesis_error
