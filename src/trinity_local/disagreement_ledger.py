@@ -91,6 +91,10 @@ class DisagreementPattern:
     member_models: dict[str, str] = field(default_factory=dict)
     # model×version identities (family·tier·version) that argued each side — the
     # finer granularity the tally keys on so Opus 4.8 doesn't hide inside "anthropic".
+    # The SHAPE of the prompt the members answered, recorded on the council
+    # since 2026-09-03 (res_117). Empty for every council recorded before that,
+    # which is why the breakdown refuses rather than reporting n=0 cells.
+    framing: str = ""
     models_for: list[str] = field(default_factory=list)
     models_against: list[str] = field(default_factory=list)
     # HOW THE MODEL STRING WAS OBTAINED, per provider: echoed | pinned | assumed.
@@ -186,6 +190,7 @@ def load_disagreements(home: str | None = None) -> list[DisagreementPattern]:
             out.append(DisagreementPattern(
                 claim_id=f'{rec.get("council_run_id")}#{idx}',
                 council_id=str(rec.get("council_run_id") or ""),
+                framing=str((rec.get("metadata") or {}).get("framing") or ""),
                 at=at.isoformat(),
                 claim=str(c.get("claim"))[:500],
                 why_matters=str(c.get("why_matters") or "")[:300],
@@ -369,6 +374,7 @@ def aggregate_tally(
             prov[s_] = prov.get(s_, 0) + 1
     tally: dict[str, dict[str, int]] = {}
     eff_tally: dict[str, dict[str, dict[str, int]]] = {}  # model×version -> effort -> {w,l}
+    fr_tally: dict[str, dict[str, dict[str, int]]] = {}  # model×version -> framing -> w/l
     ch_hit = ch_tot = 0
     for cid, r in resolved.items():
         p = by_id[cid]
@@ -378,16 +384,21 @@ def aggregate_tally(
         # Falls back to lab when the member model wasn't captured — no row is lost.
         win = (p.models_for or p.providers_for) if r == "followed" else (p.models_against or p.providers_against)
         los = (p.models_against or p.providers_against) if r == "followed" else (p.models_for or p.providers_for)
+        fr = getattr(p, "framing", "") or ""
         for m in win:
             mv, eff = _model_version_and_effort(m)
             tally.setdefault(mv, {"w": 0, "l": 0})["w"] += 1
             if eff:
                 eff_tally.setdefault(mv, {}).setdefault(eff, {"w": 0, "l": 0})["w"] += 1
+            if fr:
+                fr_tally.setdefault(mv, {}).setdefault(fr, {"w": 0, "l": 0})["w"] += 1
         for m in los:
             mv, eff = _model_version_and_effort(m)
             tally.setdefault(mv, {"w": 0, "l": 0})["l"] += 1
             if eff:
                 eff_tally.setdefault(mv, {}).setdefault(eff, {"w": 0, "l": 0})["l"] += 1
+            if fr:
+                fr_tally.setdefault(mv, {}).setdefault(fr, {"w": 0, "l": 0})["l"] += 1
         win_labs = p.providers_for if r == "followed" else p.providers_against
         los_labs = p.providers_against if r == "followed" else p.providers_for
         cw = p.chairman_winner
@@ -408,6 +419,28 @@ def aggregate_tally(
     # independently clear the floor — so a non-significant effort split (e.g. an n=13
     # cell whose CI includes chance) never surfaces as a headline, the exact overclaim
     # the trustworthiness gate exists to refuse.
+    # Secondary FRAMING breakdown (§2 of the compression-turn plan). Same floor as
+    # effort plus one rule effort does NOT have, added because effort taught it:
+    # a cell must have a SIBLING. Four effort sub-cells clear MIN_TALLY_N today and
+    # not one has a second level of the same model to compare against, so each is a
+    # lone number wearing the shape of a contrast. A single framing tells you
+    # nothing a model's overall rate does not already say, so a lone cell is
+    # withheld rather than shown.
+    framing_breakdown: dict[str, dict[str, Any]] = {}
+    for mv, frs in fr_tally.items():
+        rows = {}
+        for fr_name, t in frs.items():
+            n = t["w"] + t["l"]
+            if n < MIN_TALLY_N:
+                continue
+            lo, hi = wilson_ci(t["w"], n)
+            rows[fr_name] = {"w": t["w"], "l": t["l"],
+                             "win_rate": round(t["w"] / n, 3) if n else 0.0,
+                             "ci": [round(lo, 3), round(hi, 3)],
+                             "ci_excludes_half": bool(lo > 0.5 or hi < 0.5)}
+        if len(rows) >= 2:          # the sibling rule: no contrast, no row
+            framing_breakdown[mv] = rows
+
     effort_breakdown: dict[str, dict[str, Any]] = {}
     for mv, effs in eff_tally.items():
         rows = {}
@@ -427,6 +460,7 @@ def aggregate_tally(
         "resolved": len(resolved),
         "records": records,
         "effort_breakdown": effort_breakdown,
+        "framing_breakdown": framing_breakdown,
         "k3_chairman_agreement": None if k3 is None else round(k3, 3),
         "k3_in_band": in_band,
         "k4_discriminates": k4_pass and len(resolved) >= K4_MIN_RESOLVED,
