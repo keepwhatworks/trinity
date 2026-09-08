@@ -68,10 +68,15 @@ def register(subparsers):
     # for "run all three providers on this and synthesize". `council-launch`
     # stays as an alias — launchpad Native-Messaging dispatch + the Chrome
     # extension action allowlist both call it by that name.
+    # RENAMED 2026-09-08: `council` -> `plan`. The verb is the PRE-DECISION gate
+    # (`verify` is the pre-deploy one), and "council" named the mechanism while
+    # "plan" names the moment you reach for it. Both old names stay as aliases
+    # forever -- they are in scripts, launchpad dispatch, and extension
+    # allowlists, and a rename that breaks those buys nothing.
     council_launch_parser = subparsers.add_parser(
-        "council",
-        aliases=["council-launch"],
-        help="Run a council: all three providers answer, the chairman synthesizes one verdict — your lens breaks quality-ties.",
+        "plan",
+        aliases=["council", "council-launch"],
+        help="Before you finalize a plan: all three providers answer, the chairman prosecutes the split, you get the amendments.",
     )
     council_launch_parser.add_argument("--task", required=True, help="Task text to compare across providers")
     council_launch_parser.add_argument("--goal", default="Find the strongest answer.")

@@ -25,9 +25,12 @@ from trinity_local.main import (
 class TestUserFacingSurface:
     # trust added 2026-07-18 — the founder's council/trust/search spine makes the
     # disagreement-ledger verb headline. dream/lens demotion is the next surface pass.
-    _EXPECTED = ("lens", "council", "trust", "status", "install")
+    # `council` -> `plan` and `verify` joined 2026-09-08: the two gates are the
+    # product, named for the moment you reach for them. `council` and
+    # `council-launch` remain aliases forever.
+    _EXPECTED = ("lens", "plan", "verify", "trust", "status", "install")
 
-    def test_user_facing_set_is_exactly_six(self):
+    def test_user_facing_set_is_exactly_the_advertised_set(self):
         """Surface guard: exactly the 6 user-facing verbs, in product-first order
         (council/trust lead the spine). Drift here (a seventh, or a dropped one)
         silently changes the advertised surface."""
@@ -36,7 +39,7 @@ class TestUserFacingSurface:
             f"(product-first order); got {tuple(USER_FACING_COMMANDS)!r}."
         )
 
-    def test_help_lists_only_six_subparsers_in_descriptive_table(self):
+    def test_help_lists_only_the_advertised_subparsers_in_descriptive_table(self):
         """The descriptive table (the part below the usage line) must
         show exactly the six user-facing verbs, in product-first order.
         Non-canonical subparsers stay registered but should NOT appear."""
@@ -63,7 +66,7 @@ class TestUserFacingSurface:
             a for a in parser._actions
             if isinstance(a, argparse._SubParsersAction)
         )
-        assert sub_action.metavar == "{lens,council,trust,dream,status,install}", (
+        assert sub_action.metavar == "{lens,plan,verify,trust,status,install}", (
             f"Subparsers metavar must be the user-facing 6; got "
             f"{sub_action.metavar!r}."
         )

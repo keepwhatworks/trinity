@@ -110,13 +110,10 @@ CHROME_WEB_STORE_URL: str = ""
 # live tool list in tests/test_registry.py — adding/removing/renaming
 # a tool MUST keep both surfaces in sync.
 MCP_TOOL_NAMES: tuple[str, ...] = (
-    "ask",
     "run_council",
-    "get_persona",
     "trust",
     "verify",
     "get_council_status",
-    "import_provider_memory",
     # Demoted from the MCP surface 2026-07-18 (founder soft-demote of the
     # eval-harness / palate / generators): `run_eval`, `choose`, and
     # `lens_generators` remain as CLI verbs + internal engines (eval as the

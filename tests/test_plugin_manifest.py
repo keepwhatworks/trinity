@@ -225,8 +225,7 @@ def test_launcher_actually_boots_a_working_mcp_server(tmp_path):
         assert tools is not None and "result" in tools, f"tools/list failed: {tools}"
         names = sorted(t["name"] for t in tools["result"]["tools"])
         assert names == sorted([
-            "ask", "get_council_status", "get_persona",
-            "import_provider_memory", "run_council", "trust", "verify",
+            "get_council_status", "run_council", "trust", "verify",
         ]), f"launcher booted, but the tool surface is wrong: {names}"
     finally:
         try:

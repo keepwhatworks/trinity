@@ -15,11 +15,44 @@ class: live
 
 You cannot tell which of your agent's confident outputs is wrong, and one model cannot tell you, because its checker shares its generator's blind spots. Send one prompt to Claude, ChatGPT, and Gemini at once. A chairman shows you what they agreed on and, more to the point, exactly **where they split** — the cross-provider read no single model can give you, however good it gets, because none of them can see the others.
 
-**That split is a measured risk signal.** On this repo's own defect fixes, whether the models agreed or split predicted which fixes were wrong.
+**That split is a measured risk signal, and Trinity acts on it.** Where your change has a test it runs the test; where it doesn't, three labs that can't see each other tell you where to look. One answer per change.
 
 The numbers, with their scope, because the scope is the claim: in a leave-one-out over six model configurations from all three labs (hq_102, hq_103), when three models independently produced fixes that all passed the commit's own test, a fourth model's fix was wrong **8%** of the time; when they split, **58%** (p = 0.0001). That is an outcome over *independent* fixes. It is **not** a measurement of the council's verdict on *one* artifact, which is what you see in the product — that path is measured next, and until it is, these numbers describe the shape of the signal and not a product guarantee. Two other things the data says: consensus gets safer with more voters (13% at two, 6% at five) and Gemini 3.8 Flash fixed 36 of 36 dispatched defects, above every frontier arm. The lab the trust ledger rates lowest on *which side your later decisions took* ships the model that is best at *fixing the bug*; those are different questions and Trinity measures both.
 
 It works the moment you install. Then, from your own history, it learns **which side of those splits your work keeps taking** — a record of whose judgment you endorsed after the fact, not a guess about who will be right next time. (We built the guess. It reached 42.9% against a pick-the-leader constant's 37.0% and we removed it.) Free, local, on the subscriptions you already pay for. No API key. Your transcripts never leave your machine.
+
+## Before you deploy: `trinity-local verify`
+
+Point it at a change and an acceptance block. It runs the tests that exercise
+the changed files, gets three independent reads from three different labs —
+blinded to each other and to the test result — and returns **one** answer:
+
+| | |
+|---|---|
+| **STOP** | a relevant test is red. The kernel wins over any consensus. |
+| **SKIP** | a relevant test is green **and** all three labs agree. The only skip. |
+| **READ** | everything else. Blocks until a human has read it. |
+
+```bash
+trinity-local verify --diff change.patch --criteria acceptance.json
+```
+
+`acceptance.json` is a list of `{id, kind, statement, command?}`. A `test`
+criterion runs its command — the one your project already runs, `pytest`,
+`cargo test`, `lake build` — and exit 0 is green. A `judgment` criterion goes
+to the panel. There is no chairman: agreement versus split is the signal, and
+a deterministic function reads it.
+
+**Why a green test is required for a skip.** Measured on this repo's own
+defect fixes: when three labs unanimously approved an agent's fix, that fix
+failed its own guard **26%** of the time. More reasoning effort did not help
+(zero of nine recovered at xhigh), and a stronger agent's wrong fixes were no
+harder to spot (21% vs 33%, p=0.46). Reading a diff is weaker than running it.
+The panel says *where to look*; the test says *what is safe*.
+
+`trinity-local install-agent` installs the same gate as a `trinity-verify`
+subagent inside Claude Code and Codex, so the checker is never the same lab as
+the maker.
 
 **Install** is just an MCP and a Chrome extension. No new app, no cloud, no API key.
 

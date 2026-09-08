@@ -63,10 +63,7 @@ class TestToolList:
         # `run_eval` added (7→8) — score a model against the user's taste in-session
         # so the judge rides MCP sampling instead of `claude -p` (the CLI eval-run gap).
         assert names == {
-            "ask", "trust",
-            "run_council", "verify",
-            "get_persona", "get_council_status",
-            "import_provider_memory",
+            "trust", "run_council", "verify", "get_council_status",
         }, f"unexpected tool list: {names}"
 
     def test_old_tools_dropped_from_public_surface(self):
@@ -116,15 +113,18 @@ class TestToolList:
         # the existing structured-verdict contract must survive the rewrite
         assert "agreed_claims" in rc and "disagreed_claims" in rc
 
-        assert "ESCALATION decision" in d["ask"], (
-            "ask(mode='route') must frame routing as an escalation decision, not just "
-            "'which provider' (founder direction #3 — reframe routing)"
-        )
+        # `ask` left the surface 2026-09-08. `verify` carries the pre-deploy
+        # half of the reflex now: it must say what it emits and why a green
+        # test is required for a skip, or an agent cannot act on its answer.
+        v = d["verify"]
+        assert "STOP" in v and "SKIP" in v and "READ" in v, (
+            "verify must name its three outcomes in its description — an agent "
+            "reads this, not the docs")
+        assert "hq_104" in v, "verify must cite why a SKIP needs the kernel"
 
-        assert "lens-skill" in d["get_persona"] and "SKILL.md" in d["get_persona"], (
-            "get_persona must point to the ambient SKILL.md alternative so an agent "
-            "knows the zero-call option exists"
-        )
+        # get_persona left the surface 2026-09-08 with the lens headline; the
+        # lens reaches the chairman directly and via MCP Resources, not a tool.
+        assert "get_persona" not in d
 
 
 class TestRoute:
@@ -214,24 +214,15 @@ class TestAskRouteMode:
         # Deterministic: coding → codex, exactly like the route tool.
         assert result["primary"] == "codex"
 
-    def test_ask_schema_exposes_route_mode(self):
-        from trinity_local.mcp_server import handle_list_tools
-        tools = asyncio.run(handle_list_tools())
-        ask = next(t for t in tools if t.name == "ask")
-        mode = ask.inputSchema["properties"].get("mode", {})
-        assert mode.get("enum") == ["answer", "route"]
-        assert mode.get("default") == "answer"
-
-
-
-
-# TestRecordOutcome class removed 2026-05-21. The record_outcome
-# MCP tool was retired per "we are sunsetting user ratings. Full
-# retirement including MCP." The chairman's pick (routing_label.winner)
-# is the supervision signal now (compute_personal_routing_table reads
-# it directly from council_outcomes/). CLI council-rate followed
-# on 2026-05-22 (task #134) — full rating retirement.
-
+    def test_ask_is_no_longer_advertised(self):
+        """`ask` was soft-demoted 2026-09-08 (council fd416f42, agreed claim 3:
+        a single-provider default is unsupportable). Its handler and CLI path
+        stay — it is verify's cheap read — but an agent must not be offered
+        one prior as a way to check something."""
+        from trinity_local.mcp_server import _ask, handle_list_tools
+        names = {t.name for t in asyncio.run(handle_list_tools())}
+        assert "ask" not in names
+        assert callable(_ask), "the handler must stay callable in-process"
 
 class TestGetCouncilStatus:
     """Same silent-failure shape audit as TestRecordOutcome —

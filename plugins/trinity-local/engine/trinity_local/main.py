@@ -127,7 +127,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(
         dest="command",
         required=False,
-        metavar="{lens,council,trust,dream,status,install}",
+        metavar="{lens,plan,verify,trust,status,install}",
     )
 
     for module in _iter_command_modules():
@@ -147,7 +147,11 @@ def build_parser() -> argparse.ArgumentParser:
 # <subcmd>` for discoverability. Order here IS the help order.
 USER_FACING_COMMANDS = (
     "lens",
-    "council",
+    # The two gates, in the order you meet them: `plan` before you commit to a
+    # decision, `verify` before you deploy the change. `council` is `plan`'s
+    # alias and stays forever (scripts, launchpad dispatch, extension allowlist).
+    "plan",
+    "verify",
     "trust",
     "status",
     "install",

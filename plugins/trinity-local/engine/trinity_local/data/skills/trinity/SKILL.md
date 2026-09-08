@@ -55,7 +55,7 @@ If any required check fails, walk the user through the surfaced fix. Don't proce
 
 The installer in section 2 already ran this. If MCP needs re-registration (after a `trinity-local update`, or to wire a newly-installed harness), run:
 
-Trinity ships <!-- canonical:mcp_tool_count -->7<!-- /canonical --> MCP tools:
+Trinity ships <!-- canonical:mcp_tool_count -->4<!-- /canonical --> MCP tools:
 - **canonical three** — `run_council`, `get_persona`, `get_council_status`
 - **v1.5** — `ask` (cheap default; `get_picks` removed 2026-08-11 with the per-basin router)
 - **in-protocol provider loop** — `import_provider_memory` (write-back path: agent pipes its own extracted lens tensions / rejection signals into Trinity)
@@ -93,7 +93,7 @@ The chairman's pick is automatically the supervision signal — `routing_label.w
 If the question doesn't warrant a full 3-provider council (lookups, syntax, mechanical refactors), prefer the cheaper single-call route:
 
 ```
-mcp__trinity-local__ask(task="...")
+mcp__trinity-local__run_council(task="...")
 ```
 
 ## 7. Lens-flow via MCP Resources
@@ -145,7 +145,7 @@ Suggest these to the user after section 5 succeeds:
 
 ## 12. Agent behavior — write back what you learn (the post-launch leverage point)
 
-If you're inside Claude Code / Cursor / Codex and `mcp__trinity-local__import_provider_memory` is available in your tool list, you (the agent) have the user's conversation history on YOUR side. That's the same vantage the lens-prompt / eval-prompt verbs ask claude.ai / chatgpt to take — but the loop closes inside the harness, no copy-paste. Trinity's lens + rejection signal compounds every time you push back what you learn.
+If you're inside Claude Code / Cursor / Codex and the `lens-import` / `eval-import` CLI verbs are available, you (the agent) have the user's conversation history on YOUR side. That's the same vantage the lens-prompt / eval-prompt verbs ask claude.ai / chatgpt to take — but the loop closes inside the harness, no copy-paste. Trinity's lens + rejection signal compounds every time you push back what you learn.
 
 Four trigger conditions — call `import_provider_memory(kind, payload, dry_run?)` when you see any of these in the current chat:
 
@@ -168,7 +168,7 @@ Four trigger conditions — call `import_provider_memory(kind, payload, dry_run?
 
 When you (the agent) hit a decision you'd normally surface to the user — a product / architectural / tooling choice between options (which database, which approach, how to structure this), NOT a personal or irreversible one — **consult Trinity first instead of interrupting them**:
 
-- **Quick choice** → call `mcp__trinity-local__ask`. It routes on what the user's own councils have shown wins their kind of question — one provider, one call.
+- **Before you deploy** → call `mcp__trinity-local__verify` with the change and an acceptance block. It runs the tests that exercise the changed files, gets three blinded cross-lab reads, and returns STOP / SKIP / READ. A green test is required for a SKIP: three labs alone approved a guard-failing fix 26% of the time (hq_104).
 - **Genuinely hard / high-stakes** → call `mcp__trinity-local__run_council` and act on the chairman's `agreed_claims` / `disagreed_claims`.
 
 Then proceed on Trinity's answer. **Escalate to the user only when** Trinity has no signal (cold lens), the call is genuinely novel with no precedent in their history, it's irreversible / high-stakes, or it's a *personal* preference that's theirs to make (not inferable from taste). Reserve `AskUserQuestion` for exactly those.

@@ -236,6 +236,43 @@ RETIRED: dict[str, RetirementRecord] = {
         reason="0 handoff events in 163 launch_events on the dogfooder's production machine. User deprioritized as primary demo 2026-05-26. Heavy surface (~350 LOC across handoff.py + commands/handoff.py + 15 shared-file refs) for a feature with no measurable usage. The cross-provider continuity claim survives via MCP Resources.",
         kind="cli",
     ),
+    "mcp_tool:ask": RetirementRecord(
+        name="mcp_tool:ask",
+        retired_at="2026-09-08",
+        commit="",
+        replacement="mcp__trinity-local__verify — the pre-deploy gate: runs the artifact's own tests, then three blinded cross-lab reads, then a deterministic STOP/SKIP/READ.",
+        reason=(
+            "One call to one provider is one prior checking nothing, which is the "
+            "failure the product exists to catch (council fd416f42, agreed claim 3). "
+            "Its router was already removed 2026-08-11 (42.9% vs a 37.0% constant, "
+            "p=0.26). Handler + dispatch path stay: `ask` is verify's cheap read."
+        ),
+        kind="mcp_tool",
+        artifact_persists=True,
+    ),
+    "mcp_tool:get_persona": RetirementRecord(
+        name="mcp_tool:get_persona",
+        retired_at="2026-09-08",
+        commit="",
+        replacement="MCP Resources (trinity://memories/lens.md) for anything that still wants the lens; the chairman reads it directly on every council.",
+        reason=(
+            "Demoted with the lens headline. The lens's CONSTRUCTION is measured "
+            "(held-out validity, prospective palate 81.6%); its user-visible causal "
+            "DELIVERY is null — transmission null, generation null (16/30), a 1-in-12 "
+            "tie-break. A chairman input, not a product surface."
+        ),
+        kind="mcp_tool",
+        artifact_persists=True,
+    ),
+    "mcp_tool:import_provider_memory": RetirementRecord(
+        name="mcp_tool:import_provider_memory",
+        retired_at="2026-09-08",
+        commit="",
+        replacement="CLI verbs `lens-import` / `eval-import` (unchanged), same schemas, same dedup.",
+        reason="Served the lens headline that was demoted. The import seam itself stays open — it is a CLI verb, not a tool an agent should reach for mid-task.",
+        kind="mcp_tool",
+        artifact_persists=True,
+    ),
     "mcp_tool:handoff": RetirementRecord(
         name="mcp_tool:handoff",
         retired_at="2026-05-26",

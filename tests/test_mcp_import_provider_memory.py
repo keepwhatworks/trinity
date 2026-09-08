@@ -178,8 +178,12 @@ class TestMcpToolRegistration:
         body = json.loads(text)
         assert body["ok"] is False
 
-    def test_tool_appears_in_list_tools(self):
-        from trinity_local.mcp_server import handle_list_tools
-        tools = asyncio.run(handle_list_tools())
-        names = {t.name for t in tools}
-        assert "import_provider_memory" in names
+    def test_tool_is_demoted_but_the_seam_stays_open(self):
+        """Soft-demoted 2026-09-08 with the lens headline: the import seam is a
+        CLI verb (`lens-import` / `eval-import`), not a tool an agent should
+        reach for mid-task. Handler stays callable — the seam is still open,
+        which is the public commitment the Specimen essay made."""
+        from trinity_local.mcp_server import _import_provider_memory, handle_list_tools
+        names = {t.name for t in asyncio.run(handle_list_tools())}
+        assert "import_provider_memory" not in names
+        assert callable(_import_provider_memory)

@@ -130,57 +130,17 @@ def members_from_responses(responses: list) -> list:
 @server.list_tools()
 async def handle_list_tools() -> list[Tool]:
     return [
-        Tool(
-            name="ask",
-            description=(
-                "WHEN TO CALL THIS: before asking the user to pick between options that aren't "
-                "user-personal preferences. Default to `ask` for product/architectural questions "
-                "where the answer is 'which option is RIGHT' (Trinity routes to the model whose "
-                "past wins on similar questions are strongest, applies the user's lens). Reserve "
-                "AskUserQuestion / interactive prompts for genuinely personal choices (taste, "
-                "priorities, scope).\n\n"
-                "WHAT IT DOES: Trinity routes via kNN over the user's past prompts (which model "
-                "has historically won for similar questions), dispatches one call to the best "
-                "provider, and returns a concise structured answer.\n\n"
-                "Returns: {answer, routed_to, trust_score (0..1), latency_ms, optional runner_up, "
-                "optional escalate_hint='run_council' when trust is low and you should consider "
-                "calling `run_council` for parallel perspectives instead}.\n\n"
-                "Cost: ~$0.01–0.05 typical for one model call. Latency 3–30s dominated by "
-                "the dispatched provider's response time (Trinity overhead is <1s). Single "
-                "dispatched call, no flagship planning, no multi-model fan-out. If you genuinely "
-                "need disagreement-vs-agreement structure, use `run_council` instead.\n\n"
-                "MODE: default `mode='answer'` dispatches one call and returns the answer. "
-                "`mode='route'` returns ONLY the routing decision "
-                "{mode, primary, challenger, confidence, reason, fallback} with NO model call. "
-                "Read it as an ESCALATION decision, not merely 'which provider': mode='council' "
-                "is the signal the question is hard enough that one model isn't enough — reach "
-                "for run_council. (Subsumes the standalone `route` tool, removed in the "
-                "loop-primitive surface cut — `ask(mode='route')` is the one routing entrypoint.)"
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "The user's question or task"},
-                    "mode": {
-                        "type": "string",
-                        "enum": ["answer", "route"],
-                        "default": "answer",
-                        "description": "`answer` (default): dispatch one call, return the answer. `route`: return the routing decision only, no model call.",
-                    },
-                    "available_providers": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Provider names allowed to route to (default: all enabled in config)",
-                    },
-                    "top_k": {"type": "integer", "default": 5, "description": "How many past prompts to retrieve for the vote (answer mode)"},
-                    "budget": {"type": "string", "enum": ["low", "normal", "high"], "default": "normal", "description": "route mode: cost preference"},
-                    "latency": {"type": "string", "enum": ["fast", "normal", "patient"], "default": "normal", "description": "route mode: latency preference"},
-                    "current_provider": {"type": "string", "description": "route mode: provider currently in use (optional)"},
-                    "harness": {"type": "string", "description": "route mode: calling harness name (optional)"},
-                },
-                "required": ["query"],
-            },
-        ),
+        # SOFT-DEMOTED 2026-09-08 (founder go-ahead after hq_104-106):
+        # `ask`, `get_persona`, `import_provider_memory`. Same pattern as the
+        # 2026-07-18 demote -- handlers stay callable in-process and the CLI
+        # verbs stay; they are no longer advertised to agents. `ask` went
+        # because one call to one provider is one prior checking nothing,
+        # which is the failure `verify` exists to catch (council fd416f42,
+        # agreed claim three). The lens tools went with the lens headline:
+        # its construction is measured, its user-visible causal delivery is
+        # null (transmission null, generation null, 1/12 tie-break), so it is
+        # a chairman input, not a product surface. `verify` replaces all three
+        # as the thing an agent reaches for.
         Tool(
             name="run_council",
             description=(
@@ -405,28 +365,6 @@ async def handle_list_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="get_persona",
-            description=(
-                "Return the user's lens — paired tensions distilled by a chairman call over "
-                "the user's prompt history across providers (lives at `~/.trinity/memories/lens.md`). "
-                "Pull this once at session start and use it as latent context to tailor responses, "
-                "terseness, vocabulary, and standing decisions to THIS user. Empty string when not "
-                "built — run `trinity-local lens` to (re)build, or `trinity-local lens --deep` for "
-                "the full memory-rebuild pass.\n\n"
-                "AMBIENT ALTERNATIVE (zero call): the user can run `trinity-local lens-skill` to "
-                "write this lens as a `SKILL.md` their harness auto-loads (e.g. into "
-                "`~/.claude/skills/`) — then their taste is already in your context and you don't "
-                "need to call this at all.\n\n"
-                "Abstract-lens cards may carry a horizon suffix tag `[tactical]` / `[strategic]` / "
-                "`[philosophical]` (task #139). Tactical = response-shape preference (format, length, "
-                "what to include); strategic = quarter-scale trajectory choices; philosophical = "
-                "year-scale identity / framing. When the user's query reads as a particular horizon, "
-                "weight matching lens cards heavier than non-matching ones — that's the lens "
-                "prioritization the local chairman does too. Untagged cards default to tactical."
-            ),
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
             name="trust",
             description=(
                 "DECISION FIT, not capability: which model this user's LATER WORK sided "
@@ -489,69 +427,6 @@ async def handle_list_tools() -> list[Tool]:
                     "council_run_id": {"type": "string"},
                 },
                 "required": ["council_run_id"],
-            },
-        ),
-        Tool(
-            name="import_provider_memory",
-            description=(
-                "Pipe lens tensions OR rejection signals you (the agent) "
-                "extracted from your conversation history with this user "
-                "directly into Trinity's local state — no terminal, no "
-                "copy-paste. The agent IS a provider with the user's "
-                "history on its side, so this is the same loop as "
-                "`trinity-local eval-prompt → eval-import` but closes "
-                "inside the harness.\n\n"
-                "USE WHEN: the user asks you to 'save my preferences to "
-                "Trinity', 'update my lens with what you've learned', or "
-                "you (the agent) recognize you've accumulated useful "
-                "rejection signals worth persisting.\n\n"
-                "SHAPE: pass `kind='eval'` with a `payload` matching the "
-                "schema in docs/evals-from-provider.md (rejections: "
-                "[{type, model_quote, user_substitute, why_signal, "
-                "confidence}, ...]). Pass `kind='lens'` with the schema "
-                "in docs/lens-from-provider.md (tensions: [{pole_a, "
-                "pole_b, failure_a, failure_b, horizon, evidence, "
-                "confidence, why_matters}, ...]).\n\n"
-                "Returns a structured summary: count of new vs duplicate "
-                "vs malformed items, the on-disk path written. Same "
-                "dedup rules as the CLI verbs — same payload twice is "
-                "a no-op.\n\n"
-                "Cross-provider attribution: when `provider` is set, it "
-                "overrides any source_provider in the payload (useful "
-                "when you want to attribute to yourself explicitly)."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "kind": {
-                        "type": "string",
-                        "enum": ["lens", "eval"],
-                        "description": "Which memory artifact to ingest.",
-                    },
-                    "payload": {
-                        "type": "object",
-                        "description": (
-                            "The JSON payload, matching the schema for "
-                            "the chosen kind. See "
-                            "docs/lens-from-provider.md or "
-                            "docs/evals-from-provider.md."
-                        ),
-                    },
-                    "provider": {
-                        "type": "string",
-                        "description": (
-                            "Override the source_provider attribution "
-                            "(optional). When omitted, falls back to "
-                            "payload.source_provider or 'unknown'."
-                        ),
-                    },
-                    "dry_run": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "Parse + return the merge plan without writing.",
-                    },
-                },
-                "required": ["kind", "payload"],
             },
         ),
         # `lens_generators`, `run_eval`, `choose` were demoted off the MCP tool
