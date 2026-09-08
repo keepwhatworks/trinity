@@ -152,3 +152,26 @@ class TestRefusals:
         rc = config_cmd.handle_config(_args(assignments=["default_primary_provider=codex"]))
         assert rc == 1
         assert "--init" in capsys.readouterr().out
+
+
+class TestTheBackupNeverShips:
+    """`config --set` writes config.json.bak before every overwrite. That backup
+    is per-machine provider state — which model, which effort, which provider is
+    disabled. Two of them reached the public repo on 2026-09-08, one recording a
+    provider that a mutation run had disabled. gitignore is the fix; this is the
+    guard, because the exporter ships whatever is committed."""
+
+    def test_backup_patterns_are_gitignored(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        patterns = set(root.joinpath(".gitignore").read_text().split())
+        assert "config.json.bak" in patterns
+        assert "config.json.bak-*" in patterns
+
+    def test_no_backup_is_tracked(self):
+        import subprocess
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        out = subprocess.run(["git", "ls-files", "config.json.bak*"],
+                             cwd=root, capture_output=True, text=True).stdout.strip()
+        assert not out, f"a config backup is tracked and would be exported: {out}"

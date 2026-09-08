@@ -7,6 +7,13 @@ build/
 .DS_Store
 .venv/
 config.json
+# `trinity-local config --set` writes a .bak beside the config before every
+# overwrite (that backup is what recovered the tree when a mutation run
+# clobbered it). It is per-machine provider state and must never ship: two
+# of them reached the public repo on 2026-09-08, one recording a provider
+# disabled by a test.
+config.json.bak
+config.json.bak-*
 state/
 *.egg
 .pytest_cache/
