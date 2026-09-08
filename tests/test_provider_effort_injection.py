@@ -269,12 +269,13 @@ class TestAntigravityNoEffortFlag:
         )
         provider.run("test", Path("."))
         cmd = captured["command"]
-        assert "--model" not in cmd, (
-            f"--model must NOT be injected for antigravity (agy CLI exits 2 on it); "
-            f"got: {cmd}"
-        )
-        # The agy command should be exactly its base + the prompt — no flags.
-        assert cmd == ["agy", "-p", "test"], f"unexpected agy command shape: {cmd}"
+        # INVERTED 2026-09-04. agy had no --model flag and exited 2 when given one,
+        # so injecting it failed the member. The flag exists now, verified against
+        # the CLI on this exact argv, and NOT injecting it meant agy silently ran
+        # whatever its settings.json said while the council recorded config.model.
+        assert cmd == ["agy", "--model", "Gemini 3.1 Pro (high)", "-p", "test"], (
+            f"agy must be pinned, with --model before the prompt-consuming -p; got: {cmd}")
+        assert "--effort" not in cmd, "the agy SKU carries its own level"
 
     def test_claude_and_codex_still_get_model(self, monkeypatch):
         """The antigravity exclusion must not regress --model for providers that
@@ -315,8 +316,12 @@ class TestDispatchedModelReadsAgySettings:
         monkeypatch.setenv("HOME", str(tmp_path))
         config = _make_provider_config("antigravity", model="Gemini 3.1 Pro (high)",
                                        command=["agy", "-p"])
-        # The agy-side selection wins over the stale config value.
-        assert dispatched_model(config) == "Gemini 3.5 Flash (High)"
+        # The agy-side selection wins ONLY when nothing is pinned. With a model
+        # present Trinity injects --model, so recording settings.json would report
+        # a model the argv overrode.
+        assert dispatched_model(config) == "Gemini 3.1 Pro (high)"
+        import dataclasses as _dc
+        assert dispatched_model(_dc.replace(config, model=None)) == "Gemini 3.5 Flash (High)"
 
     def test_antigravity_falls_back_to_config_when_no_settings(self, tmp_path, monkeypatch):
         from trinity_local.providers import dispatched_model

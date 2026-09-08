@@ -29,7 +29,7 @@ council.
 the MCP-first path: `lens`, `council`, `status`, and `install` are the
 advertised CLI verbs, while older names stay registered for compatibility with
 launchpad dispatch and existing scripts. The core mechanics are in place:
-<!-- canonical:mcp_tool_count -->6<!-- /canonical --> MCP tools, MCP Resources,
+<!-- canonical:mcp_tool_count -->7<!-- /canonical --> MCP tools, MCP Resources,
 schema migrations, Chrome Native Messaging dispatch, provider-side memory
 imports (verify-at-import with a quarantine sidecar, covered in the four walls
 below), real ModernBERT embeddings when installed, and abstain-gates when only

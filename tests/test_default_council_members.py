@@ -15,14 +15,21 @@ import pytest
 
 @pytest.fixture
 def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Drop a config.json under tmp + point project_root at it.
+    """Drop a config.json under tmp + point config resolution at it.
 
     Tests that need the bundled `data/config.example.json` fallback
     skip writing a config.json; tests that need specific provider state
     write their own.
+
+    Both roots are redirected because `config_path()` prefers the state dir
+    (a wheel install has no writable project_root) and stops there when
+    TRINITY_HOME is set, which the suite always sets for isolation.
     """
     monkeypatch.setattr(
         "trinity_local.config.project_root", lambda: tmp_path,
+    )
+    monkeypatch.setattr(
+        "trinity_local.config.trinity_home", lambda: tmp_path,
     )
     return tmp_path
 

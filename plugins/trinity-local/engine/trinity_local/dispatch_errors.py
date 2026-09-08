@@ -53,6 +53,9 @@ class DispatchFailure:
     # it verbatim. A user told "quota exhausted until 4:12 AM" can plan; one
     # told "member failed" reads it as a Trinity bug.
     retry_after: str | None = None
+    # The model the CLI named as unreachable, when it names one. Lets a caller
+    # say "gpt-6-astra is not on your plan yet" instead of echoing raw stderr.
+    unavailable_model: str | None = None
 
     def to_dict(self) -> dict:
         out = {
@@ -63,6 +66,8 @@ class DispatchFailure:
         }
         if self.retry_after:
             out["retry_after"] = self.retry_after
+        if self.unavailable_model:
+            out["unavailable_model"] = self.unavailable_model
         return out
 
 
@@ -124,6 +129,16 @@ _PATTERNS_MODEL_NOT_FOUND = (
     "model does not exist",
     "no such model",
     "model has been deprecated",
+    # CAPTURED 2026-09-04, the day after GPT-6 Astra launched. codex says
+    # "The 'gpt-6-astra' model is not supported when using Codex with a
+    # ChatGPT account." for a model the account cannot reach YET -- staged
+    # rollouts mean this is the normal state for days after any launch.
+    # It matched nothing here, so it classified as UNKNOWN: an opaque failure
+    # in the exact week every user is typing a new model name. Same shape as
+    # the quota banner (res_121 era): patterns written from imagination
+    # rather than from a captured sample.
+    "model is not supported",
+    "is not supported when using",
 )
 
 _PATTERNS_TIMEOUT = (
@@ -138,6 +153,23 @@ _PATTERNS_TIMEOUT = (
 # The capture stops at the meridiem so the sentence's own full stop stays out
 # of the value ("try again at 4:12 AM." -> "4:12 AM", not "4:12 AM.").
 _RETRY_AT = re.compile(r"try again at\s+([0-9]{1,2}:[0-9]{2}\s*(?:[AaPp]\.?[Mm])?)")
+
+
+_UNAVAILABLE_MODEL = re.compile(r"[\"']([A-Za-z0-9][\w.\-]{2,60})[\"']\s+model is not supported")
+
+
+def parse_unavailable_model(stderr: str | None) -> str | None:
+    """The model name the CLI said it could not use, or None.
+
+    Staged rollouts make "this model exists but not for you yet" the normal
+    state for days after a launch. Naming it turns an opaque refusal into an
+    answerable question: wait for the rollout, or point the provider at a
+    model the plan already has.
+    """
+    if not stderr:
+        return None
+    m = _UNAVAILABLE_MODEL.search(stderr)
+    return m.group(1) if m else None
 
 
 def parse_retry_after(stderr: str | None) -> str | None:
@@ -217,9 +249,13 @@ def classify_dispatch_failure(
             kind=DispatchErrorKind.MODEL_NOT_FOUND,
             provider=provider,
             raw_stderr_excerpt=stderr,
-            # Model deprecation is a config issue, not a transient one. The
-            # operator needs to fix the model alias. Don't auto-retry.
+            # A model alias is a CONFIG fact, not a transient one, and no other
+            # provider can answer for this one's misconfiguration. The operator
+            # fixes the alias. In a council the other members still answer --
+            # one member's bad model is recorded in failed_members and does not
+            # stop the run.
             retry_with_other_provider=False,
+            unavailable_model=parse_unavailable_model(stderr),
         )
 
     if _matches_any(haystack, _PATTERNS_TIMEOUT):

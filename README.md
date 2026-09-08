@@ -13,9 +13,21 @@ class: live
 
 ## Ask all three. Keep what works.
 
-Send one prompt to Claude, ChatGPT, and Gemini at once. A chairman shows you what they agreed on and, more to the point, exactly **where they split** — the cross-provider read no single model can give you, however good it gets, because none of them can see the others. It works the moment you install. Then, from your own history, it learns **which side of those splits your work keeps taking** — a record of whose judgment you endorsed after the fact, not a guess about who will be right next time. (We built the guess. It reached 42.9% against a pick-the-leader constant's 37.0% and we removed it.) Free, local, on the subscriptions you already pay for. No API key. Your transcripts never leave your machine.
+You cannot tell which of your agent's confident outputs is wrong, and one model cannot tell you, because its checker shares its generator's blind spots. Send one prompt to Claude, ChatGPT, and Gemini at once. A chairman shows you what they agreed on and, more to the point, exactly **where they split** — the cross-provider read no single model can give you, however good it gets, because none of them can see the others.
+
+**That split is a measured risk signal.** On this repo's own defect fixes, whether the models agreed or split predicted which fixes were wrong.
+
+The numbers, with their scope, because the scope is the claim: in a leave-one-out over six model configurations from all three labs (hq_102, hq_103), when three models independently produced fixes that all passed the commit's own test, a fourth model's fix was wrong **8%** of the time; when they split, **58%** (p = 0.0001). That is an outcome over *independent* fixes. It is **not** a measurement of the council's verdict on *one* artifact, which is what you see in the product — that path is measured next, and until it is, these numbers describe the shape of the signal and not a product guarantee. Two other things the data says: consensus gets safer with more voters (13% at two, 6% at five) and Gemini 3.8 Flash fixed 36 of 36 dispatched defects, above every frontier arm. The lab the trust ledger rates lowest on *which side your later decisions took* ships the model that is best at *fixing the bug*; those are different questions and Trinity measures both.
+
+It works the moment you install. Then, from your own history, it learns **which side of those splits your work keeps taking** — a record of whose judgment you endorsed after the fact, not a guess about who will be right next time. (We built the guess. It reached 42.9% against a pick-the-leader constant's 37.0% and we removed it.) Free, local, on the subscriptions you already pay for. No API key. Your transcripts never leave your machine.
 
 **Install** is just an MCP and a Chrome extension. No new app, no cloud, no API key.
+
+**Switching costs nothing.** The models are interchangeable. Your corpus is not.
+A council runs with any one provider turned off, verified with Claude disabled
+entirely. Point Trinity at whichever subscription is cheapest this quarter and
+your lens, your councils, and your record of which model you sided with all stay
+where they are, on your disk.
 
 ![the launchpad: what a brand-new install opens to on first run](docs/launchpad_example.png)
 

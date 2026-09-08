@@ -368,6 +368,43 @@ async def handle_list_tools() -> list[Tool]:
         # rating retirement, no power-user override remained.
         # Registry entry: src/trinity_local/retired_names.py.
         Tool(
+            name="verify",
+            description=(
+                "THE PRE-DEPLOY GATE. Run it on a change before you call it done. Where "
+                "there is a test, it runs the test; where there is not, three labs that "
+                "cannot see each other read the diff. One output per artifact:\n"
+                "  STOP  a relevant test is red. The kernel wins over any consensus.\n"
+                "  SKIP  a relevant test is green AND three labs agree. The only skip.\n"
+                "  READ  everything else -- blocked until a human has read it.\n\n"
+                "WHY THE TEST IS REQUIRED FOR A SKIP (measured, hq_104): on a weak "
+                "agent's fixes, three labs unanimously approved one that then failed its "
+                "own test 33% of the time; when they split, 85%. Reading is weaker than "
+                "doing. The panel says WHERE TO LOOK; the test says what is safe.\n\n"
+                "INPUT: `criteria` is an acceptance block -- a list of {id, kind: "
+                "'test'|'judgment', statement, command?, blocking}. kind=test runs "
+                "`command` in `cwd` (exit 0 is green) -- the command comes from the "
+                "artifact's own acceptance block, never from a model. kind=judgment goes "
+                "to the panel, blinded to the test result and to each other. No chairman."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "criteria": {"type": "array", "items": {"type": "object"},
+                                 "description": "[{id, kind: test|judgment, statement, command?, blocking}]"},
+                    "diff": {"type": "string", "description": "unified diff of the change"},
+                    "context": {"type": "string", "description": "the symptom or task the change addresses"},
+                    "cwd": {"type": "string", "description": "where test commands run (default: the roots / cwd)"},
+                    "members": {"type": "array", "items": {"type": "string"},
+                                "description": "panel; default claude, codex, antigravity"},
+                    "exclude_lab": {"type": "string", "description": "never read from this lab (the change's author)"},
+                    "effort": {"type": "string", "description": "panel effort for claude/codex: low|medium|high|xhigh"},
+                    "run_panel": {"type": "boolean", "default": True},
+                    "run_tests": {"type": "boolean", "default": True},
+                },
+                "required": ["criteria", "diff"],
+            },
+        ),
+        Tool(
             name="get_persona",
             description=(
                 "Return the user's lens — paired tensions distilled by a chairman call over "
@@ -392,8 +429,13 @@ async def handle_list_tools() -> list[Tool]:
         Tool(
             name="trust",
             description=(
-                "Which model this user sides with when the labs split, and the "
-                "recurring CROSS-PROVIDER disagreements a topic keeps returning to. "
+                "DECISION FIT, not capability: which model this user's LATER WORK sided "
+                "with when the labs split on build-and-kill decisions, and the recurring "
+                "CROSS-PROVIDER disagreements a topic keeps returning to. Two axes, kept "
+                "apart on purpose -- the lab that reads lowest here (Gemini 3.1, 36%) "
+                "ships the model that fixed defects best on this repo (Gemini 3.8 Flash, "
+                "36 of 36); `verify` measures the second axis. The ledger behind this "
+                "tool is also the standing proof that a split carries information. "
                 "With `query`: the recurring disagreements it maps into (semantic "
                 "retrieval over resolved council splits) — each with the raw record: "
                 "who argued which side, the chairman's pick, and how many councils "
@@ -641,6 +683,8 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[Any]:
             return await _trust(arguments)
         if name == "run_council":
             return await _run_council(arguments)
+        if name == "verify":
+            return await _verify(arguments)
         # `record_outcome` dispatch removed 2026-05-21 (rating UX sunset).
         if name == "get_persona":
             return await _get_persona(arguments)
@@ -1512,6 +1556,35 @@ def _load_trust_summary() -> dict:
     return d
 
 
+async def _verify(args: dict) -> list[Any]:
+    """Handle mcp__trinity-local__verify -- the pre-deploy gate. Kernel first,
+    three blinded reads, the rule; no chairman. Engine: trinity_local.verify."""
+    import asyncio as _asyncio
+    from pathlib import Path as _Path
+    from .verify import DEFAULT_PANEL, verify as _run
+    args = args or {}
+    criteria = args.get("criteria")
+    if isinstance(criteria, dict):
+        criteria = criteria.get("acceptance", criteria.get("criteria"))
+    if not isinstance(criteria, list) or not criteria:
+        return [ErrorData(code=400, message="verify: `criteria` must be a non-empty list "
+                          "of {id, kind: test|judgment, statement, command?, blocking}")]
+    diff = args.get("diff")
+    if not isinstance(diff, str) or not diff.strip():
+        return [ErrorData(code=400, message="verify: `diff` must be a non-empty unified diff")]
+    cwd = _Path(args.get("cwd") or ".")
+    members = tuple(args.get("members") or DEFAULT_PANEL)
+    try:
+        out = await _asyncio.to_thread(
+            _run, criteria, diff, str(args.get("context") or ""), cwd,
+            providers=members, exclude_lab=args.get("exclude_lab"),
+            run_panel=bool(args.get("run_panel", True)), run_tests=bool(args.get("run_tests", True)),
+            effort=args.get("effort"))
+    except ValueError as exc:
+        return [ErrorData(code=400, message=f"verify: {exc}")]
+    return [_text(out)]
+
+
 async def _trust(args: dict) -> list[Any]:
     """Handle mcp__trinity-local__trust. Which model the user sides with when the
     labs split + the recurring cross-provider disagreements a query maps into.
@@ -2067,6 +2140,12 @@ async def _run_council(args: dict) -> list[Any]:
     members = args.get("members") or default_council_members()
     mode = args.get("mode", "parallel")
     primary_provider = args.get("primary_provider")
+    if not primary_provider:
+        # config.default_primary_provider, when set AND enabled. Lets a user
+        # point every council at one subscription without passing the chair on
+        # each call. Unset (the default) changes nothing.
+        from .config import default_primary_provider as _cfg_chair
+        primary_provider = _cfg_chair() or primary_provider
     wait_seconds = float(args.get("wait_seconds") or 0)
 
     # Fold web-era brand slugs to dispatchable CLI slugs at the launch boundary

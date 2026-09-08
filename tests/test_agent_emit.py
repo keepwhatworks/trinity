@@ -58,7 +58,7 @@ def test_codex_toml_parses_with_documented_keys():
     assert data["sandbox_mode"] == "read-only"  # checker can't make
     assert "description" in data
     assert "CROSS-PROVIDER" in data["developer_instructions"]
-    assert "mcp__trinity-local__ask" in data["developer_instructions"]
+    assert "mcp__trinity-local__verify" in data["developer_instructions"]
 
 
 def test_claude_frontmatter_description_is_quoted():
@@ -85,7 +85,7 @@ def test_checker_cannot_make_no_edit_write():
     md = agent_emit.render_claude_subagent()
     tools_line = next(l for l in md.splitlines() if l.startswith("tools:"))
     assert "Edit" not in tools_line and "Write" not in tools_line, "a verifier must not be able to make"
-    assert "mcp__trinity-local__ask" in tools_line
+    assert "mcp__trinity-local__verify" in tools_line
     # Codex enforces the same via sandbox_mode read-only (asserted above).
 
 
@@ -93,7 +93,7 @@ def test_body_mandates_a_cross_provider_call():
     # The body is shared verbatim; both wrappers must carry it. A verifier that
     # reasons alone is the same lab as the maker — the cross-provider call IS the point.
     for text in (agent_emit.render_claude_subagent(), agent_emit.render_codex_agent()):
-        assert "mcp__trinity-local__ask" in text          # cheap default
+        assert "mcp__trinity-local__verify" in text          # the gate (was `ask`: one prior; council fd416f42)
         assert "mcp__trinity-local__run_council" in text   # escalation
         assert "NEVER rubber-stamp" in text
 

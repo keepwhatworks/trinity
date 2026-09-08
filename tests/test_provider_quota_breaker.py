@@ -130,3 +130,51 @@ class TestStatusDisclosesIt:
             "a skipped provider must be visible in status; an undisclosed skip is "
             "the silent-degradation shape this repo exists to catch"
         )
+
+
+class TestAModelYourPlanCannotReachYet:
+    """Staged rollouts make "exists, but not for you yet" the normal state.
+
+    Captured 2026-09-04, the day after GPT-6 Astra launched: codex answers
+    "The 'gpt-6-astra' model is not supported when using Codex with a ChatGPT
+    account." for a model the account cannot reach yet. That matched no pattern,
+    so it classified as UNKNOWN — an opaque failure in the exact week every user
+    is typing a new model name into their config. Same shape as the quota banner:
+    patterns written from imagination rather than from a captured sample.
+    """
+
+    REAL = ("The 'gpt-6-astra' model is not supported when using Codex "
+            "with a ChatGPT account.")
+
+    def test_it_is_a_model_problem_not_an_unknown_one(self):
+        f = classify_dispatch_failure(provider="codex", returncode=1, stderr=self.REAL)
+        assert f.kind is DispatchErrorKind.MODEL_NOT_FOUND, (
+            "an unreachable model must be named as such; UNKNOWN leaves the user "
+            "with raw stderr and no idea whether to wait or change the config"
+        )
+
+    def test_the_model_is_named_so_the_message_can_be_actionable(self):
+        f = classify_dispatch_failure(provider="codex", returncode=1, stderr=self.REAL)
+        assert f.unavailable_model == "gpt-6-astra"
+        assert f.to_dict()["unavailable_model"] == "gpt-6-astra"
+
+    def test_no_other_provider_is_retried_for_a_config_fact(self):
+        f = classify_dispatch_failure(provider="codex", returncode=1, stderr=self.REAL)
+        assert f.retry_with_other_provider is False, (
+            "a bad alias is the operator's to fix; in a council the other members "
+            "still answer and this one lands in failed_members"
+        )
+
+    def test_a_quota_wall_is_still_a_quota_wall(self):
+        assert classify_dispatch_failure(
+            provider="codex", returncode=1,
+            stderr="You've hit your usage limit. try again at 4:12 AM.",
+        ).kind is DispatchErrorKind.RATE_LIMITED, (
+            "the new patterns must not swallow the quota banner"
+        )
+
+    def test_it_does_not_fire_on_ordinary_failures(self):
+        for s in ("Traceback: KeyError('x')", "connection reset", ""):
+            f = classify_dispatch_failure(provider="codex", returncode=1, stderr=s)
+            assert f.kind is not DispatchErrorKind.MODEL_NOT_FOUND
+            assert f.unavailable_model is None

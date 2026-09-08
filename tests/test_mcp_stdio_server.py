@@ -157,7 +157,7 @@ def test_spawned_mcp_server_initialize_list_and_read(tmp_path: Path):
         names = sorted(t["name"] for t in r["result"]["tools"])
         assert names == sorted([
             "ask", "get_council_status", "get_persona",
-            "import_provider_memory", "run_council", "trust",
+            "import_provider_memory", "run_council", "trust", "verify",
         ]), f"tool surface drifted over the wire: {names}"
 
         # resources/list — the 5 canonical

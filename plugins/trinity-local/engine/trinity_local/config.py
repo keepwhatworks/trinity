@@ -33,6 +33,12 @@ class AppConfig:
     notifications: bool
     providers: dict[str, ProviderConfig]
     task_preferences: dict[str, list[str]]
+    # Who chairs when the caller names nobody. None keeps the historic
+    # behaviour (the built-in default). Set it when you want every council to
+    # land on one provider without passing primary_provider on every call --
+    # the "all my dispatch goes to X" case, e.g. moving spend to whichever
+    # subscription is cheapest this quarter (2026-09-04).
+    default_primary_provider: str | None = None
 
 
 def project_root() -> Path:
@@ -55,9 +61,35 @@ def trinity_home() -> Path:
 
 
 def config_path(explicit: str | None = None) -> Path:
+    """Resolve config.json, preferring a location the user can actually write.
+
+    `project_root()` is `Path(__file__).parents[2]`, which for a wheel install
+    is the Python lib directory (e.g. /usr/local/lib/python3.12/). A pip user
+    therefore had NOWHERE to put config.json and could not change providers at
+    all — every portability claim ("point Trinity at a different subscription")
+    was unreachable for anyone who did not clone the repo. Prefer the
+    user-owned state dir, where the rest of Trinity's state already lives, and
+    fall back to project_root() so a repo checkout keeps working unchanged.
+
+    When neither exists the state-dir path is returned, so `--init` and the
+    missing-config error both name somewhere the user owns.
+    """
     if explicit:
         return Path(explicit).expanduser().resolve()
-    return project_root() / "config.json"
+    home_cfg = trinity_home() / "config.json"
+    if home_cfg.exists():
+        return home_cfg
+    # An explicit TRINITY_HOME is an isolation contract: tests and scratch
+    # runs set it precisely so nothing reaches the real machine. Falling
+    # through to project_root() would break that — an isolated run would
+    # read, and `config --set` would WRITE, the developer's checked-out
+    # config.json. Caught by exactly that happening during development.
+    if os.environ.get("TRINITY_HOME"):
+        return home_cfg
+    repo_cfg = project_root() / "config.json"
+    if repo_cfg.exists():
+        return repo_cfg
+    return home_cfg
 
 
 def _reconcile_effort_arg(args: list, effort):
@@ -232,6 +264,10 @@ def load_config(explicit: str | None = None, *, required: bool = True) -> AppCon
         task_preferences={
             key: list(value) for key, value in raw.get("task_preferences", {}).items()
         },
+        default_primary_provider=(
+            str(raw["default_primary_provider"]).strip()
+            if raw.get("default_primary_provider") else None
+        ),
     )
 
 
@@ -311,6 +347,25 @@ def installed_council_providers(explicit: str | None = None) -> list[str]:
     if not available:
         return list(CANONICAL_COUNCIL_PROVIDERS)
     return available
+
+
+def default_primary_provider(config: "AppConfig | None" = None) -> str | None:
+    """The configured default chair, if it is usable, else None.
+
+    Refuses to return a provider that is missing or disabled rather than
+    handing the runner a name it cannot dispatch: a chair that does not exist
+    fails the whole council, while None falls through to the existing default.
+    """
+    if config is None:
+        try:
+            config = load_config()
+        except Exception:
+            return None
+    name = getattr(config, "default_primary_provider", None)
+    if not name:
+        return None
+    p = config.providers.get(str(name))
+    return str(name) if (p is not None and p.enabled) else None
 
 
 def default_council_members(explicit: str | None = None) -> list[str]:

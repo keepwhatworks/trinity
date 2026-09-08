@@ -115,14 +115,19 @@ class TestProvenance:
         # claude is NOT in this list any more, and its removal is the correction:
         # CLIProvider injects --model for claude, so it is `pinned`, not `assumed`.
         # It was under-reported here from the day provenance shipped.
-        assert model_provenance(_cfg("antigravity")) == "assumed"
+        # antigravity is pinned too since 2026-09-04; `assumed` is what it falls
+        # to only when there is no model to pin AND no settings to read.
+        bare = dataclasses.replace(_cfg("antigravity"), model=None)
+        assert model_provenance(bare) == "assumed"
+        assert model_provenance(_cfg("antigravity")) == "pinned"
         assert model_provenance(_cfg("claude")) == "pinned"
 
     def test_agy_with_settings_present_is_configured_not_assumed(self, monkeypatch):
         """The other half of the pair, so the boundary is pinned from both sides."""
         import trinity_local.providers as P
         monkeypatch.setattr(P, "read_agy_active_model_raw", lambda: "Gemini 3.7 Flash (Low)")
-        assert model_provenance(_cfg("antigravity")) == "configured"
+        bare = dataclasses.replace(_cfg("antigravity"), model=None)
+        assert model_provenance(bare) == "configured"
         assert model_provenance(_cfg("claude")) == "pinned", "claude's --model is injected"
 
     def test_an_explicit_override_counts_as_pinned(self):

@@ -81,7 +81,10 @@ class TestMcpToolDrift:
         up to 10 when `trust` landed 2026-07-18; back to 7 the same day when the
         eval-harness/palate/generators soft-demote pulled `run_eval` / `choose` /
         `lens_generators` off the MCP surface — CLI verbs + engines stay.)"""
-        assert len(MCP_TOOL_NAMES) == 6   # get_picks removed 2026-08-11 with the router it read
+        # get_picks removed 2026-08-11 with the router it read (7 -> 6); `verify`, the
+        # pre-deploy gate, landed 2026-09-06 (6 -> 7). ask / get_persona /
+        # import_provider_memory are scheduled off per amd_0205 once hq_105 reads.
+        assert len(MCP_TOOL_NAMES) == 7
 
 
 class TestRegistryAdoption:

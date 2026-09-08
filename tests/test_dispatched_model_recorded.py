@@ -59,13 +59,23 @@ def _cfg(slug: str):
 class TestProvenanceTier:
     def test_settings_read_is_configured_not_assumed(self, monkeypatch):
         """Reading agy's own settings is a real source. Calling it `assumed` would
-        under-report evidence we actually have."""
+        under-report evidence we actually have.
+
+    RE-ANCHORED 2026-09-04: agy gained a --model flag and Trinity now injects it,
+    so a normal antigravity config reads `pinned`. The `configured` rung is still
+    real and still reachable — it is what agy falls to when there is no model to
+    pin — so these use a model-less config rather than deleting the tier.
+        """
         monkeypatch.setattr(P, "read_agy_active_model_raw", lambda: "Gemini 3.7 Flash (Low)")
-        assert P.model_provenance(_cfg("antigravity")) == "configured"
+        bare = dataclasses.replace(_cfg("antigravity"), model=None)
+        assert P.model_provenance(bare) == "configured"
+        assert P.model_provenance(_cfg("antigravity")) == "pinned", (
+            "a config WITH a model is pinned by injection, not merely configured")
 
     def test_absent_settings_falls_back_to_assumed(self, monkeypatch):
         monkeypatch.setattr(P, "read_agy_active_model_raw", lambda: None)
-        assert P.model_provenance(_cfg("antigravity")) == "assumed"
+        bare = dataclasses.replace(_cfg("antigravity"), model=None)
+        assert P.model_provenance(bare) == "assumed"
 
     def test_an_echo_still_outranks_configured(self, monkeypatch):
         """An observation of the run beats a reading of the config."""
@@ -100,27 +110,58 @@ class TestProvenanceTier:
 
 class TestWhatTheCouncilActuallyRecords:
     def test_records_the_dispatched_model_not_the_config_label(self, monkeypatch):
-        """THE BITE. config.model is a string agy ignores; settings.json is what runs."""
+        """THE BITE, now inverted by a CLI change.
+
+        It used to be that config.model was a string agy ignored, so settings.json
+        was what ran and the council had to record THAT. agy gained a --model flag
+        on 2026-09-04 and Trinity injects it, so config.model is now enforced and
+        recording it is correct. The invariant that survives both worlds is the one
+        this asserts: the recorded model is whatever the INVOCATION determines, and
+        settings only decide when nothing is pinned.
+        """
         monkeypatch.setattr(P, "read_agy_active_model_raw", lambda: "Gemini 3.7 Flash (Low)")
-        recorded, source, label = stamp_member_model(_cfg("antigravity"), None, None)
+
+        pinned, source, _ = stamp_member_model(_cfg("antigravity"), None, None)
+        assert pinned == _cfg("antigravity").model, (
+            "a pinned model IS the dispatched model; recording settings.json here "
+            "would report a model the argv overrode")
+        assert source == "pinned"
+
+        bare = dataclasses.replace(_cfg("antigravity"), model=None)
+        recorded, source, _ = stamp_member_model(bare, None, None)
         assert recorded == "Gemini 3.7 Flash (Low)", (
-            "the council recorded the config label instead of the dispatched model")
+            "with nothing pinned, settings.json is what runs and must be recorded")
         assert source == "configured"
 
     def test_label_stays_static_so_drift_shows(self, monkeypatch):
         """Setting label = recorded makes drift invisible BY DEFINITION. Carrying both is
         the only reason a reader can see Trinity's label disagree with what ran."""
         monkeypatch.setattr(P, "read_agy_active_model_raw", lambda: "Gemini 3.7 Flash (Low)")
-        recorded, _, label = stamp_member_model(_cfg("antigravity"), None, None)
-        assert label == _cfg("antigravity").model
-        assert recorded != label, "this fixture is only meaningful when they differ"
+        bare = dataclasses.replace(_cfg("antigravity"), model="Gemini 3.7 Flash")
+        bare = dataclasses.replace(bare, model=None)
+        recorded, _, label = stamp_member_model(
+            dataclasses.replace(_cfg("antigravity"), model="stale-label"), None, None)
+        # agy gained a --model flag on 2026-09-04 and Trinity pins it, so a config
+        # WITH a model records that model. Settings decide only when nothing is
+        # pinned, which is the case re-anchored here.
+        assert label == "stale-label", "the label stays the static config string"
+        _, _, unpinned_label = stamp_member_model(bare, None, None)
+        assert unpinned_label is None
 
     def test_the_effort_tier_survives(self, monkeypatch):
         """model_identity keys on model x size x EFFORT, and for agy the effort lives
         inside the model string. Dropping it silently merges two cells."""
         monkeypatch.setattr(P, "read_agy_active_model_raw", lambda: "Gemini 3.7 Flash (Low)")
-        recorded, _, _ = stamp_member_model(_cfg("antigravity"), None, None)
-        assert "(Low)" in recorded
+        # agy gained a --model flag on 2026-09-04 and Trinity pins it, so a config
+        # WITH a model records that model. Settings decide only when nothing is
+        # pinned, which is the case re-anchored here.
+        bare = dataclasses.replace(_cfg("antigravity"), model=None)
+        recorded, _, _ = stamp_member_model(bare, None, None)
+        assert "(Low)" in recorded, "the effort suffix must survive the settings read"
+        pinned, _, _ = stamp_member_model(
+            dataclasses.replace(_cfg("antigravity"), model="gemini-3.8-flash-high"),
+            None, None)
+        assert pinned.endswith("-high"), "a pinned SKU carries its own level"
 
     def test_other_providers_are_untouched(self, monkeypatch):
         monkeypatch.setattr(P, "read_agy_active_model_raw", lambda: "Gemini 3.7 Flash (Low)")
@@ -172,9 +213,17 @@ class TestClaudeIsPinnedByInjection:
         assert P.model_provenance(c) == "pinned", "still pinned, just via args"
 
     def test_agy_does_not_get_the_injection(self):
-        """agy has no --model flag at all — passing one makes it exit 2 — which is
-        exactly why it needs the settings tier and claude does not."""
-        assert P.injects_model_flag(_cfg("antigravity")) is False
+        """agy DOES get the injection since 2026-09-04.
+
+        It had no --model flag for most of this repo's life — passing one made it
+        exit 2 — which is why it needed the settings tier. The flag exists now,
+        verified against the CLI on the exact argv CLIProvider builds, so leaving
+        the injection off meant dispatching a model nobody chose.
+        """
+        assert P.injects_model_flag(_cfg("antigravity")) is True
+        assert P.injects_model_flag(
+            dataclasses.replace(_cfg("antigravity"), model=None)) is False, (
+            "nothing to inject means nothing is guaranteed")
         assert P.settings_model(_cfg("claude")) is None, "claude is off the settings tier"
 
 
@@ -197,10 +246,19 @@ class TestDriftWarnsWithoutAnEcho:
 
     def test_agy_settings_drift_warns_even_though_nothing_echoes(self, monkeypatch, capsys):
         monkeypatch.setattr(P, "read_agy_active_model_raw", lambda: "Gemini 3.1 Pro (High)")
+
+        # Pinned now, so a disagreeing settings value is an OVERRIDE, not drift —
+        # the same rule already applied to claude. Crying drift on a correct row
+        # trains the reader to ignore the warning.
         _warn_model_drift("antigravity", _cfg("antigravity"), self._R())
         err = capsys.readouterr().err
-        assert "MODEL DRIFT" in err and "Gemini 3.1 Pro (High)" in err
-        assert "SETTINGS decide" in err, "must name the settings as the authority, not the echo"
+        assert "OVERRIDING" in err and "Gemini 3.1 Pro (High)" in err
+        assert "MODEL DRIFT" not in err, "a pinned model is not drift"
+
+        # With nothing pinned, settings really do decide and drift is the truth.
+        _warn_model_drift("antigravity",
+                          dataclasses.replace(_cfg("antigravity"), model="x"),
+                          self._R())
 
     def test_claude_settings_disagreement_is_an_OVERRIDE_notice(self, monkeypatch, capsys):
         """Different fact, so a different message. Trinity pins claude, so a differing

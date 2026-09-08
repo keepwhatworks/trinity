@@ -239,9 +239,11 @@ def model_provenance(config: ProviderConfig, echo: str | None = None) -> str:
                will use, straight from the CLI's config rather than Trinity's.
                Weaker than `echoed` (not an observation of the run that
                happened) and stronger than `assumed` (nothing is being taken on
-               faith). agy is the case that needs it: it has no --model flag at
-               all, so `--model` can never be pinned and the CLI never echoes,
-               leaving its own settings.json as the only honest source.
+               faith). agy WAS the case that needed it: until 2026-09-04 its CLI
+               had no --model flag, so nothing could be pinned and the CLI never
+               echoes, leaving its settings.json as the only honest source. agy
+               now has the flag and Trinity injects it, so antigravity reads
+               `pinned`; this rung stays for any provider still in that shape.
       assumed  none of the above. `claude -p` announces nothing and is invoked
                without --model, so the label is a static string that a settings
                alias or a hand-edit can silently falsify. Exactly how a window
@@ -267,8 +269,9 @@ def injects_model_flag(config: ProviderConfig) -> bool:
 
     Mirrors CLIProvider's own condition. If that condition moves, this must move
     with it; the pairing is asserted by test_claude_is_pinned_by_injection.
+    antigravity joined 2026-09-04 when agy gained a --model flag.
     """
-    if config is None or getattr(config, "name", None) != "claude":
+    if config is None or getattr(config, "name", None) not in ("claude", "antigravity"):
         return False
     if not getattr(config, "model", None):
         return False
@@ -391,9 +394,11 @@ def read_agy_active_model_raw() -> str | None:
     """The raw model SKU agy will ACTUALLY dispatch (e.g. ``"Gemini 3.5 Flash
     (High)"``), read from agy's own ``~/.gemini/antigravity-cli/settings.json``.
 
-    This is the single honest source for antigravity's model: agy has no
-    ``--model`` flag, so ``config.model`` is *ignored* by the CLI — the user's
-    ``/model`` slash-command selection in that file is what runs. Returns
+    HISTORICAL as the primary source: agy gained a ``--model`` flag and Trinity
+    now injects it, so ``config.model`` is enforced at dispatch and this file no
+    longer decides what runs. Kept as a diagnostic — knowing Trinity overrides a
+    user's chosen default is worth surfacing — and as the fallback for any
+    invocation that does not pin. Returns
     ``None`` on any miss (file absent, unknown key, parse error) so callers
     degrade quietly to ``config.model``. The schema isn't public, so we probe a
     few likely keys.
@@ -418,10 +423,18 @@ def read_agy_active_model_raw() -> str | None:
 def dispatched_model(config: ProviderConfig) -> str | None:
     """The model that will ACTUALLY run for this provider — what eval/council
     must RECORD (the recorded == dispatched invariant). For antigravity this is
-    agy's settings.json selection (``config.model`` is a dead value the CLI
-    ignores); for every other provider it's ``config.model``.
+    ``config.model`` when it is pinned on the argv, and agy's settings.json
+    selection only when nothing is pinned (``config.model`` was a dead value
+    for agy until its CLI gained a --model flag); for every other provider it
+    is ``config.model``.
     """
-    if config.name == "antigravity":
+    if config.name == "antigravity" and not injects_model_flag(config):
+        # Settings decide ONLY when nothing is pinned. Trinity began injecting
+        # --model for agy on 2026-09-04, and from that moment reading settings
+        # here would record a model the argv overrode -- the same mistake this
+        # function's own docstring warns about for claude, arriving at agy from
+        # the other direction. Reachable whenever config.model is empty, which
+        # is exactly when settings really are the only source.
         agy_model = read_agy_active_model_raw()
         if agy_model:
             return agy_model
@@ -509,12 +522,23 @@ class CLIProvider(BaseProvider):
         tail: str | None = None
         if len(command) > 1 and command[-1].startswith("-"):
             tail = command.pop()
-        # --model is claude-only among CLIProvider configs (claude + agy).
-        # agy has no --model flag — model is its `/model` slash-command — and
-        # exits 2 if given one. Allowlist claude, mirroring the --effort gate.
+        # --model is injected for claude AND agy. agy was excluded because its
+        # CLI genuinely had no --model flag and exited 2 if given one; that is
+        # no longer true (verified 2026-09-04 against agy on the exact argv this
+        # builds, `agy --model <sku> -p <prompt>`, exit 0). While it was true,
+        # antigravity dispatched with NO model flag and whatever
+        # ~/.gemini/antigravity-cli/settings.json happened to say is what ran —
+        # so config.model was decorative for this provider and every council
+        # recorded a value the invocation never enforced. Injecting pins it, and
+        # lifts model_provenance from "configured" to "pinned".
+        #
+        # NOT extended to --effort for agy: its SKU carries the level as a
+        # suffix ("gemini-3.8-flash-high"), which the CLI treats as complete —
+        # a bare "gemini-3.8-flash" is what requires --effort. Passing both
+        # would be two mechanisms for one value, the 2026-07-04 stamp bug.
         inject_model = (
             model
-            and self.config.name == "claude"
+            and self.config.name in ("claude", "antigravity")
             and "--model" not in command
             and "--model" not in self.config.args
         )

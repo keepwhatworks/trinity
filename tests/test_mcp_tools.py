@@ -64,7 +64,7 @@ class TestToolList:
         # so the judge rides MCP sampling instead of `claude -p` (the CLI eval-run gap).
         assert names == {
             "ask", "trust",
-            "run_council",
+            "run_council", "verify",
             "get_persona", "get_council_status",
             "import_provider_memory",
         }, f"unexpected tool list: {names}"

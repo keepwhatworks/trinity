@@ -114,6 +114,7 @@ MCP_TOOL_NAMES: tuple[str, ...] = (
     "run_council",
     "get_persona",
     "trust",
+    "verify",
     "get_council_status",
     "import_provider_memory",
     # Demoted from the MCP surface 2026-07-18 (founder soft-demote of the

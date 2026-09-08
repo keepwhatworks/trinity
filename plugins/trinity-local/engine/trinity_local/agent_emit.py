@@ -10,7 +10,7 @@ can't deliver.
 
 That's exactly Trinity's council. `install-agent` makes Trinity the drop-in checker by
 rendering a `trinity-verify` subagent in each tool's native format. The subagent is a
-thin, READ-ONLY shim: its whole job is to call `mcp__trinity-local__ask` for a cheap
+thin, READ-ONLY shim: its whole job is to call `mcp__trinity-local__verify` -- the
 cross-provider, lens-judged second opinion (escalating to `run_council` only on
 disagreement or high stakes). The native subagent stays same-lab; Trinity does the
 cross-lab fan-out underneath.
@@ -74,7 +74,7 @@ which is not a diff. If you cannot independently inspect the change, SAY SO and 
 verdict to exactly what you could verify.
 
 STAY CROSS-LAB.
-When you call `mcp__trinity-local__ask` or `mcp__trinity-local__run_council`, pass
+When you call `mcp__trinity-local__verify` or `mcp__trinity-local__run_council`, pass
 `available_providers` (or `members`) that EXCLUDE `{host_lab}` — your own host lab, and the
 maker's most likely lab. A second opinion from your own lab is not a cross-check; route to
 {others}.
@@ -82,15 +82,19 @@ maker's most likely lab. A second opinion from your own lab is not a cross-check
 PROCEDURE
 1. Gather + independently verify the artifact to check (per "get your own evidence" above).
    Stay read-only; you are the checker, not the editor.
-2. Call `mcp__trinity-local__ask` with a crisp, falsifiable verification question, e.g.
-   "Does this change correctly do X without breaking Y? Judge for THIS user's taste." Pass
-   `available_providers` excluding `{host_lab}`. This is the cheap, single cross-provider
-   call — use it by DEFAULT.
-3. If `ask` AGREES with confidence, relay: VERIFIED + the one-line reason.
-4. ESCALATE to `mcp__trinity-local__run_council` (members excluding `{host_lab}`) when `ask`
-   disagrees, is low-confidence, OR the change is high-stakes (security, data loss, anything
-   irreversible). Relay the chairman's `agreed_claims` and `disagreed_claims` (where the labs
-   split — those are your risk flags). Use `get_council_status` to poll if it runs async.
+2. Build an ACCEPTANCE BLOCK for the change: every test that exercises the changed files as
+   `{{id, kind: "test", statement, command}}` (the command the project itself runs -- pytest,
+   cargo test, lake build -- never one you invented), plus the claim under test as
+   `{{id, kind: "judgment", statement}}`. Then call `mcp__trinity-local__verify` with the
+   diff, the context, and that block, passing `exclude_lab` = {host_lab}.
+3. Relay the triage exactly. STOP: a relevant test is red -- say which, and do not soften it.
+   SKIP: test green and three labs agreed -- the only green you may pass on. READ: everything
+   else -- name what is unverified (no test, a split, or agreement without a kernel), because
+   on a weak agent's output three labs agreed on a fix that failed its own test one time in
+   three (hq_104). The panel says where to look; the test says what is safe.
+4. ESCALATE to `mcp__trinity-local__run_council` (members excluding `{host_lab}`) only for a
+   DESIGN question with no test to run -- the chairman prosecutes a split; it does not
+   verify code. Use `get_council_status` to poll if it runs async.
 5. Return a VERDICT, not a rewrite. Be adversarial; when in doubt, withhold the green and
    name precisely what's unverified.
 
@@ -149,7 +153,7 @@ _CLAUDE_DESCRIPTION = (
 # thing it's checking. tools is a comma-separated string in Claude Code's frontmatter.
 _CLAUDE_TOOLS = (
     "Read, Grep, Glob, "
-    "mcp__trinity-local__ask, mcp__trinity-local__run_council, "
+    "mcp__trinity-local__verify, mcp__trinity-local__run_council, "
     "mcp__trinity-local__get_council_status, mcp__trinity-local__get_persona"
 )
 

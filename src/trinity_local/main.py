@@ -37,6 +37,7 @@ CORE_COMMAND_MODULES = (
     # The src/trinity_local/adapters.py library module survives (used by
     # status / launchpad_data). See retired_names.py.
     "agent_emit",
+    "config_cmd",
     "council",
     "debug",
     # `decision_log` CLI verb retired 2026-05-27 — see retired_names.py.
@@ -72,6 +73,7 @@ CORE_COMMAND_MODULES = (
     "status",
     "telemetry",
     "trust",
+    "verify",
     "update",
     "vocabulary",
     "watch",

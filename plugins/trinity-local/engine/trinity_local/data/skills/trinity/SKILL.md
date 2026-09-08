@@ -1,6 +1,6 @@
 ---
 name: trinity
-description: Ask all three. Install Trinity Local — the free, local cross-provider council that runs your prompt through Claude, ChatGPT, and Gemini on your existing subscriptions (no API key) and synthesizes the best answer, right inside Claude Code, Codex CLI, Antigravity, and Cursor. Use when the user types /trinity, asks how to set up Trinity, wants their lens / picks / routing built from existing transcripts, or wants a hard question dispatched to multiple models with a synthesized verdict.
+description: Ask all three. Install Trinity Local — the free, local cross-provider council that runs your prompt through Claude, ChatGPT, and Gemini on your existing subscriptions (no API key) and synthesizes the best answer, right inside Claude Code, Codex CLI, Antigravity, and Cursor. Use when the user types /trinity, asks how to set up Trinity, wants their lens / picks / routing built from existing transcripts, or wants a hard question dispatched to multiple models with a synthesized verdict. Runs on whichever providers you have, with any one of them turned off.
 argument-hint: [optional first-council prompt]
 allowed-tools: Bash(curl *) Bash(bash *) Bash(trinity-local *) Bash(command -v *) Bash(which *) Bash(open *) Read
 ---
@@ -55,7 +55,7 @@ If any required check fails, walk the user through the surfaced fix. Don't proce
 
 The installer in section 2 already ran this. If MCP needs re-registration (after a `trinity-local update`, or to wire a newly-installed harness), run:
 
-Trinity ships <!-- canonical:mcp_tool_count -->6<!-- /canonical --> MCP tools:
+Trinity ships <!-- canonical:mcp_tool_count -->7<!-- /canonical --> MCP tools:
 - **canonical three** — `run_council`, `get_persona`, `get_council_status`
 - **v1.5** — `ask` (cheap default; `get_picks` removed 2026-08-11 with the per-basin router)
 - **in-protocol provider loop** — `import_provider_memory` (write-back path: agent pipes its own extracted lens tensions / rejection signals into Trinity)

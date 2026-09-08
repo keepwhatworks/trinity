@@ -300,7 +300,12 @@ def _warn_model_drift(provider_name: str, config, result) -> None:
     # row. Saying "DRIFT" there would be false, and crying drift on a correct row is
     # how a warning gets trained out of a reader's attention.
     if injects_model_flag(config):
-        chosen = read_claude_settings_model()
+        # Read the settings file belonging to THIS provider. Hardcoding claude's
+        # reader was invisible while claude was the only injected provider; the
+        # moment agy joined, an antigravity override printed "your settings
+        # choose 'opus'" -- claude's default, attributed to Gemini.
+        chosen = (read_claude_settings_model() if provider_name == "claude"
+                  else settings_model(config))
         if chosen and chosen.strip().lower() not in str(label).strip().lower():
             print(f"  [{provider_name}] OVERRIDING your {provider_name} default: your "
                   f"settings choose {chosen!r}, Trinity dispatches --model {label!r}.",
