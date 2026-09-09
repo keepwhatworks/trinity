@@ -230,17 +230,60 @@ def _kmeans(matrix, k: int = _DEFAULT_K, *, seed: int = _DEFAULT_SEED, max_iter:
     return labels, centroids
 
 
+# A LETTER in any script, then letters / digits / hyphen / underscore. The
+# original was `[a-zA-Z][a-zA-Z\-_]{2,}`, which is ASCII-Latin only, so a
+# basin whose prompts are Thai, Chinese, Japanese, Korean, Arabic, Hebrew,
+# Cyrillic, Greek or Devanagari matched NOTHING and got empty top_terms — an
+# unlabelled basin the topology viewer renders as a bare id. Found 2026-09-08
+# via basin b42 ("โปรดติดตามต่อไป"); 691 of 41,512 prompt nodes (1.7%) score
+# zero terms under the ASCII pattern. `[^\W\d_]` is a Unicode letter: word
+# character that is neither digit nor underscore.
+#
+# Scripts written without spaces (Thai, CJK) capture a whole run as one token
+# rather than segmented words. That is a DEGRADED label, not a correct one —
+# real segmentation needs a dictionary this repo does not carry — but a
+# readable phrase beats a bare id, and it keeps a whole class of the user's
+# own content visible on the discovery surface.
+# COMBINING MARKS must continue a token or the word shatters: `\w` excludes
+# category Mn/Mc, so Thai "โปรดติดตามต่อไป" broke at every vowel and tone mark
+# into ['ดตามต', 'อไป', 'โปรดต']. Python's `re` has no \p{M}, and the `regex`
+# module is a third runtime dependency this repo will not take, so the ranges
+# for the scripts a transcript corpus actually contains are listed inline.
+_MARKS = (
+    "\u0300-\u036f"      # combining diacriticals (Latin, Greek)
+    "\u0483-\u0489"      # Cyrillic
+    "\u0591-\u05c7"      # Hebrew points
+    "\u0610-\u061a\u064b-\u0670"   # Arabic
+    "\u0900-\u0903\u093a-\u094f\u0951-\u0957"  # Devanagari
+    "\u0e31\u0e34-\u0e3a\u0e47-\u0e4e"          # Thai
+    "\u0f71-\u0f84"      # Tibetan
+    "\u102b-\u103e"      # Myanmar
+    "\u3099-\u309a"      # Japanese voiced-sound marks
+)
+# TWO LENGTH FLOORS, because 3 characters is a Latin convention. Korean and
+# CJK words are routinely TWO characters ("기계", "모델", "学習"), so a single
+# 3-char floor returned nothing for them — the same silence the ASCII class
+# produced, one script family later. Latin keeps its 3-char floor exactly, so
+# existing basins are unchanged; a non-ASCII token may be 2.
+_CONT = rf"[^\W\d]|[-_{_MARKS}]"
+_TERM_RX = re.compile(
+    rf"[^\W\d_](?:{_CONT}){{2,}}"            # any script, 3+ chars
+    rf"|[^\W\d_a-zA-Z](?:{_CONT}){{1,}}",    # non-ASCII only, 2+ chars
+    re.UNICODE,
+)
+
+
 def _top_terms_for_cluster(texts: list[str], all_texts: list[str], top_n: int = _TOP_TERMS_PER_BASIN) -> list[str]:
     """TF-IDF residual: terms common in cluster but rare globally."""
     cluster_words = Counter()
     global_words = Counter()
     for text in texts:
-        for w in re.findall(r"[a-zA-Z][a-zA-Z\-_]{2,}", text.lower()):
+        for w in _TERM_RX.findall(text.lower()):
             if w in _STOPWORDS:
                 continue
             cluster_words[w] += 1
     for text in all_texts:
-        for w in re.findall(r"[a-zA-Z][a-zA-Z\-_]{2,}", text.lower()):
+        for w in _TERM_RX.findall(text.lower()):
             if w in _STOPWORDS:
                 continue
             global_words[w] += 1

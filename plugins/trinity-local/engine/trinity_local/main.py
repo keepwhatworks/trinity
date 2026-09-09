@@ -242,6 +242,37 @@ def _retired_cli_token(argv: list[str]) -> str | None:
     return None
 
 
+def _record_verb_use(args) -> None:
+    """Append one line to ~/.trinity/analytics/verb_uses.jsonl per CLI invocation.
+
+    WHY THIS EXISTS. 61 subcommands are registered and 6 are advertised. Deciding
+    which of the other 55 to retire needs usage, and Trinity did not log any: a
+    2026-09-08 audit read zero for every retirement candidate AND zero for `lens`,
+    `status` and `trust`, which are certainly used. That is absence of logging read
+    as absence of use -- the exact mistake this repo's discipline exists to prevent,
+    and the reason no verb was cut that day. Mirrors the surface_opens.jsonl
+    precedent (council_25c534c5f1bf826c: browser surfaces may not be cut without
+    measurement).
+
+    The verb NAME and a timestamp, nothing else. No arguments, no paths, no query
+    text -- an argument can carry a task, a filename or a person. Best-effort and
+    silent: analytics never crash a command, and a read-only home just skips.
+    """
+    try:
+        import json as _json
+        from .config import trinity_home
+        from .utils import now_iso
+        verb = getattr(args, "command", None)
+        if not verb:
+            return
+        d = trinity_home() / "analytics"
+        d.mkdir(parents=True, exist_ok=True)
+        with (d / "verb_uses.jsonl").open("a", encoding="utf-8") as f:
+            f.write(_json.dumps({"at": now_iso(), "verb": str(verb)}) + "\n")
+    except Exception:
+        pass
+
+
 def main() -> None:
     import sys
 
@@ -282,6 +313,7 @@ def main() -> None:
     # file) still exited 0, so `import … && next` chained right past the failure.
     # Only non-zero raises — success paths return normally, leaving callers that
     # invoke main() directly (tests) unaffected.
+    _record_verb_use(args)
     rc = args.handler(args)
     if isinstance(rc, int) and rc != 0:
         raise SystemExit(rc)
