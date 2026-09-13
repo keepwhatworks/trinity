@@ -270,8 +270,17 @@ def injects_model_flag(config: ProviderConfig) -> bool:
     Mirrors CLIProvider's own condition. If that condition moves, this must move
     with it; the pairing is asserted by test_claude_is_pinned_by_injection.
     antigravity joined 2026-09-04 when agy gained a --model flag.
+
+    CODEX joined 2026-09-11, and it had been wrong since the ladder was written.
+    `CodexProvider.run` has always appended `--model <model>` when args do not
+    already carry it -- the same injection claude does -- but this predicate never
+    listed codex, so every codex row stamped `assumed` while argv enforced the
+    model the whole time. Exactly the hole this docstring describes for claude,
+    left open in the seat next to it. Found when a founder asked why one seat's
+    stamp disagreed with what the model answered: antigravity turned out already
+    fixed and codex turned out quietly mislabelled.
     """
-    if config is None or getattr(config, "name", None) not in ("claude", "antigravity"):
+    if config is None or getattr(config, "name", None) not in ("claude", "antigravity", "codex"):
         return False
     if not getattr(config, "model", None):
         return False
@@ -381,13 +390,80 @@ def effort_provenance(config: ProviderConfig) -> str:
                   selection inside agy decides, and config.effort is a label
                   that can drift from it silently.
       unknown     no effort recorded at all.
+
+    ANTIGRAVITY MOVED 2026-09-11, and this ladder had gone stale the same way
+    `injects_model_flag` had for codex. agy still exposes no effort FLAG, but
+    Trinity now injects `--model`, and agy's level lives INSIDE the SKU
+    (`gemini-3.8-flash-high`). So the level is enforced at dispatch after all --
+    by the model string rather than by a flag -- and reading `configured` there
+    understated a row that argv actually pins.
+
+    It is pinned only when the SKU really carries a level AND the config's
+    effort field AGREES with it. A field saying `low` beside a `-high` SKU is
+    not a weaker guarantee, it is a MISLABEL: the row would record `low` for a
+    dispatch that runs high. Nothing guarded that before; it reads `mismatch`
+    now, which is louder than `configured` and is meant to be.
     """
     if config is None or not _effective_effort(config):
         return "unknown"
     name = (getattr(config, "name", "") or "").lower()
     if name in ("claude", "codex"):
         return "pinned"
+    if name == "antigravity" and injects_model_flag(config):
+        sku_level = sku_effort(getattr(config, "model", None))
+        if sku_level:
+            return "pinned" if sku_level == str(_effective_effort(config)).lower() else "mismatch"
     return "configured"
+
+
+# The effort levels agy encodes in a model SKU. Conservative on purpose: an
+# unrecognised suffix means the SKU carries no level, not that it carries a
+# strange one -- guessing there would invent a stamp.
+_SKU_EFFORTS = ("xhigh", "high", "medium", "low", "minimal")
+
+
+def sku_effort(model: str | None) -> str | None:
+    """The effort level baked into a model SKU, or None.
+
+    agy has no --effort flag; `gemini-3.8-flash-high` IS the high-effort model.
+    Matching is on the trailing segment only, so `gemini-3.8-flash` returns None
+    rather than pattern-matching `flash` into something it is not.
+    """
+    if not model:
+        return None
+    tail = str(model).strip().lower().rsplit("-", 1)[-1]
+    return tail if tail in _SKU_EFFORTS else None
+
+
+def _normalize_model(s: str | None) -> str:
+    """Lowercase alphanumerics only, so aliasing does not read as substitution.
+
+    `gpt-6-astra` legitimately echoes as `GPT-6`; `gemini-3.8-flash-high` as
+    `Gemini 3.8 Flash`; `claude-opus-5` as `claude-opus-5-20260101`. All three
+    are the same model wearing a different string.
+    """
+    return "".join(ch for ch in str(s or "").lower() if ch.isalnum())
+
+
+def is_model_substitution(requested: str | None, echoed: str | None) -> bool:
+    """Did the CLI answer as a DIFFERENT model than the one argv pinned?
+
+    Trinity asked for `claude-fable-5-1` on 2026-09-11, the CLI was out of
+    credits for it, and the row came back echoing `claude-haiku-4-5`. The stamp
+    was right -- echo outranks the config label -- but the COUNCIL still
+    counted a member. A silent downgrade is worse than a failure, because the
+    council looks complete: three answers, one of them from a model nobody
+    chose, and the ledger cell keyed to whatever answered.
+
+    Substitution means neither string is a prefix of the other once normalized.
+    A longer, more specific echo (a dated build) or a shorter, coarser one (a
+    family name) is the SAME model identified differently, and must not trip
+    this -- a guard that fires on aliasing would fail every healthy council.
+    """
+    a, b = _normalize_model(requested), _normalize_model(echoed)
+    if not a or not b:
+        return False          # nothing to compare is not evidence of a swap
+    return not (a.startswith(b) or b.startswith(a))
 
 
 def read_agy_active_model_raw() -> str | None:
@@ -558,6 +634,22 @@ class CLIProvider(BaseProvider):
             command.extend(["--output-format", "json"])
         if self.clean_completion:
             command.extend(_CLEAN_COMPLETION_FLAGS.get(self.config.name, []))
+        # A COUNCIL MEMBER MUST NOT ACT EITHER. agy has no tool-deny flag, so
+        # `_CLEAN_COMPLETION_FLAGS` has no entry for it and the verify reader
+        # path appends `--sandbox` by hand. The COUNCIL path never got that,
+        # and the failure is silent in the worst way: on a short prompt Gemini
+        # just answers, but on a long one it reaches for a tool, headless mode
+        # denies it, and the member returns a permission error with EMPTY
+        # output. Measured 2026-09-11 on council_2e54c56dacdcae08 — agy scored
+        # 0 across every axis and the council degraded to one member plus a
+        # chairman from the same seat, which is not a council at all.
+        #
+        # Restrictions only, never a grant: the prompt a member reads is
+        # untrusted content, and this is the same reasoning that put readers
+        # under --sandbox rather than a permission bypass.
+        if self.config.name == "antigravity" and "--sandbox" not in command:
+            if "--sandbox" not in (self.config.args or []):
+                command.append("--sandbox")
         if tail is not None:
             command.append(tail)
         command.append(prompt)

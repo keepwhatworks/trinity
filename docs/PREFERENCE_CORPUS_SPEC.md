@@ -214,16 +214,16 @@ The archive is preserved so demotion is debuggable. A user inspecting "why did t
 
 ## Layer-by-layer JSON schemas
 
-The v1 schemas survive. They describe the council-outcome / rejection-signal / eval-set surface. v2 adds two new schemas for the move + dream-rejection surface.
+The v1 schemas survive in `schemas/` and are linked below. They describe the council-outcome / rejection-signal / eval-set surface. v2 specifies three further schemas for the move + dream-rejection + dream-demotion surface; those files do not exist in `schemas/` yet, so they are named without links until they are written.
 
 | File | Schema | Purpose |
 |------|--------|---------|
 | `~/.trinity/council_outcomes/council_<hash>.json` | [`council_outcome.schema.json`](../schemas/council_outcome.schema.json) | One multi-model run + chairman synthesis. Unchanged from v1. |
 | `~/.trinity/me/preference_acts.jsonl` | [`rejection_signal.schema.json`](../schemas/rejection_signal.schema.json) | Preference acts: rejections (trigger=model_miss) + decisions (trigger=self_expressed), unified ledger (#209). |
 | `~/.trinity/evals/eval_<hash>.json` | [`eval_set.schema.json`](../schemas/eval_set.schema.json) | Personalized eval suite. Unchanged from v1. |
-| `~/.trinity/moves/<slug>/SKILL.md` | SKILL.md spec + Trinity move-extension frontmatter ([`move.schema.json`](../schemas/move.schema.json)) | Promoted moves. New in v2. |
-| `~/.trinity/dream_rejections.jsonl` | [`dream_rejection.schema.json`](../schemas/dream_rejection.schema.json) | Candidates the eval gate rejected, with `why_rejected`. New in v2. |
-| `~/.trinity/dream_demotions.jsonl` | [`dream_demotion.schema.json`](../schemas/dream_demotion.schema.json) | Moves that drifted below baseline and got archived. New in v2. |
+| `~/.trinity/moves/<slug>/SKILL.md` | SKILL.md spec + Trinity move-extension frontmatter (`move.schema.json`) | Promoted moves. New in v2 — **schema not yet written**. |
+| `~/.trinity/dream_rejections.jsonl` | `dream_rejection.schema.json` | Candidates the eval gate rejected, with `why_rejected`. New in v2 — **schema not yet written**. |
+| `~/.trinity/dream_demotions.jsonl` | `dream_demotion.schema.json` | Moves that drifted below baseline and got archived. New in v2 — **schema not yet written**. |
 
 ## The four implicit-rejection signal types (unchanged from v1)
 

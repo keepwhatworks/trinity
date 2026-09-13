@@ -646,6 +646,44 @@ def run_council(
             )
 
         _warn_model_drift(provider_name, provider_config, result)
+
+        # A SILENT DOWNGRADE IS WORSE THAN A FAILURE. On 2026-09-11 Trinity
+        # pinned `claude-fable-5-1`, the CLI was out of credits for it, and the
+        # row came back echoing `claude-haiku-4-5`. The stamp was right -- echo
+        # outranks the config label -- but the council still COUNTED a member.
+        # Three answers, one from a model nobody chose, and the disagreement
+        # ledger keyed to whatever happened to answer.
+        #
+        # Only fires when argv PINNED the model: without a flag the provider's
+        # own settings legitimately decide, and calling that a substitution
+        # would fail every unpinned provider. Aliasing does not trip it --
+        # `gpt-6-astra` echoing `GPT-6` is one model, two strings.
+        from .providers import injects_model_flag, is_model_substitution
+
+        _echo = getattr(result, "model_echo", None)
+        if (injects_model_flag(provider_config)
+                and is_model_substitution(getattr(provider_config, "model", None), _echo)):
+            return MemberExecutionResult(
+                provider_name=provider_name,
+                provider_config=provider_config,
+                output_text="",
+                returncode=result.returncode,
+                stderr=result.stderr,
+                stdout=result.stdout,
+                model_echo=_echo,
+                usage=getattr(result, "usage", None),
+                error_payload={
+                    "provider": provider_name,
+                    "stage": "member",
+                    "reason": "model_substitution",
+                    "requested": getattr(provider_config, "model", None),
+                    "answered": _echo,
+                    "detail": (f"argv pinned {getattr(provider_config, 'model', None)!r} but the "
+                               f"CLI answered as {_echo!r}. A member that silently becomes a "
+                               f"different model is dropped, not counted -- the council is "
+                               f"degraded and says so, rather than looking complete."),
+                },
+            )
         update_member_progress(state_token, provider_name, output_text)
         return MemberExecutionResult(
             provider_name=provider_name,

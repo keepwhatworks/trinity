@@ -135,7 +135,17 @@ Reply with ONE line of JSON and nothing after it:
 {{"votes": {{{vote_keys}}}, "why": "<one sentence per FAIL, or empty>"}}
 """
 
-_JSON_RE = re.compile(r"\{.*\"votes\".*\}", re.S)
+# A GREEDY SPAN IS NOT A PARSER. This was r"\{.*\"votes\".*\}" with re.S, which
+# runs from the FIRST brace to the LAST one anywhere in the output: a reviewer
+# that emits its JSON and then one more sentence containing a brace, or any
+# object before the vote object, produced a span that is not valid JSON and the
+# vote was discarded as unparseable. Measured on hq_107: 17% of claude's reads
+# lost, and ASYMMETRICALLY -- 5 of the 6 dropped arms were the treatment arm,
+# because a reviewer voting FAIL writes a longer, more discursive `why` than one
+# voting PASS. A parse failure correlated with the condition under test is a
+# measurement bug, not lost data. `raw_decode` from each brace finds the real
+# object instead of guessing at its extent.
+_JSON_START_RE = re.compile(r"\{")
 
 
 def _tokens(usage: dict) -> int | None:
@@ -159,18 +169,36 @@ def _tokens(usage: dict) -> int | None:
 
 
 def _parse_votes(text: str, ids: list[str]) -> dict[str, bool] | None:
-    m = _JSON_RE.search(text or "")
-    if not m:
-        return None
-    try:
-        d = json.loads(m.group(0))
-    except json.JSONDecodeError:
-        return None
-    # Valid-JSON-of-the-wrong-type must not crash the caller (guard_shape_not_just_parse).
-    if not isinstance(d, dict):
-        return None
-    votes = d.get("votes")
-    if not isinstance(votes, dict):
+    votes = None
+    decoder = json.JSONDecoder()
+    for m in _JSON_START_RE.finditer(text or ""):
+        try:
+            d, _ = decoder.raw_decode(text, m.start())
+        except json.JSONDecodeError:
+            continue
+        # Valid-JSON-of-the-wrong-type must not crash the caller
+        # (guard_shape_not_just_parse).
+        if isinstance(d, dict) and isinstance(d.get("votes"), dict):
+            votes = d["votes"]
+            break
+    if votes is None:
+        # TRUNCATION FALLBACK. A reviewer that writes a long `why` can have its
+        # response cut off before the closing brace, so the OUTER object never
+        # parses even though the vote is complete and sits at the front of it.
+        # Diagnosed 2026-09-09 from a banked raw_tail ending mid-sentence with
+        # no `}`; before the tail was banked, four of these read only as
+        # "unparseable vote" and I twice guessed wrong at the cause. `votes` is
+        # first in the requested shape, so decode THAT object alone rather than
+        # requiring the envelope that carries it.
+        for m in re.finditer(r'"votes"\s*:\s*', text or ""):
+            try:
+                d, _ = decoder.raw_decode(text, m.end())
+            except json.JSONDecodeError:
+                continue
+            if isinstance(d, dict):
+                votes = d
+                break
+    if votes is None:
         return None
     out = {}
     for i in ids:

@@ -273,9 +273,27 @@ class TestAntigravityNoEffortFlag:
         # so injecting it failed the member. The flag exists now, verified against
         # the CLI on this exact argv, and NOT injecting it meant agy silently ran
         # whatever its settings.json said while the council recorded config.model.
-        assert cmd == ["agy", "--model", "Gemini 3.1 Pro (high)", "-p", "test"], (
-            f"agy must be pinned, with --model before the prompt-consuming -p; got: {cmd}")
+        # ASSERT THE INVARIANT, NOT THE WHOLE ARGV. This was an exact-list
+        # equality, which pinned every token including ones the test did not
+        # care about — so adding `--sandbox` (2026-09-11, to stop agy losing
+        # the member to a headless permission denial) broke a test about flag
+        # ORDER. An over-specified assertion fails for the wrong reason and
+        # teaches nothing about what actually matters here.
+        #
+        # What actually matters: --model is present, it carries the configured
+        # SKU, and it sits BEFORE the prompt-consuming -p. Putting it after
+        # makes agy fail with "Not enough arguments following: p".
+        assert "--model" in cmd, f"agy must be pinned; got: {cmd}"
+        assert cmd[cmd.index("--model") + 1] == "Gemini 3.1 Pro (high)", (
+            f"--model must carry the configured SKU; got: {cmd}")
+        assert cmd.index("--model") < cmd.index("-p"), (
+            f"--model must precede the prompt-consuming -p; got: {cmd}")
+        assert cmd[cmd.index("-p") + 1] == "test", (
+            f"the prompt must sit immediately after -p; got: {cmd}")
         assert "--effort" not in cmd, "the agy SKU carries its own level"
+        assert "--sandbox" in cmd, (
+            "a council member must not be able to act; agy has no tool-deny "
+            f"flag so it runs sandboxed. got: {cmd}")
 
     def test_claude_and_codex_still_get_model(self, monkeypatch):
         """The antigravity exclusion must not regress --model for providers that

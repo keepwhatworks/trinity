@@ -81,6 +81,27 @@ class Triage:
     false_green: bool = False   # panel consensus-pass on a red kernel
 
 
+# SKIP DOES NOT SHIP. Two councils, six models, unanimous both times
+# (amd_0217, amd_0226): the evidence does not license an output that
+# authorises omitting human review.
+#
+# The number SKIP would rest on is P(defect | green test AND unanimous
+# approval), and it has never been measured. What IS measured is
+# P(no panel doubt | known-defective guard-green mutant) = 12/50, on a
+# population selected for carrying a defect. Those are different
+# quantities and only the second exists.
+#
+# Re-entry contract, locked before any data (amd_0222): a one-sided 95%
+# UPPER bound on defect probability among would-SKIP changes of at most
+# 1%, AND a lower bound of at least 20% on the share of eligible changes
+# that receive it, so a policy cannot succeed by approving almost
+# nothing. At 1% with zero observed defects that needs roughly 299
+# INDEPENDENT observations; repeated mutations of one fix are not
+# independent. Until then the branch computes, records `would_skip`, and
+# returns READ.
+SKIP_SHIPS = False
+
+
 def triage(kernel: Kernel, panel: Panel) -> Triage:
     relevant_kernel = kernel.ran and kernel.relevant
     if relevant_kernel and kernel.green is False:
@@ -88,7 +109,13 @@ def triage(kernel: Kernel, panel: Panel) -> Triage:
             "STOP", "a relevant test is red; the kernel wins over any consensus",
             false_green=panel.consensus_pass())
     if relevant_kernel and kernel.green is True and panel.consensus_pass():
-        return Triage("SKIP", "relevant test green and three labs agree")
+        if SKIP_SHIPS:
+            return Triage("SKIP", "relevant test green and three labs agree")
+        return Triage(
+            "READ",
+            "would_skip: a relevant test is green and three labs agree, but SKIP "
+            "does not ship — the defect rate under exactly those conditions has "
+            "never been measured")
     if not kernel.ran and not panel.ran:
         return Triage("READ", "no test ran and no panel ran; nothing vouched for this")
     if relevant_kernel and kernel.green is True:

@@ -27,7 +27,11 @@ class TestListed:
             assert word in t.description, f"description must carry the rule and the contract ({word})"
 
     def test_description_says_why_the_test_is_required(self):
-        assert "hq_104" in _tool().description
+        d = _tool().description
+        assert "hq_104" in d or "9/34" in d, "must cite the measurement, not just assert"
+        assert "THERE IS NO SKIP" in d, (
+            "SKIP stopped shipping 2026-09-09 (amd_0217/0226) and the description an "
+            "agent reads is the contract — it must not still offer it")
 
 
 class TestRefusals:

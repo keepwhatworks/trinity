@@ -288,7 +288,19 @@ def _top_terms_for_cluster(texts: list[str], all_texts: list[str], top_n: int = 
                 continue
             global_words[w] += 1
     if not cluster_words:
-        return []
+        # NO EXTRACTABLE TERMS, but the basin still has to render. Basin b38 is
+        # the single prompt "me": two characters, under every length floor, and
+        # in no script that changes that. Returning [] leaves the topology
+        # viewer showing a bare id. The prompt text IS the only label material
+        # there is, so use it, trimmed -- an honest short label beats an
+        # identifier. Distinct from the Unicode bug fixed the same day: that
+        # was terms being LOST, this is a basin that genuinely has none.
+        raw = " ".join(" ".join(texts).split())[:40].strip()
+        # A label still has to be a LABEL. "123 456" has no letters in any
+        # script, so it names nothing and the basin is better shown as an id
+        # than as a number that looks like a term. Caught by the digits-only
+        # refusal test, which this fallback broke on its first run.
+        return [raw] if raw and re.search(r"[^\W\d_]", raw) else []
     cluster_size = max(sum(cluster_words.values()), 1)
     global_size = max(sum(global_words.values()), 1)
     scored: list[tuple[str, float]] = []

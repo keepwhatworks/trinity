@@ -117,10 +117,14 @@ class TestToolList:
         # half of the reflex now: it must say what it emits and why a green
         # test is required for a skip, or an agent cannot act on its answer.
         v = d["verify"]
-        assert "STOP" in v and "SKIP" in v and "READ" in v, (
-            "verify must name its three outcomes in its description — an agent "
-            "reads this, not the docs")
-        assert "hq_104" in v, "verify must cite why a SKIP needs the kernel"
+        assert "STOP" in v and "READ" in v, (
+            "verify must name its outcomes in its description — an agent reads "
+            "this, not the docs")
+        assert "9/34" in v and "zero times" in v, (
+            "verify must cite the measurement WITH its population: 26% is the "
+            "agent-written-fix rate, and on real human fixes the panel's unanimous "
+            "approvals were wrong zero times. A rate without its population is the "
+            "denominator error hq_110 exists to catch")
 
         # get_persona left the surface 2026-09-08 with the lens headline; the
         # lens reaches the chairman directly and via MCP Resources, not a tool.

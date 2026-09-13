@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import subprocess
 
-import pytest
 
 from trinity_local import providers as P
 from trinity_local.config import ProviderConfig
@@ -78,13 +77,27 @@ class TestProvenanceMatchesTheInvocation:
         assert P.injects_model_flag(_agy(model=None)) is False
         assert P.model_provenance(_agy(model=None), echo=None) != "pinned"
 
-    @pytest.mark.parametrize("name", ["codex", "someone_elses_cli"])
-    def test_injection_is_not_granted_to_other_providers(self, name):
-        """codex re-adds its own flag in CodexProvider; a provider that does
-        neither must not be stamped pinned."""
+    def test_codex_reads_pinned_because_it_injects(self):
+        """This assertion used to be `is False`, with a docstring that read
+        "codex re-adds its own flag in CodexProvider" — the test named the
+        truth and pinned the opposite, so every codex row stamped `assumed`
+        while argv enforced the model. Corrected 2026-09-11; the argv itself
+        is asserted in test_injection_matches_dispatch.py."""
         cfg = _agy()
         cfg = ProviderConfig(
-            name=name, type=cfg.type, enabled=True, label=name,
+            name="codex", type="codex", enabled=True, label="codex",
+            command=["codex", "exec"], args=[], task_types=set(),
+            model="x", effort=None)
+        assert P.injects_model_flag(cfg) is True
+        assert P.model_provenance(cfg, echo=None) == "pinned"
+
+    def test_injection_is_not_granted_to_an_unknown_provider(self):
+        """The refusal that still matters: a provider nobody wired must not be
+        stamped pinned just because it has a model string."""
+        cfg = _agy()
+        cfg = ProviderConfig(
+            name="someone_elses_cli", type=cfg.type, enabled=True, label="x",
             command=cfg.command, args=[], task_types=set(),
             model="x", effort=None)
         assert P.injects_model_flag(cfg) is False
+        assert P.model_provenance(cfg, echo=None) != "pinned"

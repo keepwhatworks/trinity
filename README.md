@@ -30,8 +30,7 @@ blinded to each other and to the test result — and returns **one** answer:
 | | |
 |---|---|
 | **STOP** | a relevant test is red. The kernel wins over any consensus. |
-| **SKIP** | a relevant test is green **and** all three labs agree. The only skip. |
-| **READ** | everything else. Blocks until a human has read it. |
+| **READ** | everything else, including a green test with unanimous approval. Blocks until a human has read it. |
 
 ```bash
 trinity-local verify --diff change.patch --criteria acceptance.json
@@ -43,12 +42,7 @@ criterion runs its command — the one your project already runs, `pytest`,
 to the panel. There is no chairman: agreement versus split is the signal, and
 a deterministic function reads it.
 
-**Why a green test is required for a skip.** Measured on this repo's own
-defect fixes: when three labs unanimously approved an agent's fix, that fix
-failed its own guard **26%** of the time. More reasoning effort did not help
-(zero of nine recovered at xhigh), and a stronger agent's wrong fixes were no
-harder to spot (21% vs 33%, p=0.46). Reading a diff is weaker than running it.
-The panel says *where to look*; the test says *what is safe*.
+**Why a green test is required, and why Trinity still will not tell you to skip reading.** Measured on this repository, on fixes written by AI agents: when three models from three different labs unanimously approved one, it failed its own guard **26% of the time** (9 of 34). On the 22 real human fix commits in the same run, their unanimous approvals were wrong **zero** times — so the rate depends heavily on who wrote the change, and pooled across both it is 16%. More reasoning effort recovered none of the misses, and a stronger agent's wrong fixes were no easier to spot (21% vs 33%, p=0.46 — not detected at this power, which is not the same as no difference). Reading a diff is weaker than running it. The panel says *where to look*; the test says *what is safe*; and a human still reads.
 
 `trinity-local install-agent` installs the same gate as a `trinity-verify`
 subagent inside Claude Code and Codex, so the checker is never the same lab as

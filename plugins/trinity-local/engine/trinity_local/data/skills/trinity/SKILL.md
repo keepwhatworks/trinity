@@ -168,7 +168,7 @@ Four trigger conditions — call `import_provider_memory(kind, payload, dry_run?
 
 When you (the agent) hit a decision you'd normally surface to the user — a product / architectural / tooling choice between options (which database, which approach, how to structure this), NOT a personal or irreversible one — **consult Trinity first instead of interrupting them**:
 
-- **Before you deploy** → call `mcp__trinity-local__verify` with the change and an acceptance block. It runs the tests that exercise the changed files, gets three blinded cross-lab reads, and returns STOP / SKIP / READ. A green test is required for a SKIP: three labs alone approved a guard-failing fix 26% of the time (hq_104).
+- **Before you deploy** → call `mcp__trinity-local__verify` with the change and an acceptance block. It runs the tests that exercise the changed files, gets three blinded cross-lab reads, and returns STOP or READ. There is no skip: a green test plus unanimous approval still returns READ, because three labs alone approved a guard-failing agent fix 26% of the time (9 of 34, hq_104).
 - **Genuinely hard / high-stakes** → call `mcp__trinity-local__run_council` and act on the chairman's `agreed_claims` / `disagreed_claims`.
 
 Then proceed on Trinity's answer. **Escalate to the user only when** Trinity has no signal (cold lens), the call is genuinely novel with no precedent in their history, it's irreversible / high-stakes, or it's a *personal* preference that's theirs to make (not inferable from taste). Reserve `AskUserQuestion` for exactly those.
