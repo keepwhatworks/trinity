@@ -74,6 +74,7 @@ class Read:
     cost_usd: float | None = None
     effort: str | None = None
     error: str | None = None
+    why: str = ""          # the reviewer's own words: why it voted FAIL
     raw_tail: str = ""
     stderr_tail: str = ""          # an empty stdout is only diagnosable from here
 
@@ -168,8 +169,22 @@ def _tokens(usage: dict) -> int | None:
     return sum(vals) if vals else None
 
 
-def _parse_votes(text: str, ids: list[str]) -> dict[str, bool] | None:
+def _parse_votes(text: str, ids: list[str]) -> tuple[dict[str, bool], str] | None:
+    """(votes, why) — and the `why` half was being thrown away.
+
+    The prompt has always asked for {"votes": {...}, "why": "..."}, every
+    reviewer has always sent one, and this function parsed the whole object and
+    returned only the votes. The reasoning survived solely as `raw_tail`, an
+    accidental last-300-characters slice of the raw response.
+
+    Council 595c6e34 (all three members): "Generic READ output does not justify
+    the review burden" and "READ should surface concrete concerns tied to code."
+    The fix is PRESERVATION, not generation: the concerns already exist and
+    already arrive. Discarding them and then asking a human to review blind is
+    the single worst trade this product makes.
+    """
     votes = None
+    candidates: list[dict] = []
     decoder = json.JSONDecoder()
     for m in _JSON_START_RE.finditer(text or ""):
         try:
@@ -179,8 +194,24 @@ def _parse_votes(text: str, ids: list[str]) -> dict[str, bool] | None:
         # Valid-JSON-of-the-wrong-type must not crash the caller
         # (guard_shape_not_just_parse).
         if isinstance(d, dict) and isinstance(d.get("votes"), dict):
-            votes = d["votes"]
-            break
+            candidates.append(d["votes"])
+    # AMBIGUITY IS A REFUSAL, NOT A RACE. This took the FIRST object carrying a
+    # `votes` key, so a reviewer that illustrates the format before answering --
+    # `Example: {"votes":{"c":"PASS"}} Final verdict: {"votes":{"c":"FAIL"}}` --
+    # had its verdict INVERTED, and the FAIL's reasoning was attached to the
+    # example's PASS. Found by an Astra audit 2026-09-16, in a scan written days
+    # earlier to fix the previous parser bug.
+    #
+    # Taking the LAST would be a different guess, wrong on a different input.
+    # When two readable vote objects DISAGREE there is no fact here to recover,
+    # and inventing one is how this codebase keeps producing plausible wrong
+    # answers. Agreeing duplicates are fine -- they say the same thing.
+    if candidates:
+        first = candidates[0]
+        if all(c == first for c in candidates[1:]):
+            votes = first
+        else:
+            return None
     if votes is None:
         # TRUNCATION FALLBACK. A reviewer that writes a long `why` can have its
         # response cut off before the closing brace, so the OUTER object never
@@ -200,13 +231,22 @@ def _parse_votes(text: str, ids: list[str]) -> dict[str, bool] | None:
                 break
     if votes is None:
         return None
+    why = ""
+    for m in _JSON_START_RE.finditer(text or ""):
+        try:
+            d, _ = decoder.raw_decode(text, m.start())
+        except json.JSONDecodeError:
+            continue
+        if isinstance(d, dict) and isinstance(d.get("why"), str):
+            why = d["why"].strip()
+            break
     out = {}
     for i in ids:
         v = str(votes.get(i, "")).strip().upper()
         if v not in ("PASS", "FAIL"):
             return None
         out[i] = v == "PASS"
-    return out
+    return out, why
 
 
 def _dispatch(provider_name: str, prompt: str, cwd: Path, config, effort: str | None = None):
@@ -249,6 +289,29 @@ def _dispatch(provider_name: str, prompt: str, cwd: Path, config, effort: str | 
         shutil.rmtree(scratch, ignore_errors=True)
 
 
+def _resolve_lab(value: str | None) -> str | None:
+    """`exclude_lab` accepts a LAB ("anthropic") or a PROVIDER ("claude").
+
+    It used to compare the raw value against lab names only, so the natural
+    call -- exclude_lab="claude" from a Claude session -- matched nothing and
+    was SILENTLY ignored: the author's own lab reviewed its own change, which
+    is the one thing the flag exists to prevent. Reported 2026-09-28 by a peer
+    session that watched Claude read its own diff. An unknown value is now an
+    error, never a no-op.
+    """
+    if not value:
+        return None
+    v = str(value).strip().lower()
+    labs = set(LAB_OF.values())
+    if v in labs:
+        return v
+    if v in LAB_OF:
+        return LAB_OF[v]
+    raise ValueError(
+        f"exclude_lab={value!r} names no known lab or provider; use one of "
+        f"{sorted(labs | set(LAB_OF))}")
+
+
 def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
                providers: tuple[str, ...] = DEFAULT_PANEL, exclude_lab: str | None = None,
                config=None, effort: str | None = None) -> tuple[Panel, list[Read]]:
@@ -265,6 +328,7 @@ def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
         criteria="\n".join(f"- {c.id}: {c.statement}" for c in judgments),
         vote_keys=", ".join(f'"{i}": "PASS|FAIL"' for i in ids),
     )
+    exclude_lab = _resolve_lab(exclude_lab)
     reads: list[Read] = []
     votes: dict[str, bool] = {}
     for name in providers:
@@ -277,7 +341,8 @@ def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
         try:
             result, pconf = _dispatch(name, prompt, cwd, config, effort)
             text = getattr(result, "stdout", "") or ""
-            parsed = _parse_votes(text, ids)
+            parsed_pair = _parse_votes(text, ids)
+            parsed, why = parsed_pair if parsed_pair else (None, "")
             usage = getattr(result, "usage", None) or {}
             tokens, cost = _tokens(usage), usage.get("cost_usd")
             if parsed is None:
@@ -291,7 +356,7 @@ def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
             passed = all(parsed[c.id] for c in judgments if c.blocking)
             reads.append(Read(name, lab, getattr(pconf, "model", None), parsed, passed,
                               round(time.time() - t0, 1), tokens, cost, getattr(pconf, "effort", None),
-                              raw_tail=text[-300:]))
+                              why=why, raw_tail=text[-300:]))
             votes[name] = passed
         except Exception as exc:   # a member that errors is a missing vote, never a vote
             reads.append(Read(name, lab, None, {}, False, round(time.time() - t0, 1),
@@ -301,12 +366,34 @@ def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
 
 # --------------------------------------------------------------------------- verify
 
+def _reject_duplicate_ids(criteria) -> None:
+    """Two criteria sharing an id means one vote answers both.
+
+    A reviewer returns {"votes": {"c": ...}} keyed by id, so an acceptance block
+    with a blocking `c` and a non-blocking `c` gets ONE verdict applied to both
+    -- and `passed` is computed over blocking criteria, so a formatting opinion
+    can decide a correctness gate. Refusing a malformed block is cheap; silently
+    merging two requirements is not.
+    """
+    seen, dupes = set(), []
+    for c in criteria:
+        cid = c.id if hasattr(c, "id") else (c or {}).get("id")
+        if cid in seen:
+            dupes.append(cid)
+        seen.add(cid)
+    if dupes:
+        raise ValueError(
+            f"duplicate criterion id(s) {sorted(set(dupes))!r}: a reviewer votes once per id, "
+            "so two criteria sharing one would share a verdict. Give each its own id.")
+
+
 def verify(criteria_dicts: list[dict], diff: str, context: str, cwd: Path,
            providers: tuple[str, ...] = DEFAULT_PANEL, exclude_lab: str | None = None,
            run_panel: bool = True, run_tests: bool = True, config=None,
            effort: str | None = None, env: dict | None = None) -> dict:
     """Panel first (blinded), then kernel, then the rule. Returns a plain dict."""
     criteria = [Criterion.from_dict(d) for d in criteria_dicts]
+    _reject_duplicate_ids(criteria)
     cwd = Path(cwd)
     panel, reads = (read_panel(criteria, diff, context, cwd, providers, exclude_lab, config, effort)
                     if run_panel else (Panel.not_run(), []))

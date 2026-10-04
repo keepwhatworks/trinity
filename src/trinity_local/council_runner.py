@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .config import AppConfig
+from .utils import now_iso
 from .council_status import (
     finalize_council_run_state,
     init_council_run_state,
@@ -102,6 +104,7 @@ def _maybe_auto_open(review_path) -> None:
     except Exception:
         return
 from .council_runtime import (
+    chairman_format,
     member_prompt_framing,
     append_launch_event,
     create_council_outcome,
@@ -410,6 +413,33 @@ class MemberExecutionResult:
     # that recorded no cost can never gain it later. None means the CLI said
     # nothing, never zero (plan item 1B, 2026-09-03).
     usage: dict | None = None
+    # Set when this member's FIRST attempt failed transiently and it was run
+    # once more; the value is the first attempt's failure reason.
+    retried_after: str | None = None
+    # One entry per attempt, failed ones included: {started_at, seconds, ended}.
+    # 32% of councils lost a lab and those took 322 s vs 199 s at the median
+    # (2026-09-28), but nothing recorded where the time went (amd_0267).
+    timings: list = field(default_factory=list)
+
+
+# ONE bounded retry, for failures that are plausibly transient. A usage wall, a
+# model substitution or a missing provider fails identically the second time
+# and only spends quota, so they are never retried. 70% of the last 30 days'
+# councils ran with a lab missing (measured 2026-09-28).
+#
+# Exceptions are NOT retried: the one this runner sees in practice is
+# "Provider binary not found", which is permanent. An old frontend-flow test
+# pinning that exact payload caught the first version retrying it.
+_RETRYABLE_MEMBER_FAILURES = frozenset({
+    "nonzero_returncode_without_stdout", "empty_answer", "headless_tool_denied",
+})
+
+
+_NO_TOOLS_PREAMBLE = (
+    "Answer from the text of this prompt only. Do not run commands, read files, "
+    "or use any tool; nothing in your working directory is relevant, and a tool "
+    "call here cannot be approved.\n\n"
+)
 
 
 def run_council(
@@ -553,7 +583,7 @@ def run_council(
         )
         return entry.describe(), True
 
-    def _run_member(provider_name: str) -> MemberExecutionResult:
+    def _run_member_once(provider_name: str) -> MemberExecutionResult:
         provider_config = config.providers.get(provider_name)
         # Effort rotation (default OFF, TRINITY_EFFORT_ROTATION): must happen
         # BEFORE dispatch so the same rotated config flows to both the CLI
@@ -596,7 +626,15 @@ def run_council(
         provider = make_provider(provider_config)
         try:
             start_member_progress(state_token, provider_name)
-            result = provider.run(member_prompt, cwd)
+            # Gemini's CLI cannot approve a tool in headless mode, so any prompt
+            # that mentions a file sends it for one, the tool is denied, and it
+            # answers with nothing. Live A/B on 2026-09-28, same file-mentioning
+            # prompt: 0/3 answered without this line, 3/3 with it. verify's
+            # reader prompt has always carried the equivalent sentence, which is
+            # why Gemini voted normally there while failing in councils.
+            _prompt = (_NO_TOOLS_PREAMBLE + member_prompt
+                       if provider_name == "antigravity" else member_prompt)
+            result = provider.run(_prompt, cwd)
         except Exception as exc:
             error_text = str(exc)
             error_text, _quota = _note_quota_wall(provider_name, error_text, error_text)
@@ -617,7 +655,12 @@ def run_council(
                 },
             )
 
-        output_text = result.stdout or result.stderr or ""
+        # stdout ONLY. This used to fall back to stderr when stdout was empty.
+        # Measured 2026-09-28 over 914 member results with stdout on record:
+        # 34 "answers" came from stderr and NONE was an answer -- 32 headless
+        # tool denials and 2 "[agy] print timeout ... returning partial output"
+        # with no partial output. The fallback only ever promoted a failure.
+        output_text = result.stdout or ""
         if result_hard_failed(result):
             why = describe_provider_failure(
                 result.stdout, result.stderr, result.returncode, provider=provider_name
@@ -645,6 +688,70 @@ def run_council(
                 },
             )
 
+        # A USAGE WALL RETURNED AS THE ANSWER. `claude -p` exits 0 and prints
+        # its credit banner on stdout, so result_hard_failed above never fires
+        # and the banner used to reach the chairman as a 145-char "answer":
+        # scored overall 0 / risk 10, counted in routing, the council presented
+        # as three-member when it had two. 34 banked councils, 0 marked failed.
+        # Now it trips the breaker (so the next council skips this provider
+        # instead of buying a second banner), lands in failed_members (so the
+        # degraded-council guard in personal_routing finally sees it), and stays
+        # out of output_text (so the chairman never reads it). The banner text
+        # is kept in the payload, the same non-destructive rule as the
+        # substitution drop below.
+        # A TOOL DENIAL returned as success: exit 0, empty stdout, the reason on
+        # stderr. `output_text = stdout or stderr` above promoted it to Gemini's
+        # answer. Not a quota wall, so the breaker is NOT tripped -- the next
+        # council should try Gemini again.
+        from .dispatch_errors import headless_tool_denial
+        if not (result.stdout or "").strip():
+            _detail = (result.stderr or "").strip()
+            update_member_failure(state_token, provider_name, _detail)
+            _log_council_member_failure(
+                provider_name, returncode=result.returncode, stderr_text=_detail)
+            return MemberExecutionResult(
+                provider_name=provider_name,
+                provider_config=provider_config,
+                output_text="",
+                returncode=result.returncode,
+                stderr=result.stderr,
+                stdout=result.stdout,
+                error_payload={
+                    "provider": provider_name,
+                    "stage": "member",
+                    "reason": ("headless_tool_denied"
+                               if headless_tool_denial(result.stdout, result.stderr)
+                               else "empty_answer"),
+                    "detail": _detail or "the CLI exited 0 and printed no answer",
+                },
+            )
+
+        from .dispatch_errors import quota_banner_kind
+        _banner_kind = quota_banner_kind(result.stdout)
+        if _banner_kind is not None:
+            _text = result.stdout or ""
+            why, _quota = _note_quota_wall(provider_name, _text, _text.strip())
+            update_member_failure(state_token, provider_name, why)
+            _log_council_member_failure(
+                provider_name, returncode=result.returncode, stderr_text=_text)
+            return MemberExecutionResult(
+                provider_name=provider_name,
+                provider_config=provider_config,
+                output_text="",
+                returncode=result.returncode,
+                stderr=result.stderr,
+                stdout=result.stdout,
+                error_payload={
+                    "provider": provider_name,
+                    "stage": "member",
+                    "reason": "quota_banner_as_answer",
+                    "kind": _banner_kind.value,
+                    "breaker_tripped": _quota,
+                    "answer_text": _text,
+                    "detail": why,
+                },
+            )
+
         _warn_model_drift(provider_name, provider_config, result)
 
         # A SILENT DOWNGRADE IS WORSE THAN A FAILURE. On 2026-09-11 Trinity
@@ -663,6 +770,20 @@ def run_council(
         _echo = getattr(result, "model_echo", None)
         if (injects_model_flag(provider_config)
                 and is_model_substitution(getattr(provider_config, "model", None), _echo)):
+            # THE DROP IS NON-DESTRUCTIVE. The first version set output_text=""
+            # and kept only the failure reason, so the answer -- dispatched,
+            # generated and paid for -- was thrown away. When the echo itself
+            # turned out to be wrong (a background helper model appearing first
+            # in claude's modelUsage), 21 councils had a HEALTHY member dropped
+            # and there was nothing left to re-synthesize from: the only repair
+            # was re-dispatching every member. Keeping the text costs nothing
+            # and turns this class of incident from lost into repairable.
+            #
+            # The text is kept OUT of output_text on purpose -- a dropped member
+            # must not reach the chairman or the vote count. It rides the
+            # failure payload, where a human or a later re-synthesis can find it
+            # and where nothing consumes it by accident.
+            _text = (getattr(result, "stdout", "") or "")
             return MemberExecutionResult(
                 provider_name=provider_name,
                 provider_config=provider_config,
@@ -678,10 +799,14 @@ def run_council(
                     "reason": "model_substitution",
                     "requested": getattr(provider_config, "model", None),
                     "answered": _echo,
+                    "answer_text": _text,
+                    "answer_chars": len(_text),
                     "detail": (f"argv pinned {getattr(provider_config, 'model', None)!r} but the "
                                f"CLI answered as {_echo!r}. A member that silently becomes a "
                                f"different model is dropped, not counted -- the council is "
-                               f"degraded and says so, rather than looking complete."),
+                               f"degraded and says so, rather than looking complete. The answer "
+                               f"is preserved in `answer_text` so this is recoverable by "
+                               f"re-synthesis if the drop later proves wrong."),
                 },
             )
         update_member_progress(state_token, provider_name, output_text)
@@ -696,6 +821,29 @@ def run_council(
             usage=getattr(result, "usage", None),
         )
 
+    def _timed_attempt(provider_name: str) -> tuple[MemberExecutionResult, dict]:
+        started, t0 = now_iso(), time.monotonic()
+        result = _run_member_once(provider_name)
+        return result, {"started_at": started, "seconds": round(time.monotonic() - t0, 1),
+                        "ended": (result.error_payload or {}).get("reason") or "ok"}
+
+    def _run_member(provider_name: str) -> MemberExecutionResult:
+        first, t1 = _timed_attempt(provider_name)
+        reason = (first.error_payload or {}).get("reason")
+        if reason not in _RETRYABLE_MEMBER_FAILURES:
+            first.timings = [t1]
+            if first.error_payload is not None:
+                first.error_payload = {**first.error_payload, "timings": [t1]}
+            return first
+        second, t2 = _timed_attempt(provider_name)
+        second.retried_after = str(reason)
+        second.timings = [t1, t2]
+        if second.error_payload is not None:
+            second.error_payload = {**second.error_payload,
+                                    "retried_after": str(reason), "attempts": 2,
+                                    "timings": [t1, t2]}
+        return second
+
     executions: dict[str, MemberExecutionResult] = {}
     # ContextVar propagation so the MCP active-sampling session set
     # in mcp_server.handle_call_tool reaches the worker threads.
@@ -704,6 +852,7 @@ def run_council(
     # copy — a single Context can only be entered once (ctx.run()
     # raises 'cannot enter context: already entered' if reused).
     import contextvars
+    members_t0 = time.monotonic()
     with ThreadPoolExecutor(max_workers=max(1, len(member_providers))) as executor:
         future_map = {
             executor.submit(
@@ -714,6 +863,8 @@ def run_council(
         for future in as_completed(future_map):
             provider_name = future_map[future]
             executions[provider_name] = future.result()
+    # Stop here: result processing below is not part of the member phase.
+    members_seconds = round(time.monotonic() - members_t0, 1)
 
     for provider_name in member_providers:
         execution = executions[provider_name]
@@ -749,6 +900,10 @@ def run_council(
                 # Absent when the CLI reported nothing. to_dict() drops None,
                 # so "no cost recorded" and "cost was zero" stay distinguishable.
                 "usage": execution.usage,
+                # Present only when the first attempt failed and this answer came
+                # from the single retry -- so a recovered member is visible.
+                "retried_after": execution.retried_after,
+                "timings": execution.timings,
             },
         )
         member_results.append(member)
@@ -785,6 +940,7 @@ def run_council(
 
     # --- Primary synthesis with failure handling + chairman fallback ---
     update_synthesis_progress(state_token, "running")
+    chairman_t0 = time.monotonic()
     synthesis_failure: dict[str, object] | None = None
     # Chairman fallback: if the primary chair is rate-limited / exhausted,
     # synthesize with the next enabled provider. primary_provider/_model are
@@ -794,6 +950,7 @@ def run_council(
             primary_prompt, config, primary_provider, primary_model, cwd, state_token
         )
     )
+    chairman_seconds = round(time.monotonic() - chairman_t0, 1)
     if synthesis_error:
         synthesis_failure = {
             "provider": primary_provider,
@@ -852,6 +1009,11 @@ def run_council(
         # council_id, so the ledger-key change (§2's schema half, still not
         # built) has the join it needs whenever it is funded.
         "framing": member_prompt_framing(bundle),
+        # Wall time of the parallel member phase (the slowest attempt chain)
+        # and of the chairman, fallback chairs included. Per-attempt detail is
+        # on each member's metadata.timings and each failure's timings.
+        "timings": {"members_seconds": members_seconds, "chairman_seconds": chairman_seconds},
+        "chairman_format": chairman_format(),
     }
     if synthesis_error:
         final_metadata["synthesis_error"] = synthesis_error

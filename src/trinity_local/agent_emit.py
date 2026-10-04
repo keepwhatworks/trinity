@@ -88,10 +88,11 @@ PROCEDURE
    `{{id, kind: "judgment", statement}}`. Then call `mcp__trinity-local__verify` with the
    diff, the context, and that block, passing `exclude_lab` = {host_lab}.
 3. Relay the triage exactly. STOP: a relevant test is red -- say which, and do not soften it.
-   SKIP: test green and three labs agreed -- the only green you may pass on. READ: everything
-   else -- name what is unverified (no test, a split, or agreement without a kernel), because
+   READ: everything else, including a green test with unanimous approval -- there is no
+   pass-through outcome. Name what is unverified (no test, a split, or agreement without a kernel), because
    on a weak agent's output three labs agreed on a fix that failed its own test one time in
-   three (hq_104). The panel says where to look; the test says what is safe.
+   three (hq_104). The test says what is safe; the panel is a second read, and its flags did not
+   pick out later-fixed commits (hq_122).
 4. ESCALATE to `mcp__trinity-local__run_council` (members excluding `{host_lab}`) only for a
    DESIGN question with no test to run -- the chairman prosecutes a split; it does not
    verify code. Use `get_council_status` to poll if it runs async.

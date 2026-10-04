@@ -11,6 +11,8 @@ through to the built-in default succeeds.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import dataclasses
 
 from trinity_local.config import AppConfig, default_primary_provider, load_config
@@ -49,7 +51,9 @@ class TestItLoadsFromConfigJson:
     def test_the_key_is_read(self, tmp_path, monkeypatch):
         import json
         from trinity_local.config import load_config as lc
-        base = json.loads(open("config.json").read())
+        # The tracked example, not the gitignored config.json: that file is
+        # absent in every fresh worktree and differs per machine.
+        base = json.loads((Path(__file__).resolve().parents[1] / "config.example.json").read_text())
         base["default_primary_provider"] = "codex"
         p = tmp_path / "config.json"
         p.write_text(json.dumps(base))
@@ -58,7 +62,9 @@ class TestItLoadsFromConfigJson:
     def test_absence_is_none_not_a_crash(self, tmp_path):
         import json
         from trinity_local.config import load_config as lc
-        base = json.loads(open("config.json").read())
+        # The tracked example, not the gitignored config.json: that file is
+        # absent in every fresh worktree and differs per machine.
+        base = json.loads((Path(__file__).resolve().parents[1] / "config.example.json").read_text())
         base.pop("default_primary_provider", None)
         p = tmp_path / "config.json"
         p.write_text(json.dumps(base))

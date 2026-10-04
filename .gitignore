@@ -75,3 +75,23 @@ internal/experiments/memory_bakeoff/*.npz
 # GA4 ingestion credentials are injected into the WHEEL at publish time,
 # never committed — this repo mirrors publicly.
 src/trinity_local/_ga4_bundled.py
+
+# Cross-agent handoff between the Claude and Codex sessions working this repo.
+# Append-only JSONL, local coordination only, never published.
+internal/agent_exchange/
+
+# hq_113/114 packets and judge reads carry raw conversation text: local only
+internal/experiments/hq113_packets*.jsonl
+internal/experiments/hq114_reads.jsonl
+internal/experiments/hq116_reads.jsonl
+internal/experiments/hq117_labels.jsonl
+internal/experiments/hq118_reads.jsonl
+internal/experiments/hq119_labels*.jsonl
+internal/experiments/hq119_continuations.json
+internal/experiments/hq120_holdout_labels.jsonl
+internal/experiments/hq120_holdout_conts.json
+internal/experiments/hq121_pools.json
+internal/experiments/hq121_scores_*.json
+internal/experiments/hq121_reads.json
+internal/experiments/hq122_sample.json
+internal/experiments/hq122_reads.json

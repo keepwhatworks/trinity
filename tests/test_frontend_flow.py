@@ -642,7 +642,12 @@ class TestCouncilFailureMetadata:
         # path now succeeds (via the chairman stub) so synthesis_failure /
         # synthesis_error are no longer populated on this path.
         assert metadata["failed_members"] == ["claude", "codex"]
-        assert metadata["member_failures"] == [
+        # Every failure carries its attempt timings (amd_0267); compared apart
+        # because they hold wall-clock values.
+        assert all([t["ended"] for t in f["timings"]] == ["exception"]
+                   for f in metadata["member_failures"])
+        assert [{k: v for k, v in f.items() if k != "timings"}
+                for f in metadata["member_failures"]] == [
             {
                 "provider": "claude",
                 "stage": "member",

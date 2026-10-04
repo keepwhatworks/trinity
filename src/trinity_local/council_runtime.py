@@ -256,6 +256,76 @@ def _member_lens_constraints(query: str = "") -> str:
 COMBINE_ENV_VAR = "TRINITY_COMBINE_SURVIVORS"
 
 
+def decision_verdict_enabled() -> bool:
+    """TRINITY_DECISION_VERDICT, default ON (council_10e38944ddbdb84c, amd_0264).
+
+    ON: PART 1 opens with the decision on the user's question and what would
+    change it; every disagreed claim names the check that settles it. OFF (0 /
+    false / off / no) restores the old provider-menu template, as a kill switch.
+    The prospective gate (first 30 councils, deadline 2026-10-27) is
+    internal/experiments/hq115_decision_verdict_gate.py.
+    """
+    import os
+
+    return os.environ.get("TRINITY_DECISION_VERDICT", "1").strip().lower() not in ("0", "false", "off", "no")
+
+
+def chairman_format() -> str:
+    """Stamped on every outcome so the trust ledger can split eras: a format
+    change can shift the winner distribution the ledger learns from."""
+    return "decision_v1" if decision_verdict_enabled() else "menu_v0"
+
+
+_MENU_SECTIONS_HEAD = (
+        "Use these sections:\n\n"
+        "## Winner\n"
+        "- Choose exactly one best response for this task.\n"
+        "- Name the winning provider directly, like: Gemini.\n"
+        "- Add one short reason.\n\n"
+        "## Why They Win\n"
+        "- One short bullet per provider.\n"
+        "- Focus on what that model actually contributes.\n"
+        "- If a response is unusable, say so briefly.\n\n"
+        "## Contested\n"
+        "- Only if members genuinely disagreed. Skip entirely if they converged.\n"
+        "- One bullet per real disagreement: which side SURVIVES when weighed "
+        "against the other members' evidence, and the ground for it.\n"
+        "- If undecidable on the evidence, say 'unresolved' and why.\n"
+        "- This is the priority section. Never drop it to save words; drop Key "
+        "Tradeoffs first.\n\n"
+)
+_MENU_SECTIONS_TAIL = (
+
+        "## Key Tradeoffs\n"
+        "- 2 bullets max.\n"
+        "- Name the real decision criteria for this task.\n\n"
+        "## Recommendation\n"
+        "- 2 bullets max.\n"
+        "- Use the format: If you value X → choose Provider.\n"
+        "- Be specific about what matters here.\n\n"
+)
+_DECISION_SECTIONS = (
+    "Use these sections, in this order:\n\n"
+    "## Decision\n"
+    "- Answer the user's question directly, in their terms, in 1-2 sentences. Not which model to use.\n"
+    "- If the answer genuinely depends on one variable, write: DEPENDS ON <variable>: if A -> X; if B -> Y.\n"
+    "- If the evidence cannot decide it, write UNDETERMINED and name the missing evidence or the owner's preference it needs.\n\n"
+    "## What would change it\n"
+    "- The specific evidence that would flip the decision. One or two bullets.\n\n"
+    "## Contested\n"
+    "- Only if members genuinely disagreed. Skip entirely if they converged.\n"
+    "- One bullet per real disagreement: which side SURVIVES when weighed "
+    "against the other members' evidence, the ground for it, and the check that would settle it later.\n"
+    "- If undecidable on the evidence, say 'unresolved' and why.\n"
+    "- This is the priority section after the decision. Never drop it to save words.\n\n"
+)
+_DECISION_TAIL = (
+    "## Key Tradeoffs\n"
+    "- One line, or skip it.\n\n"
+    "Keep Decision + What would change it + Contested under 160 words. The winning provider goes in the JSON only.\n\n"
+)
+
+
 def combine_enabled() -> bool:
     """Dormant by default. See _combine_survivors_block for the pre-registered
     falsifier this ships behind."""
@@ -490,30 +560,9 @@ def render_primary_council_prompt(
         "Return TWO parts in this exact order:\n\n"
         "PART 1 — concise decision memo in markdown. Stay under 160 words total.\n"
         "Prefer short bullets. Skip weak sections rather than padding.\n\n"
-        "Use these sections:\n\n"
-        "## Winner\n"
-        "- Choose exactly one best response for this task.\n"
-        "- Name the winning provider directly, like: Gemini.\n"
-        "- Add one short reason.\n\n"
-        "## Why They Win\n"
-        "- One short bullet per provider.\n"
-        "- Focus on what that model actually contributes.\n"
-        "- If a response is unusable, say so briefly.\n\n"
-        "## Contested\n"
-        "- Only if members genuinely disagreed. Skip entirely if they converged.\n"
-        "- One bullet per real disagreement: which side SURVIVES when weighed "
-        "against the other members' evidence, and the ground for it.\n"
-        "- If undecidable on the evidence, say 'unresolved' and why.\n"
-        "- This is the priority section. Never drop it to save words; drop Key "
-        "Tradeoffs first.\n\n"
-        + _combine_survivors_block() +
-        "## Key Tradeoffs\n"
-        "- 2 bullets max.\n"
-        "- Name the real decision criteria for this task.\n\n"
-        "## Recommendation\n"
-        "- 2 bullets max.\n"
-        "- Use the format: If you value X → choose Provider.\n"
-        "- Be specific about what matters here.\n\n"
+        + (_DECISION_SECTIONS if decision_verdict_enabled() else _MENU_SECTIONS_HEAD)
+        + _combine_survivors_block()
+        + (_DECISION_TAIL if decision_verdict_enabled() else _MENU_SECTIONS_TAIL) +
         "Do not restate the full task. Do not summarize every paragraph. Be decisive and sharp.\n\n"
         "PART 2 — a fenced code block containing strict JSON, on its own line, exactly like:\n\n"
         "```routing-json\n"
@@ -530,13 +579,18 @@ def render_primary_council_prompt(
         '  "major_failure_mode": "<short sentence or null>",\n'
         '  "routing_lesson": "For <task_type>, prefer <provider> because <observed reason>.",\n'
         '  "eval_seed": "A future answer should pass: <one concrete check>",\n'
-        '  "agreed_claims": ["<claim all responses agree on>", "..."],\n'
+        + ('  "decision": "<the answer to the user\'s question, in their terms, or UNDETERMINED: <missing evidence or preference>>",\n'
+           '  "flip_condition": "<the evidence that would change the decision>",\n' if decision_verdict_enabled() else "")
+        + '  "agreed_claims": ["<claim all responses agree on>", "..."],\n'
         '  "disagreed_claims": [\n'
         '    {"claim": "<the disputed claim>",\n'
         '     "providers_for": ["<provider>"],\n'
         '     "providers_against": ["<provider>"],\n'
         '     "resolution": "<which side survives the other members\' evidence and the ground for it, or \'unresolved\' if undecidable>",\n'
-        '     "why_matters": "<one short sentence on why this disagreement matters>"}\n'
+        '     "why_matters": "<one short sentence on why this disagreement matters>"'
+        + (',\n     "check": {"procedure": "<the test, source, measurement or event that settles it>", '
+           '"decision_rule": "<which result supports which side>"}' if decision_verdict_enabled() else "")
+        + "}\n"
         '  ],\n'
         '  "facets": [\n'
         '    {"name": "<name the dimension that ACTUALLY separated these answers on '
@@ -555,6 +609,10 @@ def render_primary_council_prompt(
         "- agreed_claims: short factual statements ALL responses make. 3-7 items. Empty list if none.\n"
         "- facets: 1-3 entries. Name the dimensions that actually DISCRIMINATED between these answers for THIS task (e.g. 'invalidation semantics', 'cost realism', 'migration risk') and who won each. Do NOT reuse the generic score axes; if a dimension separated nobody, leave it out. Empty list when the answers did not differ along any nameable dimension.\n"
         "- disagreed_claims: each entry names ONE specific disagreement, with which providers landed on which side, the RESOLUTION (which side survives the other members' evidence, or 'unresolved'), and one sentence on why it matters. 0-5 items.\n"
+        + ("- decision: the same decision as '## Decision', one sentence. flip_condition: the same as '## What would change it'.\n"
+           "- check: how the split gets settled LATER, by someone who was not in this council: a named test, file, "
+           "URL, statute, price, date or measurement in `procedure`, and in `decision_rule` which result means which side "
+           "wins. 'Consult an expert' or 'verify further' is not a check.\n" if decision_verdict_enabled() else "")
         + ("- combined_answer: the SAME merge you wrote in '## Combined', as one string. It must be usable on its own by someone who never reads the memo. Omit the field when there was nothing to merge.\n"
            "- grafts: one entry per claim you grafted in, naming its source provider and whether EVIDENCE or the LENS decided to keep it. Set basis='lens' ONLY for a genuine evidence-tie broken by taste, and then name the tension. An empty list is correct when nothing was grafted.\n"
            if combine_enabled() else "")
@@ -1054,6 +1112,9 @@ def parse_synthesis_sections(text: str) -> dict[str, str]:
             ("differences", ("differences", "key differences", "key tradeoffs", "tradeoffs")),
             ("best_answer", ("best answer", "best overall answer", "strongest answer", "what each response does best")),
             ("winner", ("winner", "decision framework", "recommendation", "recommended answer")),
+            ("decision", ("decision",)),
+            ("flip_condition", ("what would change it",)),
+            ("contested", ("contested",)),
             ("followup", ("follow-up needed", "followup needed", "follow-up", "followup", "next step", "next steps")),
         ],
     )
@@ -1164,6 +1225,8 @@ def _normalize_routing_dict(data: dict) -> dict:
         "routing_lesson",
         "eval_seed",
         "major_failure_mode",
+        "decision",
+        "flip_condition",
     ):
         value = data.get(key)
         if isinstance(value, str):
@@ -1228,6 +1291,16 @@ def _normalize_routing_dict(data: dict) -> dict:
             resolution = entry.get("resolution")
             if isinstance(resolution, str) and resolution.strip():
                 sub["resolution"] = resolution.strip()
+            # How the split gets settled later: {procedure, decision_rule}.
+            # Same whitelist rule; a bare string is kept as the procedure.
+            check = entry.get("check")
+            if isinstance(check, str) and check.strip():
+                check = {"procedure": check}
+            if isinstance(check, dict):
+                kept = {k: str(check[k]).strip() for k in ("procedure", "decision_rule")
+                        if isinstance(check.get(k), str) and check[k].strip()}
+                if kept:
+                    sub["check"] = kept
             cleaned_disagreed.append(sub)
         if cleaned_disagreed:
             out["disagreed_claims"] = cleaned_disagreed

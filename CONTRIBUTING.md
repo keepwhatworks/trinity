@@ -131,7 +131,7 @@ python scripts/browser_smoke.py     # <!-- canonical:smoke_surface_count -->34<!
 ```
 
 End-users install Trinity via the curl-bash flow
-(`curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash`).
+(`curl -LsSf https://keepwhatworks.com/install.sh | sh`).
 Contributors need the editable pip install above so changes take effect
 without re-running the installer. See `docs/INSTALL-pip.md`.
 
@@ -167,7 +167,7 @@ These are load-bearing for Trinity's identity. PRs that violate them get rejecte
 
 - Python 3.10+ (`from __future__ import annotations` in every module)
 - Dataclasses with manual `to_dict()` — no Pydantic, no attrs
-- Three runtime dependencies: `Pillow>=10` (PNG share cards), `mcp>=1.0` (MCP server runtime), `numpy>=1.26` (lens-build cosine matmul + k-means + vocabulary stats; NOT search — `search_prompt_nodes` is heuristic since task #54)
+- Three runtime dependencies: `Pillow>=10` (PNG share cards), `mcp>=1.0,<2` (MCP server runtime), `numpy>=1.26` (lens-build cosine matmul + k-means + vocabulary stats; NOT search — `search_prompt_nodes` is heuristic since task #54)
 - `[mlx]` extras for `sentence-transformers` (graceful degrade to TF-IDF if missing)
 - `[test]` extras for `pytest>=7`
 - JSONL append logs for analytics; JSON entity files for objects

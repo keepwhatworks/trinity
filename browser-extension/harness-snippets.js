@@ -12,8 +12,7 @@
 // `install-mcp` writer in src/trinity_local/commands/install.py).
 //
 // Curl-primary (founder decision, 2026-05-29): the recommended install is the
-// one-line bootstrap (`curl … install.sh | bash`), which clones the repo,
-// installs runtime deps, and runs `install-mcp` for every harness it detects.
+// one-line bootstrap (`curl … install.sh | sh`), which installs uv if needed, installs Trinity as a uv tool from the newest public release, and registers its MCP server in every CLI it finds.
 // These paste-in blocks are the MANUAL fallback for a harness the bootstrap
 // didn't auto-wire — they mirror exactly what `install-mcp` writes:
 // `command = <your python>`, `args = ["-m", "trinity_local.main", "--mcp"]`.
@@ -27,10 +26,10 @@
 (function () {
   "use strict";
 
-  // The one-line install everyone should prefer — clones the repo (auditable),
-  // installs deps, and registers the MCP server in every detected harness.
+  // The one-line install everyone should prefer: it installs uv if needed, installs Trinity as a uv tool from the newest public release, and registers the MCP
+  // server in every CLI it finds.
   var BOOTSTRAP_CMD =
-    "curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash";
+    "curl -LsSf https://keepwhatworks.com/install.sh | sh";
 
   // Manual fallback — what `install-mcp` writes (module-mode, no PyPI runner).
   // PYTHON is a placeholder for the absolute interpreter path the bootstrap

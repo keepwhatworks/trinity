@@ -76,8 +76,8 @@ class TestHarnessSnippetModule:
         # The recommended install is the one-line bootstrap, surfaced as the
         # module's TRINITY_BOOTSTRAP_CMD + in the picker heading.
         assert "TRINITY_BOOTSTRAP_CMD" in js
-        assert "scripts/install.sh" in js
-        assert "curl -fsSL" in js
+        from trinity_local.facts import INSTALL_COMMAND
+        assert INSTALL_COMMAND in js
 
     def test_json_harnesses_use_mcpservers_key(self):
         assert '"mcpServers"' in _snippets_js()

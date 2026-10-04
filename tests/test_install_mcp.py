@@ -159,7 +159,7 @@ class TestInstallMcp:
         _run_install(monkeypatch, home)
         out = capsys.readouterr().out
         assert "NOT registered" not in out
-        assert "✓ Installed" in out
+        assert "✓ Registered" in out
 
     def test_writes_cursor_mcp_config(self, home: Path, monkeypatch, capsys):
         """100-persona audit P16/P92 fix: install-mcp must drop a config

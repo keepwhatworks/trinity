@@ -57,6 +57,30 @@ from .council_analytics import _is_real_contest, _scan_outcomes, _slug_tiebreak,
 
 
 
+def _has_banner_member(council: dict[str, Any]) -> bool:
+    """True when any recorded member answer is really a failure: a usage-wall
+    banner, or a headless tool denial (recorded as the answer because the runner
+    used to fall back to stderr when stdout was empty)."""
+    from .dispatch_errors import headless_tool_denial, quota_banner_kind
+    members = council.get("member_results")
+    if not isinstance(members, list):
+        return False
+    for m in members:
+        if not isinstance(m, dict):
+            continue
+        text = m.get("output_text")
+        if quota_banner_kind(text) is not None or headless_tool_denial("", text):
+            return True
+        # Provenance over phrasing: where stdout was recorded, an answer that
+        # did not come from it came from stderr, and none of the 34 such answers
+        # on record was an answer.
+        md = m.get("metadata")
+        if (isinstance(md, dict) and "stdout" in md
+                and not str(md.get("stdout") or "").strip() and str(text or "").strip()):
+            return True
+    return False
+
+
 def aggregate_routing_table(councils: Iterable[dict[str, Any]]) -> dict[str, Any]:
     """Group routing labels by task_type and count chairman wins per provider.
 
@@ -101,6 +125,16 @@ def aggregate_routing_table(councils: Iterable[dict[str, Any]]) -> dict[str, Any
         _meta = c.get("metadata")
         _failed = _meta.get("failed_members") if isinstance(_meta, dict) else None
         if isinstance(_failed, list) and _failed:
+            skipped_degraded += 1
+            continue
+        # DEFENCE IN DEPTH, and the repair for history. Until 2026-09-25 a usage
+        # banner returned on stdout was recorded as an ANSWER, so 34 banked
+        # councils carry `failed_members: []` while a member's "answer" is
+        # "You're out of usage credits...". council_runner now marks those
+        # failed at dispatch; this reads the same classifier over the recorded
+        # answers so the councils already on disk are excluded too -- without
+        # rewriting a single outcome file.
+        if _has_banner_member(c):
             skipped_degraded += 1
             continue
         label = c.get("routing_label") or {}

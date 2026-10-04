@@ -10,11 +10,11 @@ Reach for Trinity when the question is contested, hard to reverse, or would bene
 ## Start here
 - [README](https://github.com/keepwhatworks/trinity/blob/main/README.md): install, how it works, objections, and a side-by-side comparison with LMArena / promptfoo / OpenRouter.
 - [Landing](https://keepwhatworks.com): the public overview.
-- [Install (one line)](https://github.com/keepwhatworks/trinity/blob/main/scripts/install.sh): `curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash`. Registers the MCP server in every harness it detects and pre-wires the Chrome capture host.
+- [Install (one line)](https://github.com/keepwhatworks/trinity/blob/main/docs/install.sh): `curl -LsSf https://keepwhatworks.com/install.sh | sh`. Installs Trinity with uv and registers its MCP server in every CLI it finds.
 
 ## How it works
 - [How Trinity works](https://github.com/keepwhatworks/trinity/blob/main/docs/how-trinity-works.md): the end-to-end pipeline: transcripts → embeddings → dream → lens → runtime.
-- [Architecture](https://github.com/keepwhatworks/trinity/blob/main/docs/architecture.md): wire diagram + design rationale (chairman synthesizes member outputs into structured Routing JSON).
+- [Architecture](https://github.com/keepwhatworks/trinity/blob/main/docs/architecture.md): wire diagram + design rationale (chairman synthesizes member outputs into a structured JSON verdict).
 - [The lens](https://github.com/keepwhatworks/trinity/blob/main/docs/lens.md): identity → paired tensions → subject basins → vocabulary, read top-down on every council.
 
 ## For tool builders

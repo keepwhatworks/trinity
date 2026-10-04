@@ -29,8 +29,8 @@ def test_creates_file_with_block_when_missing(tmp_path, capsys):
     assert rc == 0 and out["targets"][0]["action"] == "created"
     body = (tmp_path / "CLAUDE.md").read_text()
     assert REFLEX_BEGIN in body and REFLEX_END in body
-    # the cheap-first ladder is the whole lesson — all three rungs present
-    assert 'ask(mode="route")' in body and "run_council" in body
+    # the two live gates, named: a plan gate and a pre-deploy gate
+    assert "`run_council`" in body and "`verify`" in body
     assert "agreed_claims" in body
 
 
@@ -76,11 +76,12 @@ def test_reflex_text_stays_within_the_council_word_budget():
     assert words <= 80, f"reflex text is {words} words (council budget: 80)"
 
 
-def test_multi_harness_detection_and_choose_in_ladder(tmp_path, monkeypatch, capsys):
+def test_multi_harness_detection_and_the_live_gates(tmp_path, monkeypatch, capsys):
     """Cross-harness parity (council_8b5c845792aa1d1e): the reflex writes to
     every DETECTED harness (config dir exists) — Claude Code, Codex, Gemini —
-    and never creates files for harnesses the user doesn't run. The taught
-    ladder now includes choose()."""
+    and never creates files for harnesses the user doesn't run. It used to
+    teach `ask` and `choose`; both left the MCP surface, and the text kept
+    teaching them to every harness on every reinstall."""
     import json
     from types import SimpleNamespace
     from trinity_local.commands.install import handle_install_reflex
@@ -98,5 +99,28 @@ def test_multi_harness_detection_and_choose_in_ladder(tmp_path, monkeypatch, cap
     assert claude_f.exists() and codex_f.exists()
     assert not (tmp_path / ".gemini").exists(), "undetected harness must not be created"
     body = codex_f.read_text()
-    assert "`choose`" in body and "ranks concrete options" in body
+    assert "`verify`" in body and "`choose`" not in body
     assert body.count("trinity-local reflex") >= 1
+
+
+
+def test_the_reflex_names_only_live_tools():
+    """The reflex is written into three harnesses' instruction files. It named
+    three retired tools for weeks, and the founder's CLAUDE.md grew a paragraph
+    telling agents to ignore it -- the fix applied to the output, not the
+    source. Every backticked name here must be registered in mcp_server and
+    absent from the retirement registry."""
+    import re
+    from pathlib import Path
+    from trinity_local import retired_names
+    from trinity_local.commands.install import REFLEX_TEXT
+    src = (Path(__file__).resolve().parent.parent
+           / "src/trinity_local/mcp_server.py").read_text(encoding="utf-8")
+    live = set(re.findall(r'name="([a-z_]+)"', src))
+    retired = {n.split(":")[-1] for n in retired_names.names_by_kind("mcp_tool")}
+    named = set(re.findall(r"`([a-z_]+)(?:\(|`)", REFLEX_TEXT))
+    tools = named & (live | retired | {"ask", "choose"})
+    assert tools, "the reflex names no tool at all"
+    assert not (tools & retired), f"reflex names retired tools: {sorted(tools & retired)}"
+    assert "choose" not in named, "choose is not an MCP tool"
+    assert {"run_council", "verify"} <= tools <= live

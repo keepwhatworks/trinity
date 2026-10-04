@@ -130,7 +130,7 @@ function showSetupCard(reason) {
 
   const extensionId = chrome.runtime.id;
   const installCmd =
-    "curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash";
+    "curl -LsSf https://keepwhatworks.com/install.sh | sh";
   const registerCmd = `trinity-local install-extension --extension-id ${extensionId}`;
 
   // Paste-into-agent brief — the primary install path for non-technical

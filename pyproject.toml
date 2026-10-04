@@ -22,7 +22,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
-    "mcp>=1.0",  # MCP-default install — Trinity is exposed as an MCP server to Claude Code / Codex CLI / Antigravity
+    "mcp>=1.0,<2",  # <2: mcp 2.0 (2026-07-28) removed the low-level Server decorators the server uses. MCP-default install — Trinity is exposed as an MCP server to Claude Code / Codex CLI / Antigravity
     "numpy>=1.26",  # Embedding matmul fast-path, k-means clustering, vocabulary stats — used across src/trinity_local/{embeddings,memory,me/basins,knn_analytics,vocabulary}
 ]
 

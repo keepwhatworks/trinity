@@ -32,14 +32,14 @@ class TestItSurvivesWhatModelsActuallyWrite:
         ("both sides", 'Let me think. {"scratch": 1}\n' + GOOD + "\nDone {}."),
     ])
     def test_the_vote_is_read(self, label, text):
-        assert _parse_votes(text, ["c"]) == {"c": False}, f"lost the vote: {label}"
+        assert (_parse_votes(text, ["c"]) or (None, ""))[0] == {"c": False}, f"lost the vote: {label}"
 
     def test_a_pass_is_read_too(self):
-        assert _parse_votes('{"votes": {"c": "PASS"}, "why": ""}', ["c"]) == {"c": True}
+        assert (_parse_votes('{"votes": {"c": "PASS"}, "why": ""}', ["c"]) or (None, ""))[0] == {"c": True}
 
     def test_multiple_criteria(self):
         t = '{"votes": {"a": "PASS", "b": "FAIL"}, "why": "b is wrong."} trailing {}'
-        assert _parse_votes(t, ["a", "b"]) == {"a": True, "b": False}
+        assert (_parse_votes(t, ["a", "b"]) or (None, ""))[0] == {"a": True, "b": False}
 
 
 class TestItStillRefuses:
@@ -79,14 +79,14 @@ class TestTruncatedResponses:
 
     def test_truncated_after_the_vote_still_reads(self):
         t = '{"votes": {"c": "FAIL"}, "why": "The loop returns path when data.get('
-        assert _parse_votes(t, ["c"]) == {"c": False}
+        assert (_parse_votes(t, ["c"]) or (None, ""))[0] == {"c": False}
 
     def test_truncated_with_escaped_quotes_in_why(self):
         t = '{"votes": {"c": "FAIL"}, "why": "it returns \\"x\\" instead of'
-        assert _parse_votes(t, ["c"]) == {"c": False}
+        assert (_parse_votes(t, ["c"]) or (None, ""))[0] == {"c": False}
 
     def test_a_pass_survives_truncation_too(self):
-        assert _parse_votes('{"votes": {"c": "PASS"}, "why": "looks right becau', ["c"]) == {"c": True}
+        assert (_parse_votes('{"votes": {"c": "PASS"}, "why": "looks right becau', ["c"]) or (None, ""))[0] == {"c": True}
 
     @pytest.mark.parametrize("label,text", [
         ("truncated INSIDE the vote object", '{"votes": {"c": "FA'),
@@ -95,3 +95,46 @@ class TestTruncatedResponses:
     ])
     def test_an_incomplete_vote_is_still_refused(self, label, text):
         assert _parse_votes(text, ["c"]) is None, f"invented a vote: {label}"
+
+
+class TestTheReviewerReasoningIsPreserved:
+    """The `why` was parsed and thrown away for the life of this module.
+
+    The prompt has always asked for {"votes": ..., "why": ...}, every reviewer
+    has always sent one, and the parser returned only the votes — so the
+    concerns survived solely as `raw_tail`, an accidental last-300-characters
+    slice of the raw response. Council 595c6e34, all three members: "Generic
+    READ output does not justify the review burden" and "READ should surface
+    concrete concerns tied to code."
+
+    Preservation, not generation: the concerns already exist and already
+    arrive. Discarding them and then asking a human to review blind is the
+    worst trade this product makes.
+    """
+
+    def test_the_why_comes_back_with_the_votes(self):
+        got = _parse_votes('{"votes": {"c": "FAIL"}, "why": "b is unguarded."}', ["c"])
+        assert got is not None
+        votes, why = got
+        assert votes == {"c": False}
+        assert why == "b is unguarded."
+
+    def test_an_empty_why_is_empty_not_missing(self):
+        votes, why = _parse_votes('{"votes": {"c": "PASS"}, "why": ""}', ["c"])
+        assert votes == {"c": True} and why == ""
+
+    def test_a_why_survives_trailing_prose(self):
+        t = '{"votes": {"c": "FAIL"}, "why": "the bound is off by one."}\n\nNote: {x}'
+        votes, why = _parse_votes(t, ["c"])
+        assert why == "the bound is off by one."
+
+    def test_a_truncated_envelope_still_yields_the_vote_even_without_a_why(self):
+        """The vote is what the RULE needs; the why is what the HUMAN needs.
+        Losing the second must never cost the first."""
+        votes, why = _parse_votes('{"votes": {"c": "FAIL"}, "why": "it was cut off mid-sen', ["c"])
+        assert votes == {"c": False}
+        assert why == ""
+
+    def test_a_non_string_why_is_ignored_rather_than_stringified(self):
+        votes, why = _parse_votes('{"votes": {"c": "FAIL"}, "why": {"a": 1}}', ["c"])
+        assert votes == {"c": False} and why == ""

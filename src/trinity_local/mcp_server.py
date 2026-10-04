@@ -63,7 +63,25 @@ from .telemetry import APP_VERSION
 # single resolver shared with telemetry (importlib.metadata.version of the
 # installed package; correct for pip-installed users, the editable dev install's
 # baked metadata otherwise).
-server = Server("trinity-local", version=APP_VERSION)
+# What the host agent reads on connect: when to reach for the two gates. Kept
+# short and kept here as the one copy; the plugin commands and README point at
+# the same two moments. Whether hosts act on it unprompted is measured by the
+# instructions-on/off falsifier (amd_0291), not claimed.
+SERVER_INSTRUCTIONS = (
+    "Trinity puts your work in front of Claude, Codex and Gemini, locally, on the user's own "
+    "subscriptions. Two moments:\n"
+    "1. PLAN: before committing to a substantive plan, design or hard-to-reverse step, call "
+    "run_council with the goal, the plan, the evidence and one alternative. Report its decision, "
+    "what would change it, and where the labs split.\n"
+    "2. REVIEW: before saying a code change is done, call verify with the diff and an acceptance "
+    "block whose kind='test' items run the project's own tests; set exclude_lab to your own lab. "
+    "STOP means a relevant test is red. READ means a person still reads: name what is unverified. "
+    "The other labs' read is a second opinion, not approval.\n"
+    "Skip both for trivial edits, syntax and lookups. `trust` answers which model the user's later "
+    "work sided with when the labs split."
+)
+
+server = Server("trinity-local", version=APP_VERSION, instructions=SERVER_INSTRUCTIONS)
 
 
 def members_from_responses(responses: list) -> list:
@@ -159,15 +177,20 @@ async def handle_list_tools() -> list[Tool]:
                 "by default). Members run simultaneously (parallel) and never see each other's "
                 "work, so the disagreement is real rather than an echo. The chairman then "
                 "PROSECUTES rather than summarizes: it forces each disputed claim against the "
-                "other members' evidence and records which side SURVIVES. Returns the "
-                "council_run_id and the path to the live review page; the council runs "
-                "asynchronously.\n\n"
+                "other members' evidence and records which side SURVIVES. The council runs "
+                "INSIDE this call and returns its verdict under `outcome` when it finishes "
+                "(median ~4 min, p90 ~9 min, measured 2026-09). A host may move a long call to "
+                "the background (Claude Code does at ~120 s); the result that arrives then "
+                "carries the same `outcome`. get_council_status returns it too.\n\n"
                 "WHAT YOU GET BACK, machine-readable (the reason to prefer this over asking one "
                 "model twice):\n"
+                "- decision: the chairman's answer to your question in your terms, or "
+                "UNDETERMINED plus the missing evidence; flip_condition: what would change it.\n"
                 "- agreed_claims: what every member independently asserted.\n"
                 "- disagreed_claims: each split with providers_for / providers_against, "
-                "why_matters, and `resolution` — which side survives the other members' evidence, "
-                "or 'unresolved' when the evidence genuinely cannot decide. An unresolved split "
+                "why_matters, `resolution` — which side survives the other members' evidence, "
+                "or 'unresolved' when the evidence genuinely cannot decide — and `check` "
+                "{procedure, decision_rule}: the test, source or measurement that settles it later. An unresolved split "
                 "is a verdict, not a gap: treat it as a real open question.\n"
                 "- facets: the dimensions that ACTUALLY discriminated between the answers on this "
                 "task, named by the chairman in its own words (e.g. 'invalidation semantics'), "
@@ -194,8 +217,9 @@ async def handle_list_tools() -> list[Tool]:
                 "When `responses` is provided (pre-supplied member outputs), skips member "
                 "dispatch and goes straight to chairman synthesis — one model call instead of "
                 "N+1. Use when you ALREADY HAVE multiple model outputs and just want the "
-                "structured verdict.\n\n"
-                "Cost: 3 member calls + 1 chairman call (~30s-2min). Anthropic's advisor-tool "
+                "structured verdict. It returns the same `outcome` object as a full council "
+                "(decision, claims, winner); there are no separate top-level verdict fields.\n\n"
+                "Cost: 3 member calls + 1 chairman call (minutes; see above). Anthropic's advisor-tool "
                 "pattern is intra-provider (Sonnet→Opus, all Claude); `run_council` is "
                 "cross-provider (claude/codex/antigravity) — different value prop, both can "
                 "coexist."
@@ -240,9 +264,9 @@ async def handle_list_tools() -> list[Tool]:
                                 "model": {
                                     "type": "string",
                                     "description": (
-                                        "Exact model id that produced this answer, e.g. "
-                                        "'claude-opus-5', 'gpt-5.5', 'gemini-3.1-pro-preview'. "
-                                        "Not a brand name."
+                                        "Exact model id string the provider reported for "
+                                        "this answer, copied verbatim. Not a brand name, "
+                                        "not a family name, not a display label."
                                     ),
                                 },
                                 "effort": {
@@ -306,12 +330,10 @@ async def handle_list_tools() -> list[Tool]:
                         "type": "number",
                         "default": 0,
                         "description": (
-                            "If > 0, block up to this many seconds waiting for the council to "
-                            "finish; if it completes in time, the outcome (winner, agreed/disagreed "
-                            "claims, routing_lesson) is returned inline. Otherwise returns the "
-                            "council_run_id immediately and the caller polls get_council_status. "
-                            "Useful when the council is likely cached or fast — saves a round trip. "
-                            "Ignored when `responses` is provided (synthesis is always inline)."
+                            "Accepted for compatibility; currently has no effect. The council "
+                            "runs inside the call and returns its `outcome` when done, so there "
+                            "is nothing extra to wait for. If the host moves the call to the "
+                            "background, use get_council_status with the council_run_id."
                         ),
                     },
                 },
@@ -343,8 +365,10 @@ async def handle_list_tools() -> list[Tool]:
                 "that then failed its own test 26% of the time (9/34); on 22 real human "
                 "fix commits their unanimous approvals were wrong zero times; and 12 of "
                 "50 known-defective changes whose test still passed drew no doubt at "
-                "all. Reading is weaker than doing. The panel says WHERE TO LOOK; the "
-                "test says what is safe; a human still reads.\n\n"
+                "all. Reading is weaker than doing. The test says what is safe. The "
+                "panel is a second read, not a locator: on 103 agent-written commits "
+                "here its flags did not pick out the ones later fixed (hq_122, lift "
+                "1.07). A human still reads.\n\n"
                 "INPUT: `criteria` is an acceptance block -- a list of {id, kind: "
                 "'test'|'judgment', statement, command?, blocking}. kind=test runs "
                 "`command` in `cwd` (exit 0 is green) -- the command comes from the "
@@ -1057,6 +1081,75 @@ async def handle_set_logging_level(level: Any) -> None:
     set_min_log_level(str(level))
 
 
+_COLD_OPEN_SHOWN = False
+
+
+def _synthesis_for_agent(text: str | None, label: Any) -> str:
+    """The chairman's prose without its trailing routing-json fence.
+
+    The fence's claims already arrive as agreed_claims / disagreed_claims, so
+    returning it too made the agent read every claim twice. Strip only when the
+    label PARSED: an unparseable fence is the only record of what the chairman
+    tried to say, and dropping it would hide the failure.
+    """
+    text = text or ""
+    if label is None:
+        return text
+    from .council_status import _strip_routing_fence
+
+    return _strip_routing_fence(text)
+
+
+def _outcome_summary(outcome: Any) -> dict:
+    """THE council verdict an MCP caller receives, built in one place.
+
+    get_council_status, run_council's return and the synthesis-only path all
+    call this, so a field added to the verdict reaches every caller or none.
+    Three hand-built copies had drifted: the synthesis path still returned the
+    fenced routing-json, and none carried the degraded disclosure consistently.
+    """
+    label = outcome.routing_label
+    lab = (lambda k, d=None: getattr(label, k, d) if label else d)
+    summary: dict = {
+        "decision": lab("decision", "") or "",
+        "flip_condition": lab("flip_condition", "") or "",
+        "agreed_claims": list(lab("agreed_claims", []) or []),
+        "disagreed_claims": list(lab("disagreed_claims", []) or []),
+        "winner": outcome.winner_provider,
+        "runner_up": lab("runner_up"),
+        "confidence": lab("confidence"),
+        "routing_lesson": lab("routing_lesson", "") or "",
+        "eval_seed": lab("eval_seed", "") or "",
+        "user_likely_values": list(lab("user_likely_values", []) or []),
+        "primary_provider": outcome.primary_provider,
+        "primary_model": outcome.primary_model,
+        "member_count": len(outcome.member_results),
+        "synthesis_output": _synthesis_for_agent(outcome.synthesis_output, label),
+    }
+    md = getattr(outcome, "metadata", None) or {}
+    if md.get("chairman_format"):
+        summary["chairman_format"] = md["chairman_format"]
+    if md.get("routing_label_error"):
+        summary["routing_label_error"] = md["routing_label_error"]
+    # SAY WHEN A LAB WAS LOST. This payload used to carry member_count alone, so
+    # a council that lost Claude returned member_count: 2 with nothing
+    # distinguishing it from a two-member council someone asked for. Measured
+    # 2026-09-28: 70% of the last 30 days' councils were degraded, and the
+    # calling agent was told about none of them.
+    lost = [{"provider": f.get("provider"), "reason": f.get("reason")}
+            for f in (md.get("member_failures") or []) if isinstance(f, dict)]
+    summary["degraded"] = bool(lost)
+    if lost:
+        answered = len(outcome.member_results)
+        summary["failed_members"] = lost
+        summary["degraded_notice"] = (
+            f"DEGRADED: {answered} of {answered + len(lost)} labs answered; lost "
+            + ", ".join(f"{x['provider']} ({x['reason']})" for x in lost)
+            + ". Read agreement as agreement among the labs that answered, "
+            "not as three-lab consensus.")
+    return summary
+
+
 def _text(payload: dict | str) -> dict:
     """Wrap a JSON-serializable result as an MCP text response.
 
@@ -1089,7 +1182,11 @@ def _text(payload: dict | str) -> dict:
         # true tension so the agent can open with "here's one thing I've
         # learned about how you decide" — the differentiated wow, before the
         # user has learned a verb. Self-omits on a cold install (None).
-        if "lens_cold_open" not in payload:
+        # ONCE per server process. It used to ride every dict response, so a
+        # session that polled a council twenty times read the same tension
+        # twenty times; an opener said on every turn stops being an opener.
+        global _COLD_OPEN_SHOWN
+        if "lens_cold_open" not in payload and not _COLD_OPEN_SHOWN:
             try:
                 from .cold_start import cold_open_tension
 
@@ -1097,6 +1194,7 @@ def _text(payload: dict | str) -> dict:
                 if co:
                     payload = dict(payload)
                     payload["lens_cold_open"] = co
+                    _COLD_OPEN_SHOWN = True
             except Exception:
                 pass
         if "extension_status" not in payload:
@@ -1780,7 +1878,8 @@ async def _synthesize_responses(args: dict, responses: list[dict]) -> list[Any]:
     # (personal_routing aggregation) can't tell who won.
     winner_from_label = getattr(routing_label, "winner", None) if routing_label else None
     _mode = "host_synthesis" if host_synthesis else "synthesis_only"
-    outcome_metadata: dict = {"mode": _mode}
+    from .council_runtime import chairman_format
+    outcome_metadata: dict = {"mode": _mode, "chairman_format": chairman_format()}
     if parse_error:
         outcome_metadata["routing_label_error"] = parse_error
     outcome = create_council_outcome(
@@ -1800,18 +1899,11 @@ async def _synthesize_responses(args: dict, responses: list[dict]) -> list[Any]:
         "ok": True,
         "council_run_id": outcome.council_run_id,
         "mode": _mode,
-        "synthesis_output": synthesis_output,
+        "status": "completed",
+        "outcome": _outcome_summary(outcome),
         "_local_paths": {"outcome_path": str(outcome_path)},
     }
-    if routing_label:
-        payload["winner"] = routing_label.winner
-        payload["runner_up"] = routing_label.runner_up
-        payload["confidence"] = routing_label.confidence
-        payload["agreed_claims"] = routing_label.agreed_claims
-        payload["disagreed_claims"] = routing_label.disagreed_claims
-        payload["routing_lesson"] = routing_label.routing_lesson
-        payload["eval_seed"] = routing_label.eval_seed
-    elif parse_error:
+    if parse_error:
         payload["routing_label_error"] = parse_error
     return [_text(payload)]
 
@@ -2008,10 +2100,8 @@ async def _run_council(args: dict) -> list[Any]:
 
     from .commands.council import handle_council_launch
     from types import SimpleNamespace
-    import asyncio
     import contextlib
     import io
-    import time
 
     task = args["task"]
     goal = args.get("goal", "Find the strongest answer.")
@@ -2026,7 +2116,7 @@ async def _run_council(args: dict) -> list[Any]:
         # each call. Unset (the default) changes nothing.
         from .config import default_primary_provider as _cfg_chair
         primary_provider = _cfg_chair() or primary_provider
-    wait_seconds = float(args.get("wait_seconds") or 0)
+    # `wait_seconds` is accepted and ignored: the council runs inside this call.
 
     # Fold web-era brand slugs to dispatchable CLI slugs at the launch boundary
     # so an agent that read a stale `get_picks primary='chatgpt'` (or any
@@ -2111,74 +2201,28 @@ async def _run_council(args: dict) -> list[Any]:
     mcp_log("info", f"Council {council_run_id} launched ({mode})")
     mcp_progress(0.05, 1.0, message="council dispatched")
 
-    # Optional inline-wait. Polls the status file every 750ms until either
-    # the council reports completed/failed/canceled, or the budget expires.
-    if wait_seconds > 0:
-        from .council_runtime import load_council_outcome
-        from .state_paths import council_outcomes_dir
+    # THE VERDICT RIDES THE RETURN. Launch runs the whole council in this call
+    # (handle_council_start is synchronous: its signal handlers need the main
+    # thread), so by here the outcome normally exists. It used to return the id
+    # alone and the caller polled, or shelled into council_outcomes/ -- 52 times
+    # in one 97-council session. `wait_seconds` is accepted and has nothing to
+    # wait for until launch is truly asynchronous.
+    from .council_runtime import load_council_outcome
+    from .state_paths import council_outcomes_dir
 
-        deadline = time.monotonic() + wait_seconds
-        completed_status: dict | None = None
-        while time.monotonic() < deadline:
-            # Stream progress as a fraction of the wait budget elapsed, so the
-            # harness can render a live bar while members deliberate. Monotonic
-            # by construction; capped below 1.0 until the council resolves.
-            elapsed = wait_seconds - (deadline - time.monotonic())
-            mcp_progress(
-                min(0.95, 0.05 + 0.9 * (elapsed / wait_seconds)),
-                1.0,
-                message="council deliberating",
-            )
-            # Use the same lookup-with-fallback logic as `_get_council_status`:
-            # the live status file is keyed by status token (often the
-            # bundle_id, not the council_run_id). Without the fallback scan,
-            # wait_seconds could time out on a council that already completed.
-            status_payload = _lookup_council_status(council_run_id)
-            current = (status_payload or {}).get("status")
-            if current in ("completed", "failed", "canceled"):
-                completed_status = status_payload
-                break
-            # Belt-and-suspenders: a completed outcome JSON also resolves the
-            # wait, even if the live status file lags or never got written.
-            outcome_path = council_outcomes_dir() / f"{council_run_id}.json"
-            if outcome_path.exists():
-                completed_status = status_payload or {"status": "completed"}
-                break
-            await asyncio.sleep(0.75)
-
-        if completed_status is not None:
-            outcome_summary = None
-            outcome_path = council_outcomes_dir() / f"{council_run_id}.json"
-            if outcome_path.exists():
-                try:
-                    outcome = load_council_outcome(council_run_id)
-                    label = outcome.routing_label
-                    outcome_summary = {
-                        "winner": outcome.winner_provider,
-                        "primary_provider": outcome.primary_provider,
-                        "primary_model": outcome.primary_model,
-                        "synthesis_output": outcome.synthesis_output,
-                        "agreed_claims": list(getattr(label, "agreed_claims", []) or []) if label else [],
-                        "disagreed_claims": list(getattr(label, "disagreed_claims", []) or []) if label else [],
-                        "routing_lesson": getattr(label, "routing_lesson", "") if label else "",
-                        "user_likely_values": list(getattr(label, "user_likely_values", []) or []) if label else [],
-                    }
-                except Exception:
-                    outcome_summary = None
-            response["status"] = completed_status.get("status")
-            response["outcome"] = outcome_summary
-            mcp_progress(1.0, 1.0, message="council complete")
-            winner = (outcome_summary or {}).get("winner") if outcome_summary else None
-            mcp_log(
-                "info",
-                f"Council {council_run_id} {completed_status.get('status')}"
-                + (f" — winner {winner}" if winner else ""),
-            )
-            # rate_action injection retired 2026-05-21 alongside record_outcome.
-        else:
-            response["status"] = "running"
-            response["timed_out_after_seconds"] = wait_seconds
-            mcp_log("warning", f"Council {council_run_id} still running after {wait_seconds}s")
+    if (council_outcomes_dir() / f"{council_run_id}.json").exists():
+        try:
+            response["status"] = "completed"
+            response["outcome"] = _outcome_summary(load_council_outcome(council_run_id))
+        except Exception as exc:  # a corrupt outcome is reported, never hidden
+            response["status"] = "completed"
+            response["outcome"] = None
+            response["outcome_load_error"] = f"{type(exc).__name__}: {exc}"
+        mcp_progress(1.0, 1.0, message="council complete")
+        winner = (response.get("outcome") or {}).get("winner")
+        mcp_log("info", f"Council {council_run_id} completed" + (f" — winner {winner}" if winner else ""))
+    else:
+        response["status"] = (_lookup_council_status(council_run_id) or {}).get("status") or "running"
 
     return [_text(response)]
 
@@ -2375,11 +2419,12 @@ def _lookup_council_status(council_run_id: str) -> dict | None:
 
 
 def _maybe_offer_open_council(council_run_id: str, review_path: str | None) -> dict | None:
-    """Council finished — ask ONCE whether to open the review page, and open it on
-    yes. Runs in a worker thread (via asyncio.to_thread) so the blocking elicit is
-    safe. A per-council marker prevents re-asking on subsequent status polls; the
-    elicit degrades to a text breadcrumb when the client doesn't support it.
-    `TRINITY_OPEN_COUNCIL_PROMPT=0` disables the prompt entirely."""
+    """Return the completed review link without interrupting the user.
+
+    MCP elicitation opens a client confirmation dialog, so only request it when
+    TRINITY_OPEN_COUNCIL_PROMPT=1 explicitly opts in. Zero disables the offer;
+    unset returns a text link. Each council is offered at most once.
+    """
     import os
     import re
 
@@ -2414,6 +2459,10 @@ def _maybe_offer_open_council(council_run_id: str, review_path: str | None) -> d
         if not review_path:
             return None
         tips.mark_tip_seen(key)  # ask at most once per council, regardless of answer
+        if os.environ.get("TRINITY_OPEN_COUNCIL_PROMPT") != "1":
+            return {"key": "open-council", "kind": "text",
+                    "message": "Council complete — review the full breakdown.",
+                    "cta": review_path}
         ans = elicit(
             "Council done — open the page for the full per-model breakdown?",
             {"type": "object",
@@ -2466,19 +2515,7 @@ async def _get_council_status(args: dict) -> list[Any]:
     outcome_path = council_outcomes_dir() / f"{council_run_id}.json"
     if _id_path_safe and outcome_path.exists():
         try:
-            outcome = load_council_outcome(council_run_id)
-            label = outcome.routing_label
-            outcome_summary = {
-                "winner": outcome.winner_provider,
-                "primary_provider": outcome.primary_provider,
-                "primary_model": outcome.primary_model,
-                "synthesis_output": outcome.synthesis_output,
-                "agreed_claims": list(getattr(label, "agreed_claims", []) or []) if label else [],
-                "disagreed_claims": list(getattr(label, "disagreed_claims", []) or []) if label else [],
-                "routing_lesson": getattr(label, "routing_lesson", "") if label else "",
-                "user_likely_values": list(getattr(label, "user_likely_values", []) or []) if label else [],
-                "member_count": len(outcome.member_results),
-            }
+            outcome_summary = _outcome_summary(load_council_outcome(council_run_id))
         except Exception as exc:
             # Silent skip would tell the agent "status is completed"
             # but "outcome is null" without explaining why. Most likely
@@ -2643,5 +2680,3 @@ async def run_stdio_server():
             write_stream,
             server.create_initialization_options(),
         )
-
-

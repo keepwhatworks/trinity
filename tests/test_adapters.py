@@ -90,3 +90,25 @@ class TestCheckAdapter:
         status = check_adapter(spec)
         assert status.installed is True
         assert status.transcript_count == 1
+
+
+class TestAntigravityCountMatchesIngest:
+    """status's agy count must be the set ingest parses, not a path of its own."""
+
+    def test_counts_what_ingest_parses(self, tmp_path, monkeypatch):
+        from trinity_local import adapters
+        from trinity_local.ingest import antigravity_brain_root
+
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        brain = antigravity_brain_root()
+        for cid in ("a1", "b2"):
+            logs = brain / cid / ".system_generated" / "logs"
+            logs.mkdir(parents=True)
+            (logs / "transcript.jsonl").write_text("{}\n")
+            (logs / "transcript_full.jsonl").write_text("{}\n")   # not a second conversation
+        legacy = tmp_path / ".gemini" / "antigravity-cli" / "conversations"
+        legacy.mkdir(parents=True)
+        (legacy / "a1.db").write_text("")
+        (legacy / "old.pb").write_text("")
+        spec = next(s for s in adapters._PROVIDER_SPECS if s["provider"] == "antigravity")
+        assert _count_transcripts(spec["transcript_root"](), spec["glob"]) == 2

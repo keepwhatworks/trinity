@@ -47,11 +47,11 @@ Tag suite (use the registry's closest matches):
 
 ```
 ai, llm, claude, gpt, gemini, multi-provider, council, evaluation,
-benchmarks, routing, agent, local-first, privacy, mcp
+benchmarks, verify, agent, local-first, privacy, mcp
 ```
 
 Repo: `https://github.com/keepwhatworks/trinity`
-Install one-liner: `curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash`
+Install one-liner: `curl -LsSf https://keepwhatworks.com/install.sh | sh`
 
 ---
 
@@ -185,7 +185,7 @@ side):
 
 > Codex users already have a great coding model. Trinity lets them
 > see when Claude or Gemini would do better on a specific task. The
-> personal routing table builds
+> `trust` record builds
 > automatically. After ~10 councils, Trinity tells you which model
 > handles your kind of refactor / your kind of debug / your kind of
 > architectural call. `install-mcp` registers Trinity in Codex CLI's

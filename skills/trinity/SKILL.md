@@ -27,19 +27,19 @@ If `NOT_INSTALLED`, run section 2. Otherwise skip to section 3.
 
 ## 2. Install
 
-Trinity ships as a git clone, not a published package. The installer drops the skill in `~/.claude/skills/trinity/`, writes thin shell wrappers in `~/.local/bin/`, registers MCP in every harness you have, and runs `status`.
+The installer installs uv if needed, installs Trinity as a uv tool from the newest public release, and registers its MCP server in every CLI it finds, then prints a read-only check.
 
-!`curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash`
+!`curl -LsSf https://keepwhatworks.com/install.sh | sh`
 
 If the user wants to inspect first (recommended for trust-cautious users):
 
 ```
-curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh -o /tmp/trinity-install.sh
+curl -LsSf https://keepwhatworks.com/install.sh -o /tmp/trinity-install.sh
 less /tmp/trinity-install.sh
-bash /tmp/trinity-install.sh
+sh /tmp/trinity-install.sh
 ```
 
-The installer needs `git` + `python3.10+` on PATH. If Python is missing, recommend `brew install python@3.12` (macOS) or the distro equivalent (`apt install python3.12` etc.) — Trinity doesn't manage Python versions itself; too many opinions on how to do that.
+The installer needs only `curl` and `sh`: it installs uv if missing, and uv fetches Python 3.10+ if the machine doesn't have it. No git, no PyPI, no API key.
 
 ## 3. Pre-flight checks
 

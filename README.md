@@ -15,9 +15,9 @@ class: live
 
 You cannot tell which of your agent's confident outputs is wrong, and one model cannot tell you, because its checker shares its generator's blind spots. Send one prompt to Claude, ChatGPT, and Gemini at once. A chairman shows you what they agreed on and, more to the point, exactly **where they split** — the cross-provider read no single model can give you, however good it gets, because none of them can see the others.
 
-**That split is a measured risk signal, and Trinity acts on it.** Where your change has a test it runs the test; where it doesn't, three labs that can't see each other tell you where to look. One answer per change.
+**That split is a measured risk signal, and Trinity acts on it.** Where your change has a test it runs the test. Two labs that did not write it read the diff as a second opinion, not a verdict: on 103 agent-written commits here its flags did not pick out the ones later fixed (hq_122). One answer per change.
 
-The numbers, with their scope, because the scope is the claim: in a leave-one-out over six model configurations from all three labs (hq_102, hq_103), when three models independently produced fixes that all passed the commit's own test, a fourth model's fix was wrong **8%** of the time; when they split, **58%** (p = 0.0001). That is an outcome over *independent* fixes. It is **not** a measurement of the council's verdict on *one* artifact, which is what you see in the product — that path is measured next, and until it is, these numbers describe the shape of the signal and not a product guarantee. Two other things the data says: consensus gets safer with more voters (13% at two, 6% at five) and Gemini 3.8 Flash fixed 36 of 36 dispatched defects, above every frontier arm. The lab the trust ledger rates lowest on *which side your later decisions took* ships the model that is best at *fixing the bug*; those are different questions and Trinity measures both.
+The numbers, with their scope, because the scope is the claim: in a leave-one-out over six model configurations from all three labs (hq_102, hq_103), when three models independently produced fixes that all passed the commit's own test, a fourth model's fix was wrong **8%** of the time; when they split, **58%** (p = 0.0001). That is an outcome over *independent* fixes. It is **not** a measurement of a verdict on *one* artifact, which is what you see in the product. For `verify`'s readers that path is now measured (hq_122): on 103 agent-written commits, their flags on a single diff did not pick out the commits later fixed (lift 1.07, under the pre-registered kill bar of 1.1). So these numbers describe independent fixes, not a product guarantee. Two other things the data says: consensus gets safer with more voters (13% at two, 6% at five) and Gemini 3.8 Flash fixed 36 of 36 dispatched defects, above every frontier arm. The lab the trust ledger rates lowest on *which side your later decisions took* ships the model that is best at *fixing the bug*; those are different questions and Trinity measures both.
 
 It works the moment you install. Then, from your own history, it learns **which side of those splits your work keeps taking** — a record of whose judgment you endorsed after the fact, not a guess about who will be right next time. (We built the guess. It reached 42.9% against a pick-the-leader constant's 37.0% and we removed it.) Free, local, on the subscriptions you already pay for. No API key. Your transcripts never leave your machine.
 
@@ -42,13 +42,13 @@ criterion runs its command — the one your project already runs, `pytest`,
 to the panel. There is no chairman: agreement versus split is the signal, and
 a deterministic function reads it.
 
-**Why a green test is required, and why Trinity still will not tell you to skip reading.** Measured on this repository, on fixes written by AI agents: when three models from three different labs unanimously approved one, it failed its own guard **26% of the time** (9 of 34). On the 22 real human fix commits in the same run, their unanimous approvals were wrong **zero** times — so the rate depends heavily on who wrote the change, and pooled across both it is 16%. More reasoning effort recovered none of the misses, and a stronger agent's wrong fixes were no easier to spot (21% vs 33%, p=0.46 — not detected at this power, which is not the same as no difference). Reading a diff is weaker than running it. The panel says *where to look*; the test says *what is safe*; and a human still reads.
+**Why a green test is required, and why Trinity still will not tell you to skip reading.** Measured on this repository, on fixes written by AI agents: when three models from three different labs unanimously approved one, it failed its own guard **26% of the time** (9 of 34). On the 22 real human fix commits in the same run, their unanimous approvals were wrong **zero** times — so the rate depends heavily on who wrote the change, and pooled across both it is 16%. More reasoning effort recovered none of the misses, and a stronger agent's wrong fixes were no easier to spot (21% vs 33%, p=0.46 — not detected at this power, which is not the same as no difference). Reading a diff is weaker than running it. The test says *what is safe*; the panel is a second read, and on 103 agent-written commits here its flags did not pick out the ones later fixed (hq_122); a human still reads.
 
 `trinity-local install-agent` installs the same gate as a `trinity-verify`
 subagent inside Claude Code and Codex, so the checker is never the same lab as
 the maker.
 
-**Install** is just an MCP and a Chrome extension. No new app, no cloud, no API key.
+**Install** is one line: an MCP server inside the CLIs you already use. No new app, no cloud, no API key.
 
 **Switching costs nothing.** The models are interchangeable. Your corpus is not.
 A council runs with any one provider turned off, verified with Claude disabled
@@ -81,24 +81,26 @@ The cross-provider council (three labs in parallel, one synthesized verdict with
 
 ## Install
 
-**Recommended**: one line. Clones the repo (you can read it end-to-end), installs the runtime deps, registers Trinity's MCP server in every harness it detects (Claude Code, Codex CLI, Antigravity, Cursor), and pre-wires the Chrome-capture host:
-
 ```bash
-<!-- canonical:install_command -->curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash<!-- /canonical -->
+<!-- canonical:install_command -->curl -LsSf https://keepwhatworks.com/install.sh | sh<!-- /canonical -->
 ```
 
-No PyPI, no npm, no API key. Just `git clone` + a couple of shell wrappers in `~/.local/bin/`. Verify with `trinity-local status`. To remove: `trinity-local uninstall --yes`.
+It installs [uv](https://docs.astral.sh/uv/) if you don't have it (uv brings its own Python, so a stock Mac works), installs Trinity from the newest public release, and runs `trinity-local install`: that registers Trinity's MCP server in every CLI it finds (Claude Code, Codex, agy, Cursor) and prints a read-only check. Restart those CLIs to load the tools. No PyPI, no API key. To remove: `trinity-local uninstall --yes`.
 
-**In Claude Code? One-command plugin install.** Trinity ships as a Claude Code plugin that registers the MCP server *and* adds native slash commands (`/trinity-local:council`, `:ask`, `:lens`). No manual `install-mcp`:
+Then, in Claude Code, Codex or agy:
 
-```
-/plugin marketplace add keepwhatworks/trinity
-/plugin install trinity-local@trinity
-```
+- **Plan:** *"Run a Trinity council on this plan."* Claude, Codex and Gemini answer independently; you get a decision, what would change it, and where they split.
+- **Review:** *"Verify this change with our tests."* Trinity runs your tests, then the labs that did not write the change read the diff as a second opinion.
 
-You still install Trinity itself once with the curl line above (there's no PyPI package). The plugin's launcher finds it. No Stop-hooks / review-gate: the plugin only adds commands + the MCP server, so it never gates your responses or runs away with your quota. Details: [`plugins/trinity-local/README.md`](plugins/trinity-local/README.md).
+Trinity's MCP server tells your agent when each moment comes up.
 
-**Not comfortable in a terminal?** Paste that one line into **Claude Code** (it runs inside your terminal *and* in the **Claude Desktop** app) and let Claude run the install for you. That's the easiest path if you arrived via the Chrome extension and have never opened a shell.
+**Check all three CLIs at once:** `trinity-local install --check` shows, for Claude Code, Codex and agy, whether each is installed, signed in and registered, how many of its transcripts Trinity reads (they stay on your machine), which model each council member runs, and whether agy offers a newer Gemini family. It changes nothing and prints the fix for anything missing. `trinity-local status` is the fuller health report.
+
+**A new model lands (say Gemini 4 Pro).** A new install starts its Gemini member on the newest model agy serves. An existing install keeps its model and the check tells you about the new one; Trinity never switches for you, because that would merge two models' records in your trust ledger. Switch with `trinity-local config --set providers.antigravity.model=<id>`.
+
+**Not comfortable in a terminal?** Paste the one line into **Claude Code** (in your terminal or the **Claude Desktop** app) and let Claude run it for you.
+
+**The full installer** (`scripts/install.sh`) also wires the Chrome capture host and the optional embedder: see [`docs/install-deep.md`](docs/install-deep.md).
 
 **Manual MCP config.** If the bootstrap missed a harness, or you want to wire one by hand, that's exactly what `trinity-local install-mcp` writes. Substitute `PYTHON` with your interpreter (`which python3`, or the absolute path the bootstrap printed).
 
@@ -123,11 +125,7 @@ command = "PYTHON"
 args = ["-m", "trinity_local.main", "--mcp"]
 ```
 
-For **Antigravity** (`agy` CLI), model selection happens inside agy itself, not via MCP. Run `/model` and pick your Gemini (e.g. `Gemini 3.1 Pro`). Trinity's launchpad reads the persisted selection from `~/.gemini/antigravity-cli/settings.json`.
-
-Then ask any of these agents: *"Run a Trinity council on …"* and the MCP tools appear inline. Free, local, MIT. The CLI (`trinity-local status`, `trinity-local lens`, etc.) is the engine. The MCP tools are the agent surface.
-
-Requirements: Python 3.10+ and at least one of the `claude` / `codex` / `agy` CLIs authenticated. Trinity works with just one (chairman synthesis + your lens), gets stronger with two (real disagreement), full canonical council with three. **Ollama / MLX models you've pulled locally are auto-discovered** and join the routing pool as free council members (`ollama:<model>` / `mlx:<model>`). No config edit, no extra MCP tools. To remove: `trinity-local uninstall --yes`.
+Requirements: at least one of the `claude` / `codex` / `agy` CLIs signed in (the installer's uv supplies Python 3.10+). Trinity works with one (chairman synthesis + your lens), gets real disagreement with two, and the full council with three. **Ollama / MLX models you've pulled locally are auto-discovered** and join councils as free members (`ollama:<model>` / `mlx:<model>`).
 
 ## How it works
 
@@ -239,9 +237,9 @@ The folder is the API. `~/.trinity/memories/lens.md` is Markdown. Council outcom
 |---|---|---|---|---|---|
 | Data source | **Your own prompts** | Crowd votes | Test fixtures | n/a (router) | Yours, but no persistence |
 | Cost basis | Your own subscriptions | Hosted | Per-call API | Per-call API | Per-call API |
-| Output | **Structured Routing JSON + your `lens`** | Win-rate ranking | Pass/fail per case | Cheapest route | Three answers + summary |
+| Output | **A decision, what would change it, and where the labs split** | Win-rate ranking | Pass/fail per case | Cheapest route | Three answers + summary |
 | Privacy | **Corpus stays on disk** | n/a | n/a | Prompts route through their servers | Hosted |
-| Personalization | **Personal routing table improves with use** | One global ranking | Per-test-suite | None | None |
+| Personalization | **`trust`: which model your later work sided with, on your own disagreements** | One global ranking | Per-test-suite | None | None |
 | Personal benchmarks | **`eval-run` scores any model against YOUR actual rejections** | Synthetic prompts | Static fixtures | n/a | n/a |
 | Council reads through your lens | **Your lens (mined from your transcripts) breaks the chairman's quality-ties + powers personal evals** | n/a | n/a | n/a | Generic synthesis |
 | Shareable artifact | **`lens` PNG card** | Leaderboard link | Eval report | n/a | Per-prompt summary |
@@ -272,11 +270,11 @@ A real council outcome, verbatim from `~/.trinity/council_outcomes/<id>.json` af
 }
 ```
 
-That's the payoff: agreed claims you can lean on, disagreed claims with the *why*, and a routing lesson that makes the next council pick the right chairman automatically. Trinity ran this against itself to ratify what would ship.
+That's the payoff: agreed claims you can lean on and disagreed claims with the *why*. Councils now also lead with a `decision`, what would change it, and for each split the `check` that would settle it later. Trinity ran this against itself to ratify what would ship.
 
 ## Architecture
 
-Chairman synthesizes member outputs into structured Routing JSON. Members run in
+Chairman synthesizes member outputs into a structured JSON verdict. Members run in
 parallel. Lens-discovery is a 5-stage
 pipeline (Stage 0 turn-pair rejections + Stages 1-4 basins→decisions→pair-mining→post-filter) ratifying tensions across ≥3 topical basins.
 

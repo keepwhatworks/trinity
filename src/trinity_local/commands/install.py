@@ -220,19 +220,14 @@ def handle_install_mcp(args):
         written.append(skill_status)
 
     if written:
-        print(f"✓ Installed Trinity MCP server to: {', '.join(written)}")
-        # 100-persona audit P01/C4: restart-prompt — running harnesses
-        # cache MCP tool lists at connect time. Without this line, users
-        # type /trinity or hit run_council in the same session and see
-        # nothing happen.
+        print(f"✓ Registered Trinity's MCP server in: {', '.join(written)}")
+        # Running harnesses cache their tool list at connect time, so the new
+        # tools only appear after a restart.
         print(
-            "\nNext: restart Claude Code / Codex / Antigravity / Cursor to pick "
-            "up the new tools.\n"
-            "Then verify with:  trinity-local status   (or type /trinity in "
-            "Claude Code)\n"
-            "On first MCP spawn, Trinity auto-scans ~/.claude, ~/.codex, "
-            "~/.gemini, cowork in the background — your first council is "
-            "already personalized."
+            "\nRestart Claude Code / Codex / agy / Cursor to load Trinity's tools. "
+            "On first start Trinity reads your transcripts from ~/.claude, ~/.codex "
+            "and ~/.gemini; they stay on this machine. "
+            "Check the setup any time: trinity-local install --check"
         )
     else:
         print("No MCP configuration files were updated.")
@@ -1093,15 +1088,13 @@ REFLEX_END = "<!-- trinity-local reflex v1 END -->"
 # so "what happened" questions read the corpus, not the scrollback.
 REFLEX_TEXT = """## Trinity reflex
 
-Trinity Local is installed (MCP server `trinity-local`). Before
-multi-option product/architectural choices or contested, hard-to-reverse
-calls: `ask(mode="route")` is FREE and says which model to trust; `ask`
-(~1 call) returns a routed answer; `run_council` (~4 calls) returns a
-multi-model verdict through the user's taste lens; `choose` (CLI, free)
-ranks concrete options by measured taste. Skip for trivial bugs, syntax,
-retrieval. Treat `agreed_claims`/`disagreed_claims` as truth. Asked "what
-happened / why did we decide"? Read `~/.trinity/council_outcomes/` before
-summarizing scrollback."""
+Trinity Local is installed (MCP server `trinity-local`). Before contested,
+hard-to-reverse product or architecture calls, run `run_council`: three labs
+answer independently and a chairman reports where they split. Before calling
+a change done, run `verify` with `exclude_lab` set to your own lab. Skip both
+for trivial bugs, syntax, retrieval. Treat `agreed_claims`/`disagreed_claims`
+as truth. Asked "what happened / why did we decide"? Read
+`~/.trinity/council_outcomes/` before summarizing scrollback."""
 
 
 def handle_install_reflex(args):

@@ -27,6 +27,8 @@ def register(subparsers):
     p.add_argument("--no-panel", action="store_true", help="kernel only")
     p.add_argument("--no-tests", action="store_true", help="panel only")
     p.add_argument("--effort", help="panel effort for claude/codex (low|medium|high|xhigh); default is each provider's config")
+    p.add_argument("--json", action="store_true",
+                   help="raw result object instead of the review card (for scripts)")
     p.set_defaults(handler=handle_verify)
 
 
@@ -48,5 +50,79 @@ def handle_verify(args) -> int:
     except ValueError as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 1
-    print(json.dumps(out, indent=2))
+    # getattr, not args.json: argparse always sets this, but programmatic
+    # callers build a Namespace by hand and a new flag must not break them.
+    # Six tests broke on `args.json` the moment the flag was added, and each
+    # one was a caller that never asked for the card.
+    if getattr(args, "json", False):
+        print(json.dumps(out, indent=2))
+    else:
+        print(render_card(out))
     return 0 if out["triage"] != "STOP" else 2
+
+
+def render_card(out: dict) -> str:
+    """What a human reads. The JSON stays behind --json for scripts.
+
+    Council 595c6e34, all three members: "Generic READ output does not justify
+    the review burden" and "READ should surface concrete concerns tied to
+    code." Until now this command printed the whole result object and the
+    reviewers' reasoning was not in it at all -- it survived only as a
+    truncated `raw_tail`, so a user was told "a human must read this" and given
+    nothing to read.
+
+    NO MANUFACTURED CONCERNS. When nobody doubted anything, this says so
+    plainly rather than inventing something to justify the step. An empty card
+    is a real answer and the honest one.
+    """
+    triage = out.get("triage", "?")
+    lines = [f"{triage}  —  {out.get('reason', '')}"]
+
+    kernel = out.get("kernel") or {}
+    if kernel.get("ran"):
+        state = "red" if kernel.get("green") is False else "green"
+        rel = "" if kernel.get("relevant") else "  (does NOT exercise the changed files)"
+        lines.append(f"  tests: {state}{rel}")
+    else:
+        lines.append("  tests: none ran")
+
+    panel = out.get("panel") or {}
+    reads = panel.get("reads") or []
+    if not reads:
+        lines.append("  panel: did not run")
+        return "\n".join(lines)
+
+    voted = [r for r in reads if not r.get("error")]
+    lost = [r for r in reads if r.get("error")]
+    lines.append(f"  panel: {len(voted)} of {len(reads)} reviewers voted"
+                 + (f"  ({len(lost)} lost: " + ", ".join(
+                     f"{r.get('provider')} {r.get('error')}" for r in lost) + ")" if lost else ""))
+
+    # concerns, grouped by the criterion they are about
+    by_crit: dict = {}
+    for r in voted:
+        for cid, ok in (r.get("votes") or {}).items():
+            if not ok:
+                by_crit.setdefault(cid, []).append(r)
+    if not by_crit:
+        lines.append("")
+        lines.append("  No reviewer raised a concern. Nothing here is a substitute for reading "
+                     "the change, but nothing was flagged.")
+        return "\n".join(lines)
+
+    statements = {c.get("id"): c.get("statement", "") for c in (out.get("criteria") or [])}
+    lines.append("")
+    lines.append(f"  {len(by_crit)} criterion/criteria drew a concern:")
+    for cid, doubters in by_crit.items():
+        lines.append("")
+        lines.append(f"  [{cid}] {statements.get(cid, '')}")
+        for r in doubters:
+            why = (r.get("why") or "").strip()
+            lab = r.get("lab") or r.get("provider")
+            if why:
+                lines.append(f"    - {lab}: {why}")
+            else:
+                tail = (r.get("raw_tail") or "").strip()
+                lines.append(f"    - {lab}: (no reason given)"
+                             + (f"  raw: {tail[-120:]}" if tail else ""))
+    return "\n".join(lines)

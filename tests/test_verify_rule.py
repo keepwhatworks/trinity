@@ -182,3 +182,32 @@ class TestExhaustive:
     def test_domain_is_not_trivial(self):
         n = len(self._domain())
         assert n > 500, f"the exhaustive domain has only {n} points; the check is not exhaustive"
+
+
+class TestTheReasonNamesTheRealCause:
+    """Found on verify's first real use (2026-09-27): a review with exclude_lab
+    set -- two labs, both approving -- printed "(panel not run)" directly above
+    "2 of 2 reviewers voted". The outcome was right; the explanation was not."""
+
+    def test_two_labs_agreeing_is_not_reported_as_no_panel(self):
+        t = triage(K(True), Panel(ran=True, votes={"codex": True, "antigravity": True}))
+        assert t.outcome == "READ"
+        assert "not run" not in t.reason
+        assert "only 2 labs" in t.reason
+
+    def test_a_panel_that_did_not_run_still_says_so(self):
+        assert "(panel not run)" in triage(K(True), Panel(ran=False, votes={})).reason
+
+    def test_a_split_still_says_split(self):
+        t = triage(K(True), Panel(ran=True, votes={"claude": True, "codex": False,
+                                                   "antigravity": True}))
+        assert "(panel split)" in t.reason
+
+
+def test_a_unanimous_objection_is_not_reported_as_agreement():
+    """Peer report, 2026-09-28: three FAIL votes printed 'panel agreed, but only
+    3 labs read it; consensus needs three'."""
+    t = triage(K(True), Panel(ran=True, votes={"claude": False, "codex": False,
+                                               "antigravity": False}))
+    assert t.outcome == "READ"
+    assert "agreed" not in t.reason and "all 3 reviewing labs objected" in t.reason

@@ -312,7 +312,7 @@ fi
 # ─── 3.5. Install Python runtime deps (Pillow, mcp, numpy) ─────────
 
 # Trinity's runtime deps are declared in pyproject.toml: Pillow>=10 (for
-# me-card PNG rendering, loaded lazily), mcp>=1.0 (for the MCP server
+# me-card PNG rendering, loaded lazily), mcp>=1.0,<2 (for the MCP server
 # the harness spawns), and numpy>=1.26 (embedding matmul fast-path +
 # k-means + vocabulary stats — used across embeddings/, memory/, me/,
 # knn_analytics, vocabulary). We don't pip-install trinity-local itself
@@ -343,7 +343,7 @@ if "$PYTHON_BIN" -m pip --version >/dev/null 2>&1; then
   # a missing wheel must show the REAL error, not a vague "reported issues" that
   # sends the user into a no-heal loop.
   if "$PYTHON_BIN" -m pip "${PIP_INSTALL_ARGS[@]}" \
-       'Pillow>=10' 'mcp>=1.0' 'numpy>=1.26'; then
+       'Pillow>=10' 'mcp>=1.0,<2' 'numpy>=1.26'; then
     ok "Pillow + mcp + numpy installed ($PIP_MODE_LABEL)"
   else
     warn "pip install failed (see the error above). If it's a permissions error on"
@@ -367,7 +367,7 @@ if "$PYTHON_BIN" -m pip --version >/dev/null 2>&1; then
   fi
 else
   warn "pip not available for $PYTHON_BIN — install pip and re-run, or:"
-  warn "  $PYTHON_BIN -m ensurepip --user && $PYTHON_BIN -m pip install --user 'Pillow>=10' 'mcp>=1.0' 'numpy>=1.26'"
+  warn "  $PYTHON_BIN -m ensurepip --user && $PYTHON_BIN -m pip install --user 'Pillow>=10' 'mcp>=1.0,<2' 'numpy>=1.26'"
 fi
 
 # ─── 4. Register MCP server in installed harnesses ─────────────────

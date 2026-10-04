@@ -71,7 +71,8 @@ class TestUvxRemoved:
         # The doc-consistency canary block must survive the rewrite.
         assert "<!-- canonical:install_command -->" in text
         assert "<!-- /canonical -->" in text
-        assert "scripts/install.sh | bash" in text
+        from trinity_local.facts import INSTALL_COMMAND
+        assert INSTALL_COMMAND in text
 
 
 # ─── #232a: download-embedder honesty ──────────────────────────────

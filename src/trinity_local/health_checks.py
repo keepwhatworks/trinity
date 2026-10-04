@@ -211,21 +211,37 @@ def _check_config() -> CheckResult:
 
 
 def _check_mcp_available() -> CheckResult:
-    """MCP server module importable (the `mcp` extras dependency installed)."""
+    """MCP server module importable AND a 1.x release.
+
+    Importable is not enough: mcp 2.0 (2026-07-28) removed the low-level
+    `Server.list_tools`/`call_tool` decorators, so a venv bootstrapped after
+    that date imports `mcp` fine and then the server crashes on start."""
     try:
         import mcp  # noqa: F401
-        return CheckResult(
-            name="mcp_available",
-            ok=True,
-            detail="mcp package importable",
-        )
     except ImportError:
         return CheckResult(
             name="mcp_available",
             ok=False,
             detail="mcp package not installed (Claude Code MCP integration disabled)",
-            fix="python3 -m pip install --user 'mcp>=1.0' 'Pillow>=10' 'numpy>=1.26'",
+            fix="trinity-local update --deps",
         )
+    version = _mcp_version()
+    if version and not version.startswith("1."):
+        return CheckResult(
+            name="mcp_available",
+            ok=False,
+            detail=f"mcp {version} is installed; Trinity's MCP server needs mcp 1.x and will not start",
+            fix="trinity-local update --deps",
+        )
+    return CheckResult(name="mcp_available", ok=True, detail=f"mcp {version or '?'} importable")
+
+
+def _mcp_version() -> str | None:
+    try:
+        from importlib.metadata import version
+        return version("mcp")
+    except Exception:
+        return None
 
 
 def _check_skill_freshness() -> CheckResult:

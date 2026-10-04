@@ -199,7 +199,7 @@ def test_open_council_disabled_by_env(monkeypatch, tmp_path):
 
 def test_open_council_accept_opens_once(monkeypatch, tmp_path):
     monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-    monkeypatch.delenv("TRINITY_OPEN_COUNCIL_PROMPT", raising=False)
+    monkeypatch.setenv("TRINITY_OPEN_COUNCIL_PROMPT", "1")
     opened: list[str] = []
     monkeypatch.setattr("trinity_local.mcp_features.elicit", lambda m, s: {"open": True})
     monkeypatch.setattr("trinity_local.notifications.open_path", lambda p: opened.append(p) or True)
@@ -212,7 +212,7 @@ def test_open_council_accept_opens_once(monkeypatch, tmp_path):
 
 def test_open_council_degrades_to_text_when_unsupported(monkeypatch, tmp_path):
     monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-    monkeypatch.delenv("TRINITY_OPEN_COUNCIL_PROMPT", raising=False)
+    monkeypatch.setenv("TRINITY_OPEN_COUNCIL_PROMPT", "1")
     monkeypatch.setattr("trinity_local.mcp_features.elicit", lambda m, s: None)  # no client support
     from trinity_local.mcp_server import _maybe_offer_open_council
     rec = _maybe_offer_open_council("council_z", "/tmp/p.html")
@@ -221,12 +221,33 @@ def test_open_council_degrades_to_text_when_unsupported(monkeypatch, tmp_path):
 
 def test_open_council_decline_does_not_open(monkeypatch, tmp_path):
     monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-    monkeypatch.delenv("TRINITY_OPEN_COUNCIL_PROMPT", raising=False)
+    monkeypatch.setenv("TRINITY_OPEN_COUNCIL_PROMPT", "1")
     monkeypatch.setattr("trinity_local.mcp_features.elicit", lambda m, s: {"open": False})
     monkeypatch.setattr("trinity_local.notifications.open_path",
                         lambda p: (_ for _ in ()).throw(AssertionError("must not open on decline")))
     from trinity_local.mcp_server import _maybe_offer_open_council
     assert _maybe_offer_open_council("council_w", "/tmp/p.html") == {"opened": False}
+
+
+def test_completed_status_returns_link_without_confirmation(monkeypatch, tmp_path):
+    import asyncio
+    import json
+    from trinity_local import mcp_server
+
+    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+    monkeypatch.delenv("TRINITY_OPEN_COUNCIL_PROMPT", raising=False)
+    calls = []
+    monkeypatch.setattr("trinity_local.mcp_features.elicit",
+                        lambda *a, **k: calls.append("dialog") or {"open": True})
+    monkeypatch.setattr("trinity_local.notifications.open_path",
+                        lambda *a: calls.append("browser"))
+    monkeypatch.setattr(mcp_server, "_lookup_council_status", lambda _: {
+        "status": "completed", "review_path": "/tmp/review.html"})
+    result = asyncio.run(mcp_server._get_council_status({"council_run_id": "council_quiet"}))
+    payload = json.loads(result[0]["text"])
+    assert payload["status"] == "completed"
+    assert payload["open_council"]["cta"] == "/tmp/review.html"
+    assert calls == []
 
 
 def test_open_council_rejects_path_traversal_id(monkeypatch, tmp_path):

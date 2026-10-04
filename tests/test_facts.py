@@ -32,22 +32,11 @@ class TestFactValues:
         # No trailing slash — every consumer concatenates suffix paths
         assert not GITHUB_REPO_URL.endswith("/")
 
-    def test_install_command_derives_from_repo_url(self):
-        """The install command must point at the raw-content host of
-        the SAME repo as GITHUB_REPO_URL. Catches drift where someone
-        edits one constant without the other."""
-        from trinity_local.facts import GITHUB_REPO_URL, INSTALL_COMMAND
-
-        # Repo path (everything after github.com) must appear in the
-        # raw-content URL inside the install command
-        repo_path = GITHUB_REPO_URL.replace("https://github.com", "")
-        assert repo_path in INSTALL_COMMAND
-        # The command must be a curl pipe to bash — the canonical
-        # one-liner shape the README hero block + launch-day artifacts
-        # reference.
-        assert INSTALL_COMMAND.startswith("curl -fsSL ")
-        assert INSTALL_COMMAND.endswith(" | bash")
-        assert "scripts/install.sh" in INSTALL_COMMAND
+    def test_install_command_is_served_by_the_landing_domain(self):
+        """The install command fetches docs/install.sh from the site's own domain
+        (council_7834bd6eaf9dd903), so it moves with LANDING_DOMAIN, not the repo."""
+        from trinity_local.facts import INSTALL_COMMAND, LANDING_DOMAIN
+        assert INSTALL_COMMAND == f"curl -LsSf https://{LANDING_DOMAIN}/install.sh | sh"
 
     def test_chrome_extension_version_matches_manifest_directly(self):
         """Drift guard: fact derivation must produce same value the

@@ -28,22 +28,47 @@ if command -v trinity-local >/dev/null 2>&1; then
   exec trinity-local --mcp "$@"
 fi
 
-# 2. The bundled engine needs a python that can import numpy / mcp / Pillow.
-_have_deps() { "$1" -c "import numpy, mcp, PIL" >/dev/null 2>&1; }
+# 2. The bundled engine needs Python 3.10+ that can import numpy / mcp 1.x / Pillow.
+# mcp is capped below 2: mcp 2.0 (2026-07-28) removed the low-level Server
+# decorators the server uses, so a 2.x install imports fine and then crashes.
+MCP_SPEC="mcp>=1.0,<2"
+_have_deps() {
+  "$1" -c "import sys; assert sys.version_info >= (3, 10); import numpy, PIL, mcp, importlib.metadata as m; sys.exit(m.version('mcp').split('.')[0] != '1')" >/dev/null 2>&1
+}
+# The first python3 on PATH is often too old (Apple's /usr/bin/python3 is 3.9),
+# so probe versioned names first, the same order install.sh uses.
+_find_python() {
+  for c in python3.13 python3.12 python3.11 python3.10 python3; do
+    if command -v "$c" >/dev/null 2>&1 \
+       && "$c" -c 'import sys; sys.exit(sys.version_info < (3, 10))' >/dev/null 2>&1; then
+      command -v "$c"; return 0
+    fi
+  done
+  return 1
+}
 
 PYBIN=""
 if [ -x "$VENV/bin/python" ] && _have_deps "$VENV/bin/python"; then
   PYBIN="$VENV/bin/python"                                  # already bootstrapped
-elif command -v python3 >/dev/null 2>&1 && _have_deps python3; then
-  PYBIN="python3"                                           # system python already has them (free)
-elif command -v python3 >/dev/null 2>&1; then
-  # First-boot bootstrap (ONE time): a private venv + the 3 base deps. Slow on the
-  # very first session (~a numpy download); every later boot reuses the venv.
-  if python3 -m venv "$VENV" >/dev/null 2>&1; then
-    "$VENV/bin/python" -m pip install --quiet --upgrade pip >/dev/null 2>&1 || true
-    if "$VENV/bin/python" -m pip install --quiet "numpy>=1.26" "mcp>=1.0" "Pillow>=10" >/dev/null 2>&1 \
-       && _have_deps "$VENV/bin/python"; then
-      PYBIN="$VENV/bin/python"
+elif PY="$(_find_python)"; then
+  if _have_deps "$PY"; then
+    PYBIN="$PY"                                             # that python already has them (free)
+  else
+    # First-boot bootstrap (ONE time): a private venv + the 3 base deps. Slow on the
+    # very first session (~a numpy download); every later boot reuses the venv. An
+    # existing venv holding mcp 2.x is repaired in place by the capped install; one
+    # built on a Python older than 3.10 (an earlier failed boot) is rebuilt.
+    # pip's output goes to STDERR: stdout is the MCP protocol channel, and a failed
+    # install must show its real error in the host's MCP log.
+    if [ -x "$VENV/bin/python" ] && ! "$VENV/bin/python" -c 'import sys; sys.exit(sys.version_info < (3, 10))' >/dev/null 2>&1; then
+      rm -rf "$VENV"
+    fi
+    if [ -x "$VENV/bin/python" ] || "$PY" -m venv "$VENV" >&2; then
+      "$VENV/bin/python" -m pip install --quiet --upgrade pip >&2 || true
+      if "$VENV/bin/python" -m pip install --quiet "numpy>=1.26" "$MCP_SPEC" "Pillow>=10" >&2 \
+         && _have_deps "$VENV/bin/python"; then
+        PYBIN="$VENV/bin/python"
+      fi
     fi
   fi
 fi
@@ -53,7 +78,12 @@ if [ -n "$PYBIN" ] && [ -d "$ENGINE/trinity_local" ]; then
 fi
 
 # 3. Couldn't resolve or bootstrap — surface an actionable hint, never a silent hang.
-echo "Trinity couldn't start: no python3 with deps was found and the bundled-engine" >&2
-echo "bootstrap failed. Install once, then reload the plugin (/reload-plugins):" >&2
-echo "  curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash" >&2
+if [ -z "${PY:-}" ]; then
+  echo "Trinity needs Python 3.10 or newer (found: $(python3 --version 2>&1 || echo none))." >&2
+  echo "Install one (macOS: brew install python@3.12, or brew install uv), then /reload-plugins." >&2
+else
+  echo "Trinity couldn't install its 3 dependencies (numpy, $MCP_SPEC, Pillow) into $VENV." >&2
+  echo "Try: $PY -m venv $VENV && $VENV/bin/python -m pip install numpy '$MCP_SPEC' Pillow, then /reload-plugins." >&2
+fi
+echo "Or install Trinity once with:  curl -LsSf https://keepwhatworks.com/install.sh | sh" >&2
 exit 1

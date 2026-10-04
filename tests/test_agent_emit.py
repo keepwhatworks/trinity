@@ -153,3 +153,26 @@ def test_install_opt_in_places_in_project(tmp_path):
     assert str(claude_dst) in res["installed"] and str(codex_dst) in res["installed"]
     # The installed copy is byte-identical to the canonical source.
     assert claude_dst.read_text() == Path(res["claude_source"]).read_text()
+
+
+def test_the_bundled_subagent_is_the_rendered_template():
+    """The plugin ships agents/trinity-verify.md, a RENDERED copy of
+    agent_emit's template. A fix applied to the copy alone was reverted by the
+    next render (2026-09-12); a fix applied to the template alone left the
+    shipped file stale. The two are one artifact."""
+    from pathlib import Path
+    from trinity_local.agent_emit import render_claude_subagent
+    bundled = (Path(__file__).resolve().parent.parent
+               / "plugins/trinity-local/agents/trinity-verify.md").read_text(encoding="utf-8")
+    assert bundled == render_claude_subagent(), (
+        "plugins/trinity-local/agents/trinity-verify.md has drifted from "
+        "agent_emit.render_claude_subagent(); regenerate it from the template")
+
+
+def test_the_relay_never_offers_an_outcome_the_gate_cannot_emit():
+    """verify_rule.SKIP_SHIPS is False, so triage never returns SKIP. The relay
+    template told every host agent SKIP was 'the only green you may pass on'."""
+    from trinity_local import verify_rule
+    from trinity_local.agent_emit import render_claude_subagent
+    if not verify_rule.SKIP_SHIPS:
+        assert "SKIP" not in render_claude_subagent()

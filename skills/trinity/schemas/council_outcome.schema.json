@@ -204,6 +204,7 @@
               "claim": {"type": "string"},
               "why_matters": {"type": "string"},
               "resolution": {"type": "string", "description": "The prosecutorial chairman's verdict on the split: which side SURVIVES the other members' evidence and the ground for it, or 'unresolved' when undecidable."},
+              "check": {"type": "object", "description": "How the split is settled later: the test, source, measurement or event (procedure) and which result supports which side (decision_rule).", "properties": {"procedure": {"type": "string"}, "decision_rule": {"type": "string"}}},
               "providers": {
                 "type": "array",
                 "items": {"type": "string"}
@@ -237,6 +238,14 @@
         "eval_seed": {
           "type": ["string", "null"],
           "description": "Optional seed-prompt label, used by the corpus-based eval harness (#122) to slice replayable benchmarks."
+        },
+        "decision": {
+          "type": "string",
+          "description": "The chairman's answer to the user's question in their terms, or 'UNDETERMINED: <missing evidence or preference>'. Present when metadata.chairman_format is decision_v1."
+        },
+        "flip_condition": {
+          "type": "string",
+          "description": "The evidence that would change the decision."
         }
       }
     }

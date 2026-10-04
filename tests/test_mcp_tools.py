@@ -641,7 +641,7 @@ class TestHostMemberCouncil:
         assert result.get("mode") == "host_synthesis", result
         # THE proof: not a single provider call — the host did the synthesis.
         assert called == [], called
-        assert verdict in result["synthesis_output"]
+        assert verdict in result["outcome"]["synthesis_output"]
 
         from trinity_local.council_runtime import load_council_outcome
         outcome = load_council_outcome(result["council_run_id"])

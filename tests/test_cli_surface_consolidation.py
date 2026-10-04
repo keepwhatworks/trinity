@@ -156,17 +156,25 @@ class TestDebugUmbrella:
 
 
 class TestInstallUmbrella:
-    def test_install_no_args_lists_verbs(self, capsys):
-        """`trinity-local install` lists the install verbs so users
-        find install-mcp (most common) and the optional ones."""
+    def test_install_no_args_sets_up_then_lists_verbs(self, capsys, monkeypatch):
+        """`trinity-local install` registers Trinity (install-mcp), then lists
+        the optional install verbs."""
+        from trinity_local.commands import install as _install
+        from trinity_local import setup_check as _sc
         from trinity_local.commands.install_umbrella import handle_install_umbrella
         from types import SimpleNamespace
 
+        calls = []
+        monkeypatch.setattr(_install, "handle_install_mcp", lambda a: calls.append(a.scope))
+        monkeypatch.setattr(_sc, "ensure_new_user_config", lambda: None)
+        monkeypatch.setattr(_sc, "run_check", lambda: {"members": [], "ready": [], "council_ready": False,
+                                                       "transcripts_total": 0, "config_source": "x",
+                                                       "next": {"asks": ["a"], "why_tests_only": "w"}})
         rc = handle_install_umbrella(SimpleNamespace())
+        assert calls == ["user"]
         assert rc == 0
         out = capsys.readouterr().out
-        for verb in (
-            "install-mcp",
+        for verb in (                # install-mcp is what `install` runs, so it is not re-listed
             "install-skill",   # lens→skill (loop primitive)
             "install-agent",   # the cross-provider verifier sub-agent (loop primitive)
             "install-extension",
@@ -177,7 +185,4 @@ class TestInstallUmbrella:
             assert verb in out, (
                 f"install umbrella must list {verb!r}; got: {out!r}"
             )
-        # The "most common" callout for install-mcp helps new users
-        # know which one to run first.
-        assert "install-mcp" in out
-        assert "most" in out.lower() or "common" in out.lower()
+        assert "install --check" in out

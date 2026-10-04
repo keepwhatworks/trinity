@@ -361,6 +361,67 @@ def iter_claude_code_sessions(root: Path | None = None) -> Iterator[SessionRecor
                 yield session
 
 
+# ---------------------------------------------------------------------------
+# Codex IMPORTS Claude Code transcripts ("external agent sessions") into its own
+# thread store, as ordinary rollout files that look exactly like native Codex
+# sessions. Measured 2026-09-26: 8,428 of 10,164 prompt nodes filed under
+# `codex` (82%) came from those mirrors -- the founder's CLAUDE conversations,
+# ingested a second time and labelled as a different lab. The deep build mines
+# cross-provider pairs (one question put to two labs), and a mirrored session
+# is exactly that shape, so the duplication manufactures cross-provider
+# evidence out of a single conversation.
+#
+# Provenance, not heuristic: Codex keeps a manifest of every imported thread.
+# A thread in it is a re-synced mirror in its entirety (verified on the largest
+# one: its latest "Codex" prompts are present verbatim in the Claude source), so
+# the whole rollout is skipped. The in-file `<EXTERNAL SESSION IMPORTED>` marker
+# is the fallback for a Codex home that has no manifest.
+_IMPORT_MARKER = "<EXTERNAL SESSION IMPORTED>"
+_IMPORT_MANIFEST = "external_agent_session_imports.json"
+_imported_cache: dict[str, tuple[bytes, frozenset[str]]] = {}
+_ROLLOUT_THREAD_RE = re.compile(
+    r"-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$")
+
+
+def _codex_imported_thread_ids(rollout: Path) -> frozenset[str]:
+    """Thread ids Codex imported from another agent, for the Codex home that
+    owns `rollout`. Empty when there is no manifest or it cannot be read."""
+    home = next((p.parent for p in rollout.parents if p.name == "sessions"), None)
+    if home is None:
+        return frozenset()
+    manifest = home / _IMPORT_MANIFEST
+    try:
+        raw = manifest.read_bytes()
+    except OSError:
+        return frozenset()
+    # KEYED ON CONTENT. Two stat-based keys were each broken by verify's codex
+    # reader on 2026-09-27: mtime alone missed a rewrite inside one timestamp
+    # tick, and (mtime_ns, size) still missed a SAME-SIZE rewrite in that tick.
+    # Any stat key has that hole, because "stat unchanged" is exactly the case
+    # that fails. Hashing costs 0.15 ms per call on the real 125 KB manifest,
+    # ~2.3 s across a full 15.6k-rollout ingest that already reads gigabytes.
+    import hashlib
+    stamp = hashlib.blake2b(raw, digest_size=16).digest()
+    key = str(manifest)
+    hit = _imported_cache.get(key)
+    if hit and hit[0] == stamp:
+        return hit[1]
+    # Wrong SHAPE is not wrong SYNTAX: `{"records": 1}` parses fine and then
+    # crashed iteration with a TypeError (verify, codex reader, third pass).
+    # Anything that is not a list of dicts contributes nothing.
+    try:
+        doc = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        doc = None
+    records = doc.get("records") if isinstance(doc, dict) else None
+    ids = frozenset(
+        r["imported_thread_id"] for r in (records if isinstance(records, list) else [])
+        if isinstance(r, dict) and isinstance(r.get("imported_thread_id"), str)
+        and r["imported_thread_id"])
+    _imported_cache[key] = (stamp, ids)
+    return ids
+
+
 def parse_codex_session(path: Path) -> SessionRecord | None:
     try:
         # errors="replace": a transcript with invalid UTF-8 bytes (a corrupted/
@@ -380,6 +441,8 @@ def parse_codex_session(path: Path) -> SessionRecord | None:
     effort = None
     model_provider = None
     messages: list[SessionMessage] = []
+    imported_marker_seen = False
+    agent_authored = False
 
     with fh:
         for line in fh:
@@ -400,7 +463,20 @@ def parse_codex_session(path: Path) -> SessionRecord | None:
                 ended_at = ts
             entry_type = entry.get("type")
             payload = _as_dict(entry.get("payload"))
+            if payload.get("type") == "agent_message" and \
+                    str(payload.get("message") or "").strip() == _IMPORT_MARKER:
+                imported_marker_seen = True
             if entry_type == "session_meta":
+                # AN AGENT IN THE USER SEAT. Codex records subagent and
+                # approval-reviewer sessions with the PARENT AGENT's instruction
+                # as the "user" turn. Measured 2026-09-28: 45 such sessions
+                # (41 thread_spawn, 3 guardian approval reviews, 1 review) had
+                # put 257 agent-written prompts into the founder's prompt index.
+                # Reported by a peer session; provenance, not phrasing.
+                _src = payload.get("source")
+                if (isinstance(_src, dict) and _src.get("subagent")) or \
+                        payload.get("thread_source") in ("subagent", "guardian_review"):
+                    agent_authored = True
                 session_id = payload.get("id") or session_id
                 cwd = payload.get("cwd") or cwd
                 cli_version = payload.get("cli_version") or cli_version
@@ -491,6 +567,17 @@ def parse_codex_session(path: Path) -> SessionRecord | None:
                             raw_type=payload_type,
                         )
                     )
+
+    # A mirrored Claude session is not Codex usage (see _codex_imported_thread_ids).
+    # EXACT match only. The first version also accepted
+    # `path.stem.endswith(any id)`, a SUFFIX match: a short or malformed
+    # manifest entry would have skipped any native rollout whose filename
+    # happened to end with it. Caught by `verify` on its first real use
+    # (codex reader, 2026-09-27); the tests had only ever used full UUIDs.
+    _mirrors = _codex_imported_thread_ids(path)
+    _m = _ROLLOUT_THREAD_RE.search(path.stem)
+    if agent_authored or imported_marker_seen or session_id in _mirrors or (_m and _m.group(1) in _mirrors):
+        return None
 
     return SessionRecord(
         provider="codex",
@@ -667,11 +754,22 @@ def parse_antigravity_session(path: Path) -> SessionRecord | None:
     )
 
 
+# Where agy keeps one transcript per conversation. Owned here and read by
+# adapters.py too, so `status` counts exactly what ingest parses: the status
+# adapter once kept its own path (conversations/*.pb), and after agy moved to
+# .db files there it reported 0 agy transcripts while ingest read all 500.
+ANTIGRAVITY_TRANSCRIPT_GLOB = "*/.system_generated/logs/transcript.jsonl"
+
+
+def antigravity_brain_root() -> Path:
+    return Path.home() / ".gemini" / "antigravity-cli" / "brain"
+
+
 def iter_antigravity_sessions(root: Path | None = None) -> Iterator[SessionRecord]:
-    root = root or (Path.home() / ".gemini" / "antigravity-cli" / "brain")
+    root = root or antigravity_brain_root()
     if not root.exists():
         return
-    for transcript in sorted(root.glob("*/.system_generated/logs/transcript.jsonl")):
+    for transcript in sorted(root.glob(ANTIGRAVITY_TRANSCRIPT_GLOB)):
         session = _safe_parse(parse_antigravity_session, transcript)
         if session is not None:
             yield session

@@ -175,7 +175,7 @@ def _refresh_pip_deps(json_mode: bool) -> int:
     pip_args = [pip_py, "-m", "pip", "install", "--quiet", "--upgrade"]
     if use_user:
         pip_args.append("--user")
-    pip_args.extend(["Pillow>=10", "mcp>=1.0", "numpy>=1.26"])
+    pip_args.extend(["Pillow>=10", "mcp>=1.0,<2", "numpy>=1.26"])
 
     result = subprocess.run(pip_args, capture_output=True, text=True, check=False)
     ok = result.returncode == 0
@@ -205,6 +205,12 @@ def _refresh_pip_deps(json_mode: bool) -> int:
     return 0 if ok else 1
 
 
+def _uv_managed() -> bool:
+    """True when this interpreter is a `uv tool install` environment (uv writes
+    a receipt into the tool's environment)."""
+    return (Path(sys.prefix) / "uv-receipt.toml").exists()
+
+
 def handle_update(args: SimpleNamespace) -> int:
     skill_dir = _skill_dir(getattr(args, "skill_dir", None))
     json_mode = bool(getattr(args, "json", False))
@@ -216,6 +222,17 @@ def handle_update(args: SimpleNamespace) -> int:
     # touching the source dir at all.
     if deps_only:
         return _refresh_pip_deps(json_mode)
+
+    # The one-line installer (docs/install.sh) installs Trinity as a uv tool,
+    # not a git clone, so there is nothing to pull: updating means re-running
+    # it, which installs the newest release tag and re-registers the MCP server.
+    if _uv_managed():
+        from ..facts import INSTALL_COMMAND
+        if check_only:
+            msg = f"This install is managed by uv. Update by re-running: {INSTALL_COMMAND}"
+            print(json.dumps({"ok": True, "uv_managed": True, "update_command": INSTALL_COMMAND}) if json_mode else msg)
+            return 0
+        return subprocess.run(["sh", "-c", INSTALL_COMMAND], check=False).returncode
 
     if not skill_dir.exists():
         msg = f"skill directory not found at {skill_dir}"

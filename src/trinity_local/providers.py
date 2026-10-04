@@ -97,13 +97,42 @@ def parse_claude_json(stdout: str | None) -> dict | None:
         # GROUND TRUTH for claude at last. Until now claude echoed no model at
         # all, so every trust-ledger row for it carried an ASSUMED label with
         # nothing behind it. `modelUsage` keys the models that actually ran.
+        # ...but `modelUsage` can hold SEVERAL models. Claude Code runs a small
+        # model for background work (titles, summaries) alongside the one that
+        # answered, and this used to take `next(iter(...))` -- whichever landed
+        # first in the dict. On 2026-09-16 that surfaced as claude-haiku-4-5
+        # while the answer itself said "Claude Fable 5.1", and because the
+        # substitution guard compares the requested model against this echo, a
+        # HEALTHY member was dropped from every council as an impostor. The
+        # guard was right to act on what it was told; it was told wrong.
+        #
+        # The model that ANSWERED is the one that generated the output tokens.
+        # Background helpers produce few or none. Ties and missing counts fall
+        # back to dict order, which is no worse than before.
         model = None
         mu = d.get("modelUsage")
         if isinstance(mu, dict) and mu:
-            first = next(iter(mu.values()), None)
-            if isinstance(first, dict):
-                model = first.get("canonicalModel")
-            model = model or next(iter(mu), None)
+            def _out_tokens(v):
+                return v.get("outputTokens") or 0 if isinstance(v, dict) else 0
+            # AND "MOST TOKENS" IS ALSO A GUESS. Replacing first-in-dict with
+            # biggest-producer fixed the observed case and kept the shape: a
+            # terse answer (20 tokens) beside a chatty helper (100) records the
+            # HELPER. Found by an Astra audit hours after that fix shipped.
+            #
+            # One producer is an observation. Several is ambiguity, and the
+            # honest report is None -- the substitution guard treats a missing
+            # echo as "nothing to compare" and leaves the member alone, so
+            # uncertainty costs a stamp rather than a healthy council member.
+            producers = [(k, v) for k, v in mu.items() if _out_tokens(v) > 0]
+            if len(producers) == 1:
+                name, stats = producers[0]
+            elif not producers and len(mu) == 1:
+                name, stats = next(iter(mu.items()))
+            else:
+                name, stats = None, None
+            if isinstance(stats, dict):
+                model = stats.get("canonicalModel")
+            model = model or name
         return {"text": str(d.get("result") or ""), "usage": usage, "model": model}
     except Exception:
         return None

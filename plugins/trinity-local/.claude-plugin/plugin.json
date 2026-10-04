@@ -3,7 +3,7 @@
   "name": "trinity-local",
   "displayName": "Trinity Local",
   "version": "1.7.389",
-  "description": "Ask all three. Keep what works. Cross-provider councils, a taste lens, and smart routing across Claude, Codex, and Gemini — local-first, riding your existing CLI subscriptions. No new app, no service, no API key.",
+  "description": "Ask all three. Keep what works. Put plans in front of Claude, Codex and Gemini before you commit, and check changes with your own tests before you call them done. Local-first: your transcripts stay on your machine, on the subscriptions you already pay for.",
   "author": {
     "name": "Vishi Gondi",
     "url": "https://keepwhatworks.com"
@@ -12,14 +12,18 @@
   "repository": "https://github.com/keepwhatworks/trinity",
   "license": "MIT",
   "keywords": [
-    "memory",
     "council",
+    "review",
+    "verify",
     "multi-model",
-    "routing",
     "cross-provider",
     "local-first",
-    "taste"
+    "claude",
+    "codex",
+    "gemini"
   ],
-  "commands": ["./commands/"],
+  "commands": [
+    "./commands/"
+  ],
   "mcpServers": "./.mcp.json"
 }

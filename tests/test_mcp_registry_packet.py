@@ -61,11 +61,12 @@ def test_canonical_install_one_liner_present():
     up linking to. If the doc drops it, submission editors have to
     invent their own — leading to drift across registries.
 
-    Trinity ships as a git clone via curl|sh — `scripts/install.sh`
-    drops the skill, writes shell wrappers, and registers MCP. There
+    It is the site-served installer (docs/install.sh: uv, then `uv tool
+    install` of the newest release tag, then `trinity-local install`). There
     is no PyPI publish; see docs/INSTALL-pip.md."""
+    from trinity_local.facts import INSTALL_COMMAND
     text = PACKET.read_text(encoding="utf-8")
-    assert "scripts/install.sh | bash" in text
+    assert INSTALL_COMMAND in text
 
 
 def test_wedge_framing_present():

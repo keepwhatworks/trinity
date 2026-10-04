@@ -148,17 +148,18 @@ def test_sitemap_and_robots_present_and_complete():
 
 
 def test_landing_install_command_points_at_a_real_script():
-    """The hero's one-line install (`curl … /main/scripts/install.sh | bash`) must
-    point at a script that actually exists at that repo path — a broken install
-    command on the front door is the worst possible first impression."""
+    """The hero's one-line install (`curl … https://keepwhatworks.com/install.sh | sh`)
+    must name a file the site actually serves: keepwhatworks.com is docs/ (CNAME),
+    so the path must exist under docs/. A broken install command on the front door
+    is the worst possible first impression."""
+    from trinity_local.facts import INSTALL_COMMAND, LANDING_DOMAIN
     index = (DOCS / "index.html").read_text(encoding="utf-8")
-    m = re.search(r"raw\.githubusercontent\.com/[^/]+/[^/]+/main/([^\s|\"<]+)", index)
-    assert m, "could not find the raw.githubusercontent.com install URL in the landing page"
-    repo_rel = m.group(1)
-    assert (REPO / repo_rel).is_file(), (
-        f"the landing page's install command curls `{repo_rel}` from main, but that "
-        "file does not exist in the repo — the public install one-liner 404s"
-    )
+    assert INSTALL_COMMAND in index, "the landing page must show the canonical install command"
+    assert (DOCS / "CNAME").read_text().strip() == LANDING_DOMAIN
+    m = re.search(re.escape(LANDING_DOMAIN) + r"/([^\s|\"<]+)", INSTALL_COMMAND)
+    assert m and (DOCS / m.group(1)).is_file(), (
+        f"the install command fetches `{m and m.group(1)}` from {LANDING_DOMAIN}, but docs/ has "
+        "no such file, so the public one-liner 404s")
 
 
 # --- Self-hosted / no-third-party-asset guard for the PUBLIC site ----------------

@@ -53,13 +53,14 @@ bloating the agent's tool list.
 ## Quickstart (desktop first)
 
 ```bash
-# One-liner — clones to ~/.trinity/code/ (with a back-compat symlink
-# at ~/.claude/skills/trinity/), drops wrappers in ~/.local/bin/,
-# registers MCP in every harness you have, runs status.
-<!-- canonical:install_command -->curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash<!-- /canonical -->
+# One-liner: installs uv if needed, installs Trinity as a uv tool from the
+# newest public release, registers MCP in every CLI it finds, then checks.
+# (scripts/install.sh, the full installer, also wires Chrome capture.)
+<!-- canonical:install_command -->curl -LsSf https://keepwhatworks.com/install.sh | sh<!-- /canonical -->
 
-# Then, in Claude Code, just type:  /trinity
-# The skill walks you through status + ingest + lens --deep + your first council.
+# Then, in Claude Code, Codex or agy (restart them first):
+#   Before you build:        "Run a Trinity council on this plan."
+#   Before you call it done:  "Verify this change with our tests."
 ```
 
 The `/trinity` skill is the primary entry point. It teaches the full CLI

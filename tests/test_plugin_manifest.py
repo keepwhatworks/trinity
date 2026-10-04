@@ -83,20 +83,34 @@ def test_launcher_exists_and_is_executable():
     )
     assert "pip install trinity-local" not in code_lines
     assert "uvx --from trinity-local" not in code_lines
-    assert "scripts/install.sh | bash" in code_lines, "must offer the working curl installer"
+    assert "install.sh | sh" in code_lines, "must offer the working curl installer"
 
 
-def test_three_verb_commands_target_the_right_mcp_tools():
-    expected = {
-        "council": "mcp__trinity-local__run_council",
-        "ask": "mcp__trinity-local__ask",
-        "lens": "mcp__trinity-local__get_persona",
-    }
-    for verb, tool in expected.items():
+def test_plugin_commands_only_call_tools_the_server_lists():
+    """Every `mcp__trinity-local__<tool>` a slash command names must be a tool the
+    server actually lists. The previous version of this test pinned `/ask` and
+    `/lens` to `ask` and `get_persona` and kept passing after both tools were
+    soft-demoted on 2026-09-08, so the plugin shipped two dead commands."""
+    import asyncio
+    import re
+
+    from trinity_local.mcp_server import handle_list_tools
+
+    live = {t.name for t in asyncio.run(handle_list_tools())}
+    commands = sorted((PLUGIN / "commands").glob("*.md"))
+    assert commands, "plugin has no commands"
+    for md_path in commands:
+        md = md_path.read_text(encoding="utf-8")
+        assert md.startswith("---") and "description:" in md, f"{md_path.name} needs frontmatter with a description"
+        for tool in re.findall(r"mcp__trinity-local__(\w+)", md):
+            assert tool in live, f"{md_path.name} calls {tool!r}, which the server does not list ({sorted(live)})"
+
+
+def test_the_two_moments_have_commands():
+    """Planning and review are the product; each has a command on its tool."""
+    for verb, tool in (("council", "run_council"), ("verify", "verify")):
         md = (PLUGIN / "commands" / f"{verb}.md").read_text(encoding="utf-8")
-        assert md.startswith("---"), f"{verb}.md missing frontmatter"
-        assert "description:" in md, f"{verb}.md frontmatter needs a description"
-        assert tool in md, f"{verb}.md must invoke {tool}"
+        assert f"mcp__trinity-local__{tool}" in md, f"{verb}.md must call {tool}"
 
 
 def test_launcher_is_valid_bash():

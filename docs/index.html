@@ -14,10 +14,10 @@
 <meta property="og:image" content="https://keepwhatworks.com/og-card.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Keep What Works. You cannot tell which of your agent's confident outputs is wrong. Claude, ChatGPT and Gemini answer one prompt in parallel and the chairman shows where they split. Where your change has a test it runs the test; where it doesn't, three labs that can't see each other tell you where to look. Free and local.">
+<meta property="og:image:alt" content="Keep What Works. You cannot tell which of your agent's confident outputs is wrong. Claude, ChatGPT and Gemini answer one prompt in parallel and the chairman shows where they split. Where your change has a test it runs the test, and two other labs give the diff a second read. Free and local.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Keep What Works">
-<meta name="twitter:description" content="You cannot tell which of your agent's confident outputs is wrong. Claude, ChatGPT and Gemini answer one prompt in parallel and the chairman shows where they split. Where your change has a test it runs the test; where it doesn't, three labs that can't see each other tell you where to look. Free and local.">
+<meta name="twitter:description" content="You cannot tell which of your agent's confident outputs is wrong. Claude, ChatGPT and Gemini answer one prompt in parallel and the chairman shows where they split. Where your change has a test it runs the test, and two other labs give the diff a second read. Free and local.">
 <meta name="twitter:image" content="https://keepwhatworks.com/og-card.png">
 
 <link rel="icon" type="image/png" href="favicon.png">
@@ -171,8 +171,8 @@
       they split — the cross-provider read no single model can give you,
       however good it gets, because none of them can see the others. That
       split is a measured risk signal, and Trinity acts on it: where your
-      change has a test it runs the test, and where it doesn't, three labs
-      that can't see each other tell you where to look. Two answers per
+      change has a test it runs the test, and two labs that did not write
+      it give the diff a second read. Two answers per
       change — stop, or read it yourself. Trinity never tells you to skip
       reading. Free and local, on the
       subscriptions you already pay for. No API key. Your transcripts never
@@ -180,59 +180,53 @@
     </p>
 
     <figure class="product-shot">
-      <img src="launchpad_example.png" alt="The Trinity launchpad in a browser tab. Recent councils, the personal routing table, your lens, and the topic graph, all rendered locally." loading="lazy" width="1280" height="800">
+      <img src="launchpad_example.png" alt="The Trinity launchpad in a browser tab. Recent councils, your lens, and the topic graph, all rendered locally." loading="lazy" width="1280" height="800">
       <figcaption>What a fresh install opens to: recent councils, your lens, and the topic graph in one local tab. Nothing leaves your machine.</figcaption>
     </figure>
 
     <p class="tagline" style="font-size:15px;">
-      Just an MCP and a Chrome extension. No new app, no cloud, no API key.
-      Lives inside Claude Code, Codex CLI, Antigravity, and Cursor.
-      The models are interchangeable and your corpus is not, so a council runs
-      with any one provider turned off and switching subscriptions moves nothing
-      off your disk.
-      Your transcripts never leave your machine. <strong>Day one, you run councils:</strong>
-      ask once, all three labs answer in parallel, and the chairman hands you
-      one synthesized verdict, plus exactly where they split. That works the
-      moment you install.
+      Just an MCP server inside the CLIs you already use: Claude Code, Codex
+      and agy (Cursor too). No new app, no cloud, no API key. Your transcripts
+      from all of them stay on your machine, in one place you own, so switching
+      subscriptions moves nothing off your disk.
     </p>
 
     <p class="tagline" style="font-size:15px;">
-      <strong>Then it gets sharper.</strong> Your lens builds quietly in the
-      background from the transcripts already on your disk: the pattern in
-      how you rephrase, judge, and decide. A first pass takes minutes, not
-      days, and you never wait on it: councils work without a lens, and it
-      upgrades them once it's ready, sharpening every time you use it. Once
-      it's there, every council runs through <em>your</em> lens. The chairman
-      stops crowning the generic winner and starts routing to the model
-      <em>you</em> keep siding with on your kind of question.
+      <strong>Two moments, day one.</strong> Before you commit to a plan,
+      Claude, Codex and Gemini answer it independently and the chairman hands
+      you one decision, what would change it, and exactly where they split.
+      Before you call a change done, Trinity runs your tests, and the labs that
+      did not write it read the diff as a second opinion. Trinity tells your
+      agent when each moment comes up.
     </p>
 
     <p class="tagline" style="font-size:15px;">
-      <strong>And it's measured, not asserted.</strong> On the disagreements
-      your own later work settles, Trinity shows which model you keep siding
-      with, at model-and-version fidelity. A benchmark no lab can publish,
-      because only the layer above the labs sees your judgment across all three.
-      Your number accrues from your own councils.
+      <strong>Then it gets sharper.</strong> Your lens builds in the background
+      from the transcripts already on your disk: how you rephrase, judge, and
+      decide. Councils work without it, and the chairman reads it once it's
+      ready. On the disagreements your own later work settles,
+      <code>trust</code> shows which model you kept siding with, at
+      model-and-version fidelity: a benchmark no lab can publish, because only
+      the layer above the labs sees your judgment across all three.
     </p>
 
     <ul class="features">
-      <li>Run a council across all three labs, day one</li>
-      <li>See exactly where the models split</li>
-      <li>Your lens builds from transcripts already on your disk</li>
-      <li>Then every council runs through your lens, routed to the model you'd trust</li>
-      <li>Which model wins your kind of question, proven on your own resolved disagreements</li>
-      <li>Every council sharpens your local routing</li>
-      <li>Embedding model + index stay local</li>
+      <li>Put a plan in front of all three labs, day one</li>
+      <li>See exactly where they split, and what would settle it</li>
+      <li>Check a change with your own tests before you call it done</li>
+      <li>Transcripts from every CLI, kept on your disk</li>
+      <li>A lens built from those transcripts, read by the chairman</li>
+      <li>Which model your later work sided with, on your own disagreements</li>
     </ul>
 
     <p class="tagline" style="font-size:15px; margin-bottom:10px;">
-      <strong>Install</strong> is one line. It rides the CLIs you already
-      have: Claude Code, Codex CLI, Gemini CLI. One is enough to start. The
-      "where they split" payoff needs two.
+      <strong>Install</strong> is one line. It installs Trinity and registers it
+      in every CLI it finds: Claude Code, Codex, agy. One is enough to start.
+      The "where they split" payoff needs two.
     </p>
 
     <div class="install-wrap">
-      <div class="install" id="install-cmd">curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash</div>
+      <div class="install" id="install-cmd">curl -LsSf https://keepwhatworks.com/install.sh | sh</div>
       <button type="button" class="copy-btn" id="copy-install" aria-label="Copy install command">Copy</button>
     </div>
 

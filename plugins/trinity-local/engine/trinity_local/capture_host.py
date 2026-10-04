@@ -808,7 +808,7 @@ def _run_action(payload: dict[str, Any]) -> dict[str, Any]:
         return {
             "ok": False,
             "error": "trinity-local CLI not on PATH; install via "
-                     "`curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash` "
+                     "`curl -LsSf https://keepwhatworks.com/install.sh | sh` "
                      "(no PyPI package), then ensure ~/.local/bin is on PATH",
         }
     # Real error message when the CLI exited non-zero. Previously the

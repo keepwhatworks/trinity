@@ -287,6 +287,15 @@ class CouncilRoutingLabel:
     # division of labour as the lens (geometry finds the structure, the model names
     # it). Each entry: {name, winner, basis}.
     facets: list[dict[str, object]] = field(default_factory=list)
+    # DECISION VERDICT (2026-09-29, council_10e38944ddbdb84c). 92% of 107 chairman
+    # Recommendations named a model ("If you value X -> choose Claude"), so a
+    # verdict could never win or lose later. `decision` answers the user's
+    # question (or is UNDETERMINED plus the missing evidence); `flip_condition`
+    # is the evidence that would change it. Each disagreed claim may carry
+    # `check`: {procedure, decision_rule}. Same four chokepoints as `resolution`:
+    # prompt, normalizer, this declaration, to_dict.
+    decision: str = ""
+    flip_condition: str = ""
     # NOTE: `best_stage_models`, `should_be_hard_case`, and `hard_case_reason`
     # were demoted in iter-3 — zero downstream consumers (verified via grep
     # across personal_routing, chairman_picker, council_review, mcp_server,
@@ -316,6 +325,8 @@ class CouncilRoutingLabel:
             "combined_answer",
             "grafts",
             "facets",
+            "decision",
+            "flip_condition",
         ):
             value = getattr(self, key)
             if value not in (None, "", {}, []):

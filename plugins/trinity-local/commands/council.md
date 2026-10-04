@@ -1,14 +1,14 @@
 ---
-description: Run a multi-model council (Claude + GPT + Gemini) and synthesize the answer your taste would pick.
-argument-hint: <a hard question or task>
+description: Put a plan in front of Claude, Codex and Gemini before you commit to it.
+argument-hint: <the plan or decision, with what you know>
 ---
 
-Run a Trinity council on the following, then report the chairman's verdict — the
-picked winner, the `agreed_claims`, and the `disagreed_claims` (with why each one
-matters):
+Call the `mcp__trinity-local__run_council` tool on this:
 
 $ARGUMENTS
 
-Call the `mcp__trinity-local__run_council` tool from the connected Trinity MCP
-server. Treat the chairman's `agreed_claims` / `disagreed_claims` as the source of
-truth. If the argument is empty, ask the user what to run the council on first.
+Send the goal, the plan, the evidence you have, and one alternative. Then report
+the council's `decision`, what would change it (`flip_condition`), what all three
+agreed on, and each split: who was on which side, which side survived, and the
+`check` that would settle it later. If the argument is empty, ask what decision
+to put to the council first.

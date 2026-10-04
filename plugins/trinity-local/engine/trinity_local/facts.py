@@ -54,13 +54,12 @@ LANDING_DOMAIN: str = "keepwhatworks.com"
 # Single source here, embedded into install_command below.
 GITHUB_REPO_URL: str = "https://github.com/keepwhatworks/trinity"
 
-# The canonical curl-bash install command, appears in README hero +
-# every INSTALL-*.md + launch-day artifacts. Derived from
-# GITHUB_REPO_URL so a repo move only requires one edit upstream.
-INSTALL_COMMAND: str = (
-    f"curl -fsSL {GITHUB_REPO_URL.replace('https://github.com', 'https://raw.githubusercontent.com')}"
-    "/main/scripts/install.sh | bash"
-)
+# The one install command every surface leads with (council_7834bd6eaf9dd903):
+# docs/install.sh, served by the site. It installs uv if missing, `uv tool
+# install`s the newest public release tag, then runs `trinity-local install`.
+# The full installer (scripts/install.sh: Chrome capture, embedder) stays for
+# the deeper docs.
+INSTALL_COMMAND: str = f"curl -LsSf https://{LANDING_DOMAIN}/install.sh | sh"
 
 
 # ───────────────────────────────────────────────────────────────────────

@@ -28,14 +28,14 @@
       "type": "cli",
       "enabled": true,
       "label": "Claude",
-      "model": "claude-opus-5",
+      "model": "claude-opus-5-5",
       "command": [
         "claude",
         "-p"
       ],
       "args": [
         "--model",
-        "claude-opus-5"
+        "claude-opus-5-5"
       ],
       "task_types": [
         "general",
@@ -43,7 +43,7 @@
         "coding",
         "writing"
       ],
-      "effort": "high"
+      "effort": "xhigh"
     },
     "antigravity": {
       "type": "cli",
@@ -59,13 +59,13 @@
         "reasoning",
         "research"
       ],
-      "model": "Gemini 3.1 Pro (high)"
+      "model": "gemini-3.8-flash-high"
     },
     "codex": {
       "type": "codex",
       "enabled": true,
       "label": "Codex",
-      "model": "gpt-5.5",
+      "model": "gpt-5.6-sol",
       "command": [
         "codex",
         "exec"
@@ -75,7 +75,7 @@
         "workspace-write",
         "--skip-git-repo-check",
         "--model",
-        "gpt-5.5"
+        "gpt-5.6-sol"
       ],
       "task_types": [
         "coding",

@@ -295,11 +295,10 @@ v2 is structural. Backward-compatible additions don't bump the version, removals
 The canonical install is the one-line bootstrap:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keepwhatworks/trinity/main/scripts/install.sh | bash
+curl -LsSf https://keepwhatworks.com/install.sh | sh
 ```
 
-It clones the repo, installs the runtime deps into `~/.trinity/venv`, and registers
-Trinity's MCP server in every harness it detects. `trinity-local install-mcp`
+It installs uv if needed, installs Trinity as a uv tool from the newest public release, and registers its MCP server in every CLI it finds (Claude Code, Codex, agy, Cursor). `trinity-local install-mcp`
 re-writes the per-harness configs by hand if the bootstrap missed one.
 
 **Planned (PyPI-launch target):** ship via **[`uvx`](https://github.com/astral-sh/uv)**

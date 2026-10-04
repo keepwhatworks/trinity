@@ -5,7 +5,7 @@
     "name": "Vishi Gondi",
     "url": "https://keepwhatworks.com"
   },
-  "description": "Trinity Local — ask all three, keep what works. Local-first cross-provider councils across Claude, Codex, and Gemini: a chairman synthesizes the verdict, an opt-in taste lens personalizes it, smart routing picks the winner.",
+  "description": "Ask all three. Keep what works. Put plans in front of Claude, Codex and Gemini before you commit, and check changes with your own tests before you call them done. Local-first: your transcripts stay on your machine, on the subscriptions you already pay for.",
   "version": "1.0.0",
   "metadata": {
     "pluginRoot": "./plugins"
@@ -15,7 +15,7 @@
       "name": "trinity-local",
       "source": "./plugins/trinity-local",
       "displayName": "Trinity Local",
-      "description": "Cross-provider councils, a taste lens, and smart routing — local-first. Registers the Trinity MCP server and adds /trinity-local:council, :ask, and :lens.",
+      "description": "Ask all three. Keep what works. Put plans in front of Claude, Codex and Gemini before you commit, and check changes with your own tests before you call them done. Local-first: your transcripts stay on your machine, on the subscriptions you already pay for. Adds /trinity-local:council, :verify and :setup.",
       "version": "1.7.389",
       "author": {
         "name": "Vishi Gondi",
@@ -24,7 +24,17 @@
       "homepage": "https://keepwhatworks.com",
       "repository": "https://github.com/keepwhatworks/trinity",
       "license": "MIT",
-      "keywords": ["memory", "council", "multi-model", "routing", "cross-provider", "local-first"],
+      "keywords": [
+        "council",
+        "review",
+        "verify",
+        "multi-model",
+        "cross-provider",
+        "local-first",
+        "claude",
+        "codex",
+        "gemini"
+      ],
       "category": "productivity"
     }
   ]

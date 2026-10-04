@@ -20,6 +20,7 @@ def _ns(tmp_path, criteria, diff="--- a\n+++ b\n", **kw):
     d = tmp_path / "d.patch"; d.write_text(diff)
     c = tmp_path / "c.json"; c.write_text(json.dumps(criteria))
     ns = argparse.Namespace(diff=str(d), criteria=str(c), context=None, cwd=str(tmp_path),
+                            json=True,
                             members="claude,codex,antigravity", exclude_lab=None,
                             no_panel=True, no_tests=False, effort=None)
     for k, v in kw.items():
@@ -94,7 +95,7 @@ class TestVoteParsing:
         ('no json here', None),
     ])
     def test_parse(self, text, expect):
-        assert V._parse_votes(text, ["a", "b"]) == expect
+        assert (V._parse_votes(text, ["a", "b"]) or (None, ""))[0] == expect
 
 
 class TestUsageAccounting:
@@ -122,3 +123,33 @@ class TestUsageAccounting:
     def test_read_carries_cost(self):
         import dataclasses
         assert "cost_usd" in {f.name for f in dataclasses.fields(V.Read)}
+
+
+class TestTheCardIsTheDefault:
+    """A human gets the card; a script asks for --json.
+
+    The reverse of this — JSON by default — is what the product shipped until
+    2026-09-13, and it is why READ was judged not worth the step it adds: the
+    reviewers' concerns were not in that object at all.
+    """
+
+    def test_without_json_the_human_gets_the_card(self, tmp_path, capsys):
+        cmd.handle_verify(_ns(tmp_path, [{"id": "t", "kind": "test", "statement": "x",
+                                          "command": "true", "blocking": True}], json=False))
+        out = capsys.readouterr().out
+        assert not out.lstrip().startswith("{"), "a human should not be handed a result object"
+        assert "tests:" in out
+
+    def test_with_json_a_script_still_gets_the_object(self, tmp_path, capsys):
+        cmd.handle_verify(_ns(tmp_path, [{"id": "t", "kind": "test", "statement": "x",
+                                          "command": "true", "blocking": True}], json=True))
+        parsed = json.loads(capsys.readouterr().out)
+        assert "triage" in parsed
+
+    def test_a_namespace_without_the_flag_does_not_crash(self, tmp_path, capsys):
+        """Programmatic callers build args by hand. Six tests broke the moment
+        this flag was added; a new flag must never be a breaking change."""
+        ns = _ns(tmp_path, [{"id": "t", "kind": "test", "statement": "x",
+                             "command": "true", "blocking": True}])
+        delattr(ns, "json")
+        assert cmd.handle_verify(ns) == 0

@@ -94,11 +94,20 @@ _PATTERNS_RATE_LIMITED = (
     # ever sees text from a FAILED dispatch.
     "usage limit",
     "purchase more credits",
+    # Claude Code's wall: "You've hit your session limit · resets 2:10pm".
+    # Captured 2026-09-18. Without it a session-limit banner was marked failed
+    # but never tripped the breaker, so the next council paid for it again.
+    "hit your session limit",
 )
 
 _PATTERNS_BILLING = (
     "billing",
     "out of credits",
+    # CAPTURED 2026-09-25 from 34 banked councils: claude prints "You're out of
+    # usage credits. Switch to another model, or manage usage credits at ...".
+    # "out of credits" does not match it -- "usage" sits between the words -- so
+    # a claude credit wall classified as UNKNOWN even on the stderr path.
+    "out of usage credits",
     "credit balance",
     "insufficient_quota",
     "quota exceeded",
@@ -279,3 +288,64 @@ def classify_dispatch_failure(
 
 def _matches_any(haystack: str, patterns: tuple[str, ...]) -> bool:
     return any(p in haystack for p in patterns)
+
+
+# ---------------------------------------------------------------------------
+# A usage wall returned AS THE ANSWER.
+#
+# `claude -p` does not fail when it is out of credits: it exits 0 and prints the
+# banner on stdout, where it is indistinguishable from a 145-character answer.
+# Everything above only ever sees FAILED dispatches, so a banner that arrived as
+# content bypassed the breaker, the degraded-council flag and the routing guard.
+# Measured 2026-09-25: 34 banked councils carried one, 0 recorded the member as
+# failed, and the chairman scored the banner as a weak answer.
+#
+# This matcher is deliberately NARROWER than the stderr patterns. "rate limit"
+# is a safe marker in the stderr of a dispatch that already failed; in an answer
+# it is a topic. Only phrasings captured from real CLI walls count, and only in
+# short text -- the conjunction core_gate.looks_like_provider_error uses.
+_ANSWER_BANNERS = (
+    ("out of usage credits", DispatchErrorKind.BILLING_EXCEEDED),   # claude, 34 captured
+    ("hit your usage limit", DispatchErrorKind.RATE_LIMITED),       # codex, 2026-08-30
+    ("hit your session limit", DispatchErrorKind.RATE_LIMITED),     # claude code, 2026-09-18
+)
+_BANNER_MAX_CHARS = 400
+
+
+def quota_banner_kind(answer: str | None) -> "DispatchErrorKind | None":
+    """The kind of usage wall `answer` IS, or None if it is an answer.
+
+    Short AND a captured banner phrasing. Length alone is not suspicious (a
+    terse answer is legitimate) and a phrase alone is not either (an answer can
+    quote a banner) -- it is the conjunction that identifies the failure.
+    """
+    t = " ".join((answer or "").lower().split())
+    if not t or len(t) >= _BANNER_MAX_CHARS:
+        return None
+    for phrase, kind in _ANSWER_BANNERS:
+        if phrase in t:
+            return kind
+    return None
+
+
+# ---------------------------------------------------------------------------
+# A headless TOOL DENIAL returned as success.
+#
+# `agy -p` reaches for a tool whenever a prompt mentions a file. Headless mode
+# cannot prompt for the permission, so the tool is auto-denied, stdout comes back
+# EMPTY, the reason goes to stderr, and the CLI exits 0. council_runner then read
+# `stdout or stderr` and recorded the denial AS GEMINI'S ANSWER. Measured
+# 2026-09-28: 32 member answers in banked councils were this string, all exit 0,
+# none marked failed; 8 of 11 councils on 2026-09-27 lost Gemini this way.
+#
+# Captured phrasing only, and only when stdout is empty -- a real answer that
+# quotes this message is still an answer.
+_HEADLESS_DENIAL = ("no output produced", "headless mode cannot prompt")
+
+
+def headless_tool_denial(stdout: str | None, stderr: str | None) -> bool:
+    """True when the CLI produced no answer because a tool was auto-denied."""
+    if (stdout or "").strip():
+        return False
+    t = " ".join((stderr or "").lower().split())
+    return all(marker in t for marker in _HEADLESS_DENIAL)

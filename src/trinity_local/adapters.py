@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from .ingest import ANTIGRAVITY_TRANSCRIPT_GLOB, antigravity_brain_root
 from .runtime_env import run_with_runtime_env
 
 
@@ -50,14 +51,13 @@ _PROVIDER_SPECS: list[dict[str, Any]] = [
         "provider": "antigravity",
         "cli_name": "agy",
         "version_args": ["agy", "--version"],
-        # Antigravity CLI conversations land here as `.pb` protobuf files
-        # (~105KB each, one per conversation). The legacy gemini CLI's
-        # `~/.gemini/tmp` JSON sessions are obsolete after the Antigravity
-        # rebrand; if a user still has legacy data there, run a one-time
-        # `import-export ~/.gemini/tmp` pass to import. (The earlier
-        # seed-from-taste-terminal CLI retired 2026-05-27.)
-        "transcript_root": lambda: Path.home() / ".gemini" / "antigravity-cli" / "conversations",
-        "glob": "*.pb",
+        # The same root and glob ingest parses (ingest owns them). This used to
+        # be conversations/*.pb; agy now keeps .db files there, so status said
+        # 0 agy transcripts while ingest read every one. The legacy gemini
+        # CLI's `~/.gemini/tmp` sessions are obsolete; import them once with
+        # `import-export ~/.gemini/tmp`.
+        "transcript_root": antigravity_brain_root,
+        "glob": ANTIGRAVITY_TRANSCRIPT_GLOB,
     },
     {
         "provider": "cowork",
