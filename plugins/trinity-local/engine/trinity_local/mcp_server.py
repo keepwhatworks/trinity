@@ -410,7 +410,8 @@ async def handle_list_tools() -> list[Tool]:
                 "cross-provider disagreements in the corpus. Both include `tally` — "
                 "the per-model win/loss over RESOLVED disagreements — but ONLY when it "
                 "clears its trustworthiness gate (K3 chairman-agreement band + K4 "
-                "discrimination); otherwise the per-model verdict is WITHHELD "
+                "discrimination) and its label's measured reliability (test-retest kappa "
+                "0.47 against a 0.6 floor today); otherwise the per-model verdict is WITHHELD "
                 "(`tally_trustworthy:false`) and you should rely on the raw record, "
                 "not a number. Read-only + LLM-free (requires a real embedder; refuses "
                 "on the TF-IDF stub). Build/refresh the tally out-of-band with "
@@ -608,8 +609,8 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[Any]:
 
 
 def _choose(arguments: dict) -> list:
-    """The choice oracle (task #11): rank the given options on the user's
-    frozen taste direction. LLM-free (two local embeddings per option), so
+    """The choice oracle (task #11, demoted off the MCP surface): rank the given
+    options on the frozen palate direction, always advisory. LLM-free (two local embeddings per option), so
     it's synchronous and instant. The live prospective accuracy travels with
     every answer — the consumer sees the instrument's measured trust."""
     from .me.palate_registry import rank_options
@@ -1517,7 +1518,7 @@ def _load_trust_summary() -> dict:
     """The built disagreement ledger's aggregate (per-model tally + the K3/K4
     trustworthiness gate). Broad-guarded: a missing/corrupt summary yields {}
     rather than crashing the tool."""
-    from .disagreement_ledger import BEHAVIOURAL_TIER_CAVEAT, _ledger_dir
+    from .disagreement_ledger import BEHAVIOURAL_TIER_CAVEAT, _ledger_dir, agent_view
     try:
         d = json.loads((_ledger_dir() / "summary.json").read_text(encoding="utf-8"))
         if not isinstance(d, dict):
@@ -1531,7 +1532,10 @@ def _load_trust_summary() -> dict:
     # per-model number, and an agent reading this payload is exactly the consumer
     # that cannot see the omission.
     d.setdefault("caveat", BEHAVIOURAL_TIER_CAVEAT)
-    return d
+    # The agent sees per-model rates only when the tally is trustworthy, label gate
+    # included. Before this the whole summary went out whatever the gate said, so
+    # the "withheld" promise in the tool description was asserted, not enforced.
+    return agent_view(d)
 
 
 async def _verify(args: dict) -> list[Any]:

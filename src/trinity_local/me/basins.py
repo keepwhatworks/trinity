@@ -28,6 +28,7 @@ from typing import Any, Callable, Optional, Sequence
 
 from ..embeddings import is_finite_embedding
 from ..memory.store import iter_prompt_nodes
+from .authorship import lens_only
 from ..state_paths import state_dir
 
 
@@ -399,7 +400,7 @@ def compute_basins(
     skipped_duplicate = 0
     skipped_scaffolding = 0
     _seen_texts: set[str] = set()
-    for node in iter_prompt_nodes(limit=None):
+    for node in lens_only(iter_prompt_nodes(limit=None)):
         emb = getattr(node, "embedding", None)
         # is_finite_embedding rejects None, [], NaN, and Inf in one
         # call. Counter name is "unusable" rather than "nan" because

@@ -59,6 +59,7 @@ def outlier_prompts(top_n: int = 8, min_chars: int = 40) -> dict:
 
     try:
         from ..memory.store import iter_prompt_nodes
+        from .authorship import lens_only
     except Exception:
         return {"ready": False, "reason": "imports unavailable"}
 
@@ -69,7 +70,7 @@ def outlier_prompts(top_n: int = 8, min_chars: int = 40) -> dict:
 
     scored: list[tuple[float, int, str]] = []  # (max_cos, basin_idx, text)
     n_considered = 0
-    for node in iter_prompt_nodes(limit=None):
+    for node in lens_only(iter_prompt_nodes(limit=None)):
         emb = getattr(node, "embedding", None)
         text = (getattr(node, "text", "") or "").strip()
         if not is_finite_embedding(emb) or len(text) < min_chars:

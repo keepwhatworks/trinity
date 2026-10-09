@@ -29,9 +29,10 @@ class _Health:
     checks: list = field(default_factory=list)
 
 
-def _fresh_health():
+def _fresh_health(signed_in=("claude", "codex")):
     # what run_doctor() returns on an empty home: every cold-start check soft-fails
-    return _Health([
+    providers = [_Check(f"provider:{p}", p in signed_in) for p in ("claude", "codex", "antigravity")]
+    return _Health(providers + [
         _Check("prompts_seeded", True, "trinity-local import-export <p>", "no transcripts seeded yet"),
         _Check("lens_built", True, "trinity-local lens", "lens not built yet"),
         _Check("core_distilled", True, "trinity-local lens", "core.md not distilled yet"),
@@ -53,6 +54,14 @@ class TestTheRung:
         rung = status_cmd._first_run_rung(_fresh_health(), council_count=0, total_transcripts=20_000)
         assert rung == {"detail": rung["detail"], "fix": "trinity-local lens --deep"}
         assert "20,000" in rung["detail"]
+
+    def test_without_two_signed_in_clis_it_points_at_the_install_check(self):
+        # Found in a sandboxed install (2026-10-08): with no CLI ready, the rung told a new
+        # user to run a council, which cannot run. The honest rung is the per-CLI fixes.
+        for ready in ((), ("claude",)):
+            rung = status_cmd._first_run_rung(_fresh_health(ready), council_count=0, total_transcripts=0)
+            assert rung["fix"].startswith("trinity-local install --check"), rung
+            assert f"{len(ready)} " in rung["detail"]
 
     def test_one_council_ends_the_first_run(self):
         assert status_cmd._first_run_rung(_fresh_health(), council_count=1, total_transcripts=0) is None

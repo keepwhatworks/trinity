@@ -95,3 +95,6 @@ internal/experiments/hq121_scores_*.json
 internal/experiments/hq121_reads.json
 internal/experiments/hq122_sample.json
 internal/experiments/hq122_reads.json
+internal/experiments/hq123_runs.json
+internal/experiments/hq124_control.json
+internal/experiments/hq124_main.json

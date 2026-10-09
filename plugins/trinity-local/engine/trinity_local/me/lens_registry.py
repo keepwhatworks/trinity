@@ -53,6 +53,7 @@ from pathlib import Path
 from typing import Any
 
 from ..utils import atomic_write_text, now_iso, stable_id
+from ..utils import now_dt as _clock
 from .basins import me_dir
 from .pair_mining import LensPair, _tension_probe_text
 
@@ -537,7 +538,7 @@ def is_active(entry: RegistryEntry, *, now: str | None = None) -> bool:
     confirmed = _parse_iso(entry.last_confirmed)
     if confirmed is None:
         return False
-    now_dt = _parse_iso(now or now_iso()) or datetime.now(timezone.utc)
+    now_dt = _parse_iso(now or now_iso()) or _clock()
     if (now_dt - confirmed).days <= RECENCY_DAYS:
         return True
     # #256 chapter-spread override: a durable cross-domain tension survives the
@@ -564,7 +565,7 @@ def active_tensions_sorted(*, now: str | None = None) -> list[RegistryEntry]:
     chairman weights them heaviest — so a high-support tension the user has
     moved past doesn't anchor the lens. Ties broken by raw recency. Inactive
     tensions stay in the registry (revivable) but aren't rendered."""
-    now_dt = _parse_iso(now or now_iso()) or datetime.now(timezone.utc)
+    now_dt = _parse_iso(now or now_iso()) or _clock()
     active = [e for e in load_registry() if is_active(e, now=now)]
     active.sort(
         key=lambda e: (_recency_weighted_support(e, now_dt), e.last_confirmed),

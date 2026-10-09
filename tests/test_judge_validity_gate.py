@@ -30,9 +30,11 @@ class TestGateDerivation:
         rr = self._apply(_result(None), 0.50)
         assert rr.judge_validated is False
 
-    def test_at_floor_validates(self):
-        rr = self._apply(_result(None), 0.70)
-        assert rr.judge_validated is True
+    def test_agreement_at_the_floor_never_validates(self):
+        # council_26f1005bf6e8bd55: agreement with machine-extracted corrections (extractors at
+        # kappa ~0.26) chooses a judge but cannot validate it, so the caveat always prints.
+        rr = self._apply(_result(None), 0.95)
+        assert rr.judge_validated is None
 
     def test_no_report_leaves_unmeasured(self):
         from trinity_local.commands.eval import _record_judge_alignment
@@ -58,12 +60,12 @@ class TestLeaderboardStamp:
         _print_judge_validity_note(rows)
         out = capsys.readouterr().out
         assert "judge validity" in out and "codex" in out and "claude" in out
-        assert "directional" in out and "eval-judge-check" in out
+        assert "directional" in out and "machine-extracted" in out
 
-    def test_fully_validated_leaderboard_stays_clean(self, capsys):
+    def test_a_row_stamped_validated_before_the_demotion_still_gets_the_caveat(self, capsys):
         from trinity_local.commands.eval import _print_judge_validity_note
         _print_judge_validity_note([{"target": "codex", "judge_validated": True}])
-        assert capsys.readouterr().out == ""
+        assert "codex" in capsys.readouterr().out
 
     def test_legacy_rows_without_field_get_the_caveat(self, capsys):
         """A result written before the gate existed carries no judge_validated

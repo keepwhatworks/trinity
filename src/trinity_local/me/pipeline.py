@@ -139,11 +139,12 @@ def collect_turn_pairs(limit: int = 200) -> tuple[list[dict[str, Any]], dict[str
     all_pairs = list(iter_turn_pairs(limit=None))  # chronological
     if limit and len(all_pairs) > limit:
         from ..memory.store import iter_prompt_nodes_no_embedding
+        from .authorship import lens_only
         from .chapters import prompt_time
         from .thread_signal import LOW_SIGNAL_FLOOR, compute_thread_signals
         pid2month = {}
         pid2tid = {}
-        for n in iter_prompt_nodes_no_embedding(limit=None):
+        for n in lens_only(iter_prompt_nodes_no_embedding(limit=None)):
             nid = getattr(n, "id", None)
             pid2month[nid] = prompt_time(n)[:7]
             pid2tid[nid] = getattr(n, "transcript_id", "") or ""

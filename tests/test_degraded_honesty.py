@@ -224,7 +224,7 @@ class TestEmbeddingBackendHonesty:
         torch / mlx-embeddings are ABSENT. The check must NOT then claim "MLX
         extras installed, just download the model" — a fix the user cannot act on
         (no deps to load the model) — it must say the extras aren't installed and
-        point at `pip install 'trinity-local[mlx]'`. Verified in a clean venv
+        point at the extras install for this install shape (state_paths.embedder_fix_command). Verified in a clean venv
         2026-06-06. Mutation: drop the find_spec extras-present gate in
         _check_embedding_backend → this reverts to the false "extras installed"
         message and fails."""
@@ -247,7 +247,9 @@ class TestEmbeddingBackendHonesty:
         assert result.ok is True
         assert "not installed" in result.detail.lower(), result.detail
         assert "MLX extras installed but" not in result.detail, result.detail
-        assert "trinity-local[mlx]" in (result.fix or ""), result.fix
+        from trinity_local.state_paths import embedder_fix_command
+        assert result.fix == embedder_fix_command(), result.fix
+        assert "[mlx]" in result.fix and "pip install 'trinity-local[mlx]'" not in result.fix, result.fix
 
     def test_mlx_live_says_so(self, monkeypatch):
         import trinity_local.health_checks as hc

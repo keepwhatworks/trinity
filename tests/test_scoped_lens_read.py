@@ -195,12 +195,19 @@ class TestBothCallSitesUseIt:
         There were two `[:6]` sites — the chairman and the (dormant) member
         prompt — and three council status pollers before them.
         """
+        import inspect
         import pathlib
+
+        from trinity_local.lens_routing import council_tensions
         src = (pathlib.Path(__file__).resolve().parent.parent
                / "src" / "trinity_local" / "council_runtime.py").read_text()
-        raw = src.count("_TENSION_HEADING.findall(lens_md)[:6]")
-        routed = src.count("scope_for_query(")
-        assert raw == routed == 2, (
-            f"{raw} raw slices vs {routed} scoped reads — every tension slice "
-            "must route through scope_for_query or the two sites will drift."
-        )
+        assert "_TENSION_HEADING" not in src and "scope_for_query(" not in src, (
+            "a tension slice is built inline again: both sites must call council_tensions")
+        assert src.count("council_tensions(") == 2, "the chairman and member sites share one rule"
+        assert "scope_for_query(" in inspect.getsource(council_tensions)
+
+    def test_council_tensions_is_the_first_six_when_scoping_is_off(self, monkeypatch):
+        from trinity_local.lens_routing import council_tensions
+        monkeypatch.delenv("TRINITY_DAG_SCOPED_LENS", raising=False)
+        lens_md = "".join(f"### {i}. pole a{i} ↔ pole b{i}\n" for i in range(1, 9))
+        assert council_tensions("any question", lens_md) == [(f"pole a{i}", f"pole b{i}") for i in range(1, 7)]

@@ -8,7 +8,7 @@ preferred side is shorter, not because it read the taste) and an n=12 noise pick
 This scans for that whole class so the next one isn't found by hand.
 
 Every check is LOCAL (no model dispatch) and PRIVACY-SAFE (reports counts + metrics,
-never raw prompt/response text). It reviews the built eval set + the human-labelled
+never raw prompt/response text). It reviews the built eval set + the machine-extracted
 preference pairs and emits findings with a severity, so `eval-audit` can show "here's
 what would let a skeptic poke a hole, and what to do about it."
 

@@ -5,22 +5,23 @@ rejected one on the user's taste. The obvious skeptic attack is "you picked a
 judge that favours its own family / you can't trust a model to grade models."
 
 This module answers that attack with a MEASUREMENT, not an assertion. Every
-`model_miss` PreferenceAct is already a human-labelled preference pair: the user
+`model_miss` PreferenceAct is a preference pair machine-extracted from the user's turn (NOT a
+human label: extractors agree on these at kappa ~0.26, res_169): the user
 PRIVILEGED their own rewrite (`privileged`) over what the model said
 (`sacrificed`). So we can hand a candidate judge those two answers — in a
 position-balanced A/B — and ask which better matches the user's taste, then check
 how often it picks the side the HUMAN actually chose.
 
-That yields a per-user, human-anchored trust statement:
+That yields a per-user agreement figure:
 
-    "Judge <model> agrees with YOUR own past corrections N/M of the time
-     (agreement = X%). It's the judge because it scored highest on that."
+    "Judge <model> agrees with the corrections extracted from your turns N/M of
+     the time (agreement = X%)."
 
-`pick_most_aligned_judge` runs this for each candidate and selects the
-best-aligned one — so the judge is chosen by measurement, and the number ships on
-the card / methodology page. The validation set is FREE (the user's own
-rejections) and per-user, so the claim is "aligned with *your* taste," which is
-stronger than generic alignment.
+It is a meter, not a validation or a selection: which turns are corrections is
+machine-extracted, and extractors agree on them at kappa ~0.26 (res_169, res_170),
+so eval-run uses a fixed default judge. `pick_most_aligned_judge` /
+`select_aligned_judge` remain the significance-gated selection for a PUBLIC
+human-preference set, where the label is a person's.
 
 Position-balancing (the human side alternates A/B deterministically by index)
 neutralises LLM position bias, so a judge that blindly answers "A" lands at ~50%,
@@ -39,7 +40,7 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class PreferencePair:
-    """One human-labelled A/B preference, derived from a model_miss act.
+    """One machine-extracted A/B preference, derived from a model_miss act.
 
     `human_side` is "A" or "B" — the side carrying `privileged` (what the user
     actually chose). A judge "agrees" when it picks `human_side`.
@@ -135,7 +136,7 @@ from ._textnorm import norm_for_compare as _norm, strip_code_fences  # shared ev
 
 
 def build_preference_pairs(limit: int | None = None) -> list[PreferencePair]:
-    """Human-labelled A/B pairs from the model_miss subset of the ledger.
+    """Machine-extracted A/B pairs from the model_miss subset of the ledger.
 
     Position-balanced: the human-preferred side alternates A/B by index, so a
     judge with a constant-answer position bias scores ~50%, not a fake-high

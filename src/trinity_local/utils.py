@@ -96,9 +96,23 @@ def finite_float_or_none(value: object) -> float | None:
     return None
 
 
+def now_dt() -> datetime:
+    """The current UTC time, or the time pinned in ``TRINITY_CLOCK`` (an ISO timestamp).
+
+    The pin is how a historical lens build runs as of a past date (amd_0313): every
+    clock read that shapes the lens goes through here. Unset in normal use. A malformed
+    pin raises rather than falling back to the wall clock, which would date the build
+    wrongly without a sign."""
+    pinned = os.environ.get("TRINITY_CLOCK", "").strip()
+    if not pinned:
+        return datetime.now(timezone.utc)
+    dt = datetime.fromisoformat(pinned.replace("Z", "+00:00"))
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 def now_iso() -> str:
     """Return the current UTC time as an ISO 8601 string with second precision."""
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return now_dt().replace(microsecond=0).isoformat()
 
 
 def stable_id(prefix: str, *parts: str) -> str:

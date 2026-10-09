@@ -155,13 +155,14 @@ def _embedding_backend() -> LensCheck:
     every semantic flow (basin geometry, the lens tensions, the noise filter) is
     keyword-shaped, not meaning-shaped — the lens looks built but isn't yours."""
     from . import embeddings
+    from .state_paths import embedder_fix_command
     try:
         live = embeddings.mlx_actually_loaded()
     except Exception as exc:  # noqa: BLE001 — never crash the report
         return LensCheck(
             "embeddings", "Semantic embeddings", ABSTAIN,
             f"Couldn't probe the embedding backend this run — {type(exc).__name__}. "
-            "Re-run after `pip install 'trinity-local[mlx]'` + `trinity-local download-embedder`.",
+            f"Re-run after `{embedder_fix_command()}`.",
         )
     if live:
         return LensCheck(
@@ -172,8 +173,7 @@ def _embedding_backend() -> LensCheck:
         "embeddings", "Semantic embeddings", DEGRADED,
         "Running on the SHA-1 TF-IDF fallback — the lens builds on lexical (keyword) "
         "vectors, not semantic ones, so its tensions are caricatures of your taste, not it.",
-        fix="Install the embedder: `pip install 'trinity-local[mlx]'` then "
-            "`HF_HUB_OFFLINE=0 trinity-local download-embedder` and `trinity-local lens --force`.",
+        fix=f"Install the embedder: `{embedder_fix_command()}`, then `trinity-local lens --force`.",
     )
 
 
@@ -335,7 +335,7 @@ def _preference_collapse(backend_ok: bool) -> LensCheck:
             pass
         return LensCheck(
             "preference_collapse", "Preference collapse", WEAK,
-            f"the lens direction doesn't reliably rank held-out corrections "
+            f"the lens direction doesn't reliably rank held-out corrections extracted from your turns "
             f"({rate*100:.0f}% false-accepts) — possible collapse to surface features; the "
             "divergent corrections are blind spots the next build should weight up.",
             metric=metric,
@@ -343,7 +343,8 @@ def _preference_collapse(backend_ok: bool) -> LensCheck:
         )
     return LensCheck(
         "preference_collapse", "Preference collapse", OK,
-        f"the lens direction generalizes to held-out corrections ({rate*100:.0f}% false-accepts).",
+        f"the lens direction generalizes to held-out corrections extracted from your turns "
+        f"({rate*100:.0f}% false-accepts; which turns count as corrections is machine-extracted).",
         metric=metric,
     )
 

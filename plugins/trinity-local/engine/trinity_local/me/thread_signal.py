@@ -6,9 +6,12 @@ mechanical agent-loop grinds.
 Validated empirically (#269, 2026-05-30) over the real 7.7k-thread corpus: pure
 turn-depth over-rewards 3000-turn CLI agent loops and buries the user's actual
 deliberative threads, so depth is CAPPED and the score leans on substance +
-correction-density + outcome markers, penalized by test-shape and agent-loop
-shape. Correction-density carries ~0 weight in practice today (the lens has few
-mapped corrections) but the term is kept for when the lens matures.
+outcome markers, penalized by test-shape and agent-loop shape. A correction-density
+term (model_miss acts per thread, weight 0.30) was REMOVED 2026-10-09: no two
+labellers agree on which turns are corrections beyond kappa 0.26 (res_169, res_170),
+so the term cannot decide what the lens learns from. Weights are not rescaled: on the
+real corpus removing it moved 1 of 8,950 threads across the floor, while rescaling
+would have admitted 674 new ones.
 
 Used as the lens SEED gate: `collect_turn_pairs` skips pairs whose thread scores
 below `LOW_SIGNAL_FLOOR`, so the lens learns from where you did real work and
@@ -17,7 +20,7 @@ ignores the monkey.
 from __future__ import annotations
 
 import re
-from collections import Counter, defaultdict
+from collections import defaultdict
 
 # Throwaway / smoke-test shapes (the monkey lives here).
 _TEST_RE = re.compile(
@@ -48,12 +51,8 @@ _DEPTH_CAP = 25      # turns above this don't add depth (kills agent-loop bias)
 _SUBSTANCE_CAP = 1500  # chars/turn above this don't add substance
 
 
-def score_thread(user_texts: list[str], corrections: int = 0) -> float:
-    """Composite 0–1 signal score for one thread from its user turns.
-
-    `corrections` = count of model_miss preference acts originating in the
-    thread (revealed-preference density). Weighted but sparse in practice.
-    """
+def score_thread(user_texts: list[str]) -> float:
+    """Composite 0–1 signal score for one thread from its user turns."""
     from .provenance import typed_substance
 
     texts = [t.strip() for t in user_texts if t and t.strip()]
@@ -66,58 +65,26 @@ def score_thread(user_texts: list[str], corrections: int = 0) -> float:
     avg = sum(typed_substance(t) for t in texts) / n
     depth = min(n, _DEPTH_CAP) / _DEPTH_CAP
     substance = min(avg, _SUBSTANCE_CAP) / _SUBSTANCE_CAP
-    cden = min(corrections / n, 1.0)
     outcome = min(sum(1 for t in texts if _OUTCOME_RE.search(t)) / n * 3, 1.0)
     test_frac = sum(1 for t in texts if _TEST_RE.search(t)) / n
     agent = 1.0 if sum(1 for t in texts if _AGENT_RE.search(t)) / n > 0.1 else 0.0
-    base = 0.25 * depth + 0.30 * substance + 0.30 * cden + 0.15 * outcome
+    base = 0.25 * depth + 0.30 * substance + 0.15 * outcome
     return round(base * (1 - 0.85 * test_frac) * (1 - 0.6 * agent), 4)
 
 
-def compute_thread_signals(
-    corrections_by_thread: dict[str, int] | None = None,
-) -> dict[str, float]:
+def compute_thread_signals() -> dict[str, float]:
     """Score every thread in the corpus → {transcript_id: signal}. Reads user
-    prompts (no embeddings needed). `corrections_by_thread` is optional; when
-    omitted it's derived from the unified preference-act ledger."""
+    prompts (no embeddings needed)."""
     from ..memory.store import iter_prompt_nodes_no_embedding
+    from .authorship import lens_only
 
     by_thread: dict[str, list[str]] = defaultdict(list)
-    for node in iter_prompt_nodes_no_embedding(limit=None):
+    for node in lens_only(iter_prompt_nodes_no_embedding(limit=None)):
         tid = getattr(node, "transcript_id", "") or ""
         text = (getattr(node, "text", "") or "").strip()
         if tid and text:
             by_thread[tid].append(text)
-
-    if corrections_by_thread is None:
-        corrections_by_thread = _corrections_by_thread()
-
-    return {
-        tid: score_thread(texts, corrections_by_thread.get(tid, 0))
-        for tid, texts in by_thread.items()
-    }
-
-
-def _corrections_by_thread() -> dict[str, int]:
-    """Map model_miss preference acts to their originating thread via
-    prompt_id → PromptNode.transcript_id. Best-effort; {} on any failure."""
-    try:
-        from ..memory.store import iter_prompt_nodes_no_embedding
-        from .preference_acts import MODEL_MISS, load_preference_acts
-
-        pid2tid = {
-            getattr(n, "id", ""): getattr(n, "transcript_id", "") or ""
-            for n in iter_prompt_nodes_no_embedding(limit=None)
-        }
-        counts: Counter = Counter()
-        for act in load_preference_acts():
-            if act.trigger == MODEL_MISS and act.prompt_id:
-                tid = pid2tid.get(act.prompt_id)
-                if tid:
-                    counts[tid] += 1
-        return dict(counts)
-    except Exception:
-        return {}
+    return {tid: score_thread(texts) for tid, texts in by_thread.items()}
 
 
 def rank_threads(top_k: int = 20) -> list[tuple[str, float]]:

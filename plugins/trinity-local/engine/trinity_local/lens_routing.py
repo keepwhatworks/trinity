@@ -659,6 +659,14 @@ def _current_models() -> dict[str, str]:
     return out
 
 
+def council_tensions(query: str, lens_md: str, k: int = 6) -> list[tuple[str, str]]:
+    """The tensions a council is handed: the query's own basin when scoping is on (it is off by
+    default), else the first k of the rendered lens. One rule for the chairman block and the
+    member constraints; hq_133 freezes its output as the production-effective lens."""
+    from .me.pipeline import _TENSION_HEADING
+    return scope_for_query(query, k) or _TENSION_HEADING.findall(lens_md)[:k]
+
+
 def scope_for_query(
     query: str,
     k: int = 6,

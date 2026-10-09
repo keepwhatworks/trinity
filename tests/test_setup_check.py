@@ -60,6 +60,8 @@ class TestAdviceClosure:
         """The fix the check prints for 'NOT registered' must clear it."""
         from trinity_local.commands import install as _install
         assert all(sc.is_registered(p) is False for p, _, _ in sc.MEMBERS)
+        for d in (".claude", ".gemini", ".codex"):   # installing a CLI creates its folder
+            (home / d).mkdir()
         monkeypatch.setattr(_install, "_resolve_mcp_command",
                             lambda: (str(sys.executable), ["-m", "trinity_local.main", "--mcp"]))
         _install.handle_install_mcp(SimpleNamespace(scope="user"))

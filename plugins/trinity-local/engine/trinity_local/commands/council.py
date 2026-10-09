@@ -76,7 +76,7 @@ def register(subparsers):
     council_launch_parser = subparsers.add_parser(
         "plan",
         aliases=["council", "council-launch"],
-        help="Before you finalize a plan: all three providers answer, the chairman prosecutes the split, you get the amendments.",
+        help="Before you commit to a plan: Claude, Codex and Gemini answer on their own; you get the decision, what would change it, and where they split.",
     )
     council_launch_parser.add_argument("--task", required=True, help="Task text to compare across providers")
     council_launch_parser.add_argument("--goal", default="Find the strongest answer.")

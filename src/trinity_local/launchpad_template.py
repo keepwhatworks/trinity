@@ -1835,7 +1835,11 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
              three surfaces that did exactly that. v-if so a summary written before
              the caveat existed degrades to today's copy rather than an empty box. -->
         <p class="meta" v-if="trustData.caveat" style="margin-top: 8px;">{{{{ trustData.caveat }}}}</p>
-        <template v-if="trustData.trustworthy && trustData.records.length">
+        <template v-if="(trustData.trustworthy || trustData.directional) && trustData.records.length">
+          <!-- v-show, not v-if: a v-if element as the first child of this <template v-if>
+               throws "insertBefore of null" in the shipped Vue build (caught by
+               test_launchpad_trust_card_home_visibility_browser). -->
+          <p class="meta" v-show="trustData.directional"><strong>Directional, not proven.</strong> The label under these rows reproduces at test-retest kappa {{{{ trustData.label_kappa }}}} (a reliable label needs 0.6), so read them as a lean, not a verdict.</p>
           <p class="meta">
             On the {{{{ trustData.resolved }}}} cross-provider disagreements your own later work settled — which model you actually sided with, per Wilson-CI tally.
           </p>

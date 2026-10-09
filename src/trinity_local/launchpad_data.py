@@ -358,12 +358,8 @@ def _provider_install_help(provider: str) -> tuple[str, str]:
     # invariant: these two functions agree byte-for-byte on the
     # install command field. The doc-consistency guard
     # test_launchpad_install_commands_match enforces it.
-    if provider == "claude":
-        return ("Claude Code", "npm install -g @anthropic-ai/claude-code")
-    if provider == "codex":
-        return ("Codex CLI", "npm install -g @openai/codex && codex --login")
-    if provider == "antigravity":
-        return ("Antigravity", "curl -fsSL https://antigravity.google/cli/install.sh | bash")
+    if provider in _TIER_INSTALL_HELP:
+        return _TIER_INSTALL_HELP[provider][:2]
     if provider == "cowork":
         return ("Cowork / Claude Desktop", "Install Claude Desktop, then open Local Agent Mode once.")
     pretty = provider.replace("_", " ").title()
@@ -425,12 +421,12 @@ _TIER_INSTALL_HELP: dict[str, tuple[str, str, str]] = {
     # provider -> (display name, install command, value proposition)
     "claude": (
         "Claude Code",
-        "npm install -g @anthropic-ai/claude-code",
+        "curl -fsSL https://claude.ai/install.sh | bash",
         "Anchor voice — drives the chairman synthesis by default.",
     ),
     "codex": (
         "Codex CLI",
-        "npm install -g @openai/codex && codex --login",
+        "npm install -g @openai/codex && codex login",
         "Adversarial second voice — surfaces real disagreement.",
     ),
     "antigravity": (
@@ -1872,7 +1868,11 @@ def _load_trust_data() -> dict | None:
                 summary = loaded
         except Exception:
             summary = {}
+    from .disagreement_ledger import gate_summary
+    summary = gate_summary(summary) if summary else summary
     trustworthy = bool(summary.get("tally_trustworthy"))
+    # A person may see the rows when only the label gate fails, marked directional.
+    directional = bool(summary.get("tally_displayable")) and summary.get("label_reliable") is False
     # The tier's own caveat travels with the card. Without it the launchpad HOME
     # page called this "the product's one behaviourally MEASURED claim" while the
     # council-ratified relabel had already retracted exactly that framing.
@@ -1883,7 +1883,7 @@ def _load_trust_data() -> dict | None:
     records_raw = summary.get("records")
     records = records_raw if isinstance(records_raw, dict) else {}
     rows = []
-    if trustworthy:
+    if trustworthy or directional:
         from .disagreement_ledger import MIN_TALLY_N
         items = [(lab, rec) for lab, rec in records.items()
                  if isinstance(rec, dict)
@@ -1906,6 +1906,8 @@ def _load_trust_data() -> dict | None:
         "resolved": int(_safe_number(summary.get("resolved"), 0)),
         "built": sp.exists(),
         "trustworthy": trustworthy,
+        "directional": directional,
+        "label_kappa": summary.get("label_test_retest_kappa") if directional else None,
         "records": rows,
         "caveat": caveat,
     }

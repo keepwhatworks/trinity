@@ -323,7 +323,8 @@ def setup_model(*, force: bool = False) -> str:
     try:
         from .backend_mlx import download_model
     except ImportError:
-        return "MLX dependencies not installed. Run `pip install -e '.[mlx]'` from your Trinity repo"
+        from ..state_paths import embedder_install_command
+        return f"MLX dependencies not installed. Run: {embedder_install_command()}"
 
     return download_model(force=force)
 
@@ -388,10 +389,8 @@ def require_embedder_ready() -> None:
             f"(or directly: {fallback})\n\n"
         )
     else:
-        command = (
-            "pip install -e '.[mlx]' && "
-            "trinity-local download-embedder"
-        )
+        from ..state_paths import embedder_fix_command
+        command = embedder_fix_command()
         download_block = (
             f"Install the MLX extras + download the model with:\n"
             f"  {command}\n"
@@ -446,12 +445,13 @@ def require_real_embedder() -> None:
     # present but the backend still can't embed, raise a clear reinstall
     # message rather than letting the caller fall through to the tfidf stub.
     require_embedder_ready()
+    from ..state_paths import embedder_install_command
     raise EmbedderNotReadyError(
         "Trinity's embedding model is present but the embedder failed to load, "
         "so this command would fall back to the SHA-1 TF-IDF stub — a "
         "wire-compatible projection, not a real semantic space. Reinstall the "
         "embedder extras:\n"
-        "  pip install -e '.[mlx]'\n"
+        f"  {embedder_install_command()}\n"
         "then re-run. (TRINITY_DISABLE_MLX=1 forces the stub for tests only.)"
     )
 

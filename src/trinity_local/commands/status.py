@@ -18,7 +18,7 @@ from ..state_paths import state_dir, tasks_dir
 
 
 def register(subparsers):
-    parser = subparsers.add_parser("status", help="Show Trinity system status summary + health check")
+    parser = subparsers.add_parser("status", help="What is set up, what is missing, and the next command to run")
     parser.add_argument("--json", dest="as_json", action="store_true", help="Output as JSON")
     parser.set_defaults(handler=handle_status)
 
@@ -87,6 +87,13 @@ def _first_run_rung(health, council_count: int, total_transcripts: int) -> dict 
         return None
     if council_count > 0 or not lens_missing:
         return None
+    ready = sum(1 for c in health.checks if c.name.startswith("provider:") and c.ok)
+    if ready < 2:   # a council needs two signed-in CLIs; telling them to run one would fail
+        return {
+            "detail": (f"First run. A council needs two signed-in CLIs (Claude Code, Codex, agy); "
+                       f"{ready} {'is' if ready == 1 else 'are'} ready."),
+            "fix": "trinity-local install --check   # the install or sign-in command for each",
+        }
     if total_transcripts > 0:
         return {
             "detail": (f"First run. You already have {total_transcripts:,} transcripts across "
@@ -319,7 +326,10 @@ def handle_status(args):
             print(f"  Quota:     ⚠ {_w.describe()} — skipped until then; other providers unaffected")
     except Exception:
         pass
-    print(f"  Adapters:  {len(ready_adapters)}/{len(adapters)} ready, {total_transcripts:,} transcripts total")
+    # Cowork (Claude Desktop) is optional: listed only once it is there, so a CLI-only
+    # user is not shown a red mark for an app they never meant to install.
+    adapters = [a for a in adapters if a.provider != "cowork" or a.installed or a.transcript_count]
+    print(f"  Adapters:  {sum(a.installed for a in adapters)}/{len(adapters)} ready, {total_transcripts:,} transcripts total")
     for a in adapters:
         icon = "✅" if a.installed else "❌"
         ver = f" ({a.version})" if a.version else ""
@@ -483,14 +493,9 @@ def handle_status(args):
     except Exception:
         pass
     print()
-    print("  Scoreboards:  (operational model-selection bookkeeping)")
-    for label, path in [
-        ("routing.json  ", routing_path()),
-    ]:
-        if path.exists():
-            print(f"    ✅ {label} {path.stat().st_size:>8,} bytes")
-        else:
-            print(f"    · {label} not built")
+    if routing_path().exists():   # nothing to say before the first councils fill it
+        print("  Scoreboards:  (operational model-selection bookkeeping)")
+        print(f"    ✅ routing.json   {routing_path().stat().st_size:>8,} bytes")
     # The honest routing-split line lived here: it existed so a full picks.json
     # could not read as "N basins route" when most rules were near-ties or
     # thin. That was real honesty work while there was a router. There is not
@@ -545,7 +550,8 @@ def handle_status(args):
                 have_eval = True  # never let the gate itself suppress the news
             if _first_run_rung(health, council_count, total_transcripts):
                 new_models = []   # a zero-council install has no taste to score a model against yet
-            print("  New models:")
+            if new_models:
+                print("  New models:")
             for ev in new_models:
                 if have_eval:
                     print(f"    {ev.nudge()}")

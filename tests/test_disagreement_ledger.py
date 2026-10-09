@@ -92,14 +92,35 @@ def _synthetic_patterns(n, for_lab="anthropic", against_lab="google", winner="an
     ) for i in range(n)]
 
 
-def test_trustworthy_tally_clears_both_gates():
+def test_trustworthy_tally_clears_both_gates(monkeypatch):
+    import trinity_local.disagreement_ledger as dl
     pats = _synthetic_patterns(70)
     # 55 followed (anthropic wins), 15 contradicted → K3 = 55/70 = 0.786 (in band),
-    # anthropic 55W/15L (CI excludes 0.5), resolved 70 >= 60 → trustworthy.
+    # anthropic 55W/15L (CI excludes 0.5), resolved 70 >= 60 → the label-free gates pass.
     res = {f"c#{i}": ("followed" if i < 55 else "contradicted") for i in range(70)}
     agg = aggregate_tally(pats, res)
     assert 0.55 <= agg["k3_chairman_agreement"] <= 0.90
-    assert agg["k4_discriminates"] and agg["tally_trustworthy"]
+    assert agg["k4_discriminates"] and agg["tally_displayable"]
+    # The label gate (hq_138: test-retest kappa 0.47 < 0.6) keeps the green off...
+    assert agg["label_reliable"] is False and agg["tally_trustworthy"] is False
+    # ...and only a label that clears its floor turns it on.
+    monkeypatch.setattr(dl, "LABEL_TEST_RETEST_KAPPA", 0.8)
+    assert aggregate_tally(pats, res)["tally_trustworthy"] is True
+
+
+def test_label_gate_applies_to_a_summary_built_before_it():
+    """A summary.json persisted before the label gate still says trustworthy; every
+    reader applies the gate on read, and the agent view drops per-model fields.
+    MUTATION: return the summary unchanged from gate_summary, or skip agent_view's
+    strip, and this reds."""
+    import trinity_local.disagreement_ledger as dl
+    old = {"tally_trustworthy": True, "records": {"claude·opus·4.8": {"w": 28, "l": 13}},
+           "effort_breakdown": {"x": {}}, "framing_breakdown": {}, "resolved": 168}
+    gated = dl.gate_summary(old)
+    assert gated["tally_trustworthy"] is False and gated["tally_displayable"] is True
+    view = dl.agent_view(old)
+    assert not any(k in view for k in ("records", "effort_breakdown", "framing_breakdown"))
+    assert "withheld" in view["per_model"] and view["resolved"] == 168
 
 
 def test_degenerate_tally_is_withheld():
@@ -247,3 +268,50 @@ def test_build_ledger_injectable_resolver_persists(tmp_path):
     assert (led / "resolutions.jsonl").exists() and (led / "summary.json").exists()
     rows = [json.loads(x) for x in (led / "resolutions.jsonl").read_text().splitlines()]
     assert all(r["resolution"] == "followed" for r in rows)
+
+
+def test_harness_is_named_only_when_a_model_runs_outside_its_labs_cli(tmp_path):
+    """Claude served by agy is a different cell from Claude in Claude Code; a lab's model in
+    its own CLI keeps its exact label, so no cell recorded so far changes."""
+    d = tmp_path / "council_outcomes"
+    d.mkdir(parents=True, exist_ok=True)
+    rec = {
+        "council_run_id": "c2", "created_at": "2026-10-05T12:00:00+00:00", "metadata": {"task_text": "t"},
+        "member_results": [
+            {"provider": "codex", "model": "gpt-5.6-sol", "metadata": {"effort": "high"}},
+            {"provider": "antigravity", "model": "claude-sonnet-4-6"},
+        ],
+        "routing_label": {"winner": "codex", "disagreed_claims": [
+            {"claim": "x", "why_matters": "y", "providers_for": ["codex"], "providers_against": ["antigravity"]},
+        ]},
+    }
+    (d / "council_c2.json").write_text(json.dumps(rec))
+    pats = load_disagreements(home=str(tmp_path))
+    assert pats[0].models_against[0].startswith("claude via agy · "), pats[0].models_against
+    assert " via " not in pats[0].models_for[0], pats[0].models_for     # native: unchanged
+    assert pats[0].harnesses_for == ["codex"] and pats[0].harnesses_against == ["agy"]
+
+
+def test_native_labels_are_byte_identical():
+    from trinity_local.disagreement_ledger import with_harness
+    for label, fam, prov in (("claude · opus · 4.8", "claude", "claude"),
+                             ("openai · flagship · 5.5", "openai", "codex"),
+                             ("google · pro · 3.1", "google", "antigravity"),
+                             ("anthropic", "?", "claude")):
+        assert with_harness(label, fam, prov) == label
+
+
+def test_history_by_tool_counts_model_in_tool_without_ranking(tmp_path):
+    from trinity_local.disagreement_ledger import history_by_tool
+    d = tmp_path / "council_outcomes"
+    d.mkdir(parents=True, exist_ok=True)
+    rec = {"council_run_id": "c3", "created_at": "2026-10-05T12:00:00+00:00", "metadata": {"task_text": "t"},
+           "member_results": [{"provider": "claude", "model": "claude-opus-5-5"},
+                              {"provider": "antigravity", "model": "claude-sonnet-4-6"}],
+           "routing_label": {"winner": "claude", "disagreed_claims": [
+               {"claim": "x", "why_matters": "y", "providers_for": ["claude"], "providers_against": ["antigravity"]}]}}
+    (d / "council_c3.json").write_text(json.dumps(rec))
+    rows = history_by_tool(load_disagreements(home=str(tmp_path)))
+    by = {(r["tool"], r["model"].split(" · ")[0]): r["positions"] for r in rows}
+    assert by == {("claude-code", "claude"): 1, ("agy", "claude via agy"): 1}
+    assert all(set(r) == {"model", "tool", "positions", "first", "last"} for r in rows)   # no rate, no rank

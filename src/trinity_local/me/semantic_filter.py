@@ -129,6 +129,7 @@ def semantic_noise_report(limit: int | None = None) -> dict:
     against the regex before it replaces any rules."""
     from ..me.basins import load_basins
     from ..memory.store import iter_prompt_nodes
+    from .authorship import lens_only
 
     noise_unit = noise_prototype_vectors()
     basins = load_basins()
@@ -139,7 +140,7 @@ def semantic_noise_report(limit: int | None = None) -> dict:
     total = 0
     flagged = 0
     examples: list[str] = []
-    for node in iter_prompt_nodes(limit=limit):
+    for node in lens_only(iter_prompt_nodes(limit=limit)):
         emb = getattr(node, "embedding", None)
         if not emb:
             continue

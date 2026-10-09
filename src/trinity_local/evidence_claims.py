@@ -465,10 +465,15 @@ def evidence_status(
     if not isinstance(summary, dict):
         return REFUSED, {}, "ledger summary is not a JSON object"
 
-    if summary.get("tally_trustworthy") is not True:
+    from .disagreement_ledger import gate_summary
+    summary = gate_summary(summary)
+    # Docs quote these numbers only as DIRECTIONAL, with the label's measured
+    # reliability beside them (tests/test_hq138_gate.py guards every quoting
+    # surface), so the gate here is the label-free K3/K4 one: tally_displayable.
+    if summary.get("tally_displayable") is not True:
         return REFUSED, {}, (
-            "ledger tally_trustworthy is not True — the K3-band/K4 gate that "
-            "decides whether `trust` may show a per-model verdict at all is "
+            "ledger tally_displayable is not True — the K3-band/K4 gate that "
+            "decides whether `trust` may show per-model rows at all is "
             "failing, so no per-model number may be planted in a doc either"
         )
 

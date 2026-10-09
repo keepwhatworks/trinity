@@ -114,30 +114,12 @@ def test_ci_half_width_none_for_single_score(monkeypatch):
     assert result.aggregate_ci_half_width is None
 
 
-def test_alignment_report_drives_judge_selection_and_recording():
-    """Eval-hardening wiring (2026-06-08): eval-run prefers the MEASURED most-aligned
-    judge from the report, never self-grades, and stamps the agreement onto the run."""
+def test_alignment_report_records_agreement_onto_the_run():
+    """The run carries its judge's measured agreement with the extracted corrections
+    (a meter the card shows), whichever judge scored it."""
     from trinity_local.commands import eval as ev
-    from trinity_local.evals.runner import EvalRunResult
 
-    report = {
-        "chosen_judge": "claude",
-        "judges": {
-            "claude": {"agreement": 0.87, "n_parsed": 18},
-            "codex": {"agreement": 0.61, "n_parsed": 18},
-        },
-    }
-    configs = {"claude": SimpleNamespace(enabled=True), "codex": SimpleNamespace(enabled=True)}
-
-    # The aligned judge is chosen when it isn't the target.
-    assert ev._alignment_chosen_judge("codex", configs, report) == "claude"
-    # NEVER self-grade: if the aligned judge IS the target, fall back (None).
-    assert ev._alignment_chosen_judge("claude", configs, report) is None
-    # No report / disabled candidate → None (caller uses the heuristic).
-    assert ev._alignment_chosen_judge("codex", configs, None) is None
-    assert ev._alignment_chosen_judge("codex", {"claude": SimpleNamespace(enabled=False)}, report) is None
-
-    # Recording stamps the chosen judge's measured agreement onto the result.
+    report = {"chosen_judge": None, "judges": {"claude": {"agreement": 0.87, "n_parsed": 18}}}
     r = EvalRunResult(
         eval_id="e", target_provider="codex", target_model=None, started_at="",
         completed_at="", items_total=0, items_completed=0, items_failed=0,
@@ -145,6 +127,77 @@ def test_alignment_report_drives_judge_selection_and_recording():
     ev._record_judge_alignment(r, "claude", report)
     assert r.judge_agreement == 0.87
     assert r.judge_alignment_n == 18
+
+
+def test_corrections_report_never_chooses_the_eval_judge(tmp_path, monkeypatch, capsys):
+    """res_169/res_170: the corrections a judge is checked against are machine-extracted
+    and no two extractors agree on them beyond kappa 0.26, so they cannot choose the
+    judge. A report naming a strongly 'aligned' judge must not move eval-run off its
+    fixed default (claude target -> codex). MUTATION: read chosen_judge (or a
+    floor-clearing tier) back into the selection and the judge becomes antigravity."""
+    import json as _json
+
+    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+    import trinity_local.config as config_mod
+    import trinity_local.evals.builder as builder
+    import trinity_local.evals.runner as runner_mod
+    from trinity_local.commands import eval as eval_cmd
+
+    providers = {n: SimpleNamespace(name=n, enabled=True, model=None, args=[])
+                 for n in ("claude", "codex", "antigravity")}
+    monkeypatch.setattr(config_mod, "load_config", lambda *a, **k: SimpleNamespace(providers=providers))
+    monkeypatch.setattr(builder, "load_eval_set", lambda eid: SimpleNamespace(eval_id=eid))
+    monkeypatch.setattr(runner_mod, "run_eval", lambda eval_set, target, cfgs, **kw: _run(2))
+    used = []
+
+    def _fake_score(run_result, lens_text, judge, provider_configs, **kw):
+        used.append(judge)
+        return run_result
+    monkeypatch.setattr(scorer, "score_run", _fake_score)
+    report = eval_cmd._alignment_report_path()
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text(_json.dumps({"chosen_judge": "antigravity", "judges": {
+        "antigravity": {"agreement": 0.95, "n_parsed": 40},
+        "codex": {"agreement": 0.55, "n_parsed": 40}}}), encoding="utf-8")
+
+    eval_cmd.handle_eval_run(SimpleNamespace(
+        eval_id="eval_x", target="claude", judge=None, skip_score=False, regrade=False,
+        limit=None, config=None, skip_floor=True))
+    assert used == ["codex"], used
+    assert "a meter only" in capsys.readouterr().out
+
+
+def test_corrections_judge_check_records_no_choice(tmp_path, monkeypatch, capsys):
+    """On the extracted corrections, eval-judge-check reports the leader as a meter and
+    records chosen_judge=None even when one judge agrees 100%. MUTATION: save `chosen`
+    unconditionally and this reds."""
+    import json as _json
+    from argparse import Namespace
+
+    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+    from trinity_local.commands import eval as eval_cmd
+    from trinity_local.evals import judge_alignment as ja
+
+    pairs = [ja.PreferencePair(pair_id=f"p{i}", axis="REFRAME",
+                               option_a="GOOD a" if i % 2 else "bad a",
+                               option_b="bad b" if i % 2 else "GOOD b",
+                               human_side="A" if i % 2 else "B", source_id=f"s{i}")
+             for i in range(20)]
+    monkeypatch.setattr(ja, "build_preference_pairs", lambda limit=None: pairs)
+
+    class _GoodJudge:
+        def run(self, prompt, cwd=None):
+            a = prompt[prompt.find("Response A:"):prompt.find("Response B:")]
+            return SimpleNamespace(stdout="A" if "GOOD" in a else "B", returncode=0, stderr="")
+    monkeypatch.setattr("trinity_local.providers.make_provider", lambda cfg: _GoodJudge())
+    monkeypatch.setattr("trinity_local.config.load_config",
+                        lambda *a, **k: SimpleNamespace(providers={"claude": SimpleNamespace(enabled=True)}))
+
+    assert eval_cmd.handle_eval_judge_check(Namespace(dataset=None, limit=20, config=None)) == 0
+    saved = _json.loads(eval_cmd._alignment_report_path().read_text(encoding="utf-8"))
+    assert saved["chosen_judge"] is None
+    assert saved["judges"]["claude"]["agreement"] == 1.0
+    assert "A meter, not a choice" in capsys.readouterr().out
 
 
 def test_quota_failed_judge_is_named_and_suppressed(monkeypatch):
@@ -172,53 +225,6 @@ def test_quota_failed_judge_is_named_and_suppressed(monkeypatch):
     assert all("usage limit reached" in (r or "") for r in reasons), reasons
 
 
-def test_floor_clearing_judge_beats_blind_fallback_on_margin_abstention():
-    """#19 (2026-07-16): when select_aligned_judge abstains on MARGIN (the top
-    two judges within noise), the fallback must still prefer a measured
-    floor-clearing judge over the fixed heuristic order — the live report had
-    antigravity 0.77 / codex 0.72 / claude 0.59 with chosen_judge=None, and a
-    codex target fell back to claude, the one judge BELOW the 0.70 validity
-    floor. MUTATION: drop the _floor_clearing_judge tier from the selection
-    chain (or its floor check) and this reds."""
-    from types import SimpleNamespace
-    from trinity_local.commands.eval import _floor_clearing_judge
-
-    configs = {n: SimpleNamespace(enabled=True) for n in ("claude", "codex", "antigravity")}
-    report = {
-        "chosen_judge": None,  # margin abstention — honest, stays None
-        "judges": {
-            "claude":      {"agreement": 0.59, "n_parsed": 39},
-            "codex":       {"agreement": 0.72, "n_parsed": 39},
-            "antigravity": {"agreement": 0.77, "n_parsed": 39},
-        },
-    }
-    # codex target: antigravity (0.77) is the highest floor-clearing non-target.
-    assert _floor_clearing_judge("codex", configs, report) == "antigravity"
-    # antigravity target: codex (0.72) clears the floor; claude (0.59) must not win.
-    assert _floor_clearing_judge("antigravity", configs, report) == "codex"
-    # claude target: antigravity leads the clearing set.
-    assert _floor_clearing_judge("claude", configs, report) == "antigravity"
-
-
-def test_floor_clearing_judge_returns_none_when_nothing_clears():
-    """No measured judge above the validity floor -> None, so the caller's
-    blind heuristic is genuinely the best available (never a false pick)."""
-    from types import SimpleNamespace
-    from trinity_local.commands.eval import _floor_clearing_judge
-
-    configs = {n: SimpleNamespace(enabled=True) for n in ("claude", "codex", "antigravity")}
-    report = {"chosen_judge": None, "judges": {
-        "claude": {"agreement": 0.59, "n_parsed": 39},
-        "codex":  {"agreement": 0.65, "n_parsed": 39},
-    }}
-    assert _floor_clearing_judge("antigravity", configs, report) is None
-    # thin n never clears, even at high agreement
-    report_thin = {"chosen_judge": None, "judges": {
-        "antigravity": {"agreement": 0.9, "n_parsed": 4},
-    }}
-    assert _floor_clearing_judge("codex", configs, report_thin) is None
-
-
 def test_judge_validated_requires_the_alignment_pair_floor():
     """#green-gate (2026-07-17, workflow finding): judge_validated is the trust
     green that gates the 'directional, not decisive' caveat — it only prints
@@ -240,7 +246,7 @@ def test_judge_validated_requires_the_alignment_pair_floor():
     # thin measurement -> None (unmeasured), NOT True — the caveat must still fire
     assert validated(1.0, MIN_ALIGNMENT_PAIRS - 1) is None
     # at/above the floor the real gate applies
-    assert validated(0.8, MIN_ALIGNMENT_PAIRS) is True
+    assert validated(0.8, MIN_ALIGNMENT_PAIRS) is None   # never True: no reference can validate (res_169)
     assert validated(0.5, MIN_ALIGNMENT_PAIRS + 5) is False
     # never False on a thin sample (that would read as 'invalid judge', wrong)
     assert validated(0.2, 2) is None

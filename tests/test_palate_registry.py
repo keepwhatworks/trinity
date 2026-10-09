@@ -202,14 +202,34 @@ class TestChoiceOracle:
         registry that measures it."""
         import json as _json
         self._snap(tmp_path, monkeypatch)
+        from trinity_local.me.palate_registry import current_epoch
+        # trials carry the epoch of the snapshot that scored them (score_prospective stamps it)
         rows = [{"act_id": f"t{i}", "verdict": "correct" if i < 4 else "incorrect",
-                 "gap": 0.1, "scored_at": "x", "snapshot_built_at": "y"} for i in range(10)]
+                 "gap": 0.1, "scored_at": "x", "snapshot_built_at": "y", "epoch": current_epoch()}
+                for i in range(10)]
         (tmp_path / "me" / "palate_trials.jsonl").write_text(
             "\n".join(_json.dumps(r) for r in rows) + "\n", encoding="utf-8")
         from trinity_local.me.palate_registry import rank_options
         r = rank_options(["a verbose elaborate treatment", "a terse direct fix"],
                          embed_fn=_embed)
         assert r["ready"] and r["advisory_only"] is True and r["live_accuracy"] == 0.4
+        assert r["below_kill_floor"] is True
+
+    def test_high_live_accuracy_is_still_advisory(self, tmp_path, monkeypatch):
+        """The live accuracy scores telling the user's rewrite from a model's text,
+        not choosing among options (res_167/168: a lexical model), so even a high
+        number cannot make a ranking decisive. MUTATION: derive advisory_only from
+        the accuracy again and this reds."""
+        import json as _json
+        self._snap(tmp_path, monkeypatch)
+        from trinity_local.me.palate_registry import current_epoch, rank_options
+        rows = [{"act_id": f"t{i}", "verdict": "correct", "gap": 0.1, "scored_at": "x",
+                 "snapshot_built_at": "y", "epoch": current_epoch()} for i in range(30)]
+        (tmp_path / "me" / "palate_trials.jsonl").write_text(
+            "\n".join(_json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+        r = rank_options(["a verbose elaborate treatment", "a terse direct fix"], embed_fn=_embed)
+        assert r["ready"] and r["live_accuracy"] == 1.0
+        assert r["advisory_only"] is True and r["below_kill_floor"] is False
 
 
 class TestChooseCli:
@@ -228,6 +248,8 @@ class TestChooseCli:
         rc = me_cmd.handle_choose(SimpleNamespace(options=["terse fix", "verbose tour"], as_json=False))
         out = capsys.readouterr().out
         assert rc == 0 and "1. [+0.4000] terse fix" in out and "73%" in out and "22" in out
+        assert "your real choices" not in out and "taste" not in out
+        assert "not choosing among options" in out and "Advisory" in out
 
     def test_not_ready_exits_nonzero(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setenv("TRINITY_HOME", str(tmp_path))

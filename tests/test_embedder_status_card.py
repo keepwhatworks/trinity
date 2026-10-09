@@ -171,8 +171,12 @@ class TestEmbedderStatus:
                 "trinity_local.embeddings.is_available", lambda: False
             )
             status = launchpad_data._embedder_status()
-            assert "pip install" in status["downloadCommand"]
-            assert "trinity-local[mlx]" in status["downloadCommand"]
+            # The install step for this install shape (state_paths.embedder_install_command),
+            # never the PyPI 404 form.
+            from trinity_local.state_paths import embedder_install_command
+            assert status["downloadCommand"].startswith(embedder_install_command())
+            assert "[mlx]" in status["downloadCommand"]
+            assert "pip install 'trinity-local[mlx]'" not in status["downloadCommand"]
         finally:
             if original is not None:
                 sys.modules["trinity_local.embeddings"] = original

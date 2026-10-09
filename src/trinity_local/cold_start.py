@@ -580,6 +580,11 @@ def maybe_kick_lens_refresh() -> dict | None:
                     "last_kick_at": now_iso(), "reason": reason, "status": mstatus,
                     "finished_at": now_iso(), "summary": summary,
                 }
+                if mstatus == "done":
+                    # The meters the manual `lens` path runs; without them the palate
+                    # canary and the residual log stop silently (me/build_meters.py).
+                    from .me.build_meters import record_build_meters
+                    marker["meters"] = record_build_meters()
                 if mstatus == "failed" and isinstance(summary, dict):
                     marker["error"] = str(
                         summary.get("reason") or summary.get("aborted") or "build did not land"
@@ -703,10 +708,11 @@ def maybe_kick_first_lens_build() -> dict | None:
             from .lens_progress import LensBuildCanceled, write_progress
             try:
                 from .me_builder import build_me_via_lens_pipeline
+                from .me.build_meters import record_build_meters
                 build_me_via_lens_pipeline()  # per-stage progress + "done" on success
                 _write_refresh_marker({
                     "last_kick_at": now_iso(), "reason": reason, "status": "done",
-                    "finished_at": now_iso(),
+                    "finished_at": now_iso(), "meters": record_build_meters(),
                 })
             except LensBuildCanceled:
                 write_progress("canceled", status="canceled")

@@ -62,8 +62,33 @@ def _trials_path():
     return trinity_home() / "me" / "palate_trials.jsonl"
 
 
+LEGACY_EPOCH = "all-prompts"
+
+
+def _epoch_now() -> str:
+    """The epoch a NEW snapshot is fit in. 'only-me-<filter version>' when the lens reads only the user's own
+    prompts (me/authorship.py, amd_0310); trials are never pooled across epochs (amd_0183):
+    each epoch's figure stays its own record, read per epoch by summarize_trials()."""
+    from .authorship import authorship_status
+    # the epoch follows what the fit actually used: the flag alone is not enough, a map must
+    # exist (verify, codex: a missing map with the flag on would have mislabelled the fit)
+    from .authorship import MAP_VERSION
+    # A new filter version is a new epoch: it changes which acts the fit sees (amd_0183).
+    return f"only-me-{MAP_VERSION}" if authorship_status().get("state") == "ok" else LEGACY_EPOCH
+
+
+def current_epoch() -> str:
+    """The epoch of the live snapshot: the one trials are being scored in right now."""
+    snap = _load_snapshot()
+    return (snap or {}).get("epoch") or LEGACY_EPOCH
+
+
 def _fit_acts(acts) -> list:
-    return [a for a in acts if getattr(a, "privileged", None) and getattr(a, "sacrificed", None)]
+    """Acts with both sides, from prompts the lens may learn from (an act mined from a pasted
+    or machine-sent prompt is not the user's choice)."""
+    from .authorship import is_lens_node_id
+    return [a for a in acts if getattr(a, "privileged", None) and getattr(a, "sacrificed", None)
+            and is_lens_node_id(getattr(a, "prompt_id", None) or "")]
 
 
 def record_direction_snapshot(embed_fn: Callable | None = None) -> dict[str, Any]:
@@ -94,6 +119,7 @@ def record_direction_snapshot(embed_fn: Callable | None = None) -> dict[str, Any
             return {"ok": False, "reason": "direction fit failed"}
         payload = {
             "built_at": now_iso(),
+            "epoch": _epoch_now(),
             "fit_act_ids": sorted(a.id for a in acts),
             "direction": [round(float(x), 6) for x in direction],
         }
@@ -188,6 +214,7 @@ def score_prospective(embed_fn: Callable | None = None) -> dict[str, Any]:
                 "gap": round(gap, 4),
                 "scored_at": now_iso(),
                 "snapshot_built_at": snap.get("built_at"),
+                "epoch": snap.get("epoch") or LEGACY_EPOCH,
             })
         if rows:
             p = _trials_path()
@@ -200,16 +227,26 @@ def score_prospective(embed_fn: Callable | None = None) -> dict[str, Any]:
         return {"ready": False, "reason": f"{type(exc).__name__}: {exc}"}
 
 
-def summarize_trials() -> dict[str, Any]:
-    """Running prospective tally over all recorded trials. Abstains are
-    disclosed, never counted correct — accuracy is over DECIDED trials only."""
+def summarize_trials(epoch: str | None = None) -> dict[str, Any]:
+    """Running prospective tally over the trials of ONE epoch (default: the live snapshot's).
+    Abstains are disclosed, never counted correct; accuracy is over DECIDED trials only.
+    Other epochs are reported beside it, never pooled into it (amd_0183)."""
+    epoch = epoch or current_epoch()
     p = _trials_path()
     correct = incorrect = abstain = 0
+    other: dict[str, list[int]] = {}
     if p.exists():
         for line in p.read_text(encoding="utf-8").splitlines():
             try:
-                v = json.loads(line).get("verdict")
+                row = json.loads(line)
+                v = row.get("verdict")
+                e = row.get("epoch") or LEGACY_EPOCH
             except (ValueError, AttributeError):
+                continue
+            if e != epoch:
+                if v in ("correct", "incorrect"):
+                    o = other.setdefault(e, [0, 0])
+                    o[0 if v == "correct" else 1] += 1
                 continue
             if v == "correct":
                 correct += 1
@@ -226,6 +263,9 @@ def summarize_trials() -> dict[str, Any]:
         "abstained": abstain,
         "accuracy": round(correct / decided, 3) if decided else None,
         "early": decided < EARLY_N,
+        "epoch": epoch,
+        "other_epochs": {e: {"decided": c + i, "accuracy": round(c / (c + i), 3) if c + i else None}
+                         for e, (c, i) in other.items()},
     }
 
 
@@ -238,13 +278,18 @@ def summarize_trials() -> dict[str, Any]:
 # the human" instead of manufacturing a preference. Kill condition (shared
 # with the registry, already registered): live accuracy < 0.60 at n>=10 →
 # lens-health fires WEAK and the oracle stamps itself advisory-only.
+# Since 2026-10-09 every answer is advisory: the live accuracy scores telling the
+# user's rewrite from the model's text (an exact side label), not choosing among
+# options like these, and the palate is a lexical model (res_167, res_168). The
+# number cannot vouch for a ranking it never measured; the kill floor stays as a
+# separate, stronger flag.
 
 def rank_options(options: list[str], embed_fn=None) -> dict:
-    """Rank candidate options by the user's frozen taste direction.
+    """Rank candidate options by the frozen palate direction (lexical; advisory).
 
     Returns {ready, ranked: [{option, score}...], confidence_gap, abstain,
-    advisory_only, live_accuracy, decided_trials, reason?}. LLM-free: two
-    local embeddings per option. Never raises."""
+    advisory_only (always True), below_kill_floor, live_accuracy, decided_trials,
+    reason?}. LLM-free: two local embeddings per option. Never raises."""
     try:
     
         import numpy as np
@@ -279,7 +324,7 @@ def rank_options(options: list[str], embed_fn=None) -> dict:
         trials = summarize_trials()
         acc = trials.get("accuracy")
         n_dec = trials.get("decided", 0)
-        advisory = bool(acc is not None and n_dec >= EARLY_N and acc < 0.60)
+        below_floor = bool(acc is not None and n_dec >= EARLY_N and acc < 0.60)
         return {
             "ready": True,
             "ranked": ranked,
@@ -287,7 +332,8 @@ def rank_options(options: list[str], embed_fn=None) -> dict:
             # The same pre-registered floor the registry abstains under: a
             # near-zero gap is a coin flip the oracle must not dress up.
             "abstain": gap < ABSTAIN_GAP,
-            "advisory_only": advisory,
+            "advisory_only": True,
+            "below_kill_floor": below_floor,
             "live_accuracy": acc,
             "decided_trials": n_dec,
         }

@@ -80,9 +80,8 @@ class TestRequireEmbedderReady:
     ):
         """If sentence-transformers isn't installed, even running the
         download command won't help — the message must prepend the
-        `[mlx]`-extra install (`pip install -e '.[mlx]'`, resolved from the
-        Trinity clone — there is no PyPI package) so the user pastes ONE
-        runnable line that chains both steps."""
+        `[mlx]`-extra install for this install shape (there is no PyPI
+        package) so the user pastes ONE runnable line that chains both steps."""
         from trinity_local.embeddings import (
             EmbedderNotReadyError, require_embedder_ready,
         )
@@ -107,11 +106,11 @@ class TestRequireEmbedderReady:
             "pip install too — otherwise the user runs the download "
             "command and still can't use the embedder."
         )
-        # The honest hint resolves the [mlx] extra from the local clone
-        # (`pip install -e '.[mlx]'`), NOT the 404 PyPI form — there is no
-        # `trinity-local` package on PyPI (install is git-clone + git-pull).
-        assert "-e '.[mlx]'" in msg, msg
-        assert "trinity-local[mlx]" not in msg, (
+        # The hint is state_paths.embedder_install_command for THIS install (a source
+        # checkout here: an editable install with the extra), never the 404 PyPI form.
+        from trinity_local.state_paths import embedder_install_command
+        assert embedder_install_command() in msg, msg
+        assert "pip install 'trinity-local[mlx]'" not in msg, (
             f"must not hand the user the 404 PyPI form: {msg!r}"
         )
         # Even in the libs-missing case, the chained one-liner should

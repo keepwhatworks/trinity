@@ -38,6 +38,8 @@ from pathlib import Path
 
 import pytest
 
+from trinity_local.launchpad_data import _TIER_INSTALL_HELP
+
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
 
@@ -147,7 +149,7 @@ def test_tier1_card_renders_with_resolved_bindings(tmp_path, monkeypatch):
                 # The EXACT next-step install command — proves the
                 # nextStep.installCommand binding resolves (mutation-provable:
                 # rename the data field and this empties).
-                assert s["installCode"] == "npm install -g @openai/codex && codex --login", s["installCode"]
+                assert s["installCode"] == _TIER_INSTALL_HELP["codex"][1], s["installCode"]
                 assert s["hasCopyBtn"], "copy button missing on the tier card"
                 assert not s["leaks"], f"undefined/NaN/[object Object] leaked into the card: {s['installCode']!r}"
 
@@ -290,7 +292,7 @@ def test_tier0_cold_install_card_renders_with_resolved_bindings(tmp_path, monkey
     assert s["eyebrow"] == "Install a council provider", s["eyebrow"]
     assert s["headline"] == "Install a council provider to get started.", s["headline"]
     # First missing provider's install command resolves (claude is _TIER_PROVIDERS[0]).
-    assert s["installCode"] == "npm install -g @anthropic-ai/claude-code", s["installCode"]
+    assert s["installCode"] == _TIER_INSTALL_HELP["claude"][1], s["installCode"]
     assert s["hasCopyBtn"], "copy button missing on the tier-0 card"
     assert not s["leaks"], (
         f"undefined/NaN/[object Object] leaked into the tier-0 card: {s['installCode']!r}"

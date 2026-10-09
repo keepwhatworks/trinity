@@ -450,8 +450,8 @@ def _alignment_report_path():
 def _public_alignment_report_path():
     """`~/.trinity/evals/judge_alignment_public.json` — the PUBLIC-dataset trust
     reproduction (`eval-judge-check --dataset`). Kept SEPARATE from the corrections
-    report so a public run never overwrites the judge-selection signal: eval-run
-    still picks its judge from YOUR corrections, not from generic human preference."""
+    report so a public run never overwrites the corrections meter. Neither report
+    chooses eval-run's judge; it uses a fixed default."""
     from ..evals.builder import evals_dir
     return evals_dir() / "judge_alignment_public.json"
 
@@ -466,51 +466,6 @@ def _load_alignment_report() -> dict | None:
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
         return None
-
-
-def _alignment_chosen_judge(target: str, configs: dict, report: dict | None) -> str | None:
-    """The MEASURED most-aligned judge from the report — if it exists, isn't the
-    target (no self-grading), and is enabled. This is the trust-first judge pick:
-    the model that agreed with the user's own corrections most. Returns None to
-    let the caller fall back to the heuristic."""
-    if not report:
-        return None
-    chosen = report.get("chosen_judge")
-    if chosen and chosen != target and chosen in configs and configs[chosen].enabled:
-        return chosen
-    return None
-
-
-def _floor_clearing_judge(target: str, configs: dict, report: dict | None) -> str | None:
-    """The middle tier between the abstained `chosen_judge` and the blind
-    heuristic (#19, 2026-07-16). `select_aligned_judge` honestly REFUSES to crown
-    a single winner when the lead is within noise (antigravity 77% vs codex 72%
-    at n=39 is a margin abstention, not a tie with claude's 59%). But the old
-    fallback was a FIXED preference order starting at claude, so a codex target
-    fell back to the one judge that FAILED the 0.70 validity floor while two
-    floor-clearing judges sat measured in the same report. Respect the
-    abstention (no "most-aligned" claim) while never preferring a measured
-    invalid judge over a measured valid one: pick the highest-agreement
-    non-target enabled judge whose agreement clears JUDGE_VALIDITY_FLOOR at
-    n >= MIN_ALIGNMENT_PAIRS. Total order (agreement, n, slug) so ties can't
-    flip on dict order. Returns None when nothing measured clears — the blind
-    heuristic is then genuinely the best available."""
-    if not report:
-        return None
-    from ..evals.judge_alignment import MIN_ALIGNMENT_PAIRS
-    from ..evals.runner import JUDGE_VALIDITY_FLOOR
-
-    eligible = []
-    for name, entry in (report.get("judges") or {}).items():
-        if name == target or name not in configs or not configs[name].enabled:
-            continue
-        agr = entry.get("agreement")
-        n = entry.get("n_parsed") or 0
-        if agr is not None and agr >= JUDGE_VALIDITY_FLOOR and n >= MIN_ALIGNMENT_PAIRS:
-            eligible.append((-agr, -n, name))
-    if not eligible:
-        return None
-    return sorted(eligible)[0][2]
 
 
 def _record_judge_alignment(run_result, judge: str, report: dict | None) -> None:
@@ -534,28 +489,33 @@ def _record_judge_alignment(run_result, judge: str, report: dict | None) -> None
                 run_result.judge_validated = None
             elif n < MIN_ALIGNMENT_PAIRS:
                 # High agreement on too few pairs is a coin flip, not validation
-                # — the SAME n floor select_aligned_judge and _floor_clearing_judge
-                # already enforce. Without this a fallback judge that abstained on
-                # noise (chosen_judge=None) still got stamped judge_validated=True
-                # off a sub-15-pair agreement, which SUPPRESSED the
-                # directional-not-decisive caveat (it only prints when validated is
-                # not True). Return None (unmeasured/insufficient), never False, so
-                # the caveat still fires rather than a spurious "invalid judge".
+                # — the SAME n floor select_aligned_judge enforces. Return None
+                # (unmeasured/insufficient), never False, so the
+                # directional-not-decisive caveat fires rather than a spurious
+                # "invalid judge".
                 run_result.judge_validated = None
+            elif float(ag) < JUDGE_VALIDITY_FLOOR:
+                run_result.judge_validated = False
             else:
-                run_result.judge_validated = float(ag) >= JUDGE_VALIDITY_FLOOR
+                # Never True (council_26f1005bf6e8bd55): the corrections a judge is checked
+                # against are machine-extracted, and extractors agree on them at kappa ~0.26
+                # (res_169). Agreement with them chooses a judge; it cannot validate one, so
+                # the "directional, not decisive" caveat must always print.
+                run_result.judge_validated = None
         except (TypeError, ValueError):
             run_result.judge_validated = None
 
 
 def handle_eval_judge_check(args):
-    """Validate each candidate judge against the user's OWN past corrections and
-    save the report — the measured-trust artifact behind the eval card.
+    """Measure each candidate judge against the corrections extracted from the user's
+    turns (or a public preference set) and save the report behind the eval card.
 
-    Every model_miss act is a human-labelled A/B (the user privileged their rewrite
+    Every model_miss act is a machine-extracted A/B (the user privileged their rewrite
     over the model's answer). We ask each candidate judge those pairs, position-
-    balanced, and measure how often it picks the side the human chose. The best-
-    aligned judge is recorded as `chosen_judge`; eval-run prefers it. Real dispatch
+    balanced, and measure how often it picks the side the human chose. On those
+    corrections the agreement is a meter and chooses nothing (`chosen_judge` stays
+    None): extractors agree on them at kappa ~0.26 (res_169, res_170). On a public
+    human-preference set the significance-gated leader is recorded. Real dispatch
     (each judge × N pairs) — `--limit` caps the pairs (default 20) to keep it cheap.
     """
     from pathlib import Path
@@ -602,7 +562,7 @@ def handle_eval_judge_check(args):
     else:
         pairs = build_preference_pairs(limit=limit)
         if not pairs:
-            print("  No human-labelled preference pairs yet (need model_miss acts in your ledger).")
+            print("  No extracted preference pairs yet (need model_miss acts in your ledger).")
             print("  Run `trinity-local lens` to mine corrections from your transcripts first.")
             print("  (Or validate the mechanism on public data: eval-judge-check --dataset <rewardbench.jsonl>.)")
             raise SystemExit(2)
@@ -653,11 +613,13 @@ def handle_eval_judge_check(args):
         )
     # Significance-gated selection (shared with pick_most_aligned_judge): only choose
     # a judge when the lead is real, not noise (the n=12-Gemini-by-2-pairs trap).
+    # Only a public human-preference set may choose; machine-extracted corrections
+    # have no reliable reference, so on them the leader is reported, never recorded.
     chosen, reason = select_aligned_judge(results)
 
-    out = save_alignment_report(chosen, results, report_path)
+    out = save_alignment_report(chosen if is_public else None, results, report_path)
 
-    against = "verified human preference" if is_public else "YOUR own past corrections"
+    against = "verified human preference" if is_public else "corrections extracted from your turns"
     print(f"\n  Judge alignment (agreement with {against}):")
     for name, r in sorted(results.items(), key=lambda kv: -(kv[1].agreement if kv[1].agreement is not None else -1.0)):
         if r.agreement is None:
@@ -704,12 +666,13 @@ def handle_eval_judge_check(args):
         else:
             print(f"\n  → No judge cleared the bar on this set: {reason}.")
         print("    This is the reproducible-mechanism check (trust pillar #2): the same harness,")
-        print("    public ground truth, no private data. eval-run still picks its judge from YOUR corrections.")
-    elif chosen:
-        print(f"\n  → Chosen judge: {chosen} — {reason}. eval-run will prefer it.")
+        print("    public ground truth, no private data. eval-run uses its fixed default judge.")
     else:
-        print(f"\n  → No judge chosen: {reason}.")
-        print("    eval-run falls back to a non-target heuristic judge; pass --judge to force one.")
+        lead = f"{chosen} leads ({reason})" if chosen else reason
+        print(f"\n  → A meter, not a choice: {lead}.")
+        print("    These corrections are machine-extracted and agree across extractors only at")
+        print("    kappa ~0.26, so they do not choose the judge. eval-run uses its fixed default")
+        print("    judge; pass --judge to force one.")
     print(f"  Report: {out}")
     return 0
 
@@ -721,7 +684,7 @@ def handle_eval_audit(args):
     """Scan the eval data for METHODOLOGY bugs — the quiet kind that don't crash,
     they just make the headline number mean something other than what it claims
     (the green-while-degenerate shape). Local + privacy-safe: reviews the built
-    eval set + the human-labelled preference pairs, prints findings by severity.
+    eval set + the machine-extracted preference pairs, prints findings by severity.
     No model dispatch — runs offline, costs no quota, leaks no prompt text.
 
     Answers the founder's "review data and see if there are ways to scan for and
@@ -932,35 +895,22 @@ def handle_eval_run(args):
         )
 
     if not args.skip_score:
-        # Judge priority: explicit --judge > the MEASURED most-aligned judge (the
-        # eval-judge-check report, validated against the user's own corrections) >
-        # a measured FLOOR-CLEARING judge when the top pick abstained on margin
-        # (#19 — never fall back past a valid judge to an invalid one) > the
-        # default non-target heuristic. Trust-first selection.
+        # Judge: explicit --judge, else the fixed chairman-grade default. Agreement with
+        # the corrections extracted from your turns no longer chooses the judge: those
+        # corrections are machine-extracted, and no two extractors agree on them beyond
+        # kappa 0.26 (res_169, res_170), so they cannot rank judges. It prints as a meter.
         alignment = _load_alignment_report()
-        aligned_judge = _alignment_chosen_judge(args.target, provider_configs, alignment)
-        floor_judge = None if aligned_judge else _floor_clearing_judge(
-            args.target, provider_configs, alignment)
-        judge = (args.judge or aligned_judge or floor_judge
-                 or _default_judge_provider(args.target, provider_configs))
+        judge = args.judge or _default_judge_provider(args.target, provider_configs)
         if judge is None:
             print("✗ no judge provider available (need a second enabled provider, or pass --judge).")
             raise SystemExit(2)
         if judge == args.target:
             print(f"⚠  judge ({judge}) is the same as target ({args.target}) — bias-trap warning.")
-        elif judge == aligned_judge and not args.judge:
-            entry = (alignment.get("judges") or {}).get(judge) or {} if alignment else {}
-            agr = entry.get("agreement")
-            if agr is not None:
-                print(f"  Judge {judge} picked by measured alignment — agrees with your "
-                      f"corrections {agr*100:.0f}% (n={entry.get('n_parsed')}).")
-        elif judge == floor_judge and not args.judge:
-            entry = (alignment.get("judges") or {}).get(judge) or {} if alignment else {}
-            agr = entry.get("agreement")
-            if agr is not None:
-                print(f"  Judge {judge} picked from the measured floor-clearing set "
-                      f"({agr*100:.0f}%, n={entry.get('n_parsed')}) — no single most-aligned "
-                      f"winner (lead within noise), but it beats any unmeasured fallback.")
+        entry = ((alignment or {}).get("judges") or {}).get(judge) or {}
+        if entry.get("agreement") is not None:
+            print(f"  Judge {judge} agrees with the corrections extracted from your turns "
+                  f"{entry['agreement']*100:.0f}% (n={entry.get('n_parsed')}) — a meter only: "
+                  f"those corrections are machine-extracted and do not choose the judge.")
         from ..state_paths import lens_path
         lens_md = lens_path()
         lens_text = lens_md.read_text(encoding="utf-8") if lens_md.exists() else ""
@@ -1060,13 +1010,14 @@ def handle_eval_run(args):
         if jv is False:
             from ..evals.runner import JUDGE_VALIDITY_FLOOR
             ag = run_result.judge_agreement
-            print(f"  ⚠ judge validity: measured agreement with your corrections is "
+            print(f"  ⚠ judge validity: agreement with the corrections extracted from your turns is "
                   f"{ag:.0%} — below the {JUDGE_VALIDITY_FLOOR:.0%} floor. Treat this "
                   f"score as directional, not a decisive ranking.")
-        elif jv is None:
-            print("  ⚠ judge validity: unmeasured — run `trinity-local eval-judge-check` "
-                  "to validate the judge against your own corrections before comparing "
-                  "models on this number.")
+        else:
+            print("  ⚠ judge validity: no judge can be validated yet. The corrections it would be "
+                  "checked against are machine-extracted from your turns, and two extractors agree "
+                  "on them only about a quarter beyond chance. Treat this score as directional, "
+                  "not a decisive ranking.")
         if run_result.by_rejection_type:
             print("  By rejection axis (what the user wanted that the rejected response missed):")
             for line in _axis_breakdown_lines(run_result.by_rejection_type, bar=False):
@@ -1376,14 +1327,15 @@ def _print_judge_validity_note(rows: list[dict]) -> None:
     """The leaderboard-level judge-validity stamp (council item 3): a ranking
     whose judge never cleared the pre-registered agreement floor (or was never
     measured) is directional, not decisive — say it ON the ranking surface."""
-    unval = [r["target"] for r in rows if r.get("judge_validated") is not True]
+    # Every row, including results stamped validated before 2026-10-08: no judge can be validated
+    # against machine-extracted corrections (council_26f1005bf6e8bd55, res_169).
+    unval = [r["target"] for r in rows]
     if not unval:
         return
-    from ..evals.runner import JUDGE_VALIDITY_FLOOR
-    print(f"  ⚠ judge validity: {', '.join(unval)} scored by a judge below the "
-          f"{JUDGE_VALIDITY_FLOOR:.0%} agreement floor with your own corrections "
-          f"(or unmeasured). Treat this ranking as directional; run "
-          f"`trinity-local eval-judge-check` to (re)validate.")
+    print(f"  ⚠ judge validity: {', '.join(unval)} scored by a judge that cannot be validated yet: "
+          f"the corrections it is checked against are machine-extracted from your turns, and two "
+          f"extractors agree on them only about a quarter beyond chance. Treat this ranking as "
+          f"directional, not decisive.")
 
 
 def _print_exclusion_note(rows: list[dict]) -> None:

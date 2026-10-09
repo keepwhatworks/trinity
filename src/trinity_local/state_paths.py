@@ -473,24 +473,40 @@ def ingest_cursors_path() -> Path:
 
 
 
-def embedder_install_command() -> str:
-    """The HONEST command to install the real-embedder deps for THIS install.
+PUBLIC_REPO = "keepwhatworks/trinity"
 
-    `pip install 'trinity-local[mlx]'` is a 404 pre-PyPI — the package isn't
-    published. The only install path today is the curl|sh script, which clones
-    the source to ``~/.trinity/code`` and creates a venv at ``~/.trinity/venv``.
-    So resolve the ``[mlx]`` extra from the LOCAL source: pyproject's platform
-    markers install ``mlx`` only on Apple Silicon and ``sentence-transformers``/
-    ``torch`` everywhere, so the same command is correct on every platform. Falls
-    back to the published-extra form for a future pip/uvx install (no local
-    source dir present)."""
-    home = trinity_home()
-    code = home / "code"
-    if code.exists():
-        venv_pip = home / "venv" / "bin" / "pip"
-        pip = str(venv_pip) if venv_pip.exists() else "pip"
-        return f"{pip} install '{code}[mlx]'"
-    return "pip install 'trinity-local[mlx]'"
+
+def embedder_install_command() -> str:
+    """The command that adds the real-embedder extras ([mlx]) to THIS install.
+
+    Three install shapes, each with its own correct command:
+      - the one-line installer: a `uv tool install` of the public release tarball, so
+        re-install that tool with the extra, pinned to the running version's tag;
+      - a source checkout (pyproject.toml beside src/): an editable install with the extra, run
+        from the checkout;
+      - anything else: pip from the release tarball.
+    No absolute path appears: these strings reach user-facing surfaces that must not show a
+    user's filesystem layout (tests/test_backend_error_no_path_leak.py).
+    `pip install 'trinity-local[mlx]'` is never right: the package is not on PyPI. The old
+    answer here assumed an install layout (~/.trinity/code + venv) no installer creates."""
+    import sys
+
+    from .config import project_root
+    from .telemetry import _resolve_app_version
+
+    tarball = f"https://github.com/{PUBLIC_REPO}/archive/refs/tags/v{_resolve_app_version()}.tar.gz"
+    if f"{os.sep}uv{os.sep}tools{os.sep}" in sys.prefix:
+        return f"uv tool install --force --python '>=3.10' 'trinity-local[mlx] @ {tarball}'"
+    root = project_root()
+    if (root / "pyproject.toml").exists() and (root / "src" / "trinity_local").is_dir():
+        return "pip install -e '.[mlx]'"   # run from the checkout, in its venv
+    return f"pip install 'trinity-local[mlx] @ {tarball}'"
+
+
+def embedder_fix_command() -> str:
+    """Install the extras, then fetch the model once (~600 MB). Every surface that tells a
+    user how to get real embeddings prints this, so they cannot disagree."""
+    return f"{embedder_install_command()} && HF_HUB_OFFLINE=0 trinity-local download-embedder"
 
 
 def neutral_dispatch_dir():

@@ -55,7 +55,9 @@ def register(subparsers):
 
 
 def _load_summary(home=None) -> dict:
-    from ..disagreement_ledger import _ledger_dir
+    """The persisted aggregate with the label gate applied on read (a summary built
+    before the gate existed still says trustworthy)."""
+    from ..disagreement_ledger import _ledger_dir, gate_summary
     path = _ledger_dir(home) / "summary.json"
     if not path.exists():
         return {}
@@ -63,7 +65,7 @@ def _load_summary(home=None) -> dict:
         d = json.loads(path.read_text(encoding="utf-8"))
     except (ValueError, OSError):
         return {}
-    return d if isinstance(d, dict) else {}
+    return gate_summary(d) if isinstance(d, dict) else {}
 
 
 def _print_dissent(as_json: bool) -> int:
@@ -119,7 +121,8 @@ def handle_trust(args):
         except EmbedderNotReadyError as exc:
             print(str(exc), file=sys.stderr)
             sys.exit(1)
-        print(json.dumps(agg, indent=2) if args.as_json else _tally_lines(agg))
+        from ..disagreement_ledger import agent_view
+        print(json.dumps(agent_view(agg), indent=2) if args.as_json else _tally_lines(agg))
         return
 
     query = getattr(args, "query", None)
@@ -133,7 +136,8 @@ def handle_trust(args):
 
     summary = _load_summary()
     if args.as_json:
-        print(json.dumps({"query": query, "recurring": recurring, "tally": summary}, indent=2))
+        from ..disagreement_ledger import agent_view
+        print(json.dumps({"query": query, "recurring": recurring, "tally": agent_view(summary)}, indent=2))
         return
 
     if query:
@@ -144,13 +148,17 @@ def handle_trust(args):
             for r in recurring:
                 _print_pattern(r)
     else:
-        n_xprov = sum(1 for p in load_disagreements() if p.is_cross_provider)
+        patterns = load_disagreements()
+        n_xprov = sum(1 for p in patterns if p.is_cross_provider)
         print(f"{n_xprov} cross-provider disagreements in your corpus.\n")
         if summary:
             print(_tally_lines(summary))
         else:
             print("No ledger built yet. Run `trinity-local trust --build` to resolve which model "
                   "your later work sided with, or `trust <topic>` to find recurring splits.")
+        tool_lines = _tool_lines(patterns)
+        if tool_lines:
+            print(tool_lines)
         # Council split on a default-output pointer was UNRESOLVED; decided here
         # (logged in amd_0065): the pointer appears ONLY once a silver cell has
         # actually cleared its floor — pointing at an all-withheld tier serves
@@ -201,6 +209,20 @@ def _print_pattern(r: dict) -> None:
           f"   ({n_split} council{'s' if n_split != 1 else ''} split on this)")
 
 
+def _tool_lines(patterns) -> str:
+    """Which model ran in which tool, from the user's own councils. Counts, not rankings:
+    the same model can do very differently in another tool, so a model-in-tool cell is
+    only compared once it has its own resolved record."""
+    from ..disagreement_ledger import history_by_tool
+    rows = history_by_tool(patterns)
+    if not rows:
+        return ""
+    lines = ["", "Which model ran in which tool (positions taken in cross-provider splits; not a ranking):"]
+    for r in rows:
+        lines.append(f"  {r['tool']:<12} {r['model']:<32} {r['positions']:>5}  {r['first']} .. {r['last']}")
+    return "\n".join(lines)
+
+
 def _tally_lines(agg: dict) -> str:
     """Render the behavioural tally. ALWAYS prefixed with the tier's caveat.
 
@@ -211,7 +233,10 @@ def _tally_lines(agg: dict) -> str:
     The sibling SILVER tier prints its calibration on every render; this one now
     does too, and test_trust_surfaces_carry_the_behavioural_caveat pins it.
     """
-    if not agg.get("tally_trustworthy"):
+    # DIRECTIONAL: the label-free gates pass but the label itself is unreliable
+    # (hq_138). A person may see the rows, marked as not proven; nothing acts on them.
+    directional = bool(agg.get("tally_displayable")) and agg.get("label_reliable") is False
+    if not agg.get("tally_trustworthy") and not directional:
         from ..disagreement_ledger import BEHAVIOURAL_TIER_CAVEAT, K4_MIN_RESOLVED
         resolved = int(agg.get("resolved", 0) or 0)
         why = []
@@ -236,6 +261,10 @@ def _tally_lines(agg: dict) -> str:
     lines = []
     if caveat:
         lines += [caveat, ""]
+    if directional:
+        lines.append(f"DIRECTIONAL, NOT PROVEN: the label under these rows reproduces at test-retest "
+                     f"kappa {agg.get('label_test_retest_kappa')} (floor "
+                     f"{agg.get('label_reliability_floor')}), so read them as a lean, not a verdict.")
     lines.append(f"On {agg.get('resolved', 0)} resolved cross-provider disagreements, which "
                  f"model your work sided with (per model x version, >= {MIN_TALLY_N} decisions):")
     for ident, rec in shown:

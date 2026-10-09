@@ -25,7 +25,7 @@ council.
 
 ## Where the repo is now
 
-`v<!-- canonical:version -->1.7.397<!-- /canonical -->` is launch-hardened around
+`v<!-- canonical:version -->1.7.398<!-- /canonical -->` is launch-hardened around
 the MCP-first path: `lens`, `council`, `status`, and `install` are the
 advertised CLI verbs, while older names stay registered for compatibility with
 launchpad dispatch and existing scripts. The core mechanics are in place:
@@ -101,6 +101,12 @@ The `lens` pipeline now centers on the unified
 (REFRAME / COMPRESSION / REDIRECT / SHARPENING). Explicit decisions and
 provider imports join the same store. Later stages build basins, paired
 tensions, trajectories, correction vectors, and recency-aware registry support.
+Every lens read goes through one gate, `me/authorship.py::lens_only()`, so the lens
+learns from the user's own prompts only. Each build classifies the store and drops
+prompts from machine-started sessions (`claude -p`, the Agent SDK, `codex exec`, read
+from the `origin` recorded at ingest), agent and harness messages, a loop's re-sends,
+later copies of a text, and model output pasted back in (keeping the user's own lines).
+Retrieval and the trust ledger are not filtered. `TRINITY_LENS_ONLY_ME=0` turns it off.
 Four walls hold the loop honest. Every ledger write passes a provenance
 gate. An act must anchor to a real transcript turn, so the ledger stays a
 projection of ground truth. (Councils, evals, and chairman outcomes never feed
@@ -126,10 +132,17 @@ The lens's stand-in claim is measured, continuously. At every build the taste
 direction freezes with the exact set of acts it was fit on. Every correction
 that arrives afterward is a prospective trial the direction never saw
 (`me/palate_registry.py`). Train-on-test is structurally impossible there, and
-honest abstains are disclosed. The running number lives in `lens-health` (81.6%
-over 354 decided trials as of 2026-08-01, with a further 55 honestly
-abstained and never scored, against a kill-floor of 60%). `choose(options)`, the ninth
-MCP tool, productizes the validated half. It ranks any concrete options on the
+honest abstains are disclosed. The running number lives in `lens-health`, one
+epoch at a time and never pooled across epochs. The all-prompts epoch closed on
+2026-10-07 at 84.6% over 570 decided trials (72 abstained, never scored; kill-floor
+60%); from then the direction is fit on the user's own prompts only and its epoch
+starts from zero. Authorship alone reaches 66.6% on the same task, because the kept
+text is usually the user's own words, so the figure validates the instrument rather
+than taste beyond authorship. An earlier "same-author" figure (0.25 bits per decision) did not
+survive a closer look: those acts still shared most of their words with the user's own prompt.
+Beyond the user's own words the palate adds about 0.1 bits per decision, and a plain character
+n-gram model recovers nearly all of it. `choose(options)`, a CLI verb (its MCP tool was
+demoted), productizes the validated half. It ranks any concrete options on the
 frozen direction, LLM-free and instant, with the live accuracy in every
 payload and an abstain under the same noise floor. Generation-side
 conditioning measured null (16/30, pre-registered) and ships dormant. Eval

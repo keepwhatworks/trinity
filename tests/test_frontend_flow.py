@@ -168,7 +168,8 @@ class TestLaunchpadFlow:
         assert "Stop council" in html
         assert "Open council page" in html
         assert "Codex CLI" in html
-        assert "npm install -g @openai/codex && codex --login" in html
+        from trinity_local.launchpad_data import _TIER_INSTALL_HELP
+        assert _TIER_INSTALL_HELP["codex"][1] in html
         assert "Quick start examples" not in html
         # Autofill ("Top used council queries") removed 2026-05-26 —
         # session-noise prompts were polluting the launchpad. The

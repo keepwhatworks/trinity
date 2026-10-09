@@ -1,49 +1,60 @@
-"""Guards for state_paths.embedder_install_command — the HONEST 'install the real
-embedder deps' command (founder-greenlit 2026-06-07).
-
-`pip install 'trinity-local[mlx]'` 404s pre-PyPI (the package isn't published).
-The only install path today is the curl|sh script, which clones the source to
-~/.trinity/code and creates a venv at ~/.trinity/venv. So the honest fix resolves
-the [mlx] extra from the LOCAL source: pyproject's platform markers install mlx
-only on Apple Silicon and sentence-transformers/torch everywhere, so the one
-command is correct on every platform. The 404 PyPI form is only emitted for a
-future pip/uvx install (no local source dir present).
+"""Guards for state_paths.embedder_install_command: the command that adds the real-embedder
+extras to THIS install. There is no PyPI package, so `pip install 'trinity-local[mlx]'` is never
+an answer. Found in a sandboxed run of the one-line installer (2026-10-08): the old command
+assumed an install layout (~/.trinity/code + venv) no installer creates, so a new user's lens
+refused to build and both printed fixes failed.
 """
 from __future__ import annotations
 
-from trinity_local.state_paths import embedder_install_command
+import sys
+
+from trinity_local import state_paths
+from trinity_local.state_paths import embedder_fix_command, embedder_install_command
+from trinity_local.telemetry import _resolve_app_version
+
+PYPI_404 = "pip install 'trinity-local[mlx]'"
 
 
-def test_script_install_uses_local_source_and_venv_pip(tmp_path, monkeypatch):
-    """A script install (the 100% pre-PyPI population) has ~/.trinity/code +
-    ~/.trinity/venv — the command must target the venv pip and resolve the [mlx]
-    extra from the local source, and must NEVER emit the 404 PyPI form."""
-    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-    (tmp_path / "code").mkdir()
-    (tmp_path / "venv" / "bin").mkdir(parents=True)
-    (tmp_path / "venv" / "bin" / "pip").write_text("")
+def _no_checkout(monkeypatch, tmp_path):
+    monkeypatch.setattr("trinity_local.config.project_root", lambda: tmp_path)
 
+
+def test_the_one_line_install_reinstalls_its_uv_tool_with_the_extra(tmp_path, monkeypatch):
+    _no_checkout(monkeypatch, tmp_path)
+    monkeypatch.setattr(sys, "prefix", "/Users/x/.local/share/uv/tools/trinity-local")
     cmd = embedder_install_command()
-    assert "trinity-local[mlx]" not in cmd, (
-        f"the 404 pre-PyPI form must not be handed to a script-installed user: {cmd!r}"
-    )
-    assert str(tmp_path / "venv" / "bin" / "pip") in cmd, cmd
-    assert f"{tmp_path / 'code'}[mlx]" in cmd, cmd
+    tag = f"v{_resolve_app_version()}"
+    assert cmd == (f"uv tool install --force --python '>=3.10' 'trinity-local[mlx] @ "
+                   f"https://github.com/{state_paths.PUBLIC_REPO}/archive/refs/tags/{tag}.tar.gz'"), cmd
 
 
-def test_script_install_without_venv_falls_back_to_bare_pip(tmp_path, monkeypatch):
-    """Source present but no venv → still resolve from the local source (bare
-    pip), never the 404 PyPI form."""
-    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-    (tmp_path / "code").mkdir()
+def test_a_source_checkout_installs_itself_editable(tmp_path, monkeypatch):
+    (tmp_path / "src" / "trinity_local").mkdir(parents=True)
+    (tmp_path / "pyproject.toml").write_text("")
+    monkeypatch.setattr("trinity_local.config.project_root", lambda: tmp_path)
+    monkeypatch.setattr(sys, "prefix", str(tmp_path / ".venv"))
+    assert embedder_install_command() == "pip install -e '.[mlx]'"
 
+
+def test_anything_else_pips_the_release_into_the_running_interpreter(tmp_path, monkeypatch):
+    _no_checkout(monkeypatch, tmp_path)
+    monkeypatch.setattr(sys, "prefix", "/opt/somewhere")
     cmd = embedder_install_command()
-    assert cmd == f"pip install '{tmp_path / 'code'}[mlx]'", cmd
-    assert "trinity-local[mlx]" not in cmd
+    assert cmd.startswith("pip install 'trinity-local[mlx] @ https://github.com/")
+    assert PYPI_404 not in cmd
 
 
-def test_pip_install_future_uses_published_extra(tmp_path, monkeypatch):
-    """No local source dir (a future pip/uvx install) → the published-extra form
-    is correct: it resolves once the package is on PyPI."""
-    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))  # no code/ dir
-    assert embedder_install_command() == "pip install 'trinity-local[mlx]'"
+def test_the_fix_installs_then_downloads(tmp_path, monkeypatch):
+    _no_checkout(monkeypatch, tmp_path)
+    monkeypatch.setattr(sys, "prefix", "/Users/x/.local/share/uv/tools/trinity-local")
+    fix = embedder_fix_command()
+    assert fix.startswith(embedder_install_command())
+    assert fix.endswith("&& HF_HUB_OFFLINE=0 trinity-local download-embedder")
+    assert PYPI_404 not in fix
+
+
+def test_no_shape_shows_a_filesystem_path(tmp_path, monkeypatch):
+    for prefix in ("/Users/x/.local/share/uv/tools/trinity-local", "/opt/somewhere"):
+        _no_checkout(monkeypatch, tmp_path)
+        monkeypatch.setattr(sys, "prefix", prefix)
+        assert "/Users/" not in embedder_install_command() and str(tmp_path) not in embedder_install_command()

@@ -203,6 +203,7 @@ def parse_claude_code_session(path: Path) -> SessionRecord | None:
     effort = None
     git_branch = None
     permission_mode = None
+    entrypoint = None
     messages: list[SessionMessage] = []
 
     with fh:
@@ -226,6 +227,7 @@ def parse_claude_code_session(path: Path) -> SessionRecord | None:
             cli_version = cli_version or entry.get("version")
             git_branch = git_branch or entry.get("gitBranch")
             permission_mode = permission_mode or entry.get("permissionMode")
+            entrypoint = entrypoint or entry.get("entrypoint")
             entry_type = entry.get("type")
             is_sidechain = bool(entry.get("isSidechain"))
             if entry_type == "user":
@@ -343,8 +345,11 @@ def parse_claude_code_session(path: Path) -> SessionRecord | None:
         metadata={
             "git_branch": git_branch,
             "permission_mode": permission_mode,
+            "entrypoint": entrypoint,
         },
         messages=messages,
+        # sdk-cli is `claude -p`, sdk-py/sdk-ts the Agent SDK; cli is a person in the TUI
+        origin=(None if not entrypoint else "headless" if str(entrypoint).startswith("sdk") else "interactive"),
     )
 
 
@@ -443,6 +448,7 @@ def parse_codex_session(path: Path) -> SessionRecord | None:
     messages: list[SessionMessage] = []
     imported_marker_seen = False
     agent_authored = False
+    originator = None
 
     with fh:
         for line in fh:
@@ -481,6 +487,7 @@ def parse_codex_session(path: Path) -> SessionRecord | None:
                 cwd = payload.get("cwd") or cwd
                 cli_version = payload.get("cli_version") or cli_version
                 model_provider = payload.get("model_provider") or model_provider
+                originator = payload.get("originator") or originator
             elif entry_type == "turn_context":
                 # `turn_context` is running state: it announces the model AND
                 # the reasoning effort in force from here on. Counted over the
@@ -595,8 +602,10 @@ def parse_codex_session(path: Path) -> SessionRecord | None:
         cli_version=cli_version,
         source_format="codex_rollout_jsonl",
         source_format_version="1",
-        metadata={"model_provider": model_provider},
+        metadata={"model_provider": model_provider, "originator": originator},
         messages=messages,
+        # codex_exec is a headless run; subagent sessions never reach here (skipped above)
+        origin=(None if originator is None else "headless" if originator == "codex_exec" else "interactive"),
     )
 
 
@@ -1123,6 +1132,13 @@ def _is_user_facing_prompt(message: SessionMessage, *, apply_dispatch_ledger: bo
     # "start new end to end flow" driver above.
     if lowered.startswith("ux-designer loop"):
         return False
+    # A replay task's instruction (`eval-replay`, replay_tasks._instruction), run headless
+    # through the user's own CLIs: hq_126 sends ~190 of them in one run, each landing
+    # role=user. Requires the template's restore sentence so a human who types "make the
+    # failing tests pass" is kept.
+    if (lowered.startswith("# make the failing tests pass")
+            and "do not edit the test files: they are restored" in lowered[:400]):
+        return False
     # A code-review hook firing on every change: 1,748 nodes, the LARGEST cluster in
     # the last 90 days of "work". Requires the co-occurring machine preamble so a human
     # who genuinely types "review this change for security vulnerabilities" is kept —
@@ -1301,6 +1317,7 @@ def iter_prompt_turns(session: SessionRecord) -> Iterator[PromptTurn]:
             following_assistant_text=following,
             model=model,
             effort=effort,
+            origin=getattr(session, "origin", None),
         )
         turn_index += 1
 

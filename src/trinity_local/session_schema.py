@@ -36,6 +36,11 @@ class SessionRecord:
     source_format_version: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     messages: list[SessionMessage] = field(default_factory=list)
+    # How the session was started, from the transcript's own metadata: "interactive" (a person
+    # at the CLI), "headless" (`claude -p` / `codex exec`), or None when the transcript does not
+    # say. Stored at ingest because CLIs delete old transcripts, and the "only the founder" lens
+    # filter (me/authorship.py, amd_0310) still needs it after they are gone.
+    origin: str | None = None
 
 
 @dataclass
@@ -70,3 +75,8 @@ class PromptTurn:
     following_assistant_text: str = ""
     model: str | None = None
     effort: str | None = None
+    # How the session was started, from the transcript's own metadata: "interactive" (a person
+    # at the CLI), "headless" (`claude -p` / `codex exec`), or None when the transcript does not
+    # say. Stored at ingest because CLIs delete old transcripts, and the "only the founder" lens
+    # filter (me/authorship.py, amd_0310) still needs it after they are gone.
+    origin: str | None = None

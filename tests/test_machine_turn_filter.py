@@ -40,6 +40,9 @@ MACHINE = [
      "drive the real UI.", "/loop driver, 607 copies"),
     ("Review this change for security vulnerabilities.  Changed files (you may Read "
      "these and any other file in the repo):", "security-review hook, 1748 copies"),
+    ("# Make the failing tests pass\n\nThe command below fails in this repository. Change the "
+     "code so it passes.\nDo not edit the test files: they are restored to their original "
+     "contents before grading.", "eval-replay task instruction, headless"),
 ]
 
 HUMAN = [
@@ -53,6 +56,8 @@ HUMAN = [
      "genuine short question"),
     ("A technical decision I made last week turned out wrong, can we revisit",
      "human sentence that merely STARTS similarly to the resolver prompt"),
+    ("# make the failing tests pass in the auth module, then tell me what broke",
+     "a HUMAN using the replay heading, without its restore sentence"),
 ]
 
 
@@ -120,3 +125,14 @@ class TestLedgerEvidenceAppliesIt:
         assert any("we shipped the auth fix" in t for t in texts), (
             "the genuine follow-up turn must survive the filter"
         )
+
+
+def test_the_real_replay_instruction_is_dropped():
+    """Coupled to the producer, not to a copy of its words: if replay_tasks._instruction
+    is reworded, this goes red instead of the filter silently letting ~190 prompts a run
+    into the corpus."""
+    from trinity_local.replay_tasks import ReplayTask, _instruction
+    t = ReplayTask(name="replay-x", fix="a" * 40, parent="b" * 40, date="2026-10-05",
+                   test_files=["tests/test_x.py"], failing=["tests/test_x.py::test_y"],
+                   failure_tail="E   assert 1 == 2", remotes=[], command="python -m pytest -q tests/test_x.py")
+    assert not is_user_facing_text(_instruction(t))

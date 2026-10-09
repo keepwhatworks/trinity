@@ -66,7 +66,8 @@ def download_model(*, force: bool = False) -> str:
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError:
-        return "sentence-transformers not installed. Run `pip install -e '.[mlx]'` from your Trinity repo"
+        from ..state_paths import embedder_install_command
+        return f"sentence-transformers not installed. Run: {embedder_install_command()}"
 
     try:
         # SentenceTransformer handles caching/downloading automatically

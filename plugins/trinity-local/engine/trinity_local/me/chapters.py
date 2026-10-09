@@ -107,6 +107,7 @@ def corpus_month_span() -> int:
     except Exception:
         return 0
     months = set()
+    # store health (is the time field intact?), so the whole store, not the lens gate
     for node in iter_prompt_nodes_no_embedding(limit=None):
         t = prompt_time(node)[:7]
         if len(t) == 7 and t >= "2000-00":
@@ -123,6 +124,7 @@ def detect_chapters(
     """Detect topic-surge chapters across the corpus timeline. Deterministic."""
     from ..me.basins import load_basins
     from ..memory.store import iter_prompt_nodes_no_embedding
+    from .authorship import lens_only
 
     basins = load_basins()
     if not basins:
@@ -137,7 +139,7 @@ def detect_chapters(
     month_basin: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
     month_total: collections.Counter = collections.Counter()
     overall: collections.Counter = collections.Counter()
-    for node in iter_prompt_nodes_no_embedding(limit=None):
+    for node in lens_only(iter_prompt_nodes_no_embedding(limit=None)):
         m = prompt_time(node)[:7]
         if len(m) != 7 or m < "2000-00":
             continue

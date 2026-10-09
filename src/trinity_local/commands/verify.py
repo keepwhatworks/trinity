@@ -16,7 +16,7 @@ from ..verify import DEFAULT_PANEL, verify
 
 
 def register(subparsers):
-    p = subparsers.add_parser("verify", help="Pre-deploy gate: run the tests, three blinded reads, one of STOP / SKIP / READ")
+    p = subparsers.add_parser("verify", help="Before you call a change done: runs your tests, then the other labs read the diff blind. STOP (a test is red) or READ (a person still reads)")
     p.add_argument("--diff", required=True, help="unified diff of the change")
     p.add_argument("--criteria", required=True,
                    help="JSON file: a list of {id, kind: test|judgment, statement, command?, blocking}")
@@ -83,8 +83,37 @@ def render_card(out: dict) -> str:
         state = "red" if kernel.get("green") is False else "green"
         rel = "" if kernel.get("relevant") else "  (does NOT exercise the changed files)"
         lines.append(f"  tests: {state}{rel}")
+        # Evidence first (arXiv 2610.00972): what was run and what came back, before opinions.
+        for run in kernel.get("runs") or []:
+            mark = "ok " if run.get("green") else "RED"
+            cmd = (run.get("command") or "")
+            cmd = cmd if len(cmd) <= 90 else cmd[:87] + "..."
+            lines.append(f"    {mark} [{run.get('id')}] {cmd}  ({run.get('seconds', '?')}s)")
     else:
         lines.append("  tests: none ran")
+    untested = out.get("untested") or {}
+    if untested.get("ran"):
+        miss = untested.get("untested") or []
+        lines.append(f"  untested: {len(miss)} of {untested.get('assessed', 0)} changed hunks "
+                     "can be reverted with every test still green")
+        for h in miss:
+            lines.append(f"    - {h['path']} {h['hunk']}")
+    elif untested:
+        lines.append(f"  untested: not checked ({untested.get('reason', '')})")
+    dups = (out.get("duplicates") or {}).get("duplicated") or []
+    if dups:
+        lines.append(f"  duplicated: {len(dups)} value(s) this change now keeps in more than one place:")
+        for d in dups[:5]:
+            lines.append(f"    - {d['value'][:60]!r} in {d['added_in']} and {', '.join(d['also_in'][:3])}")
+    # Unverified: criteria no test runs. They were only read, so a person reads them.
+    crit = {c.get("id"): c for c in (out.get("criteria") or [])}
+    unverified = out.get("unverified")
+    if unverified is None:
+        unverified = [cid for cid, c in crit.items() if c.get("kind") == "judgment"]
+    if unverified:
+        lines.append(f"  unverified: {len(unverified)} criteria no test runs (read these):")
+        for cid in unverified:
+            lines.append(f"    - [{cid}] {(crit.get(cid) or {}).get('statement', '')}")
 
     panel = out.get("panel") or {}
     reads = panel.get("reads") or []
@@ -119,8 +148,16 @@ def render_card(out: dict) -> str:
         for r in doubters:
             why = (r.get("why") or "").strip()
             lab = r.get("lab") or r.get("provider")
+            backing = next((d["status"] for d in (out.get("doubts") or [])
+                            if d.get("provider") == r.get("provider") and d.get("criterion") == cid), None)
+            label = {"backed": "  [BACKED: its test passes before this change and fails after]",
+                     "backed_unquoted": "  [its test passes before and fails after, but cites no pre-change line]",
+                     "spec_disagreement": "  [its test fails before the change too: a preference, not a regression]",
+                     "not_backed": "  [its test passes: not backed]",
+                     "invalid": "  [its test does not load]", "unchecked": "  [its test hung]",
+                     "no_test": "  [no test given]"}.get(backing, f"  [{backing}]" if backing else "")
             if why:
-                lines.append(f"    - {lab}: {why}")
+                lines.append(f"    - {lab}: {why}{label}")
             else:
                 tail = (r.get("raw_tail") or "").strip()
                 lines.append(f"    - {lab}: (no reason given)"

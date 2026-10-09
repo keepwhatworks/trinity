@@ -16,7 +16,7 @@ REPO="keepwhatworks/trinity"
 
 if ! command -v uv >/dev/null 2>&1; then
   echo "-> installing uv (Python tool manager from astral.sh)"
-  curl -LsSf https://astral.sh/uv/install.sh | sh
+  curl -LsSf https://astral.sh/uv/install.sh | env UV_PRINT_QUIET=1 sh   # its own PATH notes would read as a to-do; we set PATH below
   PATH="$HOME/.local/bin:$PATH"; export PATH
 fi
 

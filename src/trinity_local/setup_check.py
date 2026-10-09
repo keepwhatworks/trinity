@@ -229,9 +229,7 @@ def run_check() -> dict[str, Any]:
         "transcripts_total": sum(s.transcripts for s in members),
         "next": {
             "asks": list(NEXT_ASKS),
-            "why_tests_only": ("Your tests are the proof. The other labs' read is a second opinion: "
-                               "on 103 agent-written commits its flags did not pick out the ones "
-                               "later fixed (hq_122)."),
+            "why_tests_only": "Your tests are the proof; the other labs' read is a second opinion, not approval.",
         },
         "writes_nothing": True,
     }

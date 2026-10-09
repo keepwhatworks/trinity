@@ -64,6 +64,7 @@ CORE_COMMAND_MODULES = (
     # The natural way to populate the routing table is to use Trinity
     # normally; council outcomes accumulate on disk and aggregate
     # automatically via compute_personal_routing_table().
+    "eval_replay",
     "review",
     # `seed` CLI verb retired 2026-05-27 — see retired_names.py.
     # The bulk-ingest engine lives in src/trinity_local/ingest_helpers.py

@@ -59,12 +59,13 @@ personalization *capability*. None turns *your own* trace into *your own* answer
 A taste eval is only as good as its judge. We never ask you to *trust* that the judge
 is aligned. We measure its alignment three independent ways:
 
-1. **Against your own corrections (per-user).** Every time you rewrote a model's
-   answer, that's a human-labelled preference: you privileged your version over the
-   model's. `eval-judge-check` replays those as position-balanced A/B pairs and measures
-   how often each candidate judge picks *the side you actually chose*. The most-aligned
-   judge is selected by that number, not by reputation. This is the strongest signal
-   because it's *your* taste. But it's private and small-n, so we also do (2) and (3).
+1. **Against corrections extracted from your turns (per-user).** When you rewrote a
+   model's answer, an extractor records which version you kept. `eval-judge-check`
+   replays those as position-balanced A/B pairs and measures how often each candidate
+   judge picks the side you kept. Those records are machine-extracted, not labelled by
+   you, and two extractors agree on them only about a quarter of the way beyond chance.
+   So this agreement is a meter: it neither selects the judge (`eval-run` uses a fixed
+   default) nor validates one, and every ranking says so. That is why we do (2) and (3).
 
 2. **Against public human-preference datasets (the mechanism).** The same harness runs
    on datasets where the ground truth is published human preference, so anyone can
@@ -115,8 +116,8 @@ Each row below names the documented bias a reviewer would cite, and our control 
 |---|---|---|
 | **Position bias** ([survey](https://arxiv.org/pdf/2412.05579)) | judge favours answer A or B by *slot*, not quality | A/B **position-balancing**. A constant-answer judge scores exactly 50% (`test_position_biased_judge_lands_near_half`) |
 | **Verbosity / length bias** ([*Justice or Prejudice?*](https://arxiv.org/pdf/2410.02736), measured ~+17%) | judge equates longer with better | `eval-audit` flags the *data* skew **and** `eval-judge-check` reports a **length-controlled split** (agreement when your pick was shorter vs longer). A length prior is disclosed, not hidden |
-| **Self-preference bias** ([2410.21819](https://arxiv.org/html/2410.21819v2)) | judge rates its own family higher | one **fixed, validated** judge chosen by *measured* alignment (not rotation). Agreement split by the rejected answer's producer where known |
-| **Small-n / noise** ([noisy implicit feedback](https://arxiv.org/html/2507.23158v2)) | a ranking off few pairs is sampling noise | judge "chosen" only at **≥15 pairs, beats random, ≥10-pt lead** (`select_aligned_judge`), else *statistically tied* → heuristic. Aggregate ships with a 95% CI |
+| **Self-preference bias** ([2410.21819](https://arxiv.org/html/2410.21819v2)) | judge rates its own family higher | one **fixed** judge (not rotation), never the model being scored. Its agreement with your extracted corrections is shown, split by the rejected answer's producer where known, but does not choose it |
+| **Small-n / noise** ([noisy implicit feedback](https://arxiv.org/html/2507.23158v2)) | a ranking off few pairs is sampling noise | on a public preference set a judge is "chosen" only at **≥15 pairs, beats random, ≥10-pt lead** (`select_aligned_judge`), else *statistically tied*. Aggregate ships with a 95% CI |
 | **Axis imbalance** | one rejection axis dominates the aggregate | always report the **per-axis** breakdown. Scanner warns past threshold |
 | **Degenerate gold** (#247) | prompt already contains the answer → every model "passes" | built-in drop guard. Scanner re-asserts it's zero |
 

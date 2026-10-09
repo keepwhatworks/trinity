@@ -595,9 +595,10 @@ def distill_vocabulary(
     mtime, so dream/vocabulary/basins all share the parse cost.
     """
     from .memory.store import iter_prompt_nodes
+    from .me.authorship import lens_only
     from .state_paths import vocabulary_path
 
-    nodes = list(iter_prompt_nodes(limit=None))
+    nodes = list(lens_only(iter_prompt_nodes(limit=None)))
     nodes_with_emb = [n for n in nodes if getattr(n, "embedding", None)]
     if not nodes_with_emb:
         return {

@@ -81,6 +81,7 @@ class ExposureRecord:
 def provider_exposures() -> dict[str, int]:
     """Exposures per canonical provider family: user turns whose preceding
     assistant answer is substantive and provider-attributed."""
+    from .authorship import is_lens_node_id
     path = trinity_home() / "prompts" / "prompt_nodes.jsonl"
     out: dict[str, int] = {}
     if not path.exists():
@@ -92,6 +93,8 @@ def provider_exposures() -> dict[str, int]:
             continue
         if not isinstance(d, dict):
             continue
+        if not is_lens_node_id(d.get("id") or ""):
+            continue          # a turn that is not the user is not an exposure of the user's judgement
         pre = (d.get("preceding_assistant_text") or "").strip()
         prov = _canon(d.get("provider"))
         if prov and len(pre) >= MIN_ANSWER_CHARS:
@@ -121,6 +124,7 @@ def provider_rejection_rates() -> list[dict[str, Any]]:
     sorted by rate ascending (best batting average first). Empty when the
     index or ledger is missing — never raises (analytics never crash)."""
     try:
+        from .authorship import is_lens_node_id
         exposures = provider_exposures()
         if not exposures:
             return []
@@ -136,6 +140,8 @@ def provider_rejection_rates() -> list[dict[str, Any]]:
                 if not isinstance(a, dict):
                     continue
                 if (a.get("trigger") or "").lower() != "model_miss":
+                    continue
+                if not is_lens_node_id(a.get("prompt_id") or ""):
                     continue
                 prov = nodes.get(a.get("prompt_id") or "")
                 if prov:

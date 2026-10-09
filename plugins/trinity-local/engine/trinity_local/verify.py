@@ -77,6 +77,8 @@ class Read:
     why: str = ""          # the reviewer's own words: why it voted FAIL
     raw_tail: str = ""
     stderr_tail: str = ""          # an empty stdout is only diagnosable from here
+    tests: dict | None = None      # criterion id -> the test backing a FAIL (doubts.py), when asked
+    evidence: dict | None = None   # criterion id -> the reader's verbatim pre-change quote
 
 
 # --------------------------------------------------------------------------- kernel
@@ -314,7 +316,8 @@ def _resolve_lab(value: str | None) -> str | None:
 
 def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
                providers: tuple[str, ...] = DEFAULT_PANEL, exclude_lab: str | None = None,
-               config=None, effort: str | None = None) -> tuple[Panel, list[Read]]:
+               config=None, effort: str | None = None,
+               ask_tests: bool = False) -> tuple[Panel, list[Read]]:
     judgments = [c for c in criteria if c.kind == "judgment"]
     if not judgments:
         return Panel.not_run(), []
@@ -322,7 +325,11 @@ def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
         from .config import load_config
         config = load_config()
     ids = [c.id for c in judgments]
-    prompt = _PROMPT.format(
+    template = _PROMPT
+    if ask_tests:
+        from .doubts import PROMPT_ADDENDUM
+        template = _PROMPT.replace("Reply with ONE line of JSON", PROMPT_ADDENDUM + "\nReply with ONE line of JSON")
+    prompt = template.format(
         context=context.strip() or "(none given)",
         diff=diff.strip()[:60000],
         criteria="\n".join(f"- {c.id}: {c.statement}" for c in judgments),
@@ -354,9 +361,14 @@ def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
                                   raw_tail=text[-300:], stderr_tail=err))
                 continue
             passed = all(parsed[c.id] for c in judgments if c.blocking)
+            tests = evidence = None
+            if ask_tests:
+                from .doubts import parse_tests
+                tests = parse_tests(text, ids)
+                evidence = parse_tests(text, ids, key="evidence")
             reads.append(Read(name, lab, getattr(pconf, "model", None), parsed, passed,
                               round(time.time() - t0, 1), tokens, cost, getattr(pconf, "effort", None),
-                              why=why, raw_tail=text[-300:]))
+                              why=why, raw_tail=text[-300:], tests=tests, evidence=evidence))
             votes[name] = passed
         except Exception as exc:   # a member that errors is a missing vote, never a vote
             reads.append(Read(name, lab, None, {}, False, round(time.time() - t0, 1),
@@ -395,10 +407,31 @@ def verify(criteria_dicts: list[dict], diff: str, context: str, cwd: Path,
     criteria = [Criterion.from_dict(d) for d in criteria_dicts]
     _reject_duplicate_ids(criteria)
     cwd = Path(cwd)
-    panel, reads = (read_panel(criteria, diff, context, cwd, providers, exclude_lab, config, effort)
+    from . import doubts as _doubts
+    backed_on = _doubts.enabled()
+    panel, reads = (read_panel(criteria, diff, context, cwd, providers, exclude_lab, config, effort,
+                               ask_tests=backed_on)
                     if run_panel else (Panel.not_run(), []))
     kernel, runs = run_kernel(criteria, cwd, env=env) if run_tests else (Kernel.not_run(), [])
     t: Triage = triage(kernel, panel)
+    # Report-only: which hunks no declared test notices. Never changes the triage.
+    untested = None
+    if run_tests and kernel.ran and kernel.green:
+        from . import untested as _untested
+        if _untested.enabled():
+            untested = _untested.untested_hunks(
+                diff, [c.command for c in criteria if c.kind == "test" and c.command], cwd, env=env)
+    # Report-only: values this change now keeps in two places (duplicates.py; hq_125 KILL).
+    dup_rows = None
+    from . import duplicates as _dup
+    if _dup.enabled():
+        dup_rows = _dup.duplicated_values(diff, cwd)
+    # Report-only: run each doubt's test in a sandboxed scratch copy (doubts.py).
+    doubt_rows = None
+    if backed_on and reads:
+        commands = [c.command for c in criteria if c.kind == "test" and c.command]
+        doubt_rows = _doubts.run_doubt_tests([asdict(r) for r in reads], cwd,
+                                             _doubts.python_for(commands), env=env, diff=diff)
     return {
         "triage": t.outcome, "reason": t.reason, "false_green": t.false_green,
         "kernel": {"ran": kernel.ran, "relevant": kernel.relevant, "green": kernel.green,
@@ -407,4 +440,9 @@ def verify(criteria_dicts: list[dict], diff: str, context: str, cwd: Path,
                   "consensus_pass": panel.consensus_pass(), "split": panel.split(),
                   "reads": [asdict(r) for r in reads]},
         "criteria": [asdict(c) for c in criteria],
+        # Criteria no test runs: they were only read, so a person must read them.
+        "unverified": [c.id for c in criteria if c.kind == "judgment"],
+        "untested": untested,
+        "doubts": doubt_rows,
+        "duplicates": dup_rows,
     }

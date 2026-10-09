@@ -169,10 +169,11 @@ def _corpus_batch_keys(floor: int = _BATCH_REPEAT_FLOOR) -> set[str]:
     dedup-keys: per key, the set of LABS it appears under and its total count,
     over user-facing turns only, fed to `classify_batch_keys`."""
     from ..memory.store import iter_prompt_nodes_no_embedding
+    from .authorship import lens_only
 
     key_labs: dict[str, set[str]] = {}
     key_counts: collections.Counter[str] = collections.Counter()
-    for node in iter_prompt_nodes_no_embedding(limit=None):
+    for node in lens_only(iter_prompt_nodes_no_embedding(limit=None)):
         text = (getattr(node, "text", "") or "").strip()
         if not text or not is_user_facing_text(text):
             continue
@@ -262,7 +263,8 @@ def _iter_turn_pairs_raw():
     # Uncapped: Stage 0 turn-pair extraction needs the full corpus, not
     # just the 5000 most-recent (which contain almost no
     # preceding_assistant_text since recent ingest skips that path).
-    nodes = list(iter_prompt_nodes(limit=None))
+    from .authorship import lens_only
+    nodes = list(lens_only(iter_prompt_nodes(limit=None)))
     for i, node in enumerate(nodes):
         user = (node.text or "").strip()
         if not user:

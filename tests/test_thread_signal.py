@@ -52,9 +52,18 @@ class TestScoreThread:
         real = _deep_thread(turns=8)
         assert score_thread(agent) < score_thread(real)
 
-    def test_corrections_raise_score(self):
-        base = _deep_thread(turns=6)
-        assert score_thread(base, corrections=12) >= score_thread(base, corrections=0)
+    def test_machine_extracted_corrections_do_not_move_the_score(self):
+        """res_169/res_170: no two labellers agree on which turns are corrections
+        (kappa <= 0.26), so model_miss acts must not decide what the lens learns from.
+        MUTATION: restore the corrections term or its ledger lookup and this reds."""
+        import inspect
+
+        from trinity_local.me import thread_signal
+
+        assert list(inspect.signature(score_thread).parameters) == ["user_texts"]
+        assert not inspect.signature(thread_signal.compute_thread_signals).parameters
+        src = inspect.getsource(thread_signal)
+        assert "load_preference_acts" not in src and "MODEL_MISS" not in src
 
     def test_outcome_markers_raise_score(self):
         plain = ["here is a long substantive question " * 40 for _ in range(5)]

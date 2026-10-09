@@ -69,6 +69,49 @@ def lab_of(slug: str) -> str:
     return _LAB.get((slug or "").lower(), (slug or "").lower())
 
 
+# The harness is its own dimension (the same weights moved 13 points between harnesses
+# vs 2.5-5 between models: HF multi-harness RL guide, 2026-09). It is written into a
+# cell only when a model runs OUTSIDE its own lab's CLI (Claude in agy), so every cell
+# recorded so far keeps its exact label.
+_FAMILY_LAB = {"claude": "anthropic", "openai": "openai", "google": "google"}
+_HARNESS_NAME = {"claude": "claude-code", "codex": "codex", "antigravity": "agy"}
+
+
+def history_by_tool(patterns: list) -> list[dict]:
+    """Descriptive, never ranked: for each (model, tool) the number of council positions
+    it took in cross-provider disagreements and the date range. It answers 'which model
+    have I run in which tool' from the user's own history; win rates stay in the gated
+    tally (council_67f8f7d672701f61)."""
+    rows: dict[tuple[str, str], dict] = {}
+    for p in patterns:
+        if not getattr(p, "is_cross_provider", True):
+            continue
+        sides = list(zip(p.models_for, p.harnesses_for)) + list(zip(p.models_against, p.harnesses_against))
+        for model, tool in sides:
+            r = rows.setdefault((model, tool), {"model": model, "tool": tool, "positions": 0,
+                                                "first": p.at[:10], "last": p.at[:10]})
+            r["positions"] += 1
+            r["first"] = min(r["first"], p.at[:10])
+            r["last"] = max(r["last"], p.at[:10])
+    return sorted(rows.values(), key=lambda r: (r["tool"], r["model"]))
+
+
+def harness_of(provider: str) -> str:
+    """The tool a member ran in, from its dispatch slug (claude -> claude-code)."""
+    p = (provider or "").lower()
+    return _HARNESS_NAME.get(p, {"gemini": "agy", "chatgpt": "codex", "anthropic": "claude-code",
+                                 "openai": "codex", "google": "agy"}.get(p, p or "?"))
+
+
+def with_harness(label: str, family: str, provider: str) -> str:
+    native = _FAMILY_LAB.get(family)
+    if not native or not provider or native == lab_of(provider):
+        return label
+    parts = label.split(" · ")
+    parts[0] = f"{parts[0]} via {_HARNESS_NAME.get(provider.lower(), provider.lower())}"
+    return " · ".join(parts)
+
+
 def _parse_ts(s: str) -> datetime | None:
     try:
         return datetime.fromisoformat((s or "").replace("Z", "+00:00"))
@@ -97,6 +140,11 @@ class DisagreementPattern:
     framing: str = ""
     models_for: list[str] = field(default_factory=list)
     models_against: list[str] = field(default_factory=list)
+    # The harness each side ran in (claude-code / codex / agy), stored apart from the
+    # model identity (council_67f8f7d672701f61): the same weights can score very
+    # differently in different tools.
+    harnesses_for: list[str] = field(default_factory=list)
+    harnesses_against: list[str] = field(default_factory=list)
     # HOW THE MODEL STRING WAS OBTAINED, per provider: echoed | pinned | assumed.
     # The tally keys on model×version, so a row whose model was never verified
     # is not worth the same as one the CLI stated — and until 2026-08-17 every
@@ -172,17 +220,22 @@ def load_disagreements(home: str | None = None) -> list[DisagreementPattern]:
         # to the actual model that argued it. Include the EFFORT leg when it was
         # captured (model×size×effort — the atomic unit); drop it to model×size when
         # the council didn't stamp effort, rather than littering the tally with "?".
-        def _ident_label(mstr):
+        def _ident_label(mstr, provider):
             mi = parse_identity(mstr, None)
             dims = (("family", "tier", "version", "effort")
                     if mi.effort not in ("?", "", None)
                     else ("family", "tier", "version"))
-            return mi.label(*dims)
+            return with_harness(mi.label(*dims), mi.family, provider)
 
-        lab_model = {lab_of(prov): _ident_label(m) for prov, m in member_models.items() if m}
+        lab_model = {lab_of(prov): _ident_label(m, prov) for prov, m in member_models.items() if m}
 
         def _models(slugs):
             return [lab_model.get(lab_of(p), lab_of(p)) for p in (slugs or [])]
+
+        lab_harness = {lab_of(prov): harness_of(prov) for prov in member_models}
+
+        def _harnesses(slugs):
+            return [lab_harness.get(lab_of(p), harness_of(p)) for p in (slugs or [])]
 
         for idx, c in enumerate(rl.get("disagreed_claims") or []):
             if not (isinstance(c, dict) and c.get("claim") and c.get("providers_for")):
@@ -202,6 +255,8 @@ def load_disagreements(home: str | None = None) -> list[DisagreementPattern]:
                 model_sources=model_sources,
                 models_for=_models(c.get("providers_for")),
                 models_against=_models(c.get("providers_against")),
+                harnesses_for=_harnesses(c.get("providers_for")),
+                harnesses_against=_harnesses(c.get("providers_against")),
             ))
     return out
 
@@ -331,16 +386,68 @@ def _model_version_and_effort(label: str) -> tuple[str, str | None]:
 #
 # So the rescue may not be stated to users as fact. The string below says only
 # what is measured. The confidence intervals exclude label noise either way.
+#
+# RE-MEASURED 2026-10-09 (hq_138, registered, zero calls): the shipped label
+# against 468 same-config production re-reads of 104 decided claims agrees at
+# Cohen's kappa 0.47 (council-cluster 95% interval 0.31-0.62; bar 0.6), flips
+# direction on 26.5% of decided pairs, and re-decides on 63% of re-reads. FAIL:
+# the per-model rates are directional, not PROVEN, wherever they are quoted.
 BEHAVIOURAL_TIER_CAVEAT = (
     "PROXY (behavioural) — inferred by a model reading your later transcripts, "
-    "not extracted from an observed choice. Measured 2026-08-06: this resolver "
-    "reproduces its own decided verdicts 45% of the time and flips direction on "
-    "~31% of decided pairs, so treat per-model rates as directional. Whether "
-    "that noise biases the rates in a particular direction is UNMEASURED — it "
-    "would need to be equally likely across models, and the per-model flip rate "
-    "ranges 0% to 27% on the claims read twice. The intervals shown do NOT "
-    "include label noise."
+    "not extracted from an observed choice. Measured 2026-10-09: re-reading the "
+    "same claims, this resolver agrees with its own verdicts at kappa 0.47 (the "
+    "bar for a reliable label is 0.6), flips direction on 26% of them and "
+    "decides only 63% of the time, so per-model rates are directional, not "
+    "proven. Whether that noise favours one model is UNMEASURED — the per-model "
+    "flip rate ranges 0% to 27% on the claims read twice. The intervals shown do "
+    "NOT include label noise."
 )
+
+# THE LABEL GATE (council_11c91b73c746c1c4, after hq_138). K3 and K4 are label-free:
+# neither can see that the label under the tally is unreliable, and hq_138 measured it
+# at test-retest kappa 0.47 against a 0.6 floor (res_171). So the label's measured
+# reliability is a third gate on the green, applied at build time AND on every read
+# (a summary.json built before this gate still says trustworthy). Below the floor the
+# per-model verdict is withheld from machine consumers (`agent_view`: the MCP tool and
+# `--json`), and people see the rows as directional (`tally_displayable`). These two
+# numbers belong to the production resolver; any resolver change re-measures them
+# under its own registration before they move.
+LABEL_TEST_RETEST_KAPPA = 0.47
+LABEL_RELIABILITY_FLOOR = 0.6
+_PER_MODEL_KEYS = ("records", "effort_breakdown", "framing_breakdown")
+
+
+def gate_summary(summary: dict) -> dict:
+    """The tally aggregate with the label gate applied. `tally_displayable` keeps the
+    label-free K3/K4 verdict (may a person see directional rows); `tally_trustworthy`
+    additionally requires a reliable label (may anything act on them). Idempotent; a
+    non-dict or empty summary passes through."""
+    if not isinstance(summary, dict) or not summary:
+        return summary
+    out = dict(summary)
+    displayable = bool(out.get("tally_displayable", out.get("tally_trustworthy")))
+    reliable = LABEL_TEST_RETEST_KAPPA >= LABEL_RELIABILITY_FLOOR
+    out.update({"tally_displayable": displayable,
+                "label_test_retest_kappa": LABEL_TEST_RETEST_KAPPA,
+                "label_reliability_floor": LABEL_RELIABILITY_FLOOR,
+                "label_reliable": reliable,
+                "tally_trustworthy": displayable and reliable})
+    return out
+
+
+def agent_view(summary: dict) -> dict:
+    """What a machine consumer may read: the gated aggregate, with every per-model
+    field removed unless the tally is trustworthy. Fails closed."""
+    gated = gate_summary(summary)
+    if not isinstance(gated, dict) or not gated or gated.get("tally_trustworthy"):
+        return gated
+    out = {k: v for k, v in gated.items() if k not in _PER_MODEL_KEYS}
+    out["per_model"] = (
+        "withheld: the label under the per-model tally reproduces at test-retest kappa "
+        f"{LABEL_TEST_RETEST_KAPPA} (floor {LABEL_RELIABILITY_FLOOR}), so no per-model rate "
+        "may steer a decision" if gated.get("tally_displayable") else
+        "withheld: the tally has not cleared its K3/K4 gates")
+    return out
 
 
 def aggregate_tally(
@@ -456,7 +563,7 @@ def aggregate_tally(
         if rows:
             effort_breakdown[mv] = rows
     in_band = k3 is not None and K3_LOW <= k3 <= K3_HIGH
-    return {
+    return gate_summary({
         "resolved": len(resolved),
         "records": records,
         "effort_breakdown": effort_breakdown,
@@ -465,8 +572,9 @@ def aggregate_tally(
         "k3_in_band": in_band,
         "k4_discriminates": k4_pass and len(resolved) >= K4_MIN_RESOLVED,
         # The tally is TRUSTWORTHY only when the resolver clears both label-free
-        # gates. Otherwise the retrieval + raw record still ship; the per-model
-        # verdict is withheld (green-gate: the disqualifier is IN the gate).
+        # gates AND the label gate (gate_summary, applied on return). Otherwise the
+        # retrieval + raw record still ship; the per-model verdict is withheld
+        # (green-gate: the disqualifier is IN the gate).
         "tally_trustworthy": bool(in_band and k4_pass and len(resolved) >= K4_MIN_RESOLVED),
         # Rides the aggregate so no consumer can render the tally without it.
         "caveat": BEHAVIOURAL_TIER_CAVEAT,
@@ -484,7 +592,7 @@ def aggregate_tally(
         # count against `resolved`, never against the other counts.
         "model_provenance": dict(sorted(prov.items())),
         "model_provenance_denominator": len(resolved),
-    }
+    })
 
 
 def retrieve_recurring(

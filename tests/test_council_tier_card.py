@@ -68,7 +68,8 @@ class TestCouncilTierStatus:
         assert status["nextStep"] is not None
         assert status["nextStep"]["provider"] == "codex"
         # Install command must be runnable verbatim — no placeholders.
-        assert "npm install" in status["nextStep"]["installCommand"]
+        from trinity_local.launchpad_data import _TIER_INSTALL_HELP
+        assert status["nextStep"]["installCommand"] == _TIER_INSTALL_HELP["codex"][1]
         # Headline name-checks the installed provider so the user sees
         # what they have, not just what they're missing.
         assert "Claude Code" in status["headline"]

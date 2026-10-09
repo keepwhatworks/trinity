@@ -170,6 +170,8 @@ def handle_install_mcp(args):
     # a user whose ~/.claude.json is malformed could miss that the PRIMARY
     # harness silently got nothing. Track skips so we can name them.
     skipped: list[tuple[str, str]] = []
+    absent: list[str] = []
+    registered: list[str] = []
     if args.scope == "user":
         # Claude Code, Antigravity, Cursor: JSON config with `mcpServers` key.
         # 100-persona audit P16/P92 fix: Cursor was silently absent — it
@@ -193,14 +195,20 @@ def handle_install_mcp(args):
             ("Cursor", Path.home() / ".cursor" / "mcp.json"),
         )
         for label, target in json_targets:
-            if _write_json_mcp_config(target, mcp_config["mcpServers"]["trinity-local"]):
+            if not _harness_present(label):
+                absent.append(label)
+            elif _write_json_mcp_config(target, mcp_config["mcpServers"]["trinity-local"]):
                 written.append(str(target))
+                registered.append(label)
             else:
                 skipped.append((label, str(target)))
         # Codex CLI: TOML config with `[mcp_servers.<name>]` section.
         codex_path = Path.home() / ".codex" / "config.toml"
-        if _write_codex_toml_mcp_config(codex_path, _command, _mcp_args):
+        if not _harness_present("Codex CLI"):
+            absent.append("Codex CLI")
+        elif _write_codex_toml_mcp_config(codex_path, _command, _mcp_args):
             written.append(str(codex_path))
+            registered.append("Codex CLI")
         else:
             skipped.append(("Codex CLI", str(codex_path)))
     else:
@@ -215,7 +223,8 @@ def handle_install_mcp(args):
             else:
                 skipped.append((label, str(target)))
 
-    skill_status = _install_trinity_skill()
+    # The /trinity skill lives in ~/.claude/skills whatever the scope: only where Claude Code is.
+    skill_status = _install_trinity_skill() if _harness_present("Claude Code") else None
     if skill_status:
         written.append(skill_status)
 
@@ -224,13 +233,16 @@ def handle_install_mcp(args):
         # Running harnesses cache their tool list at connect time, so the new
         # tools only appear after a restart.
         print(
-            "\nRestart Claude Code / Codex / agy / Cursor to load Trinity's tools. "
+            f"\nRestart {' / '.join(registered) or 'your agents'} to load Trinity's tools. "
             "On first start Trinity reads your transcripts from ~/.claude, ~/.codex "
             "and ~/.gemini; they stay on this machine. "
             "Check the setup any time: trinity-local install --check"
         )
     else:
         print("No MCP configuration files were updated.")
+    if absent:
+        print(f"\nNot found on this machine, so not registered: {', '.join(absent)}. "
+              "Install one later, then re-run `trinity-local install`.")
 
     # Surface skipped harnesses LOUDLY. The writer already printed the
     # per-file reason (corrupt JSON / unwritable) + the backup location; this
@@ -401,6 +413,24 @@ def handle_install_launcher(args) -> int:
         "launcher_paths": [str(p) for p in paths],
     }, indent=2))
     return 0
+
+
+# What marks a harness as present: a CLI on PATH, or its home folder or config already there.
+_HARNESS_SIGNS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "Claude Code": (("claude",), (".claude", ".claude.json")),
+    "Antigravity / Gemini CLI": (("agy", "gemini"), (".gemini",)),
+    "Cursor": (("cursor",), (".cursor",)),
+    "Codex CLI": (("codex",), (".codex",)),
+}
+
+
+def _harness_present(label: str) -> bool:
+    """Register Trinity only where a harness is. Writing every config unconditionally created
+    ~/.cursor and ~/.claude.json on machines with neither (sandboxed install, 2026-10-08), and the
+    installer promises "every CLI it finds"."""
+    from ..runtime_env import which_on_runtime_path
+    clis, paths = _HARNESS_SIGNS[label]
+    return any((Path.home() / p).exists() for p in paths) or any(which_on_runtime_path(c) for c in clis)
 
 
 def _install_trinity_skill() -> str | None:
@@ -1032,6 +1062,7 @@ def handle_uninstall(args) -> int:
     installed."""
     dry_run = not getattr(args, "yes", False)
     plan: list[str] = []
+    seen: set[Path] = set()
 
     # Always: configs + ext manifest + skill (the things install-* wrote).
     for target in (
@@ -1045,6 +1076,10 @@ def handle_uninstall(args) -> int:
         Path(".mcp.json"),
         Path(".cursor") / "mcp.json",
     ):
+        # Run from the home folder, the project-scope .cursor/mcp.json IS the user one: list it once.
+        if target.resolve() in seen:
+            continue
+        seen.add(target.resolve())
         _remove_trinity_from_json_mcp_config(target, plan, dry_run)
     _remove_trinity_from_codex_toml(Path.home() / ".codex" / "config.toml", plan, dry_run)
     _remove_native_messaging_manifest(plan, dry_run)
@@ -1058,6 +1093,7 @@ def handle_uninstall(args) -> int:
 
     if not plan:
         print("No Trinity install artifacts found. Nothing to remove.")
+        print(f"The trinity-local program itself stays installed; remove it with: {_program_uninstall_command()}")
         return 0
 
     header = "Would remove (dry-run; pass --yes to actually delete):" if dry_run else "Removed:"
@@ -1071,8 +1107,17 @@ def handle_uninstall(args) -> int:
         if not getattr(args, "include_data", False):
             print("Add --include-data to also remove ~/.trinity/ (your corpus + memories).")
         if not getattr(args, "include_hf_cache", False):
-            print("Add --include-hf-cache to also remove the nomic embed model.")
+            print("Add --include-hf-cache to also remove the embedding model.")
+    print(f"\nThe trinity-local program itself stays installed; remove it with: {_program_uninstall_command()}")
     return 0
+
+
+def _program_uninstall_command() -> str:
+    """How to remove the program, for the way it was installed (the one-line installer uses uv)."""
+    import sys
+    if f"{os.sep}uv{os.sep}tools{os.sep}" in sys.prefix:
+        return "uv tool uninstall trinity-local"
+    return f"{sys.executable} -m pip uninstall trinity-local"
 
 
 # ── install-reflex (council_de2451dca3203cf1) ──────────────────────────────

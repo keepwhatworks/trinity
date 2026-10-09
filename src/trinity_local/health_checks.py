@@ -23,31 +23,40 @@ filesystem + subprocess version probes. <1s on a working install.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .state_paths import embedder_install_command, state_dir
+from .state_paths import embedder_fix_command, state_dir
 
 
-# Provider-specific auth indicators. We don't probe a live API call (that
-# would require user input on auth prompts and add latency). We check for
-# the indicator files each CLI writes after the user authenticates once.
-_AUTH_INDICATORS = {
-    "claude": [
-        Path.home() / ".claude" / ".credentials.json",
-        Path.home() / ".claude" / "config.json",
-        Path.home() / ".claude.json",  # Claude Code's project config
-    ],
-    "codex": [
-        Path.home() / ".codex" / "auth.json",
-        Path.home() / ".codex" / "config.toml",
-    ],
-    "antigravity": [
-        Path.home() / ".gemini" / ".credentials" / "credentials.json",
-        Path.home() / ".gemini" / "settings.json",
-    ],
-}
+def _signed_in(provider: str) -> bool:
+    """Evidence the CLI has signed in at least once, read at call time.
+
+    Never a file Trinity's own install writes: ~/.claude.json (its mcpServers),
+    ~/.codex/config.toml and ~/.gemini/settings.json used to count, so right after
+    `trinity-local install` anyone who had the CLIs but had never logged in was told
+    "3 of 3 ready" and their first council failed. Claude Code keeps its macOS
+    credentials in the Keychain, so for it the evidence is the account record that
+    login writes into ~/.claude.json. No live API call (latency, auth prompts)."""
+    home = Path.home()
+    if provider == "claude":
+        if os.environ.get("ANTHROPIC_API_KEY") or (home / ".claude" / ".credentials.json").exists():
+            return True
+        try:
+            cfg = json.loads((home / ".claude.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        return isinstance(cfg, dict) and bool(cfg.get("oauthAccount") or cfg.get("primaryApiKey"))
+    if provider == "codex":
+        return bool(os.environ.get("OPENAI_API_KEY")) or (
+            Path(os.environ.get("CODEX_HOME") or home / ".codex") / "auth.json").exists()
+    if provider == "antigravity":
+        gemini = home / ".gemini"
+        return any((gemini / f).exists() for f in (
+            "antigravity-cli/antigravity-oauth-token", "oauth_creds.json", ".credentials/credentials.json"))
+    return False
 
 
 @dataclass
@@ -144,14 +153,12 @@ def _check_provider(provider: str, cli_name: str) -> CheckResult:
             fix=_install_command_for(provider),
         )
 
-    indicators = _AUTH_INDICATORS.get(provider, [])
-    auth_seen = any(p.exists() for p in indicators)
-    if not auth_seen:
+    if not _signed_in(provider):
         return CheckResult(
             name=f"provider:{provider}",
             ok=False,
-            detail=f"{cli_name} installed but no auth indicator file found",
-            fix=f"{cli_name} login   # or run any one-shot {cli_name} command interactively",
+            detail=f"{cli_name} installed but not signed in",
+            fix=_signin_command_for(provider),
         )
 
     return CheckResult(
@@ -162,18 +169,20 @@ def _check_provider(provider: str, cli_name: str) -> CheckResult:
 
 
 def _install_command_for(provider: str) -> str:
-    """Single-line install hints — same canonical strings as
-    launchpad_data._TIER_INSTALL_HELP + _provider_install_help() (the
-    user-facing setup-card surface). Iter #40 harmonized these after
-    iter #39 caught the launchpad's internal divergence; the
-    test_install_commands_match_across_surfaces guard pins all three
-    surfaces to the same per-provider command so a fix hint from
-    `status` matches what the launchpad teaches."""
+    """The install command for a provider's CLI: one map, launchpad_data._TIER_INSTALL_HELP,
+    shared by `status`, the install check and the launchpad cards."""
+    from .launchpad_data import _TIER_INSTALL_HELP
+    entry = _TIER_INSTALL_HELP.get(provider)
+    return entry[1] if entry else f"install the {provider} CLI"
+
+
+def _signin_command_for(provider: str) -> str:
+    """How to sign in once the CLI is installed."""
     return {
-        "claude": "npm install -g @anthropic-ai/claude-code",
-        "codex": "npm install -g @openai/codex && codex --login",
-        "antigravity": "curl -fsSL https://antigravity.google/cli/install.sh | bash",
-    }.get(provider, f"install the {provider} CLI")
+        "claude": "claude auth login",
+        "codex": "codex login",
+        "antigravity": "agy   # signs you in on its first run",
+    }.get(provider, f"sign in to the {provider} CLI")
 
 
 def _check_config() -> CheckResult:
@@ -761,7 +770,7 @@ def _check_embedding_backend() -> CheckResult:
             "installed) — the lens still builds, but on lexical (keyword) "
             "vectors rather than semantic ones, so tension quality is reduced." + dormant_note
         ),
-        fix=f"{embedder_install_command()} && HF_HUB_OFFLINE=0 trinity-local download-embedder",
+        fix=embedder_fix_command(),
     )
 
 
@@ -821,7 +830,7 @@ def council_reduced_mode_guidance(ready: list[str] | None = None) -> dict[str, A
 
     ``ready`` lets a caller that already probed pass its list through — one
     filesystem read, no TOCTOU between the caller's check and this one (a
-    concurrent `codex --login` completing between two probes made the old
+    concurrent `codex login` completing between two probes made the old
     two-probe shape able to disagree with itself).
     """
     if ready is None:
@@ -836,7 +845,7 @@ def council_reduced_mode_guidance(ready: list[str] | None = None) -> dict[str, A
                 "REDUCED mode (one voice + chairman, no cross-provider "
                 "disagreement). Trinity's asymmetric edge needs ≥2 providers."
             ),
-            "fix": "auth a second CLI (e.g. `codex --login` or run any one-shot `agy`/`claude` command)",
+            "fix": "sign in to a second CLI (e.g. `codex login` or `claude auth login`)",
         }
     return {
         "authed": [],
@@ -874,7 +883,7 @@ def _check_council_breadth() -> CheckResult:
             detail=f"{len(ready)} providers authed ({', '.join(ready)}) — full cross-provider council available",
         )
     # Pass `ready` through — ONE probe, so the guidance can never disagree with
-    # the branch above (the old second probe raced a concurrent `codex --login`
+    # the branch above (the old second probe raced a concurrent `codex login`
     # and an assert here could crash `status` — 2026-07-14 review catch).
     guidance = council_reduced_mode_guidance(ready=ready)
     if guidance is None:  # unreachable with ready<2 passed in; degrade, never crash

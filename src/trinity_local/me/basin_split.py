@@ -318,6 +318,7 @@ def _load_basin_matrix(basin: "Basin", *, out_info: dict | None = None):
 
     from ..embeddings import is_finite_embedding
     from ..memory.store import iter_prompt_nodes
+    from .authorship import lens_only
 
     wanted = set(basin.prompt_ids)
     if not wanted:
@@ -325,7 +326,7 @@ def _load_basin_matrix(basin: "Basin", *, out_info: dict | None = None):
 
     by_id: dict[str, list] = {}
     try:
-        for node in iter_prompt_nodes(limit=None):
+        for node in lens_only(iter_prompt_nodes(limit=None)):
             nid = getattr(node, "id", None)
             if nid not in wanted or nid in by_id:
                 continue

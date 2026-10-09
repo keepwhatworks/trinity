@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from ..ingest import is_user_facing_text
+from ..utils import now_dt
 from .replay_value import (
     diversify_mmr,
     infer_hardness,
@@ -140,7 +141,7 @@ def _recency_score(timestamp: str | None) -> float:
         return 0.0
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=timezone.utc)
-    days = (datetime.now(timezone.utc) - ts).total_seconds() / 86400.0
+    days = (now_dt() - ts).total_seconds() / 86400.0
     if days < 0:
         return 1.0
     return max(0.0, 0.5 ** (days / 30.0))

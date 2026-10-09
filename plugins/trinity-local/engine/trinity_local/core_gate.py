@@ -210,6 +210,7 @@ def heldout_texts(limit: int = 400) -> list[str]:
     well the core predicts the SCAFFOLD, which is the defect that silently
     inverted hq_042..044 before it was caught.
     """
+    from .me.authorship import lens_view
     p = trinity_home() / "prompts" / "prompt_nodes.jsonl"
     if not p.exists():
         return []
@@ -225,7 +226,7 @@ def heldout_texts(limit: int = 400) -> list[str]:
                     continue
                 if not isinstance(r, dict):
                     continue          # a bare list/str line is not a prompt node
-                t = (r.get("text") or "").strip()
+                t = (lens_view(r.get("id") or "", r.get("text") or "") or "").strip()   # the user's own words only
                 ts = r.get("created_at") or r.get("timestamp")
                 if not t or not ts or len(t) < 20 or t in seen:
                     continue

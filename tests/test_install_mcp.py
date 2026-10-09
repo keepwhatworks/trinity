@@ -9,6 +9,9 @@ import pytest
 
 @pytest.fixture
 def home(patch_trinity_home: Path) -> Path:
+    # A machine that has all four harnesses: install registers only where one is present.
+    for d in (".claude", ".gemini", ".cursor", ".codex"):
+        (patch_trinity_home / d).mkdir(exist_ok=True)
     return patch_trinity_home
 
 
@@ -478,3 +481,42 @@ def test_local_repo_skill_matches_packaged_skill():
         "skill drift: .claude/skills/trinity/SKILL.md and src/trinity_local/data/skills/trinity/SKILL.md "
         "must be byte-identical (sync the .claude/ copy from the package data after edits)"
     )
+
+
+def test_absent_harnesses_get_no_config_and_are_named(patch_trinity_home: Path, monkeypatch, capsys):
+    """Found in a sandboxed install (2026-10-08): on a machine with no harness at all, install
+    wrote ~/.claude.json, ~/.cursor/mcp.json, ~/.gemini/settings.json and ~/.codex/config.toml,
+    creating folders for tools the user does not have."""
+    monkeypatch.setattr("trinity_local.runtime_env.which_on_runtime_path", lambda _name: None)
+    (patch_trinity_home / ".codex").mkdir()   # only Codex is here
+    _run_install(monkeypatch, patch_trinity_home)
+    assert (patch_trinity_home / ".codex" / "config.toml").exists()
+    for absent in (".claude.json", ".cursor", ".gemini", ".claude"):
+        assert not (patch_trinity_home / absent).exists(), absent
+    out = capsys.readouterr().out
+    assert "Not found on this machine, so not registered: Claude Code, Antigravity / Gemini CLI, Cursor." in out
+    assert "Restart Codex CLI to load" in out
+
+
+def test_uninstall_lists_each_file_once_and_names_the_program_removal(patch_trinity_home: Path, monkeypatch, capsys):
+    """From the home folder, the project-scope .cursor/mcp.json is the user one: it was listed
+    twice. And uninstall never said the program itself stays installed."""
+    from types import SimpleNamespace
+
+    from trinity_local.commands.install import handle_uninstall
+    monkeypatch.setattr(Path, "home", lambda: patch_trinity_home)
+    monkeypatch.chdir(patch_trinity_home)
+    (patch_trinity_home / ".cursor").mkdir()
+    (patch_trinity_home / ".cursor" / "mcp.json").write_text('{"mcpServers": {"trinity-local": {"command": "x"}}}')
+    handle_uninstall(SimpleNamespace(yes=False, include_data=False, include_hf_cache=False))
+    out = capsys.readouterr().out
+    assert out.count("mcp.json") == 1, out
+    assert "The trinity-local program itself stays installed; remove it with:" in out
+
+
+def test_project_scope_writes_the_user_skill_only_where_claude_code_is(patch_trinity_home: Path, monkeypatch, tmp_path):
+    """verify (codex, 2026-10-08): project scope wrote ~/.claude/skills/trinity without Claude Code."""
+    monkeypatch.setattr("trinity_local.runtime_env.which_on_runtime_path", lambda _name: None)
+    monkeypatch.chdir(tmp_path)
+    _run_install(monkeypatch, patch_trinity_home, scope="project")
+    assert not (patch_trinity_home / ".claude").exists()

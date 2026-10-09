@@ -74,6 +74,9 @@ _PROBE = """() => {
     consolidateNudgeVisible: visible(consolidateNudge),
     routingNudgeInDom: /Run a few councils to learn which model works best/.test(body),
     leak: /\\{\\{|\\}\\}/.test(document.body.innerText || ''),
+    directionalVisible: visible([...document.querySelectorAll('p')]
+      .find(p => /Directional, not proven/.test(p.textContent)) || null),
+    trustRows: document.querySelectorAll('table.trust-tally-table tr').length,
   };
 }"""
 
@@ -89,7 +92,8 @@ _TRUST_FIXTURE = {
 }
 
 
-def _probe_view(monkeypatch, tmp_path: Path, view: str, *, with_trust: bool) -> dict:
+def _probe_view(monkeypatch, tmp_path: Path, view: str, *, with_trust: bool,
+                fixture: dict | None = None) -> dict:
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright
 
@@ -99,7 +103,7 @@ def _probe_view(monkeypatch, tmp_path: Path, view: str, *, with_trust: bool) -> 
     if with_trust:
         # Inject at the page_data boundary: seeding a real ledger needs a
         # council corpus; the card's contract with the template is this dict.
-        page_data["trustData"] = dict(_TRUST_FIXTURE)
+        page_data["trustData"] = dict(fixture or _TRUST_FIXTURE)
     html = render_launchpad_html(page_data=page_data, view=view)
     serve_root = tmp_path / f"serve-{view}-{with_trust}"
     rel = _write_prod_layout(html, serve_root, f"{view}.html")
@@ -156,3 +160,16 @@ def test_trust_card_still_visible_on_stats(tmp_path, monkeypatch):
         "untagging the trust card must keep it on /stats too (both views), "
         "not trade one blindness for another"
     )
+
+
+def test_directional_tally_shows_rows_marked_not_proven(tmp_path, monkeypatch):
+    """hq_138: the label under the tally reproduces at kappa 0.47, so the green is off
+    (trustworthy false) but a person still sees the rows, marked directional. MUTATION:
+    drop `|| trustData.directional` from the card's v-if and the rows vanish."""
+    fixture = {**_TRUST_FIXTURE, "trustworthy": False, "directional": True, "label_kappa": 0.47}
+    s = _probe_view(monkeypatch, tmp_path, "home", with_trust=True, fixture=fixture)
+    assert not s["_errs"], f"JS errors: {s['_errs'][:4]}"
+    assert s["trustRows"] == 2 and s["directionalVisible"]
+    assert not s["leak"]
+    plain = _probe_view(monkeypatch, tmp_path / "plain", "home", with_trust=True)
+    assert plain["trustRows"] == 2 and not plain["directionalVisible"]

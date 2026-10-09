@@ -230,6 +230,7 @@ def _sample_diverse_with_embeddings(*, top_k: int, candidate_pool: int) -> list:
         return None
 
     from .embeddings import embed_batch
+    from .me.authorship import lens_only
     from .memory import iter_prompt_nodes
     from .memory.index import SearchResult
     from .memory.replay_value import (
@@ -250,7 +251,7 @@ def _sample_diverse_with_embeddings(*, top_k: int, candidate_pool: int) -> list:
         return is_finite_embedding(emb) and len(emb) == EXPECTED_DIM
 
     nodes = [
-        n for n in iter_prompt_nodes(limit=candidate_pool)
+        n for n in lens_only(iter_prompt_nodes(limit=candidate_pool))
         if _valid_embedding(n.embedding) and len((n.text or "").strip()) >= 60
     ]
     if len(nodes) < top_k:
@@ -685,6 +686,16 @@ def build_me_via_lens_pipeline(
     )
     from .memory import search_prompt_nodes
     from .ranker import predict_strongest_chairman
+
+    # The "only the founder" filter (me/authorship.py, amd_0310, res_162): classify the store
+    # before any stage reads it, so every lens read below sees only the user's own prompts.
+    # Rebuilt whenever the corpus changed; a failure leaves the store unfiltered, never broken.
+    if not dry_run:
+        try:
+            from .me.authorship import ensure_authorship_map
+            ensure_authorship_map(_corpus_fingerprint())
+        except Exception as exc:  # noqa: BLE001
+            print(f"  [authorship] map not rebuilt: {type(exc).__name__}: {exc}", flush=True, file=_sys.stderr)
 
     # Upgrade recovery (review finding #3): seed the ledger from any legacy
     # rejections.jsonl / decisions.jsonl a pre-#209 build left behind. Runs

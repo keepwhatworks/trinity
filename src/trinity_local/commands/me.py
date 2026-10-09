@@ -35,9 +35,8 @@ def register(subparsers):
     build_parser = subparsers.add_parser(
         "lens",
         aliases=["lens-build"],
-        help="Build your lens (~/.trinity/memories/lens.md) from your transcripts. "
-             "--deep also mines your history first (cross-provider pairs → virtual "
-             "councils → consolidate).",
+        help="Build your lens (~/.trinity/memories/lens.md): the trade-offs you keep making, "
+             "read from your own prompts. --deep also mines your older history first.",
     )
     build_parser.add_argument(
         "--sample-size", type=int, default=ME_SAMPLE_SIZE,
@@ -101,10 +100,9 @@ def register(subparsers):
 
     choose_parser = subparsers.add_parser(
         "choose",
-        help="Rank options by YOUR taste: the frozen palate direction scores "
-             "each option (LLM-free, instant) with the registry's live "
-             "accuracy attached. CLI mirror of the `choose` MCP tool. "
-             "Example: trinity-local choose \"ship now\" \"wait for n=30\"",
+        help="Rank options by the frozen palate direction, a lexical model fit "
+             "on text you typed against text a model wrote (LLM-free, instant; "
+             "always advisory). Example: trinity-local choose \"ship now\" \"wait for n=30\"",
     )
     choose_parser.add_argument(
         "options", nargs="+",
@@ -296,20 +294,34 @@ def _post_build_hooks(dry_run: bool) -> dict:
         out["distill"] = distill_via_chairman()
     except Exception as exc:
         out["distill"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-    try:
-        from ..me.palate_registry import record_direction_snapshot
-        out["palate_snapshot"] = record_direction_snapshot()
-    except Exception as exc:
-        out["palate_snapshot"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-    # Residual-over-time log (compression-loop gap #3, passive half): record one
-    # prediction-quality snapshot per build so the learning-progress derivative
-    # becomes computable later. Pure recording — no objective is touched.
-    try:
-        from ..me.residual_log import record_snapshot
-        out["residual_snapshot"] = record_snapshot()
-    except Exception as exc:
-        out["residual_snapshot"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    # The palate canary and the residual log: shared with the background build paths
+    # (me/build_meters.py says why — they were skipped there from 2026-08-24).
+    from ..me.build_meters import record_build_meters
+    out.update(record_build_meters())
     return out
+
+
+def _read_new_transcripts(wait_s: float = 120.0) -> None:
+    """Ingest new transcripts before a build. A background pass holding the lock is waited for,
+    then this command runs its own, so the build sees what is on disk now. The wait is bounded:
+    a pass's ingest step ends within 60s (the embedding heal after it can run longer), so by the
+    deadline the new transcripts have been read either way."""
+    import sys
+    import time as _time
+
+    from ..stale_pass import _release_lock, _try_claim_lock, run_stale_pass
+    deadline = _time.monotonic() + wait_s
+    while not _try_claim_lock():
+        if _time.monotonic() >= deadline:
+            print("  A transcript pass is still running; building from what it has read so far.", file=sys.stderr)
+            return
+        _time.sleep(1.0)
+    try:
+        ing = run_stale_pass(trigger="lens").get("ingest") or {}
+        more = " (more on the next run)" if ing.get("deadline_hit") else ""
+        print(f"  Read your transcripts: {ing.get('added', 0)} new prompt(s){more}.", file=sys.stderr)
+    finally:
+        _release_lock()
 
 
 def handle_me_build(args):
@@ -377,6 +389,15 @@ def handle_me_build(args):
         print(str(exc), file=sys.stderr)
         sys.exit(1)
 
+    # Read what is new in the transcripts first. `lens` is the command a CLI user runs, and it
+    # used to build only from what the MCP server had already ingested, so a fresh install with
+    # years of history answered "no prompts". The same deadline-bounded pass the usage gate
+    # runs, under its lock; off for tests and CI (TRINITY_AUTOSCAN_DISABLED).
+    if not getattr(args, "dry_run", False):
+        from ..stale_pass import _disabled
+        if not _disabled():
+            _read_new_transcripts()
+
     if getattr(args, "legacy", False):
         # The --legacy CLI flag was removed 2026-07-04 (single build path);
         # build_me_via_council survives for tests + programmatic callers.
@@ -400,7 +421,10 @@ def handle_me_build(args):
             print(json.dumps({"ok": False, "canceled": True}, indent=2))
             sys.stderr.write("\n→ Lens build stopped.\n")
             sys.exit(130)
-    hooks = _post_build_hooks(bool(getattr(args, "dry_run", False)))
+    # Nothing to build from: skip the refresh chain, which would spend a chairman call
+    # distilling an empty lens and file a dated copy of the placeholder.
+    no_corpus = bool(summary.get("skipped") and summary.get("reason") == "no_prompts")
+    hooks = {} if no_corpus else _post_build_hooks(bool(getattr(args, "dry_run", False)))
     # Derive `ok` from the summary — do NOT hardcode it. build_me_via_lens_pipeline
     # faithfully reports a degenerate build in a sibling field (preserved_existing
     # when a content-less Stage 3 would clobber a populated lens; validation_failed;
@@ -421,6 +445,12 @@ def handle_me_build(args):
         _sys.stderr.write(
             "\n→ Stage 1 dry-run complete (no lens written). To build:\n"
             "    trinity-local lens-build\n"
+        )
+    elif no_corpus:
+        _sys.stderr.write(
+            "\n→ No prompts to build from yet. Trinity reads your Claude Code, Codex and agy "
+            "history on this machine, and there is none here yet. Use them for a while, then "
+            "run `trinity-local lens` again.\n"
         )
     elif not ok:
         # Nothing durable was written (or the prior lens was preserved), so the
@@ -493,6 +523,10 @@ def handle_lens_setup(args):
     print("→ Step 3/3: building the lens (a multi-minute chairman pass)…")
     try:
         path, _summary = build_me_via_lens_pipeline()
+        # The first build is where the palate canary's first snapshot gets frozen;
+        # without it there is nothing for later acts to be scored against.
+        from ..me.build_meters import record_build_meters
+        record_build_meters()
     except Exception as exc:  # noqa: BLE001
         print(f"✗ Lens build failed: {exc}", file=sys.stderr)
         return 1
@@ -622,7 +656,7 @@ def handle_lens_resync(args):
 def handle_choose(args) -> int:
     """CLI mirror of the `choose` MCP tool (task #11). Same core
     (me/palate_registry.rank_options), same honesty: abstain under the gap
-    floor, advisory when the live accuracy is under its kill-floor."""
+    floor, always advisory, and a stronger flag under the kill floor."""
     import json as _json
 
     from ..me.palate_registry import rank_options
@@ -638,13 +672,15 @@ def handle_choose(args) -> int:
         print(f"  {i}. [{r['score']:+.4f}] {r['option']}")
     acc = result.get("live_accuracy")
     n = result.get("decided_trials", 0)
-    trust = f"live accuracy {acc:.0%} over {n} of your real choices" if acc is not None else \
-            f"accuracy still accumulating ({n} decided trials)"
-    print(f"  — ranked by your frozen taste direction; {trust}.")
+    trust = (f"its live accuracy, {acc:.0%} over {n} trials, measures telling your rewrite "
+             f"from a model's text, not choosing among options like these"
+             if acc is not None else f"its live accuracy is still accumulating ({n} decided trials)")
+    print("  — ranked by a lexical direction fit on text you typed against text a model wrote;")
+    print(f"    {trust}. Advisory: ask the human when it matters.")
     if result.get("abstain"):
         print("  ⚠ ABSTAIN: the gap between the top two is under the noise floor — "
               "this is a coin flip, not a preference. Ask the human.")
-    if result.get("advisory_only"):
-        print("  ⚠ ADVISORY ONLY: live accuracy is below its 60% floor — "
-              "treat this ranking as directional, not decisive.")
+    if result.get("below_kill_floor"):
+        print("  ⚠ BELOW ITS FLOOR: live accuracy is under 60% — "
+              "this direction is not tracking you right now.")
     return 0

@@ -367,6 +367,7 @@ def ingest_recent(
                     following_assistant_text=turn.following_assistant_text,
                     model=turn.model,
                     effort=turn.effort,
+                    origin=getattr(turn, "origin", None),
                     themes=[guess_task_type(turn.text)] if turn.text else [],
                 )
                 upsert_prompt_node(node)

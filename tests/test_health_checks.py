@@ -53,30 +53,56 @@ class TestProviderCheck:
         assert "not on PATH" in result.detail
         assert "Claude Code" in result.fix or "install" in result.fix.lower()
 
-    def test_installed_no_auth_returns_login_fix(self, monkeypatch, tmp_path):
-        # CLI installed but no auth indicator file — concrete cold-install
-        # failure mode that doctor must catch.
-        from trinity_local import health_checks as doctor_mod
-        monkeypatch.setattr("trinity_local.runtime_env.which_on_runtime_path", lambda _: "/usr/local/bin/claude")
-        monkeypatch.setattr(
-            doctor_mod,
-            "_AUTH_INDICATORS",
-            {"claude": [tmp_path / "absent.json"]},  # no indicator exists
-        )
-        result = doctor_mod._check_provider("claude", "claude")
-        assert result.ok is False
-        assert "no auth indicator" in result.detail
-        assert "login" in result.fix or "interactively" in result.fix
+    def _home(self, monkeypatch, tmp_path):
+        for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "CODEX_HOME"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setattr("trinity_local.runtime_env.which_on_runtime_path", lambda name: f"/usr/local/bin/{name}")
+        return tmp_path
 
-    def test_installed_with_auth_returns_ready(self, monkeypatch, tmp_path):
-        from trinity_local import health_checks as doctor_mod
-        monkeypatch.setattr("trinity_local.runtime_env.which_on_runtime_path", lambda _: "/usr/local/bin/claude")
-        indicator = tmp_path / "auth.json"
-        indicator.write_text("{}")
-        monkeypatch.setattr(doctor_mod, "_AUTH_INDICATORS", {"claude": [indicator]})
-        result = doctor_mod._check_provider("claude", "claude")
-        assert result.ok is True
-        assert "authenticated" in result.detail
+    def _registered_only(self, home):
+        """Exactly what `trinity-local install` writes: MCP registrations, no sign-in."""
+        reg = '{"mcpServers": {"trinity-local": {"command": "trinity-local", "args": ["--mcp"]}}}'
+        (home / ".claude.json").write_text(reg)
+        (home / ".codex").mkdir()
+        (home / ".codex" / "config.toml").write_text('[mcp_servers.trinity-local]\ncommand = "trinity-local"\n')
+        (home / ".gemini").mkdir()
+        (home / ".gemini" / "settings.json").write_text(reg)
+
+    def test_trinitys_own_registration_is_not_a_sign_in(self, monkeypatch, tmp_path):
+        # The cold-install bug: install writes these files, and they used to count as
+        # sign-in, so a never-signed-in user saw "3 of 3 ready".
+        from trinity_local.health_checks import _check_provider
+        home = self._home(monkeypatch, tmp_path)
+        self._registered_only(home)
+        for provider, cli, fix in (("claude", "claude", "claude auth login"), ("codex", "codex", "codex login"),
+                                   ("antigravity", "agy", "agy")):
+            result = _check_provider(provider, cli)
+            assert result.ok is False, provider
+            assert "not signed in" in result.detail
+            assert result.fix.startswith(fix)
+
+    def test_real_sign_in_evidence_reads_ready(self, monkeypatch, tmp_path):
+        import json
+
+        from trinity_local.health_checks import _check_provider
+        home = self._home(monkeypatch, tmp_path)
+        self._registered_only(home)
+        cfg = json.loads((home / ".claude.json").read_text())
+        (home / ".claude.json").write_text(json.dumps({**cfg, "oauthAccount": {"emailAddress": "x"}}))
+        (home / ".codex" / "auth.json").write_text("{}")
+        (home / ".gemini" / "antigravity-cli").mkdir()
+        (home / ".gemini" / "antigravity-cli" / "antigravity-oauth-token").write_text("t")
+        for provider, cli in (("claude", "claude"), ("codex", "codex"), ("antigravity", "agy")):
+            result = _check_provider(provider, cli)
+            assert result.ok is True, provider
+            assert "authenticated" in result.detail
+
+    def test_an_api_key_counts_as_signed_in(self, monkeypatch, tmp_path):
+        from trinity_local.health_checks import _check_provider
+        self._home(monkeypatch, tmp_path)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+        assert _check_provider("claude", "claude").ok is True
 
 
 class TestMcpAvailable:

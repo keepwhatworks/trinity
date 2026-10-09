@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from ..utils import now_dt
 from .schemas import PromptNode
 
 
@@ -77,7 +78,7 @@ def staleness_score(last_replayed_at: str | None) -> float:
         return 1.0
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=timezone.utc)
-    now = datetime.now(timezone.utc)
+    now = now_dt()
     days = (now - ts).total_seconds() / 86400.0
     if days < 2:
         return 0.0

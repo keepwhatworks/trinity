@@ -110,3 +110,26 @@ class TestDegradationIsVisible:
         card = render_card(_out(reads=[
             _read("claude", "anthropic", {"c1": False}, why="", raw_tail="...some raw output")]))
         assert "no reason given" in card
+
+
+class TestEvidenceFirst:
+    """VeriHarness-style evidence record: what was run leads; what nothing ran is listed."""
+
+    def test_each_test_run_is_listed_with_its_result(self):
+        card = render_card(_out(kernel={"ran": True, "relevant": True, "green": False, "runs": [
+            {"id": "T1", "command": "pytest tests/test_a.py", "green": True, "seconds": 1.2},
+            {"id": "T2", "command": "pytest tests/test_b.py", "green": False, "seconds": 3.4}]}))
+        assert "ok  [T1] pytest tests/test_a.py  (1.2s)" in card
+        assert "RED [T2] pytest tests/test_b.py  (3.4s)" in card
+
+    def test_criteria_no_test_runs_are_listed_as_unverified(self):
+        card = render_card(_out(criteria=[{"id": "T1", "kind": "test", "statement": "suite"},
+                                          {"id": "J1", "kind": "judgment", "statement": "No duplicated spec."}]))
+        assert "unverified: 1 criteria no test runs" in card and "[J1] No duplicated spec." in card
+        assert "[T1]" not in card.split("unverified:")[1]
+
+    def test_verify_returns_the_unverified_ids(self, tmp_path):
+        from trinity_local import verify as v
+        out = v.verify([{"id": "T1", "kind": "test", "statement": "s", "command": "true"},
+                        {"id": "J1", "kind": "judgment", "statement": "j"}], "", "", tmp_path, run_panel=False)
+        assert out["unverified"] == ["J1"]

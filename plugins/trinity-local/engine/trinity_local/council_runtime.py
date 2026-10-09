@@ -228,15 +228,12 @@ def _member_lens_constraints(query: str = "") -> str:
     if os.environ.get("TRINITY_LENS_MEMBERS", "0").strip().lower() not in ("1", "true"):
         return ""  # dormant by measurement — see render_member_prompt docstring
     try:
-        from .me.pipeline import _TENSION_HEADING
+        from .lens_routing import council_tensions
         from .state_paths import lens_path
 
         lp = lens_path()
         lens_md = lp.read_text(encoding="utf-8") if lp.exists() else ""
-        from .lens_routing import scope_for_query
-
-        tensions = (scope_for_query(query, 6)
-                    or _TENSION_HEADING.findall(lens_md)[:6])
+        tensions = council_tensions(query, lens_md)
         if not tensions:
             return ""
         lines = "\n".join(
@@ -489,17 +486,13 @@ def render_primary_council_prompt(
     # leaks into quality) and category-counting (drops evidence
     # weights). Compact block (~600 chars), never the 25KB lens.md.
     try:
-        from .me.pipeline import _TENSION_HEADING  # canonical predicate
+        from .lens_routing import council_tensions
         from .state_paths import lens_path
 
         lens_md = lens_path().read_text(encoding="utf-8") if lens_path().exists() else ""
-        # Scoped read first, global slice as the fallback. scope_for_query
-        # returns [] for every degradation (flag off by default), so this is
-        # exactly today's behaviour until TRINITY_DAG_SCOPED_LENS is set.
-        from .lens_routing import scope_for_query
-
-        tensions = (scope_for_query(bundle.task_text, 6)
-                    or _TENSION_HEADING.findall(lens_md)[:6])
+        # Scoped read first, global slice as the fallback: scope_for_query returns [] for
+        # every degradation (flag off by default), so this is the first six of the lens.
+        tensions = council_tensions(bundle.task_text, lens_md)
         if tensions:
             tension_lines = "\n".join(
                 f"  {i}. {a} ↔ {b}" for i, (a, b) in enumerate(tensions, 1)

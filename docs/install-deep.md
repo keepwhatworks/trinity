@@ -114,6 +114,10 @@ download:
 trinity-local download-embedder   # or: HF_HUB_OFFLINE=0 huggingface-cli download nomic-ai/modernbert-embed-base
 ```
 
+If the embedder extras are not installed yet (the one-line installer leaves them out), the command
+says so and prints the exact line that adds them for the way you installed Trinity, pinned to your
+version. `trinity-local status` prints the same line followed by the download, ready to paste.
+
 After that the model lives at `~/.cache/huggingface/hub/` (or `$HF_HOME`)
 and Trinity loads it from cache. No Hub contact. Override per-invocation
 if you ever need to pull a new version (`HF_HUB_OFFLINE=0 trinity-local …`).

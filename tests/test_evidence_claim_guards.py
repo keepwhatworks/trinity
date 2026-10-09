@@ -158,7 +158,7 @@ class TestRefusalPath:
         state, values, reason = evidence_status(summary)
         assert state == REFUSED
         assert values == {}
-        assert "tally_trustworthy" in reason
+        assert "tally_displayable" in reason
 
     def test_refuses_when_trustworthy_flag_is_missing_entirely(self):
         from trinity_local.evidence_claims import REFUSED, evidence_status
