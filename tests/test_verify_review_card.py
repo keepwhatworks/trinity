@@ -125,7 +125,7 @@ class TestEvidenceFirst:
     def test_criteria_no_test_runs_are_listed_as_unverified(self):
         card = render_card(_out(criteria=[{"id": "T1", "kind": "test", "statement": "suite"},
                                           {"id": "J1", "kind": "judgment", "statement": "No duplicated spec."}]))
-        assert "unverified: 1 criteria no test runs" in card and "[J1] No duplicated spec." in card
+        assert "unverified: 1 criteria nothing tested against this change" in card and "[J1] No duplicated spec." in card
         assert "[T1]" not in card.split("unverified:")[1]
 
     def test_verify_returns_the_unverified_ids(self, tmp_path):

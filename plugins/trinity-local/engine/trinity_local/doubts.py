@@ -149,7 +149,8 @@ def run_doubt_tests(reads: list[dict], cwd: Path, python: str, env: dict | None 
         # Model-written code never runs unsandboxed: no sandbox, no execution.
         return [{"provider": r.get("provider"), "lab": r.get("lab"), "criterion": cid,
                  "status": "not_run_no_sandbox"} for r, cid in doubts]
-    given = str(Path(cwd))
+    from .untested import tree_spellings
+    spellings = tree_spellings(cwd)
     cwd = Path(cwd).resolve()
     with tempfile.TemporaryDirectory(prefix="trinity-doubt-") as tmp:
         work = scratch_copy(cwd, Path(tmp) / "tree")
@@ -160,7 +161,7 @@ def run_doubt_tests(reads: list[dict], cwd: Path, python: str, env: dict | None 
         for k in _ENV_KEEP:
             if k in src:
                 v = src[k]
-                for spelling in sorted({given, str(cwd)}, key=len, reverse=True):
+                for spelling in spellings:
                     v = v.replace(spelling, str(work))
                 env2[k] = v
         env2.update(HOME=str(home), TRINITY_HOME=str(home / ".trinity"), TMPDIR=str(home / "tmp"))

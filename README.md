@@ -38,8 +38,14 @@ trinity-local verify --diff change.patch --criteria acceptance.json
 
 `acceptance.json` is a list of `{id, kind, statement, command?}`. A `test`
 criterion runs its command — the one your project already runs, `pytest`,
-`cargo test`, `lake build` — and exit 0 is green. A `judgment` criterion goes
-to the panel. There is no chairman: agreement versus split is the signal, and
+`cargo test`, `lake build` — and exit 0 is green. Each green test then reruns
+in a scratch copy with the change's source reverted, its own test files kept: a
+test that stays green without the change never tested it, so it does not count,
+and the card says which ones (`--no-differential` skips this). A `judgment`
+criterion goes to the panel, which also answers three advisory questions from
+the diff alone — does it re-implement something, does it fix the cause at the
+right depth, does it leave dead code — shown as concerns that never change the
+verdict (`--no-quality` skips them). There is no chairman: agreement versus split is the signal, and
 a deterministic function reads it.
 
 **Why a green test is required, and why Trinity still will not tell you to skip reading.** Measured on this repository, on fixes written by AI agents: when three models from three different labs unanimously approved one, it failed its own guard **26% of the time** (9 of 34). On the 22 real human fix commits in the same run, their unanimous approvals were wrong **zero** times — so the rate depends heavily on who wrote the change, and pooled across both it is 16%. More reasoning effort recovered none of the misses, and a stronger agent's wrong fixes were no easier to spot (21% vs 33%, p=0.46 — not detected at this power, which is not the same as no difference). Reading a diff is weaker than running it. The test says *what is safe*; the panel is a second read, and on 103 agent-written commits here its flags did not pick out the ones later fixed (hq_122); a human still reads.
@@ -282,7 +288,7 @@ pipeline (Stage 0 turn-pair rejections + Stages 1-4 basins→decisions→pair-mi
 
 ## What's next
 
-Current repo state: v1.7 line, exact package `v<!-- canonical:version -->1.7.398<!-- /canonical -->`. The shipped surface is MCP-first: `lens`, `council`, `trust`, `status`, and `install` are the advertised CLI verbs. The older `lens-build` / `council-launch` / `dream` names remain as compatibility aliases (`dream` folded into `lens --deep` 2026-07-04, one concept) for launchpad dispatch and existing scripts. An earlier arc collapsed routing into the lens; that router was then measured (42.9% against a pick-the-leader constant's 37.0%, short of its bar) and removed on 2026-08-11, so nothing routes on your behalf today. Earlier work tightened the launch path: extension auto-wiring, schema migrations, real ModernBERT embeddings, TF-IDF abstain-gates for semantic flows, corpus-purity guards, personal eval integrity, no-PII telemetry gates, and install-wrapper Python fallback.
+Current repo state: v1.7 line, exact package `v<!-- canonical:version -->1.7.399<!-- /canonical -->`. The shipped surface is MCP-first: `lens`, `council`, `trust`, `status`, and `install` are the advertised CLI verbs. The older `lens-build` / `council-launch` / `dream` names remain as compatibility aliases (`dream` folded into `lens --deep` 2026-07-04, one concept) for launchpad dispatch and existing scripts. An earlier arc collapsed routing into the lens; that router was then measured (42.9% against a pick-the-leader constant's 37.0%, short of its bar) and removed on 2026-08-11, so nothing routes on your behalf today. Earlier work tightened the launch path: extension auto-wiring, schema migrations, real ModernBERT embeddings, TF-IDF abstain-gates for semantic flows, corpus-purity guards, personal eval integrity, no-PII telemetry gates, and install-wrapper Python fallback.
 
 ## Help
 

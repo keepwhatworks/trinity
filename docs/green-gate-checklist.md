@@ -76,6 +76,7 @@ with its classification and gate.
 
 | Green | File | Classification | Gate |
 |---|---|---|---|
+| `Kernel.relevant` (verify) | `differential.py` + `verify_rule.py` | gate (decides STOP vs READ and any would-skip) | MEASURED where possible: each green blocking test reruns in a scratch copy with the change's source reverted; a test still green is vacuous and cannot make the kernel relevant. A control run must reproduce the green in the copy first, else the test is not_reproduced (or timeout) and keeps its declared relevance; red tests always stay relevant (STOP). Degenerate tests: only-vacuous kernel → READ, copy-only failure → not_reproduced, relative `--cwd .` → still measured, tests-only diff → declared |
 | `_check_trinity_home` | `health_checks.py` | hard (ok=False blocks) | `~/.trinity` resolves AND is writeable — a read-only parent raises inside `state_dir()` and is caught as the failure, not swallowed |
 | `_check_provider` | `health_checks.py` | hard, per provider | installed → auth indicator present → dispatch shape; any leg missing is ok=False with the exact login/install command |
 | `_check_config` | `health_checks.py` | hard | config parses AND ≥1 provider enabled; an empty provider set is refused, not treated as "nothing to do" |

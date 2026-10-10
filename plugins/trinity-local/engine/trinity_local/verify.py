@@ -17,21 +17,28 @@ acceptance block (amd_0209):
                output. A panel member cannot author a test command.
 `judgment`  -> every panel member votes PASS/FAIL on the statement, blinded.
 
-ORDER OF OPERATIONS IS THE MEASUREMENT
---------------------------------------
-Panel BEFORE kernel by default. If the readers could see the test result the
-split would be measuring the test, and hq_104 could not tell the two apart.
-The kernel still wins the triage; it just does not get to whisper first.
+THE READERS NEVER SEE THE TEST RESULT
+-------------------------------------
+If the readers could see the test result the split would be measuring the
+test, and hq_104 could not tell the two apart. What keeps them blind is that
+no kernel output ever reaches their prompt; since 2026-10-09 the reads and the
+tests run AT THE SAME TIME (and the reads in parallel with each other), which
+changes only the wall clock. The kernel still wins the triage; it just does
+not get to whisper first.
 
 RELEVANCE
 ---------
-A kernel counts only if it exercises the changed files. v1 records the basis
-as "declared": the caller listed the test criterion for this change. A green
-somewhere else is not a green here.
+A kernel counts only if it exercises the changed files. v1 recorded the basis
+as "declared": the caller listed the test criterion for this change. Since
+2026-10-09 it is MEASURED where it can be (differential.py): each green test
+reruns with the change's source reverted in a scratch copy, and a test that is
+still green is vacuous and does not count. A green somewhere else is not a
+green here.
 """
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import time
@@ -42,6 +49,34 @@ from .verify_rule import LAB_OF, Kernel, Panel, Triage, triage
 
 DEFAULT_PANEL = ("claude", "codex", "antigravity")
 
+# Advisory review angles every panel read also answers (founder 2026-10-09: one review pass, not
+# /simplify agents plus verify plus a council on the same diff). Non-blocking: a FAIL surfaces as a
+# concern on the card and never changes `passed`, consensus or the triage. Added only when the
+# panel runs anyway, so a test-only acceptance block costs no extra dispatch. The readers see only
+# the diff (blinded, no tools), so these are judged from the diff, not from a codebase search.
+QUALITY_CRITERIA = (
+    {"id": "q_reuse", "kind": "judgment", "blocking": False, "advisory": True,
+     "statement": "From the diff alone: no new code re-implements something the diff shows already "
+                  "exists or the standard library provides; if it does, name what to call instead."},
+    {"id": "q_root", "kind": "judgment", "blocking": False, "advisory": True,
+     "statement": "The change fixes the cause at the right depth, not a special case layered on "
+                  "shared code to patch a symptom."},
+    {"id": "q_dead", "kind": "judgment", "blocking": False, "advisory": True,
+     "statement": "The change leaves no dead, duplicated or unused code behind."},
+)
+QUALITY_FLAG = "TRINITY_VERIFY_QUALITY"      # "0" turns the advisory angles off
+
+
+def with_quality(criteria_dicts: list[dict], quality: bool | None = None,
+                 run_panel: bool = True) -> list[dict]:
+    """The acceptance block plus the advisory quality angles, when a panel would run anyway. A
+    caller's own criterion with one of those ids wins and stays an acceptance criterion."""
+    on = os.environ.get(QUALITY_FLAG, "1") != "0" if quality is None else quality
+    if not on or not run_panel or not any(str((d or {}).get("kind", "")).strip() == "judgment" for d in criteria_dicts):
+        return list(criteria_dicts)
+    have = {str((d or {}).get("id")) for d in criteria_dicts}
+    return list(criteria_dicts) + [dict(q) for q in QUALITY_CRITERIA if q["id"] not in have]
+
 
 @dataclass(frozen=True)
 class Criterion:
@@ -50,6 +85,7 @@ class Criterion:
     statement: str
     command: str | None = None
     blocking: bool = True
+    advisory: bool = False         # an advisory panel question (QUALITY_CRITERIA), never acceptance
 
     @classmethod
     def from_dict(cls, d: dict) -> "Criterion":
@@ -58,8 +94,10 @@ class Criterion:
             raise ValueError(f"criterion {d.get('id')!r}: kind must be test|judgment, got {kind!r}")
         if kind == "test" and not d.get("command"):
             raise ValueError(f"criterion {d.get('id')!r}: kind=test requires a command")
+        advisory = bool(d.get("advisory", False))
         return cls(id=str(d["id"]), kind=kind, statement=str(d.get("statement", "")),
-                   command=d.get("command"), blocking=bool(d.get("blocking", True)))
+                   command=d.get("command"), blocking=bool(d.get("blocking", True)) and not advisory,
+                   advisory=advisory)
 
 
 @dataclass
@@ -171,7 +209,7 @@ def _tokens(usage: dict) -> int | None:
     return sum(vals) if vals else None
 
 
-def _parse_votes(text: str, ids: list[str]) -> tuple[dict[str, bool], str] | None:
+def _parse_votes(text: str, ids: list[str], optional: frozenset = frozenset()) -> tuple[dict[str, bool], str] | None:
     """(votes, why) — and the `why` half was being thrown away.
 
     The prompt has always asked for {"votes": {...}, "why": "..."}, every
@@ -246,6 +284,8 @@ def _parse_votes(text: str, ids: list[str]) -> tuple[dict[str, bool], str] | Non
     for i in ids:
         v = str(votes.get(i, "")).strip().upper()
         if v not in ("PASS", "FAIL"):
+            if i in optional:      # an advisory angle left out costs that vote, never the read
+                continue
             return None
         out[i] = v == "PASS"
     return out, why
@@ -336,43 +376,47 @@ def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
         vote_keys=", ".join(f'"{i}": "PASS|FAIL"' for i in ids),
     )
     exclude_lab = _resolve_lab(exclude_lab)
-    reads: list[Read] = []
-    votes: dict[str, bool] = {}
-    for name in providers:
+    eligible = [n for n in providers
+                if not (exclude_lab and LAB_OF.get(n, n) == exclude_lab)
+                and n in config.providers and config.providers[n].enabled]
+
+    def one(name: str) -> Read:
         lab = LAB_OF.get(name, name)
-        if exclude_lab and lab == exclude_lab:
-            continue
-        if name not in config.providers or not config.providers[name].enabled:
-            continue
         t0 = time.time()
         try:
             result, pconf = _dispatch(name, prompt, cwd, config, effort)
             text = getattr(result, "stdout", "") or ""
-            parsed_pair = _parse_votes(text, ids)
+            parsed_pair = _parse_votes(text, ids, optional=frozenset(c.id for c in judgments if c.advisory))
             parsed, why = parsed_pair if parsed_pair else (None, "")
             usage = getattr(result, "usage", None) or {}
             tokens, cost = _tokens(usage), usage.get("cost_usd")
             if parsed is None:
                 err = (getattr(result, "stderr", "") or "")[-300:]
-                reads.append(Read(name, lab, getattr(pconf, "model", None), {}, False,
-                                  round(time.time() - t0, 1), tokens, cost, getattr(pconf, "effort", None),
-                                  error="unparseable vote" if text.strip() else
-                                  f"empty stdout (rc={getattr(result, 'returncode', '?')})",
-                                  raw_tail=text[-300:], stderr_tail=err))
-                continue
+                return Read(name, lab, getattr(pconf, "model", None), {}, False,
+                            round(time.time() - t0, 1), tokens, cost, getattr(pconf, "effort", None),
+                            error="unparseable vote" if text.strip() else
+                            f"empty stdout (rc={getattr(result, 'returncode', '?')})",
+                            raw_tail=text[-300:], stderr_tail=err)
             passed = all(parsed[c.id] for c in judgments if c.blocking)
             tests = evidence = None
             if ask_tests:
                 from .doubts import parse_tests
                 tests = parse_tests(text, ids)
                 evidence = parse_tests(text, ids, key="evidence")
-            reads.append(Read(name, lab, getattr(pconf, "model", None), parsed, passed,
-                              round(time.time() - t0, 1), tokens, cost, getattr(pconf, "effort", None),
-                              why=why, raw_tail=text[-300:], tests=tests, evidence=evidence))
-            votes[name] = passed
+            return Read(name, lab, getattr(pconf, "model", None), parsed, passed,
+                        round(time.time() - t0, 1), tokens, cost, getattr(pconf, "effort", None),
+                        why=why, raw_tail=text[-300:], tests=tests, evidence=evidence)
         except Exception as exc:   # a member that errors is a missing vote, never a vote
-            reads.append(Read(name, lab, None, {}, False, round(time.time() - t0, 1),
-                              error=f"{type(exc).__name__}: {exc}"[:200]))
+            return Read(name, lab, None, {}, False, round(time.time() - t0, 1),
+                        error=f"{type(exc).__name__}: {exc}"[:200])
+
+    # The reads go out AT ONCE. Each runs in its own empty scratch cwd with no tools, and none
+    # sees another's prompt or answer, so concurrency changes the wall clock and nothing else:
+    # verify took the SUM of the reads (measured 2026-10-09: 236 s + 14 s); now it takes the slowest.
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=max(1, len(eligible))) as pool:
+        reads = list(pool.map(one, eligible))      # provider order, whatever finishes first
+    votes = {r.provider: r.passed for r in reads if r.error is None}
     return Panel(ran=bool(votes), votes=votes), reads
 
 
@@ -402,17 +446,45 @@ def _reject_duplicate_ids(criteria) -> None:
 def verify(criteria_dicts: list[dict], diff: str, context: str, cwd: Path,
            providers: tuple[str, ...] = DEFAULT_PANEL, exclude_lab: str | None = None,
            run_panel: bool = True, run_tests: bool = True, config=None,
-           effort: str | None = None, env: dict | None = None) -> dict:
-    """Panel first (blinded), then kernel, then the rule. Returns a plain dict."""
-    criteria = [Criterion.from_dict(d) for d in criteria_dicts]
+           effort: str | None = None, env: dict | None = None,
+           differential: bool | None = None, quality: bool | None = None) -> dict:
+    """Panel first (blinded), then kernel, then the rule. Returns a plain dict.
+    `differential` (default: on unless TRINITY_VERIFY_DIFFERENTIAL=0) measures kernel
+    relevance by rerunning each green test with the change's source reverted. `quality` (default:
+    on unless TRINITY_VERIFY_QUALITY=0) adds the advisory QUALITY_CRITERIA to a panel that runs."""
+    criteria = [Criterion.from_dict(d) for d in with_quality(criteria_dicts, quality, run_panel)]
     _reject_duplicate_ids(criteria)
     cwd = Path(cwd)
     from . import doubts as _doubts
     backed_on = _doubts.enabled()
-    panel, reads = (read_panel(criteria, diff, context, cwd, providers, exclude_lab, config, effort,
-                               ask_tests=backed_on)
-                    if run_panel else (Panel.not_run(), []))
-    kernel, runs = run_kernel(criteria, cwd, env=env) if run_tests else (Kernel.not_run(), [])
+    from . import differential as _diff
+
+    def tests_and_differential():
+        kernel, runs = run_kernel(criteria, cwd, env=env) if run_tests else (Kernel.not_run(), [])
+        measured = None
+        if kernel.ran and (_diff.enabled() if differential is None else differential):
+            measured = _diff.measure([(r["id"], r["command"]) for r in runs if r["green"]], diff, cwd, env=env)
+        return kernel, runs, measured
+
+    # Panel and tests run AT THE SAME TIME. The readers' prompt is built from the criteria,
+    # the diff and the context only, so they stay blind to the test result: what kept them
+    # blind was never the ordering, it is that no kernel output reaches the prompt. Verify
+    # used to take the reads PLUS the tests PLUS the differential reruns.
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        f_panel = pool.submit(lambda: read_panel(criteria, diff, context, cwd, providers, exclude_lab,
+                                                 config, effort, ask_tests=backed_on)
+                              if run_panel else (Panel.not_run(), []))
+        f_tests = pool.submit(tests_and_differential)
+        panel, reads = f_panel.result()
+        kernel, runs, measured = f_tests.result()
+    if measured is not None:
+        blocking = {c.id for c in criteria if c.kind == "test" and c.blocking}
+        rel = _diff.relevance(runs, blocking, measured)
+        if rel is not None:
+            kernel = Kernel(ran=kernel.ran, relevant=rel, green=kernel.green)
+    vacuous = sorted(cid for cid, s in ((measured or {}).get("status") or {}).items()
+                     if s == "vacuous") if (measured or {}).get("ran") else []
     t: Triage = triage(kernel, panel)
     # Report-only: which hunks no declared test notices. Never changes the triage.
     untested = None
@@ -432,17 +504,85 @@ def verify(criteria_dicts: list[dict], diff: str, context: str, cwd: Path,
         commands = [c.command for c in criteria if c.kind == "test" and c.command]
         doubt_rows = _doubts.run_doubt_tests([asdict(r) for r in reads], cwd,
                                              _doubts.python_for(commands), env=env, diff=diff)
-    return {
+    out = {
         "triage": t.outcome, "reason": t.reason, "false_green": t.false_green,
         "kernel": {"ran": kernel.ran, "relevant": kernel.relevant, "green": kernel.green,
-                   "relevance_basis": "declared" if kernel.ran else None, "runs": runs},
+                   "relevance_basis": ((measured or {}).get("basis") or "declared") if kernel.ran else None,
+                   "runs": runs},
+        # Each green test rerun with the change's source reverted (differential.py).
+        "differential": measured,
         "panel": {"ran": panel.ran, "votes": panel.votes, "labs": sorted(panel.labs()),
                   "consensus_pass": panel.consensus_pass(), "split": panel.split(),
                   "reads": [asdict(r) for r in reads]},
         "criteria": [asdict(c) for c in criteria],
-        # Criteria no test runs: they were only read, so a person must read them.
-        "unverified": [c.id for c in criteria if c.kind == "judgment"],
+        # Criteria no test runs, plus tests that stay green without the change: neither
+        # verified this change, so a person must read them.
+        # Advisory panel questions are not acceptance criteria, so they are never listed here.
+        "unverified": [c.id for c in criteria
+                       if (c.kind == "judgment" and not c.advisory) or c.id in vacuous],
         "untested": untested,
         "doubts": doubt_rows,
         "duplicates": dup_rows,
     }
+    record_run(out)
+    return out
+
+
+def record_run(out: dict) -> None:
+    """Append one line per verify run to ~/.trinity/analytics/verify_runs.jsonl.
+
+    WHY: how often callers declare tests that never touch their change (res_173) was
+    unmeasurable because verify kept no record. COUNTS AND STATUSES ONLY: no criterion
+    ids, statements, commands, paths or diff text, since any of those can carry a task,
+    a filename or a person. Best-effort and silent: logging never fails a verify."""
+    try:
+        from collections import Counter
+        from .state_paths import analytics_dir
+        from .utils import now_iso
+        kernel = out.get("kernel") or {}
+        runs = kernel.get("runs") or []
+        crit = out.get("criteria") or []
+        meas = out.get("differential") or {}
+        panel = out.get("panel") or {}
+        advisory = {c["id"] for c in crit if c.get("advisory")}
+        concerns = Counter("advisory" if cid in advisory else "acceptance"
+                           for r in panel.get("reads") or [] for cid, ok in (r.get("votes") or {}).items() if not ok)
+        row = {
+            "at": now_iso(), "triage": out.get("triage"),
+            "tests": len(runs), "tests_red": sum(1 for r in runs if not r.get("green")),
+            "judgments": sum(1 for c in crit if c.get("kind") == "judgment" and not c.get("advisory")),
+            "relevance_basis": kernel.get("relevance_basis"), "kernel_relevant": kernel.get("relevant"),
+            "differential": dict(Counter((meas.get("status") or {}).values())) if meas else None,
+            "panel_reads": sum(1 for r in panel.get("reads") or [] if not r.get("error")),
+            "panel_split": panel.get("split"), "concerns": dict(concerns),
+        }
+        path = analytics_dir() / "verify_runs.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(row, separators=(",", ":")) + "\n")
+    except Exception:  # noqa: BLE001 — analytics never fail a verify
+        pass
+
+
+def run_stats(path: Path | None = None) -> dict | None:
+    """What the run log says so far: how many verify runs were logged, and of the green tests
+    the differential check could measure, how many still passed with the change reverted.
+    None when nothing has been logged."""
+    try:
+        from .state_paths import analytics_dir
+        path = path or analytics_dir() / "verify_runs.jsonl"
+        if not path.exists():
+            return None
+        rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except Exception:  # noqa: BLE001 — a status read never fails on a corrupt log
+        return None
+    if not rows:
+        return None
+    status: dict[str, int] = {}
+    for r in rows:
+        for k, n in (r.get("differential") or {}).items():
+            status[k] = status.get(k, 0) + int(n)
+    measured = sum(status.get(k, 0) for k in ("detects", "no_load", "vacuous"))
+    return {"runs": len(rows), "measured_tests": measured, "vacuous": status.get("vacuous", 0),
+            "detects": status.get("detects", 0) + status.get("no_load", 0),
+            "not_measured": status.get("not_reproduced", 0) + status.get("timeout", 0)}

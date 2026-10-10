@@ -372,8 +372,15 @@ async def handle_list_tools() -> list[Tool]:
                 "INPUT: `criteria` is an acceptance block -- a list of {id, kind: "
                 "'test'|'judgment', statement, command?, blocking}. kind=test runs "
                 "`command` in `cwd` (exit 0 is green) -- the command comes from the "
-                "artifact's own acceptance block, never from a model. kind=judgment goes "
-                "to the panel, blinded to the test result and to each other. No chairman."
+                "artifact's own acceptance block, never from a model. Each green test then "
+                "reruns in a scratch copy with the change's source reverted (test files "
+                "kept): a test still green without the change is VACUOUS, does not make the "
+                "kernel relevant, and is listed as unverified (`differential` in the result; "
+                "TRINITY_VERIFY_DIFFERENTIAL=0 skips it). kind=judgment goes "
+                "to the panel, blinded to the test result and to each other. No chairman. When the panel "
+                "runs it also answers three advisory questions from the diff alone (reuse, root cause, "
+                "dead code); they surface as concerns and never change the verdict "
+                "(TRINITY_VERIFY_QUALITY=0 skips them)."
             ),
             inputSchema={
                 "type": "object",

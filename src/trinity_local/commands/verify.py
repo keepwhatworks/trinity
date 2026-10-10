@@ -26,6 +26,10 @@ def register(subparsers):
     p.add_argument("--exclude-lab", help="never read from this lab (e.g. the lab that authored the change)")
     p.add_argument("--no-panel", action="store_true", help="kernel only")
     p.add_argument("--no-tests", action="store_true", help="panel only")
+    p.add_argument("--no-quality", action="store_true",
+                   help="skip the advisory reuse / root-cause / dead-code questions the panel also answers")
+    p.add_argument("--no-differential", action="store_true",
+                   help="skip rerunning green tests with the change reverted (relevance stays declared)")
     p.add_argument("--effort", help="panel effort for claude/codex (low|medium|high|xhigh); default is each provider's config")
     p.add_argument("--json", action="store_true",
                    help="raw result object instead of the review card (for scripts)")
@@ -46,7 +50,9 @@ def handle_verify(args) -> int:
         out = verify(raw, diff, context, Path(args.cwd),
                      providers=tuple(m.strip() for m in args.members.split(",") if m.strip()),
                      exclude_lab=args.exclude_lab, run_panel=not args.no_panel,
-                     run_tests=not args.no_tests, effort=args.effort)
+                     run_tests=not args.no_tests, effort=args.effort,
+                     differential=False if getattr(args, "no_differential", False) else None,
+                     quality=False if getattr(args, "no_quality", False) else None)
     except ValueError as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 1
@@ -84,11 +90,22 @@ def render_card(out: dict) -> str:
         rel = "" if kernel.get("relevant") else "  (does NOT exercise the changed files)"
         lines.append(f"  tests: {state}{rel}")
         # Evidence first (arXiv 2610.00972): what was run and what came back, before opinions.
+        meas = out.get("differential") or {}
+        status = meas.get("status") or {} if meas.get("ran") else {}
+        _said = {"detects": "red without the change: it tests it",
+                 "no_load": "does not load without the change",
+                 "vacuous": "VACUOUS: green without the change too",
+                 "not_reproduced": "not checked: the scratch copy did not reproduce its green",
+                 "timeout": "not checked: timed out"}
         for run in kernel.get("runs") or []:
             mark = "ok " if run.get("green") else "RED"
             cmd = (run.get("command") or "")
             cmd = cmd if len(cmd) <= 90 else cmd[:87] + "..."
             lines.append(f"    {mark} [{run.get('id')}] {cmd}  ({run.get('seconds', '?')}s)")
+            if run.get("id") in status:
+                lines.append(f"        {_said.get(status[run['id']], status[run['id']])}")
+        if meas and not meas.get("ran"):
+            lines.append(f"  relevance: declared (not measured: {meas.get('reason', '')})")
     else:
         lines.append("  tests: none ran")
     untested = out.get("untested") or {}
@@ -111,7 +128,7 @@ def render_card(out: dict) -> str:
     if unverified is None:
         unverified = [cid for cid, c in crit.items() if c.get("kind") == "judgment"]
     if unverified:
-        lines.append(f"  unverified: {len(unverified)} criteria no test runs (read these):")
+        lines.append(f"  unverified: {len(unverified)} criteria nothing tested against this change (read these):")
         for cid in unverified:
             lines.append(f"    - [{cid}] {(crit.get(cid) or {}).get('statement', '')}")
 
@@ -140,11 +157,13 @@ def render_card(out: dict) -> str:
         return "\n".join(lines)
 
     statements = {c.get("id"): c.get("statement", "") for c in (out.get("criteria") or [])}
+    advisory_ids = {c.get("id") for c in (out.get("criteria") or []) if c.get("advisory")}
     lines.append("")
     lines.append(f"  {len(by_crit)} criterion/criteria drew a concern:")
     for cid, doubters in by_crit.items():
         lines.append("")
-        lines.append(f"  [{cid}] {statements.get(cid, '')}")
+        advisory = "  (advisory: does not change the verdict)" if cid in advisory_ids else ""
+        lines.append(f"  [{cid}] {statements.get(cid, '')}{advisory}")
         for r in doubters:
             why = (r.get("why") or "").strip()
             lab = r.get("lab") or r.get("provider")

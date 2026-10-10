@@ -102,6 +102,18 @@ def _rebase(value: str, src: str, dst: str) -> str:
     return value.replace(src, dst) if src else value
 
 
+def tree_spellings(cwd) -> list[str]:
+    """Every ABSOLUTE spelling of the tree's path, longest first, for rewriting commands
+    and env onto a scratch copy. On macOS /var is a symlink to /private/var, so both the
+    given and the resolved spelling occur (hq_123 run 1). A relative spelling is never
+    rewritten: verify's CLI passes --cwd ".", and replacing "." rewrote every dot in a
+    command (`.venv/bin/python`, `test_x.py`), so no test ran in the copy (found
+    dogfooding the differential check, 2026-10-09). Relative paths resolve inside the copy
+    on their own."""
+    p = Path(cwd)
+    return sorted({str(p.absolute()), str(p.resolve())}, key=len, reverse=True)
+
+
 # A reverted hunk can leave a program that does not even load. A test run that
 # dies of that did not NOTICE the behaviour; it never ran it (council_1cef1a962d6c9a28).
 _INVALID = re.compile(r"SyntaxError|IndentationError|TabError|ERROR collecting|errors during collection"
@@ -160,13 +172,10 @@ def untested_hunks(diff: str, commands: list[str], cwd: Path, env: dict | None =
     is rewritten to the scratch copy, so the tests import the copy being mutated.
     """
     t0 = time.time()
-    given = str(Path(cwd))
+    # Rewrite every absolute spelling of the tree's path (tree_spellings): rewriting only
+    # the resolved one left the tests importing the untouched original (hq_123 run 1).
+    spellings = tree_spellings(cwd)
     cwd = Path(cwd).resolve()
-    # Rewrite BOTH spellings of the tree's path. On macOS /var is a symlink to
-    # /private/var, so a PYTHONPATH built from mkdtemp() never contains the
-    # resolved path; rewriting only that one left the tests importing the
-    # untouched original, and every revert read as "untested" (hq_123 run 1).
-    spellings = sorted({given, str(cwd)}, key=len, reverse=True)
     all_hunks = parse_hunks(diff)
     source = [h for h in all_hunks if not _TEST_PATH.search(h.path)]
     candidates = [h for h in source if not h.trivial()]

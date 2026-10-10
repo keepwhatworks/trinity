@@ -71,6 +71,17 @@ _COLD_START_CHECKS = frozenset({
 })
 
 
+def _verify_stats() -> dict | None:
+    """The verify run log's summary (verify.run_stats), or None when nothing was measured yet
+    (the human line and the JSON stay silent alike, verify codex). Never raises."""
+    try:
+        from ..verify import run_stats
+        vs = run_stats()
+        return vs if vs and vs["measured_tests"] else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _first_run_rung(health, council_count: int, total_transcripts: int) -> dict | None:
     """One next command for a fresh install, or None once the install has history.
 
@@ -244,6 +255,7 @@ def handle_status(args):
             "councils": council_count,
             "first_run": _first_run_rung(health, council_count, total_transcripts),
             "drift_alerts": len(drift_alerts),
+            "verify_runs": _verify_stats(),
             # Empty list when no signals fire — parallel to human
             # surface staying silent. Always present in payload so
             # scripts can `len(status["signals"])` without branch.
@@ -512,6 +524,10 @@ def handle_status(args):
             print(f"    · {alert.message}")
     else:
         print("  Drift:     no alerts")
+    vs = _verify_stats()
+    if vs:
+        print(f"  Verify:    {vs['vacuous']} of {vs['measured_tests']} green tests across {vs['runs']} "
+              "logged runs still passed with the change reverted (they never tested it)")
     print()
 
     # Corpus milestone (fire-once) — celebrate a threshold crossing as the
