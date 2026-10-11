@@ -147,9 +147,13 @@ def _throwaway_repo(work: Path) -> None:
     """Give the scratch copy its OWN one-commit git repo. Tests that call git (e.g.
     `git rev-parse HEAD`) need a repo, and the copy leaves out .git on purpose: linking
     it to the user's repo would let a test write to the user's index. hq_123 run 1 read
-    37% of commits as red for exactly this reason."""
+    37% of commits as red for exactly this reason.
+    The snapshot commit passes git's auto-gc threshold on a large tree, and git then repacks in
+    a detached background process still writing into .git when the copy is deleted ("Directory
+    not empty" killed verify, 2026-10-10). The throwaway repo never runs maintenance."""
     git = ["git", "-c", "user.name=trinity", "-c", "user.email=trinity@localhost",
-           "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null"]
+           "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null",
+           "-c", "gc.auto=0", "-c", "maintenance.auto=false"]
     for args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "--no-verify", "-m", "scratch snapshot"]):
         subprocess.run(git + args, cwd=work, capture_output=True, text=True)
 

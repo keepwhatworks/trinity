@@ -167,3 +167,24 @@ def test_a_same_size_revert_is_still_seen(tmp_path):
     for _ in range(3):
         r = ut.untested_hunks(diff, [cmd], root, env={"PYTHONPATH": str(root / "src"), "PATH": "/usr/bin:/bin"})
         assert r["counts"]["tested"] == 1 and r["counts"]["untested"] == 0, r["hunks"]
+
+
+def test_the_scratch_repo_starts_no_git_maintenance(tmp_path, monkeypatch):
+    """The throwaway commit snapshots the whole tree. On a large tree that passes git's auto-gc
+    threshold, and git 2.54 then repacks in a DETACHED background process that is still writing
+    into .git when the copy is deleted: verify died with "Directory not empty" (2026-10-10).
+    Force auto maintenance on, in the foreground, through a throwaway global config: the copy
+    must still hold no pack, i.e. no maintenance ran."""
+    root = tmp_path / "big"
+    root.mkdir()
+    for i in range(2000):
+        (root / f"f{i}.txt").write_text(f"{i}\n")
+    _git(root, "init", "-q")
+    cfg = tmp_path / "gitconfig"
+    cfg.write_text("[gc]\n\tauto = 1\n\tautoDetach = false\n"
+                   "[maintenance]\n\tauto = true\n\tautoDetach = false\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(cfg))
+    copy = ut.scratch_copy(root, tmp_path / "copy")
+    assert subprocess.run(["git", "rev-parse", "HEAD"], cwd=copy, capture_output=True).returncode == 0
+    packs = list((copy / ".git" / "objects" / "pack").glob("*.pack"))
+    assert not packs, f"git maintenance ran in the scratch repo: {packs}"

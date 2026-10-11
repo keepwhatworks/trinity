@@ -291,10 +291,40 @@ def _parse_votes(text: str, ids: list[str], optional: frozenset = frozenset()) -
     return out, why
 
 
+GEMINI_LEVEL_ENV = "TRINITY_VERIFY_GEMINI_LEVEL"
+GEMINI_LEVEL = "medium"
+
+
+def _gemini_reader(pconf):
+    """verify's Gemini reader runs at GEMINI_LEVEL; councils keep the configured SKU.
+
+    MEASURED (res_183, res_185; founder decision 2026-10-10): the Gemini read was verify's slowest
+    branch in 10 of 10 real verifies on a Claude host, adding 42.3 s to the median. At medium
+    the median verify on the same 10 diffs fell from 77.8 s to 17.7 s. On hq_107's 18 planted
+    gaps, medium and high behave identically (1/18 flagged, 0/18 complete fixes flagged, 0
+    catches the other reader misses), so the swap gives up nothing that instrument can see; it
+    cannot see much, since high itself flags 1/18. agy carries its level in the SKU suffix
+    (providers.sku_effort), so the level swaps there. TRINITY_VERIFY_GEMINI_LEVEL=high restores high.
+    """
+    import dataclasses
+    from .providers import _SKU_EFFORTS, sku_effort
+    level = (os.environ.get(GEMINI_LEVEL_ENV) or GEMINI_LEVEL).strip().lower()
+    if level not in _SKU_EFFORTS:
+        raise ValueError(f"{GEMINI_LEVEL_ENV}={level!r} is not a Gemini level; use one of {list(_SKU_EFFORTS)}")
+    model = getattr(pconf, "model", None) or ""
+    current = sku_effort(model)
+    if not current or current == level:
+        return pconf                       # a SKU with no level suffix is left as configured
+    return dataclasses.replace(pconf, model=model[: -len(current)] + level,
+                               **({"effort": level} if hasattr(pconf, "effort") else {}))
+
+
 def _dispatch(provider_name: str, prompt: str, cwd: Path, config, effort: str | None = None):
     import dataclasses
     from . import providers as P
     pconf = config.providers[provider_name]
+    if provider_name == "antigravity":
+        pconf = _gemini_reader(pconf)
     if effort and getattr(pconf, "effort", None) and provider_name != "antigravity":
         # agy carries its level in the model SKU; claude/codex take a flag.
         pconf = dataclasses.replace(pconf, effort=effort)
