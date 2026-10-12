@@ -10,6 +10,8 @@
 # 3. `trinity-local install`: registers Trinity's MCP server in every CLI it finds,
 #    then prints a read-only check of what is set up.
 # Your transcripts stay on your machine. Nothing here needs an API key.
+# TRINITY_CHANNEL=<where you found Trinity> (e.g. `| TRINITY_CHANNEL=hn sh`) is stored on your
+# disk by `trinity-local install`; nothing is sent until your first council or verify.
 set -eu
 
 REPO="keepwhatworks/trinity"
@@ -36,6 +38,12 @@ else
   fi
   [ -n "$REF" ] || { echo "no Trinity release tag found at github.com/$REPO" >&2; exit 1; }
   SOURCE="https://github.com/$REPO/archive/refs/tags/$REF.tar.gz"
+  # A release may carry a wheel that holds Trinity's telemetry key (it is never in git, so the
+  # source tarball cannot). Prefer that wheel; a missing release or asset keeps the tarball.
+  if REL="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/tags/$REF" 2>/dev/null)"; then
+    WHL="$(printf '%s\n' "$REL" | sed -n 's/.*"browser_download_url": *"\([^"]*\.whl\)".*/\1/p' | head -1)"
+    [ -z "$WHL" ] || SOURCE="$WHL"
+  fi
 fi
 
 echo "-> installing trinity-local (${REF:-local checkout})"

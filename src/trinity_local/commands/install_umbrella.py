@@ -67,6 +67,14 @@ def handle_install_umbrella(args: SimpleNamespace) -> int:
     from ..setup_check import ensure_new_user_config, format_check, run_check
     from .install import handle_install_mcp
     handle_install_mcp(_NS(scope="user"))
+    # The site's install command may carry TRINITY_CHANNEL; stored locally, nothing is sent here.
+    try:
+        import os as _os
+
+        from ..telemetry import remember_channel
+        remember_channel(_os.environ.get("TRINITY_CHANNEL"))
+    except Exception:
+        pass
     note = ensure_new_user_config()
     if note:
         print(note)

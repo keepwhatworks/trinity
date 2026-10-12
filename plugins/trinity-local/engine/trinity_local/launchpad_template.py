@@ -1352,7 +1352,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           <button @click="closeSettings()" style="position: absolute; top: 6px; right: 6px; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; font-size: 24px; line-height: 1; opacity: 0.6; transition: opacity 0.2s; z-index: 10;" aria-label="Close settings">×</button>
           <div class="eyebrow">Settings</div>
           <h2>Launchpad controls</h2>
-          <p class="meta">Telemetry is on by default — toggle it off anytime. Trinity can share anonymous Launchpad views and routing labels — the task type, the winning provider, the council's member count and mode, plus aggregate provider win-rates — never raw prompts, outputs, code, or file paths.</p>
+          <p class="meta">Telemetry is on by default — toggle it off anytime. Trinity can share anonymous Launchpad views and routing labels — the task type, the winning provider, the council's member count and mode, once the channel your install link named (such as hn) and whether your first use was a council or a verify, plus aggregate provider win-rates — never raw prompts, outputs, code, or file paths.</p>
           <!-- The active-benefit nudge promises a CROSS-USER outcome ("surface
                broken flows across users"). That only happens when sharing is BOTH
                consented AND wired to a collector — i.e. shareIsLive. A stock public

@@ -199,6 +199,8 @@ class TestTelemetryPayloadIsCategoricalOnly:
             "winner": "winn",        # winner / winning provider
             "member_count": "member",
             "mode": "mode",
+            "activation_source": "channel",
+            "surface": "first use",
         }
         for param in t.DISCLOSED_EVENT_PARAMS:
             term = param_terms.get(param)

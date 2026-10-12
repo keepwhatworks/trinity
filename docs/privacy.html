@@ -44,13 +44,26 @@ a council completed. Never prompt text, never transcript content, never file
 paths.</p>
 
 <p>Two properties make that a structure rather than a promise. The payload is
-<strong>allowlisted</strong>: a fixed set of four field names, enforced at the
+<strong>allowlisted</strong>: a fixed set of six field names, enforced at the
 one place events reach the wire, so a field nobody reviewed cannot be added by
 accident. And the identifier <strong>rotates</strong>: the install id on your
 disk never leaves, and what ships is a one-way hash of it plus the current
 month. Two events from you in the same month share an id, so we can count how
 many people use Trinity. Two events a month apart do not, so nobody — including
 us — can assemble a picture of your work over time.</p>
+
+<p><strong>The key is public.</strong> A release can include a wheel that carries the key
+an install needs to send these events; when it does, the one-line installer installs that
+wheel. Anyone can extract the key and use it to add made-up events to our counts; it
+cannot read anything back, and we can replace it. A release without that wheel, or a
+build from source, carries no key and sends nothing.</p>
+
+<p><strong>Where you came from.</strong> If the install command you copied named a
+channel (<code>TRINITY_CHANNEL=hn</code>, say), the installer writes that one word to
+your disk and sends nothing. The first council or verify you run on a build that can
+send telemetry carries it in a single event, together with which of the two you ran, and
+never again. A word
+that is not on the fixed list of channels goes out as <code>other</code>.</p>
 
 <p>You do not have to take that on faith. Run
 <code>trinity-local telemetry-show --wire</code> and it prints the exact bytes a

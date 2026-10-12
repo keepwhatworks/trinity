@@ -96,10 +96,16 @@ they hold for every user:
   outbound calls are the council member/chairman dispatches, which ride *your*
   provider credentials.
 - **No LLM calls outside councils.** No background model calls, no hosted controller.
-- **Prompt content never uploads.** Optional, opt-in telemetry is categorical-only
-  (routing labels: `task_type`, `provider_scores`, `winner`). Never prompt text.
-  The public build ships **no analytics credentials**, so telemetry is a no-op by
-  default. It can be disabled explicitly with `trinity-local telemetry-disable`.
+- **Prompt content never uploads.** Telemetry is categorical-only and on by default, off
+  with one command (routing labels: `task_type`, `winner`, `member_count`, `mode`, an
+  aggregate win-rate snapshot, and once per install the install channel and first-use
+  surface). Never prompt text.
+  When a release includes a wheel, `install.sh` installs it and it carries the analytics
+  key: anyone can extract it and use it to add fake events to the counts; it cannot read
+  data and can be rotated. A release without that wheel, or a source install, carries no
+  key and sends nothing.
+  Disable it with `trinity-local telemetry-disable`, or for a fleet, install from source
+  or a mirror without the key.
 - **Local-first inference.** The embedding model (~600 MB, one-time) runs on your
   hardware. The Hugging Face Hub is pinned offline after the first download.
 - **At rest:** `~/.trinity/` lives on the user's disk under normal filesystem

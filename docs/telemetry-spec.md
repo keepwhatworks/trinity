@@ -39,17 +39,30 @@ Telemetry exists to support:
 ships **on by default** to close the feedback loop. Trinity can't improve routing
 without seeing which providers win which task types. The guarantee is not *off*, it
 is *provably no-PII*: only categorical labels (`task_type`, `winner`, `member_count`,
-`mode`) and an anonymous numeric Elo snapshot ever leave the machine, enforced
+`mode`, and once per install `activation_source` + `surface`) and an anonymous numeric Elo
+snapshot ever leave the machine, enforced
 structurally by `telemetry.build_outbound_event_payload`'s `DISCLOSED_EVENT_PARAMS`
 allowlist (a param outside the set is dropped at the wire boundary) and asserted by
 `tests/test_telemetry_no_pii.py`.
 
-Two further gates make a stock install send **nothing**:
+**Channel attribution (founder decision 2026-10-11).** The install command may carry
+`TRINITY_CHANNEL=<channel>`. `trinity-local install` stores it locally (allowlisted in
+`telemetry.CHANNELS`, anything else becomes `other`) and sends nothing. The first completed
+council or verify on a build that can send sends one `activation` event (`activation_source`,
+`surface`), marked sent so it never repeats; a use while sending is impossible (no credentials,
+sharing off) is not marked, so the event goes on the first use that can send
+(`telemetry.record_activation`).
 
-- the public build ships **no GA4 credentials**. Absent `TRINITY_GA4_MEASUREMENT_ID`
-  + `TRINITY_GA4_API_SECRET`, both the CLI and the launchpad silently no-op.
-- the browser send path is withheld an `endpoint` unless those creds are present, so
-  it can't bypass the Python no-op.
+Where the key lives (founder decision 2026-10-11: ship it in public builds):
+
+- the GA4 key is **never in git**. A release built with it in the maintainer's shell attaches
+  a wheel that carries it (`scripts/inject_ga4_credentials.py`, `internal/sync_public.sh`),
+  and `install.sh` installs that wheel. Anyone can extract the key from the wheel; it can only
+  add events to the property, never read them, and it can be rotated.
+- an install without the key (a source checkout, the tag tarball, or a release built without
+  it) has no credentials, and both the CLI and the launchpad silently no-op.
+- the browser send path is withheld an `endpoint` unless credentials are present, so it can't
+  bypass the Python no-op.
 
 Control:
 

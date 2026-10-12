@@ -201,6 +201,14 @@ def _protect_real_native_messaging_manifests():
 
 
 @pytest.fixture(autouse=True)
+def _no_real_telemetry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A shell that exported the GA4 pair for a release build must not turn every test council
+    into a real event. Tests that exercise sending set their own credentials or stub the send."""
+    monkeypatch.delenv("TRINITY_GA4_MEASUREMENT_ID", raising=False)
+    monkeypatch.delenv("TRINITY_GA4_API_SECRET", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _disable_cold_start_autoscan(monkeypatch: pytest.MonkeyPatch) -> None:
     """Block the MCP cold-start auto-scan from firing during tests.
 

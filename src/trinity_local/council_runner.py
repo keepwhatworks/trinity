@@ -50,6 +50,8 @@ def _emit_council_telemetry(outcome) -> None:
             member_count=int(member_count),
             mode=str(mode)[:40],
         )
+        from .telemetry import record_activation
+        record_activation("council")
     except Exception:
         pass
 

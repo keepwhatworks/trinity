@@ -72,7 +72,15 @@ APP_VERSION = _resolve_app_version()
 
 # The only categorical params any outbound GA4 event may carry. The one
 # live emitter (council_runner → "council_complete") passes exactly these.
-DISCLOSED_EVENT_PARAMS = frozenset({"task_type", "winner", "member_count", "mode"})
+DISCLOSED_EVENT_PARAMS = frozenset({"task_type", "winner", "member_count", "mode",
+                                    "activation_source", "surface"})
+
+# Where an install came from (founder decision 2026-10-11, council_242fa5046e726b94). The site's
+# install command carries TRINITY_CHANNEL=<one of these>; `install` stores it locally and sends
+# nothing; the first real use sends it once (record_activation). Anything else reads "other",
+# so free text can never ride this field.
+CHANNELS = frozenset({"hn", "x", "reddit", "linkedin", "github", "newsletter", "friend", "direct"})
+ACTIVATION_SURFACES = frozenset({"council", "verify"})
 
 # Top-level keys the elo snapshot (provider win-rates) may expose to the
 # wire / the browser. All categorical or numeric — no free text.
@@ -127,6 +135,10 @@ def build_outbound_event_payload(
     # routing schema — drop it rather than ship ≤40 chars of prose. This makes
     # the "categorical-only" guarantee STRUCTURAL (format-enforced), not merely
     # length-capped upstream.
+    if "activation_source" in safe and safe["activation_source"] not in CHANNELS | {"none", "other"}:
+        safe["activation_source"] = "other"
+    if "surface" in safe and safe["surface"] not in ACTIVATION_SURFACES:
+        safe.pop("surface")
     tt = safe.get("task_type")
     if isinstance(tt, str) and (not tt.strip() or len(tt) > 48 or any(c.isspace() for c in tt)):
         safe.pop("task_type", None)
@@ -156,6 +168,10 @@ class TelemetrySettings:
     # no-ops elsewhere. Off by default (some users don't want a browser
     # tab on every council).
     auto_open_council: bool = False
+    # The channel the installer was given (an allowlisted CHANNELS value, "other", or "") and
+    # when the one activation event went out. Written locally at install; sent once, later.
+    activation_source: str = ""
+    activation_sent_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -714,6 +730,42 @@ def _send_event_to_ga4(
         import threading
         threading.Thread(target=_post, daemon=True).start()
     return True
+
+
+def channel_from(value: str | None) -> str:
+    """An installer-supplied channel mapped onto the allowlist: "" when absent, "other" when
+    not one of CHANNELS."""
+    v = (value or "").strip().lower()
+    return "" if not v else (v if v in CHANNELS else "other")
+
+
+def remember_channel(value: str | None) -> str:
+    """Store the install's channel locally; the first stored value wins. Sends nothing."""
+    channel = channel_from(value)
+    settings = load_telemetry_settings()
+    if channel and not settings.activation_source:
+        settings.activation_source = channel
+        save_telemetry_settings(settings)
+    return settings.activation_source
+
+
+def record_activation(surface: str) -> bool:
+    """Send the one activation event (channel + which moment) on the first real use.
+
+    Not at install: an install is not use, and nothing should leave the machine before the user
+    has run Trinity once. Marked sent only when the send was actually queued, so an install
+    without credentials (a source checkout) sends it once a build that has them is used.
+    """
+    settings = load_telemetry_settings()
+    if settings.activation_sent_at or surface not in ACTIVATION_SURFACES:
+        return False
+    sent = _send_event_to_ga4("activation", {"activation_source": settings.activation_source or "none",
+                                             "surface": surface}, settings=settings)
+    if sent:
+        fresh = load_telemetry_settings()        # the send may have written a new install id
+        fresh.activation_sent_at = now_iso()
+        save_telemetry_settings(fresh)
+    return sent
 
 
 def record_event(event_name: str, **params: Any) -> bool:

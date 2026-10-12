@@ -555,6 +555,11 @@ def verify(criteria_dicts: list[dict], diff: str, context: str, cwd: Path,
         "duplicates": dup_rows,
     }
     record_run(out)
+    try:                                   # the one activation event; never fails a verify
+        from .telemetry import record_activation
+        record_activation("verify")
+    except Exception:
+        pass
     return out
 
 

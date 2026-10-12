@@ -137,7 +137,7 @@ card, the launchpad, this validation report) carries counts and rates only:
 - The judge-alignment report is agreement fractions and pair counts. No pair contents
   (guarded by `test_eval_privacy_no_prompt_leak.py`).
 - The per-item ledger (`preference_acts.jsonl`) stays local. Only categorical labels ever
-  appear in opt-in telemetry.
+  appear in telemetry.
 
 So the trust pitch is reproducible without seeing anyone's data: clone the repo, point the
 harness at RewardBench, run the negative controls, read the numbers. The method is open.

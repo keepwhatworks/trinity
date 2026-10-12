@@ -143,19 +143,52 @@ def _apply(patch: Path, cwd: Path, reverse: bool) -> bool:
     return subprocess.run(args, cwd=cwd, capture_output=True, text=True).returncode == 0
 
 
-def _throwaway_repo(work: Path) -> None:
+def _source_objects(cwd: Path) -> Path | None:
+    """The source checkout's object store, for a worktree too (its .git is a file pointing at
+    the common dir)."""
+    r = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                       cwd=cwd, capture_output=True, text=True)
+    objects = Path(r.stdout.strip()) / "objects" if r.returncode == 0 and r.stdout.strip() else None
+    return objects if objects is not None and objects.is_dir() else None
+
+
+def _source_tracked(cwd: Path) -> list[str]:
+    """Paths the source repo tracks (NUL-separated, so any filename survives)."""
+    r = subprocess.run(["git", "ls-files", "-z"], cwd=cwd, capture_output=True, text=True)
+    return [p for p in r.stdout.split("\0") if p] if r.returncode == 0 else []
+
+
+def _throwaway_repo(work: Path, borrow: Path | None = None, tracked: list[str] | None = None) -> None:
     """Give the scratch copy its OWN one-commit git repo. Tests that call git (e.g.
     `git rev-parse HEAD`) need a repo, and the copy leaves out .git on purpose: linking
     it to the user's repo would let a test write to the user's index. hq_123 run 1 read
     37% of commits as red for exactly this reason.
     The snapshot commit passes git's auto-gc threshold on a large tree, and git then repacks in
     a detached background process still writing into .git when the copy is deleted ("Directory
-    not empty" killed verify, 2026-10-10). The throwaway repo never runs maintenance."""
+    not empty" killed verify, 2026-10-10). The throwaway repo never runs maintenance.
+    `borrow` is the source's object store, added as a read-only git alternate: a test that
+    resolves a historic commit (a doc-cited SHA) ran red in a history-less copy, so verify's
+    differential reported it 'not checked' (res_186). Git never writes into an alternate, and the
+    copy keeps its own index and refs.
+    `tracked` is the source's tracked paths: `add -A` honours .gitignore, so a file the source
+    force-tracks would read untracked in the copy and a test asserting it is tracked would go red
+    there. Those paths are force-added; ignored files the source does NOT track stay out."""
     git = ["git", "-c", "user.name=trinity", "-c", "user.email=trinity@localhost",
            "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null",
            "-c", "gc.auto=0", "-c", "maintenance.auto=false"]
-    for args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "--no-verify", "-m", "scratch snapshot"]):
-        subprocess.run(git + args, cwd=work, capture_output=True, text=True)
+    subprocess.run(git + ["init", "-q"], cwd=work, capture_output=True, text=True)
+    if borrow is not None:
+        (work / ".git" / "objects" / "info" / "alternates").write_text(f"{borrow}\n")
+    subprocess.run(git + ["add", "-A"], cwd=work, capture_output=True, text=True)
+    present = [p for p in (tracked or []) if (work / p).exists() or (work / p).is_symlink()]
+    if present:
+        # --literal-pathspecs: a tracked name like "*.txt" is a filename, not a glob that would
+        # force-add ignored files the source never tracked.
+        subprocess.run(git + ["--literal-pathspecs", "add", "-f", "--pathspec-from-file=-",
+                              "--pathspec-file-nul"], cwd=work,
+                       input="\0".join(present), capture_output=True, text=True)
+    subprocess.run(git + ["commit", "-q", "--no-verify", "-m", "scratch snapshot"], cwd=work,
+                   capture_output=True, text=True)
 
 
 def scratch_copy(cwd: Path, dest: Path) -> Path:
@@ -163,7 +196,7 @@ def scratch_copy(cwd: Path, dest: Path) -> Path:
     the copy gets its own throwaway repo. Shared by the untested-change and doubt checks."""
     shutil.copytree(cwd, dest, ignore=_IGNORE, symlinks=True)
     if (Path(cwd) / ".git").exists():
-        _throwaway_repo(dest)
+        _throwaway_repo(dest, _source_objects(Path(cwd)), _source_tracked(Path(cwd)))
     return dest
 
 

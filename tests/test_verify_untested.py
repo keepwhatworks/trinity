@@ -188,3 +188,73 @@ def test_the_scratch_repo_starts_no_git_maintenance(tmp_path, monkeypatch):
     assert subprocess.run(["git", "rev-parse", "HEAD"], cwd=copy, capture_output=True).returncode == 0
     packs = list((copy / ".git" / "objects" / "pack").glob("*.pack"))
     assert not packs, f"git maintenance ran in the scratch repo: {packs}"
+
+
+def _two_commit_repo(root):
+    root.mkdir()
+    (root / "a.txt").write_text("one\n")
+    _git(root, "init", "-q"); _git(root, "add", "-A"); _git(root, "commit", "-qm", "first")
+    first = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True).stdout.strip()
+    (root / "a.txt").write_text("two\n")
+    _git(root, "add", "-A"); _git(root, "commit", "-qm", "second")
+    return first
+
+
+@pytest.mark.parametrize("via_worktree", [False, True])
+def test_the_scratch_repo_resolves_the_source_history(tmp_path, via_worktree):
+    """Tests that check a doc-cited commit still exists ran red in the history-less scratch copy,
+    so verify's differential reported them 'not checked' (res_186). The copy borrows the source
+    repo's objects read-only, also when the source is a git worktree (a .git FILE)."""
+    repo = tmp_path / "repo"
+    first = _two_commit_repo(repo)
+    src = repo
+    if via_worktree:
+        src = tmp_path / "wt"
+        _git(repo, "worktree", "add", "-q", "--detach", str(src), "HEAD")
+    refs_before = subprocess.run(["git", "for-each-ref"], cwd=repo, capture_output=True, text=True).stdout
+    copy = ut.scratch_copy(src, tmp_path / "copy")
+    assert subprocess.run(["git", "cat-file", "-e", first], cwd=copy).returncode == 0, \
+        "a commit from the source's history must resolve in the scratch copy"
+    # A test that commits inside the copy writes to the copy, never to the source.
+    (copy / "b.txt").write_text("scratch\n")
+    _git(copy, "add", "-A"); _git(copy, "commit", "-qm", "scratch")
+    assert subprocess.run(["git", "for-each-ref"], cwd=repo, capture_output=True, text=True).stdout == refs_before
+    assert subprocess.run(["git", "status", "--porcelain"], cwd=src, capture_output=True, text=True).stdout == ""
+
+
+def test_the_scratch_repo_tracks_what_the_source_tracks(tmp_path):
+    """A file the source force-tracks despite .gitignore (a skill file, say) must be tracked in the
+    copy too, or a test asserting it is tracked reads red there and verify calls it 'not
+    checked'. An ignored file the source does NOT track stays out of the copy's index."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".gitignore").write_text("kept/\n.env\n")
+    (repo / "kept").mkdir()
+    (repo / "kept" / "skill.md").write_text("tracked on purpose\n")
+    (repo / ".env").write_text("TOKEN=not-a-real-one\n")
+    _git(repo, "init", "-q")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "add", "-f", "kept/skill.md")
+    _git(repo, "commit", "-qm", "first")
+    copy = ut.scratch_copy(repo, tmp_path / "copy")
+    tracked = subprocess.run(["git", "ls-files"], cwd=copy, capture_output=True, text=True).stdout.split()
+    assert "kept/skill.md" in tracked
+    assert ".env" not in tracked
+
+
+def test_tracked_names_are_literal_not_pathspec_patterns(tmp_path):
+    """A tracked file literally named '*.txt' must not act as a glob that force-adds an ignored
+    file the source never tracked (verify's Codex reader)."""
+    repo = tmp_path / "repo"
+    (repo / "star").mkdir(parents=True)
+    (repo / ".gitignore").write_text("star/\n")
+    (repo / "star" / "*.txt").write_text("literal name\n")
+    (repo / "star" / "other.txt").write_text("ignored, never tracked\n")
+    _git(repo, "init", "-q")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "--literal-pathspecs", "add", "-f", "star/*.txt")
+    _git(repo, "commit", "-qm", "first")
+    copy = ut.scratch_copy(repo, tmp_path / "copy")
+    tracked = subprocess.run(["git", "ls-files"], cwd=copy, capture_output=True, text=True).stdout.splitlines()
+    assert "star/other.txt" not in tracked
+    assert any(t.endswith("*.txt") for t in tracked)
