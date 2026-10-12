@@ -103,7 +103,7 @@ DISCLOSED_VIEW_EVENT_KEYS = frozenset(
     {
         "event",
         "version",
-        "share_install_id",
+        "client_id",
         "app_version",
         "timestamp",
         "surface",
@@ -489,7 +489,9 @@ def build_launchpad_view_event(
     raw = {
         "event": "launchpad_view",
         "version": TELEMETRY_VERSION,
-        "share_install_id": settings.share_install_id or "",
+        # The rotating id, never the local one (the privacy page promises the local id never
+        # leaves; this path used to send it raw, 2026-10-12).
+        "client_id": outbound_client_id(settings.share_install_id) if settings.share_install_id else "",
         "app_version": app_version,
         "timestamp": now_iso(),
         "surface": "launchpad",
@@ -532,7 +534,7 @@ def build_elo_snapshot_event(
     return {
         "event": "elo_snapshot",
         "version": TELEMETRY_VERSION,
-        "share_install_id": settings.share_install_id or "",
+        "client_id": outbound_client_id(settings.share_install_id) if settings.share_install_id else "",
         "app_version": app_version,
         "timestamp": now_iso(),
         **safe,
@@ -565,18 +567,24 @@ def _browser_send_enabled() -> bool:
 
 
 def _browser_endpoint() -> str | None:
-    """The endpoint string the browser POSTs to, or None when sends aren't
-    credential-enabled. A custom collector is used verbatim; GA4 needs its
-    measurement_id + api_secret in the query string (the browser has no
-    other channel to authenticate)."""
+    """The endpoint the browser POSTs to: a custom collector the user configured, or None.
+
+    Never the GA4 Measurement Protocol (2026-10-12, found shipping the key in release wheels): the
+    page POSTs its events verbatim, which is not the envelope GA4 records (client_id + events with
+    flat params), and the URL would put the api_secret into a local page. GA4 is reached only from
+    Python (record_event, record_activation), which sends the rotating client id in the right shape.
+    """
     custom = os.environ.get("TRINITY_TELEMETRY_ENDPOINT", "").strip()
+    return custom or None
+
+
+def telemetry_destination() -> str:
+    """Where this install's events go, for display: the custom collector, Google Analytics (from
+    the CLI and MCP server), or "" when nothing can be sent."""
+    custom = _browser_endpoint()
     if custom:
         return custom
-    creds = _ga4_credentials()
-    if creds is None:
-        return None
-    measurement_id, api_secret = creds
-    return f"{GA4_ENDPOINT}?measurement_id={measurement_id}&api_secret={api_secret}"
+    return "Google Analytics (sent by the CLI and MCP server)" if _ga4_credentials() is not None else ""
 
 
 def launchpad_telemetry_state() -> dict[str, Any]:
@@ -595,6 +603,11 @@ def launchpad_telemetry_state() -> dict[str, Any]:
         settings_dict["endpoint"] = browser_endpoint
     else:
         settings_dict.pop("endpoint", None)
+    # For display only (the Endpoint row and the "sharing is live" note): the page must not say
+    # nothing leaves the machine while the CLI and MCP server send to GA4.
+    destination = telemetry_destination()
+    if destination:
+        settings_dict["destination"] = destination
     return {
         "settings": settings_dict,
         "snapshot": snapshot,
@@ -673,7 +686,8 @@ def _send_event_to_ga4(
     Returns True when the event was queued for send, False when it
     was suppressed (telemetry disabled / no credentials / load error).
     The actual HTTP call runs in a background daemon thread so the
-    caller never waits — set ``blocking=True`` only in tests.
+    caller never waits; pending sends get a short flush at exit. ``blocking=True`` sends inline and
+    returns whether the POST was delivered (the once-per-install activation uses it).
 
     Args:
       event_name: GA4 event name (e.g. "council_complete"). Must match
@@ -708,7 +722,7 @@ def _send_event_to_ga4(
     body = json.dumps(payload).encode("utf-8")
     url = f"{GA4_ENDPOINT}?measurement_id={measurement_id}&api_secret={api_secret}"
 
-    def _post() -> None:
+    def _post() -> bool:
         import urllib.error
         import urllib.request
         try:
@@ -720,16 +734,48 @@ def _send_event_to_ga4(
             )
             with urllib.request.urlopen(req, timeout=5) as resp:
                 resp.read()
-        except (urllib.error.URLError, OSError, TimeoutError):
-            # Telemetry must never error out a real flow. Drop the event.
-            pass
+            return True
+        except Exception:
+            # Telemetry must never error out a real flow (urllib.error, OSError, TimeoutError, and
+            # http.client errors such as IncompleteRead alike). Drop the event.
+            return False
 
+    import threading
     if blocking:
-        _post()
-    else:
-        import threading
-        threading.Thread(target=_post, daemon=True).start()
+        # urlopen's timeout bounds each socket operation, not the request, so a server that
+        # trickles bytes could hold the caller indefinitely. A hard deadline instead: past it the
+        # POST counts as not delivered (verify's Codex reader, 2026-10-12).
+        result: list = []
+        t = threading.Thread(target=lambda: result.append(_post()), daemon=True)
+        t.start()
+        t.join(_BLOCKING_DEADLINE_S)
+        return bool(result and result[0])
+    t = threading.Thread(target=_post, daemon=True)
+    t.start()
+    _remember_pending(t)
     return True
+
+
+# A daemon thread dies with the process: a CLI command (verify, a council from the terminal) that
+# exits right after recording an event dropped it (reproduced 2026-10-12: queued, server got 0).
+# At exit, wait briefly for sends still in flight.
+_PENDING: list = []
+_FLUSH_BUDGET_S = 3.0
+_BLOCKING_DEADLINE_S = 6.0
+
+
+def _remember_pending(t) -> None:
+    if not _PENDING:
+        import atexit
+        atexit.register(_flush_pending)
+    _PENDING[:] = [x for x in _PENDING if x.is_alive()] + [t]
+
+
+def _flush_pending() -> None:
+    import time
+    deadline = time.monotonic() + _FLUSH_BUDGET_S
+    for t in list(_PENDING):
+        t.join(max(0.0, deadline - time.monotonic()))
 
 
 def channel_from(value: str | None) -> str:
@@ -753,14 +799,15 @@ def record_activation(surface: str) -> bool:
     """Send the one activation event (channel + which moment) on the first real use.
 
     Not at install: an install is not use, and nothing should leave the machine before the user
-    has run Trinity once. Marked sent only when the send was actually queued, so an install
-    without credentials (a source checkout) sends it once a build that has them is used.
+    has run Trinity once. Marked sent only when the POST was delivered, so an install without
+    credentials (a source checkout), sharing turned off, or a failed send sends it on a later use.
     """
     settings = load_telemetry_settings()
     if settings.activation_sent_at or surface not in ACTIVATION_SURFACES:
         return False
+    # Sent inline, once per install: marking it sent must mean it was delivered, not merely queued.
     sent = _send_event_to_ga4("activation", {"activation_source": settings.activation_source or "none",
-                                             "surface": surface}, settings=settings)
+                                             "surface": surface}, settings=settings, blocking=True)
     if sent:
         fresh = load_telemetry_settings()        # the send may have written a new install id
         fresh.activation_sent_at = now_iso()

@@ -356,7 +356,7 @@ class TestEloSnapshotIsDisclosed:
         # categorical event fields — assert its data keys stay disclosed.
         elo_event = state["elo_event"]
         allowed = t.DISCLOSED_ELO_KEYS | {
-            "event", "share_install_id", "app_version", "timestamp",
+            "event", "client_id", "app_version", "timestamp",
         }
         assert set(elo_event.keys()) <= allowed
 
@@ -412,14 +412,18 @@ class TestBrowserSendHonorsCredentialGate:
         assert "endpoint" not in state["settings"]
         assert t._browser_send_enabled() is False
 
-    def test_endpoint_present_with_ga4_creds(
+    def test_ga4_creds_give_a_destination_but_no_browser_endpoint(
         self, patch_trinity_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """GA4 is reached from Python only: the page must never get the Measurement Protocol URL
+        (api_secret in it, and the page's verbatim events are not GA4's envelope). It still learns
+        that events leave the machine, so it does not claim otherwise (2026-10-12)."""
         monkeypatch.setenv("TRINITY_GA4_MEASUREMENT_ID", "G-TESTXXXX")
         monkeypatch.setenv("TRINITY_GA4_API_SECRET", "test-secret")
         t.enable_telemetry()
         state = t.launchpad_telemetry_state()
-        assert state["settings"].get("endpoint")
+        assert "endpoint" not in state["settings"]
+        assert state["settings"]["destination"].startswith("Google Analytics")
         assert t._browser_send_enabled() is True
 
     def test_endpoint_present_with_custom_collector(

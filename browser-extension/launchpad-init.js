@@ -1029,6 +1029,7 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
         telemetry: {
           enabled: !!pageData.telemetry?.settings?.sharing_enabled,
           endpoint: pageData.telemetry?.settings?.endpoint || '',
+          destination: pageData.telemetry?.settings?.destination || '',
           shareInstallId: pageData.telemetry?.settings?.share_install_id || '',
         },
         coreStatus: pageData.coreStatus || { state: 'empty' },
@@ -1561,7 +1562,9 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
         // is a test value. Show "Not configured" so users don't think a
         // broken URL is intentional.
         get displayedEndpoint() {
-          const ep = this.telemetry?.endpoint || '';
+          // The browser's own collector, else where the CLI and MCP server send (GA4 is never
+          // handed to the page; see telemetry._browser_endpoint).
+          const ep = this.telemetry?.endpoint || this.telemetry?.destination || '';
           if (!ep) return 'Not configured';
           if (/example\.invalid|^https?:\/\/(localhost|127\.0\.0\.1)/.test(ep)) {
             return 'Not configured';

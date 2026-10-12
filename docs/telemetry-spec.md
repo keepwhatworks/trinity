@@ -39,8 +39,9 @@ Telemetry exists to support:
 ships **on by default** to close the feedback loop. Trinity can't improve routing
 without seeing which providers win which task types. The guarantee is not *off*, it
 is *provably no-PII*: only categorical labels (`task_type`, `winner`, `member_count`,
-`mode`, and once per install `activation_source` + `surface`) and an anonymous numeric Elo
-snapshot ever leave the machine, enforced
+`mode`, and once per install `activation_source` + `surface`) ever leave the machine for
+Google Analytics; launchpad views and an anonymous numeric Elo snapshot go only to a collector
+the user configures (`TRINITY_TELEMETRY_ENDPOINT`), carrying the rotating id, never the local one, enforced
 structurally by `telemetry.build_outbound_event_payload`'s `DISCLOSED_EVENT_PARAMS`
 allowlist (a param outside the set is dropped at the wire boundary) and asserted by
 `tests/test_telemetry_no_pii.py`.
