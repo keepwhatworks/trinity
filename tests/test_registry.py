@@ -140,15 +140,12 @@ class TestPersonalRoutingJoinCoverage:
             "— if the read side gained chairman-style labels the join may fire; "
             "re-measure coverage and update res_018")
 
-    def test_a_producer_consumer_key_contract_needs_an_executable_check(self):
-        """The generalisable half. Any table written under one key vocabulary
-        and read under another needs coverage asserted somewhere, or it fails
-        open and silently."""
-        from trinity_local.ranker.chairman_picker import _personal_scores
+    def test_the_chair_pick_no_longer_reads_the_table(self):
+        """The consumer of that never-joined table was the chairman blend, removed
+        2026-10-15 for a fixed chair order. If the picker reads the personal
+        routing table again, the key contract above needs an executable check."""
+        import inspect
 
-        for task_type in ("general", "research", "coding", "debugging", "writing"):
-            scores, n = _personal_scores(task_type, ["claude", "codex", "antigravity"])
-            assert scores == {} and n == 0, (
-                f"{task_type!r} now joins ({n} councils). The personal blend has "
-                "started firing for the first time — verify it is intended, then "
-                "update res_018, chairman_picker's docstring, and this test.")
+        from trinity_local.ranker import chairman_picker
+        src = inspect.getsource(chairman_picker)
+        assert "compute_personal_routing_table" not in src and "personal_routing import" not in src

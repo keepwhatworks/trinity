@@ -69,12 +69,24 @@ def live_session(monkeypatch):
 
 
 class TestPrompts:
-    def test_list_prompts_exposes_council_ask_lens(self):
+    def test_list_prompts_exposes_council_and_verify(self):
         from trinity_local import mcp_server
 
         prompts = asyncio.run(mcp_server.handle_list_prompts())
         names = {p.name for p in prompts}
-        assert {"council", "ask", "lens"} <= names
+        assert names == {"council", "verify"}
+
+    def test_every_prompt_names_a_listed_tool(self):
+        """`/ask` and `/lens` sent agents to `ask` and `get_persona`, both off the
+        tool list since 2026-09-08 (coherence review 2026-10-15)."""
+        from trinity_local import mcp_server
+
+        listed = {t.name for t in asyncio.run(mcp_server.handle_list_tools())}
+        for entry in mcp_server._PROMPT_CATALOG:
+            assert entry["tool"] in listed, entry["name"]
+            text = entry["render"]("x")
+            for tool in __import__("re").findall(r"mcp__trinity-local__(\w+)", text):
+                assert tool in listed, (entry["name"], tool)
 
     def test_get_prompt_renders_arg_into_message(self):
         from trinity_local import mcp_server
@@ -86,11 +98,12 @@ class TestPrompts:
         assert "ship friday?" in text
         assert "run_council" in text
 
-    def test_get_prompt_optional_arg_absent_is_fine(self):
+    def test_the_verify_prompt_asks_for_a_judgment_item(self):
         from trinity_local import mcp_server
 
-        res = asyncio.run(mcp_server.handle_get_prompt("lens", {}))
-        assert "get_persona" in res.messages[0].content.text
+        res = asyncio.run(mcp_server.handle_get_prompt("verify", {"change": "fixes the cache"}))
+        text = res.messages[0].content.text
+        assert "fixes the cache" in text and "judgment" in text and "exclude_lab" in text
 
     def test_get_prompt_unknown_raises(self):
         from trinity_local import mcp_server
@@ -219,3 +232,21 @@ class TestElicitation:
 
         live_session.elicit_result = SimpleNamespace(action="decline", content=None)
         assert mcp_features.elicit("ok?", {"type": "object"}) is None
+
+
+def test_run_council_description_promises_only_returned_fields():
+    """The description promised facets, provider_scores and combined_answer + grafts, which the
+    result never carries, and named `ask()`, which is off the tool list (coherence review
+    2026-10-15). Every field it names as returned must be a key the summary can produce."""
+    import re
+
+    from trinity_local import mcp_server
+    tools = {t.name: t for t in asyncio.run(mcp_server.handle_list_tools())}
+    desc = tools["run_council"].description
+    for gone in ("facets", "provider_scores", "combined_answer", "grafts", "ask()", "HORIZON"):
+        assert gone not in desc, gone
+    src = __import__("inspect").getsource(mcp_server._outcome_summary)
+    for field in ("decision", "flip_condition", "agreed_claims", "disagreed_claims", "winner",
+                  "runner_up", "confidence", "routing_lesson", "degraded", "failed_members",
+                  "degraded_notice"):
+        assert field in desc and re.search(rf'"{field}"', src), field

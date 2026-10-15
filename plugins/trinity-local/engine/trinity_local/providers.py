@@ -133,7 +133,8 @@ def parse_claude_json(stdout: str | None) -> dict | None:
             if isinstance(stats, dict):
                 model = stats.get("canonicalModel")
             model = model or name
-        return {"text": str(d.get("result") or ""), "usage": usage, "model": model}
+        return {"text": str(d.get("result") or ""), "usage": usage, "model": model,
+                "is_error": bool(d.get("is_error"))}
     except Exception:
         return None
 
@@ -231,17 +232,28 @@ class BaseProvider:
         # existing consumer of stdout is unaffected, and keep the cost and the
         # model it reports. A parse miss keeps raw stdout untouched.
         parsed = parse_claude_json(out) if self.config.name == "claude" else None
+        rc = completed.returncode
         if parsed is not None:
-            out = parsed["text"].strip() or out
+            # The envelope parsed, so its `result` IS the answer, empty or not; the
+            # raw JSON used to stand in for an empty result and read as an answer.
+            out = parsed["text"].strip()
             usage = parsed["usage"]
             model_echo = parsed["model"] or model_echo
+            if parsed["is_error"]:
+                # claude reports a failed run (credit wall, auth, API error) as
+                # is_error with the reason in `result` and exit 0. The reason is
+                # an error, not an answer: it goes to stderr, where every caller's
+                # failure path (quota detection, member and chair fallback) reads
+                # it, and the run fails. council_04b782978684464a named this.
+                err = "\n".join(x for x in (out, err) if x)
+                out, rc = "", rc or 1
         elif self.config.name == "codex":
             usage = parse_codex_usage(err + "\n" + out)
         return ProviderResult(
             provider=self.config.name,
             stdout=out,
             stderr=err,
-            returncode=completed.returncode,
+            returncode=rc,
             elapsed_seconds=elapsed,
             model_echo=model_echo,
             usage=usage,
@@ -564,14 +576,63 @@ def dispatched_model(config: ProviderConfig) -> str | None:
 _CLEAN_COMPLETION_FLAGS = {
     "claude": ["--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
                "--disallowedTools", "*"],
-    # codex: NON-INTERACTIVE IS NOT NON-AGENTIC (incident 2026-07-13). The
-    # config bakes `--sandbox workspace-write` into args for council work; an
-    # eval dispatch with cwd inside a git repo let `codex exec` REFACTOR the
-    # repo unprompted (22 files, committed by a downstream `git add -A`). A
-    # clean completion must be read-only; _run also scrubs any baked
-    # workspace-write from config.args when clean_completion is set.
+    # codex: NON-INTERACTIVE IS NOT NON-AGENTIC (incident 2026-07-13): an eval
+    # dispatch with cwd inside a git repo let `codex exec` under a configured
+    # `--sandbox workspace-write` REFACTOR the repo unprompted (22 files). Only
+    # used if codex is configured as a plain CLI provider; CodexProvider forces
+    # read-only on every dispatch (`_codex_read_only_args`).
     "codex": ["--sandbox", "read-only"],
 }
+
+# Every OTHER dispatch (council member, chairman, lens stage) reads but never
+# acts. Members run with cwd in the user's repo while the host agent is editing
+# it, and `claude -p` otherwise inherits the user's permission mode, allow rules
+# and every MCP server in ~/.claude.json, Trinity's own included, so a member
+# could edit the tree or start a nested council.
+#
+# Measured 2026-10-15 with real dispatches into a throwaway git repo (council
+# council_34633698184fa40b asked for exactly this check): the shipped argv wrote
+# the file; denying Bash blocked the write but also `git log`, a read members
+# really use; `--permission-mode manual` still let `git tag` through the user's
+# `Bash(git *)` allow rule. Plan mode keeps reads and shell reads, and with no
+# setting sources no user or project allow rule can grant a write even if the
+# model tries. Plan mode answered a council-shaped question in full (248 words).
+_READ_ONLY_FLAGS = {
+    "claude": ["--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+               "--permission-mode", "plan", "--setting-sources", "",
+               "--disallowedTools", "Edit,Write,NotebookEdit"],
+}
+
+# Config args that would undo `_READ_ONLY_FLAGS`: config args land after the
+# prompt, and the later flag wins. Valued flags take one value; the tool lists
+# are variadic and take every following arg up to the next flag.
+_CLAUDE_GRANT_VALUED = {"--permission-mode", "--setting-sources", "--mcp-config", "--settings"}
+_CLAUDE_GRANT_VARIADIC = {"--allowedTools", "--allowed-tools"}
+_CLAUDE_GRANT_BARE = {"--dangerously-skip-permissions", "--allow-dangerously-skip-permissions"}
+
+
+def _claude_args_without_grants(args: list[str]) -> list[str]:
+    out: list[str] = []
+    skip, variadic = False, False
+    for a in args:
+        if skip:
+            skip = False
+            continue
+        if variadic:
+            if not a.startswith("-"):
+                continue
+            variadic = False
+        if a in _CLAUDE_GRANT_VALUED:
+            skip = True
+            continue
+        if a in _CLAUDE_GRANT_VARIADIC:
+            variadic = True
+            continue
+        if a in _CLAUDE_GRANT_BARE or any(a.startswith(f + "=") for f in
+                                         _CLAUDE_GRANT_VALUED | _CLAUDE_GRANT_VARIADIC):
+            continue
+        out.append(a)
+    return out
 
 
 class CLIProvider(BaseProvider):
@@ -663,6 +724,8 @@ class CLIProvider(BaseProvider):
             command.extend(["--output-format", "json"])
         if self.clean_completion:
             command.extend(_CLEAN_COMPLETION_FLAGS.get(self.config.name, []))
+        else:
+            command.extend(_READ_ONLY_FLAGS.get(self.config.name, []))
         # A COUNCIL MEMBER MUST NOT ACT EITHER. agy has no tool-deny flag, so
         # `_CLEAN_COMPLETION_FLAGS` has no entry for it and the verify reader
         # path appends `--sandbox` by hand. The COUNCIL path never got that,
@@ -683,6 +746,8 @@ class CLIProvider(BaseProvider):
             command.append(tail)
         command.append(prompt)
         config_args = list(self.config.args)
+        if self.config.name == "claude":
+            config_args = _claude_args_without_grants(config_args)
         if self.clean_completion:
             # Scrub a baked write-capable sandbox so the read-only clean flag
             # can't be overridden by config order (codex: later flag wins).
@@ -750,15 +815,44 @@ def _has_model_flag(args: list[str]) -> bool:
     return False
 
 
+_CODEX_WRITE_FLAGS = {"--full-auto", "--dangerously-bypass-approvals-and-sandbox", "--yolo"}
+
+
+def _codex_read_only_args(args: list[str]) -> list[str]:
+    """Config args with every write grant removed and `--sandbox read-only` first.
+
+    A module-level function for the same reason as `_has_model_flag`: the guard
+    lives in run(), which dispatches a subprocess. Every spelling getopt accepts
+    is scrubbed (`--sandbox X`, `-s X`, `--sandbox=X`, `-sX`), plus the flags
+    that grant writes without naming the sandbox, because a scrub that missed
+    one spelling would let the config's grant win (codex: later flag wins).
+    """
+    out: list[str] = []
+    skip_next = False
+    for a in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if a in ("--sandbox", "-s"):
+            skip_next = True
+            continue
+        if a.startswith("--sandbox=") or (a.startswith("-s") and len(a) > 2 and not a.startswith("--")):
+            continue
+        if a in _CODEX_WRITE_FLAGS:
+            continue
+        out.append(a)
+    return ["--sandbox", "read-only", *out]
+
+
 class CodexProvider(BaseProvider):
-    # Incident 2026-07-13: this class had NO clean_completion support — the
-    # runner's `hasattr(provider, "clean_completion")` guard silently skipped
-    # codex, the ONE provider whose config bakes a write-capable sandbox
-    # (`--sandbox workspace-write`). An eval dispatch with cwd inside this
-    # repo let `codex exec` refactor 22 files unprompted. Clean completions
-    # (evals: ANSWER, don't execute — #270) now force read-only and scrub any
-    # baked write sandbox; councils (which legitimately read the project)
-    # keep the configured sandbox.
+    # Every codex dispatch is read-only. Incident 2026-07-13: an eval dispatch
+    # with cwd inside this repo let `codex exec` under the configured
+    # `--sandbox workspace-write` refactor 22 files unprompted, and the fix then
+    # covered evals only. Councils kept the write sandbox ("they legitimately
+    # read the project"), but reading needs no write grant: members and the
+    # chairman ran with cwd in the user's repo while the host agent edited it.
+    # `clean_completion` stays for the callers that set it; for codex the
+    # read-only sandbox is now unconditional, so it changes nothing here.
     clean_completion: bool = False
 
     def run(self, prompt: str, cwd: Path) -> ProviderResult:
@@ -768,19 +862,7 @@ class CodexProvider(BaseProvider):
 
         record_dispatched_prompt(prompt)
         command = [*self.config.command]
-        args = list(self.config.args)
-        if self.clean_completion:
-            scrubbed = []
-            skip_next = False
-            for a in args:
-                if skip_next:
-                    skip_next = False
-                    continue
-                if a == "--sandbox":
-                    skip_next = True
-                    continue
-                scrubbed.append(a)
-            args = ["--sandbox", "read-only", *scrubbed]
+        args = _codex_read_only_args(list(self.config.args))
         if "--skip-git-repo-check" not in args:
             args.append("--skip-git-repo-check")
         model = _effective_model(self.config)
@@ -997,22 +1079,36 @@ def make_provider(config: ProviderConfig) -> BaseProvider:
 _CHAIR_TYPES = {"cli", "codex"}
 
 
+# Claude, then Codex, then anything else (ranker/chairman_picker.py says why;
+# the standing rule is a fixed strong chair, never Gemini when another exists).
+CHAIR_PREFERENCE = ("claude", "codex")
+
+
+def chair_order(names) -> list[str]:
+    """`names` with the preferred chairs first, in CHAIR_PREFERENCE order, then
+    the rest in the order given."""
+    names = list(dict.fromkeys(names))
+    return [n for n in CHAIR_PREFERENCE if n in names] + [n for n in names if n not in CHAIR_PREFERENCE]
+
+
 def chairman_fallback_order(config, primary_provider: str) -> list[str]:
-    """Ranked chair providers for a synthesis: the requested primary first,
-    then the OTHER enabled chair-capable providers (the fallback chain). Order
-    among the rest follows config insertion order — claude / codex / antigravity
-    as declared."""
+    """Ranked chair providers for a synthesis: the requested primary first, then
+    the other enabled chair-capable providers in `chair_order`. Config insertion
+    order used to decide the rest, which put Gemini second in the shipped config.
+
+    A provider that already hit its usage wall in this process goes LAST, not
+    first: retrying it buys a second copy of the same banner (the members' quota
+    breaker skips it for the same reason). It stays in the chain as a last resort
+    rather than being dropped, since a wall can lift."""
+    from .provider_quota import exhausted
     enabled = [
         name for name, cfg in config.providers.items()
         if getattr(cfg, "enabled", False) and getattr(cfg, "type", None) in _CHAIR_TYPES
     ]
-    order: list[str] = []
-    if primary_provider in enabled:
-        order.append(primary_provider)
-    for name in enabled:
-        if name not in order:
-            order.append(name)
-    return order
+    ranked = ([primary_provider] if primary_provider in enabled else []) + chair_order(enabled)
+    ranked = list(dict.fromkeys(ranked))
+    walled = set(exhausted())
+    return [n for n in ranked if n not in walled] + [n for n in ranked if n in walled]
 
 
 def _result_is_usable(res: "ProviderResult") -> bool:
@@ -1023,8 +1119,17 @@ def _result_is_usable(res: "ProviderResult") -> bool:
     NOTE: this is the CONSERVATIVE chairman-fallback gate (any nonzero → try the
     next chair). It is deliberately NOT `not result_hard_failed()`: member +
     judge dispatch are LENIENT (a nonzero exit that still printed real stdout is
-    used, not discarded). Those two resilience models stay separate by design."""
-    return bool(res) and res.returncode == 0 and bool((res.stdout or "").strip())
+    used, not discarded). Those two resilience models stay separate by design.
+
+    A usage-limit banner is not a synthesis even at exit 0: claude prints its
+    credit notice on stdout with rc=0, and on 2026-08-24 forty-seven of them were
+    accepted as syntheses, one reaching core.md as the user's identity
+    (commands/dream.py). The consumer-side breaker there caught it; this is the
+    producer-side check every chair path shares."""
+    if not (bool(res) and res.returncode == 0 and bool((res.stdout or "").strip())):
+        return False
+    from .dispatch_errors import quota_banner_kind
+    return quota_banner_kind(res.stdout) is None
 
 
 def result_hard_failed(res: "ProviderResult") -> bool:

@@ -167,7 +167,7 @@ def test_spawned_mcp_server_initialize_list_and_read(tmp_path: Path):
         # prompts/list — council / ask / lens
         send({"jsonrpc": "2.0", "id": 4, "method": "prompts/list", "params": {}})
         r = _read_response(proc)
-        assert len(r["result"]["prompts"]) == 3
+        assert len(r["result"]["prompts"]) == 2      # council + verify (2026-10-15)
 
         # prompts/get — the ACTUAL slash-command invocation path (Claude Code
         # calls this when a user types `/council ship friday?`). prompts/list +

@@ -83,7 +83,7 @@ The cross-provider council (three labs in parallel, one synthesized verdict with
 
 > **First-run note: councils work immediately. The personalized read layers in.** Every council is full-fidelity from minute one (the cross-provider answer, the agreed claims, the splits), with nothing to download first. Only the *"weighted toward what **you'd** pick"* taste read sharpens with an optional one-time embedder: run `trinity-local download-embedder` (~600 MB, local, one time; if the embedder extras are missing, it prints the one command that adds them first). Without it the lens falls back to a coarser lexical match and the personalized read is muted, but the council itself is unaffected. The lens then builds in the background from your transcripts. The *which-model-to-trust* read sharpens over your first handful of councils, not on minute one.
 
-**No new app. No service. No API key.** Captures flow *to* your machine. Trinity uploads nothing. Your transcripts and lens stay on disk. Everything else is an MCP server inside the harnesses you already use. **Free for individuals, forever.** MIT, local. Running it across a team? Same product, with support: [Trinity for teams](docs/enterprise.md).
+**No new app. No service. No API key.** Captures flow *to* your machine. Your transcripts and lens stay on disk; the one thing Trinity sends is anonymous categorical telemetry, off with one command. Everything else is an MCP server inside the harnesses you already use. **Free for individuals, forever.** MIT, local. Running it across a team? Same product, with support: [Trinity for teams](docs/enterprise.md).
 
 ## Install
 
@@ -187,18 +187,18 @@ outlives Trinity itself. Schema in
 
 ## Privacy by default
 
-- **Trinity uploads nothing.** Your transcripts, prompt history, and lens stay on
-  disk. (Councils dispatch your question to the labs through the CLIs *you* already
-  authenticated, the same path as typing it there yourself, never to a Trinity server.)
-- **Anonymous categorical telemetry is on by default** (Google Analytics 4). Two
-  payloads, both categorical/numeric only: the per-council event
-  (`task_type`, `winner`, `member_count`, `mode`) and, from the launchpad, an anonymous
-  provider win-rate snapshot (per-provider Elo / wins / total games, no task text). No
-  prompt content, no lens text, no user_substitute strings ever. Disable any time with
-  `trinity-local telemetry-disable`. The data immediately stops flowing. Sending also
-  requires GA4 credentials that the public build does **not** ship. Without
-  `TRINITY_GA4_MEASUREMENT_ID` + `TRINITY_GA4_API_SECRET` set, both the CLI and the
-  launchpad silently no-op (nothing leaves your machine).
+- **Your transcripts, prompt history, and lens never leave your machine.** (Councils
+  dispatch your question to the labs through the CLIs *you* already authenticated, the
+  same path as typing it there yourself, never to a Trinity server.)
+- **Anonymous categorical telemetry is on by default** (Google Analytics 4), from the CLI
+  and MCP server; the launchpad never talks to Google. Six allowlisted fields, never prompt
+  content, lens text or file paths: per council `task_type` (from a fixed list; any other
+  label goes out as `other`), `winner`, `member_count` and `mode`, and once per install which channel you came from and whether a council or a
+  verify ran first (`activation_source`, `surface`). The id is a hash that rotates monthly;
+  the install id on your disk never leaves. Release wheels carry the send key, so the
+  one-line installer sends; a build from source carries none and sends nothing.
+  `trinity-local telemetry-show --wire` prints the exact bytes;
+  `trinity-local telemetry-disable` turns it off. Full account: [privacy](docs/privacy.html).
 - **No hosted controller, no per-call billing.** Trinity dispatches via the CLIs you already
   use. Nothing to meter, nothing to bill. The taste signal you build stays yours.
 
@@ -211,7 +211,7 @@ You don't. Trinity is an MCP server inside your existing harness (Claude Code, C
 Trinity isn't a daemon. The MCP server spawns when your harness opens, exits when it closes. ~62 MB resident while connected. `lsof -i | grep LISTEN` shows nothing. No listening port, no background process.
 
 **"I don't want my data sent to a server."**
-Transcripts never leave your machine. Council fan-out goes from your laptop directly to the CLIs you already authenticated. No hosted controller. Anonymous categorical telemetry (the four discrete labels above, no prompt content) is on by default to close the feedback loop. Turn it off any time with `trinity-local telemetry-disable`.
+Transcripts never leave your machine. Council fan-out goes from your laptop directly to the CLIs you already authenticated. No hosted controller. Anonymous categorical telemetry (the six labels above, no prompt content) is on by default to close the feedback loop. Turn it off any time with `trinity-local telemetry-disable`.
 
 **"I want my subscriptions actually used."**
 Trinity dispatches via your existing `claude` / `codex` / `agy` CLIs, using the tokens you've already paid for. Every council uses what you have. No new bill.
@@ -232,7 +232,7 @@ Same verb, different domain. Dreaming consolidates Claude sessions inside Anthro
 They literally can't. Anthropic can't recommend ChatGPT. OpenAI can't recommend Claude. Google can't recommend either. The competitive constraint is structural, not technical. The cross-provider layer has to come from outside the labs. That's the whole point.
 
 **"Who's behind this? Why trust a random repo with my transcripts?"**
-Single developer, MIT, public source. Small enough to audit in an evening. Trinity reads transcripts on your machine, written there either by your CLI sessions or by the Chrome extension's local capture host. Nothing leaves the machine. If you stop using it, `~/.trinity/` is plain JSON you can `cat | jq` without us.
+Single developer, MIT, public source. Small enough to audit in an evening. Trinity reads transcripts on your machine, written there either by your CLI sessions or by the Chrome extension's local capture host. They never leave the machine. If you stop using it, `~/.trinity/` is plain JSON you can `cat | jq` without us.
 
 **"What happens if you abandon this project?"**
 The folder is the API. `~/.trinity/memories/lens.md` is Markdown. Council outcomes are human-readable JSON. The schema is at [`docs/PREFERENCE_CORPUS_SPEC.md`](docs/PREFERENCE_CORPUS_SPEC.md). Your taste capture survives Trinity disappearing.
@@ -288,7 +288,7 @@ pipeline (Stage 0 turn-pair rejections + Stages 1-4 basins→decisions→pair-mi
 
 ## What's next
 
-Current repo state: v1.7 line, exact package `v<!-- canonical:version -->1.7.402<!-- /canonical -->`. The shipped surface is MCP-first: `lens`, `council`, `trust`, `status`, and `install` are the advertised CLI verbs. The older `lens-build` / `council-launch` / `dream` names remain as compatibility aliases (`dream` folded into `lens --deep` 2026-07-04, one concept) for launchpad dispatch and existing scripts. An earlier arc collapsed routing into the lens; that router was then measured (42.9% against a pick-the-leader constant's 37.0%, short of its bar) and removed on 2026-08-11, so nothing routes on your behalf today. Earlier work tightened the launch path: extension auto-wiring, schema migrations, real ModernBERT embeddings, TF-IDF abstain-gates for semantic flows, corpus-purity guards, personal eval integrity, no-PII telemetry gates, and install-wrapper Python fallback.
+Current repo state: v1.7 line, exact package `v<!-- canonical:version -->1.7.403<!-- /canonical -->`. The shipped surface is MCP-first: `lens`, `council`, `trust`, `status`, and `install` are the advertised CLI verbs. The older `lens-build` / `council-launch` / `dream` names remain as compatibility aliases (`dream` folded into `lens --deep` 2026-07-04, one concept) for launchpad dispatch and existing scripts. An earlier arc collapsed routing into the lens; that router was then measured (42.9% against a pick-the-leader constant's 37.0%, short of its bar) and removed on 2026-08-11, so nothing routes on your behalf today. Earlier work tightened the launch path: extension auto-wiring, schema migrations, real ModernBERT embeddings, TF-IDF abstain-gates for semantic flows, corpus-purity guards, personal eval integrity, no-PII telemetry gates, and install-wrapper Python fallback.
 
 ## Help
 

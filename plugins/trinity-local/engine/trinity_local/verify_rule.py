@@ -156,9 +156,12 @@ def triage(kernel: Kernel, panel: Panel) -> Triage:
             why = f" (all {n} reviewing lab{'s' if n != 1 else ''} objected)"
         else:
             n = len(panel.labs())
-            why = (f" (panel agreed, but only {n} lab{'s' if n != 1 else ''} read it; "
-                   "consensus needs three)")
+            # Informational, not a missed step: with exclude_lab set, which is the
+            # recommended way to review your own change, two labs is the most possible.
+            why = f" (panel agreed; only {n} lab{'s' if n != 1 else ''} read it, so a person still reads)"
         return Triage("READ", "test green but no three-lab consensus" + why)
+    if kernel.ran and kernel.green is None:
+        return Triage("READ", "only non-blocking tests ran; none of them can vouch for this change")
     if kernel.ran and not kernel.relevant:
         return Triage("READ", "a test ran but it does not exercise the changed files")
     return Triage("READ", "no relevant test; "

@@ -118,12 +118,12 @@ away from when the library was retired.
   subprocesses. Your credentials never leave your machine via
   Trinity, only via the provider CLIs themselves (the same way they
   always have).
-- **Telemetry is credential-gated and no-PII.** The public build has
-  categorical telemetry enabled in config, but it sends nothing unless
-  GA4 credentials or a custom collector are explicitly present in the
-  environment. When configured, the wire boundary allowlists only
-  categorical / numeric routing fields and provider win-rate snapshots.
-  Never prompt content, lens text, or user substitutes. Disable with
+- **Telemetry is anonymous, categorical, and on by default.** Release
+  wheels (what the one-line installer installs) carry the send key; a
+  build from source carries none and sends nothing. The wire boundary
+  allowlists six categorical / numeric fields, never prompt content, lens
+  text, or file paths, under a monthly-rotating id. See the exact bytes
+  with `trinity-local telemetry-show --wire`; turn it off with
   `trinity-local telemetry-disable`.
 
 ## See also

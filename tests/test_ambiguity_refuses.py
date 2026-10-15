@@ -53,6 +53,38 @@ class TestTwoVerdictsIsNoVerdict:
     def test_a_preamble_before_one_object_is_unaffected(self):
         assert _parse_votes('Here: {"votes":{"c":"PASS"},"why":""}', ["c"])[0] == {"c": True}
 
+    def test_an_echoed_pass_and_a_truncated_fail_is_no_verdict(self):
+        """Both documented failure modes at once (coherence review 2026-10-15): the
+        complete echo was a candidate, the truncated real answer was only read when
+        there were none, so the reviewer's FAIL came back as a PASS."""
+        t = ('Format: {"votes":{"c":"PASS"},"why":""} Answer: {"votes":{"c":"FAIL"},'
+             '"why":"the guard is bypassed when the cache is cold and')
+        assert _parse_votes(t, ["c"]) is None
+
+    def test_a_truncated_answer_after_an_agreeing_echo_reads(self):
+        t = 'Format: {"votes":{"c":"FAIL"}} Answer: {"votes":{"c":"FAIL"},"why":"b is unguar'
+        assert _parse_votes(t, ["c"])[0] == {"c": False}
+
+    @pytest.mark.parametrize("label,real", [
+        ("cut off inside the votes object", '{"votes":{"c":"FA'),
+        ("a value that is not PASS/FAIL", '{"votes":{"c":"FAIL - the guard is bypassed"}}'),
+        ("votes that is not an object", '{"votes":"FAIL"}'),
+        ("the placeholder left unfilled", '{"votes":{"c":"PASS|FAIL"}}'),
+    ])
+    def test_an_unreadable_real_vote_beside_a_pass_echo_is_no_verdict(self, label, real):
+        """Fail-open caught by a security review 2026-10-15: skipping an unreadable
+        vote object let an echoed PASS stand alone and win."""
+        t = 'Format: {"votes":{"c":"PASS"},"why":""} Answer: ' + real
+        assert _parse_votes(t, ["c"]) is None, label
+
+    def test_the_prompts_placeholder_echoed_back_is_not_a_vote(self):
+        """The prompt shows `"c": "PASS|FAIL"`; a reviewer that repeats it before
+        answering has given one verdict, not two."""
+        t = ('{"votes": {"c": "PASS|FAIL"}, "why": "<one sentence per FAIL, or empty>"}\n'
+             '{"votes": {"c": "FAIL"}, "why": "b is unguarded"}')
+        votes, why = _parse_votes(t, ["c"])
+        assert votes == {"c": False} and why == "b is unguarded"
+
 
 class TestAnAmbiguousAnsweringModelIsNotGuessed:
     def _mu(self, mu):

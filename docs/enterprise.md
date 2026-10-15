@@ -92,9 +92,9 @@ The privacy properties are not an enterprise add-on. They are architectural, and
 they hold for every user:
 
 - **Transcripts never leave the machine.** Ingest, embedding, theme assignment,
-  search, and clustering run locally on pure embeddings + heuristics. The only
-  outbound calls are the council member/chairman dispatches, which ride *your*
-  provider credentials.
+  search, and clustering run locally on pure embeddings + heuristics. The outbound
+  calls are the council member/chairman dispatches, which ride *your* provider
+  credentials, and the anonymous categorical telemetry below.
 - **No LLM calls outside councils.** No background model calls, no hosted controller.
 - **Prompt content never uploads.** Telemetry is categorical-only and on by default, off
   with one command (routing labels: `task_type`, `winner`, `member_count`, `mode`, and once
@@ -137,7 +137,7 @@ See [`SECURITY.md`](../SECURITY.md) for the threat model and disclosure process.
 ## Status & honesty
 
 Trinity is **consumer-shipped today** and pre-PyPI (install via the curl-bash
-script. `~/.trinity/code` + a local venv). The enterprise **support offering**
+script, which `uv tool install`s the newest release wheel). The enterprise **support offering**
 described here is the forward-looking commercial model. We onboard design partners
 first. If you're evaluating Trinity for an org, the technical claims above are live
 and verifiable in the repo. The support contract is a conversation, not a checkout.

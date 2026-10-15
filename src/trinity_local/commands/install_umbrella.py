@@ -89,4 +89,11 @@ def handle_install_umbrella(args: SimpleNamespace) -> int:
         "Setup is done; these verbs are optional. Re-check any time "
         "(read-only): `trinity-local install --check`."
     )
+    # The founder lock is "on by default, off with one command"; the one command has to be
+    # visible at the moment the default takes effect, not only on the privacy page.
+    print(
+        "Anonymous telemetry is on: a few categorical labels per council and one first-use "
+        "event, never prompt content. See the bytes: `trinity-local telemetry-show --wire`. "
+        "Turn it off: `trinity-local telemetry-disable`."
+    )
     return 0

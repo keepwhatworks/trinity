@@ -38,8 +38,9 @@ Telemetry exists to support:
 **Superseded 2026-05-27** (this section originally read "Opt-in only"): telemetry
 ships **on by default** to close the feedback loop. Trinity can't improve routing
 without seeing which providers win which task types. The guarantee is not *off*, it
-is *provably no-PII*: only categorical labels (`task_type`, `winner`, `member_count`,
-`mode`, and once per install `activation_source` + `surface`) ever leave the machine for
+is *provably no-PII*: only categorical labels (`task_type` from a fixed list, anything else
+sent as `other`; `winner` folded to a known provider or `other`; `member_count`;
+`mode`; and once per install `activation_source` + `surface`) ever leave the machine for
 Google Analytics; launchpad views and an anonymous numeric Elo snapshot go only to a collector
 the user configures (`TRINITY_TELEMETRY_ENDPOINT`), carrying the rotating id, never the local one, enforced
 structurally by `telemetry.build_outbound_event_payload`'s `DISCLOSED_EVENT_PARAMS`
@@ -145,7 +146,7 @@ Users must be able to:
 - enable sharing (shipped, launchpad settings modal)
 - disable sharing (shipped)
 - reset anonymous share identity (shipped, `telemetry-reset-id` CLI + modal button)
-- configure endpoint URL (shipped)
+- point the launchpad's own events at a collector you run (`TRINITY_TELEMETRY_ENDPOINT`). This does not redirect CLI or MCP events, which go to Google Analytics; `telemetry-endpoint` stores a setting nothing reads and says so.
 
 **Future / not yet implemented:**
 - preview shared payload (UI not built. The shared event shape is documented below in this file, but no in-launchpad preview exists)
@@ -356,7 +357,7 @@ If the hash is unchanged, the snapshot does not need to be re-uploaded.
 
 ## Public Aggregate Model (deferred)
 
-**Status: not implemented in code today.** Current `telemetry.py` only supports a configurable endpoint URL with default-off. There is no aggregation backend, no `last_upload_at` round-trip, no public-Elo response shape.
+**Status: not implemented in code today.** Current `telemetry.py` sends the allowlisted categorical events to Google Analytics, on by default, under a monthly-rotating id. There is no aggregation backend, no `last_upload_at` round-trip, no public-Elo response shape.
 
 When/if a backend is built, the natural shape is:
 

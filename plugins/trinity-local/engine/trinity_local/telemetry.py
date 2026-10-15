@@ -81,6 +81,8 @@ DISCLOSED_EVENT_PARAMS = frozenset({"task_type", "winner", "member_count", "mode
 # so free text can never ride this field.
 CHANNELS = frozenset({"hn", "x", "reddit", "linkedin", "github", "newsletter", "friend", "direct"})
 ACTIVATION_SURFACES = frozenset({"council", "verify"})
+_WIRE_WINNERS = frozenset({"claude", "codex", "antigravity", "unknown"})
+_WIRE_MODES = frozenset({"parallel", "synthesis_only", "host_synthesis"})
 
 # Top-level keys the elo snapshot (provider win-rates) may expose to the
 # wire / the browser. All categorical or numeric — no free text.
@@ -127,21 +129,28 @@ def build_outbound_event_payload(
     (caller adds ``client_id``).
     """
     safe = {k: params[k] for k in DISCLOSED_EVENT_PARAMS if k in params}
-    # `task_type` is the ONLY disclosed param that's content-DERIVED (the chairman
-    # names it). The others are bounded: winner = a provider slug, mode ∈
-    # {parallel, chain}, member_count = int. Real task_types are single
-    # snake_case tokens with NO whitespace ("real_estate_development_planning");
-    # prose has whitespace. So whitespace ⇒ a free-text label slipped past the
-    # routing schema — drop it rather than ship ≤40 chars of prose. This makes
-    # the "categorical-only" guarantee STRUCTURAL (format-enforced), not merely
-    # length-capped upstream.
     if "activation_source" in safe and safe["activation_source"] not in CHANNELS | {"none", "other"}:
         safe["activation_source"] = "other"
     if "surface" in safe and safe["surface"] not in ACTIVATION_SURFACES:
         safe.pop("surface")
-    tt = safe.get("task_type")
-    if isinstance(tt, str) and (not tt.strip() or len(tt) > 48 or any(c.isspace() for c in tt)):
-        safe.pop("task_type", None)
+    # `task_type` goes out only as a member of a closed set. The chairman names it freely, and
+    # a single snake_case token is still prompt-derived: one local corpus held 1,049 distinct
+    # labels over 1,558 councils, which is a description of the work, not a category. The
+    # whitespace guard that stood here stopped prose and let `real_estate_development_planning`
+    # through; it never mattered while council telemetry was dead (2026-07-22 to 2026-10-15),
+    # and wiring it back is what made it matter (Codex's verify read of the wiring).
+    if "task_type" in safe:
+        from .categories import task_type_to_category
+        tt = str(safe["task_type"]).strip()
+        safe["task_type"] = tt if tt in task_type_to_category() else "other"
+    # `winner` is the chairman's free string, and a caller of run_council(responses=...) names
+    # its own members, so it is folded to a known slug or "other"; `mode` is a closed set.
+    if "winner" in safe:
+        from .council_schema import normalize_provider_slug
+        w = normalize_provider_slug(str(safe["winner"]).strip())
+        safe["winner"] = w if w in _WIRE_WINNERS else "other"
+    if "mode" in safe and safe["mode"] not in _WIRE_MODES:
+        safe["mode"] = "other"
     return {"events": [{"name": event_name, "params": safe}]}
 
 
@@ -172,6 +181,10 @@ class TelemetrySettings:
     # when the one activation event went out. Written locally at install; sent once, later.
     activation_source: str = ""
     activation_sent_at: str | None = None
+    # The last time the activation send actually went to the network and failed. Where traffic
+    # to Google is silently dropped (corporate egress, captive portals) every council and verify
+    # used to wait the full inline deadline, forever; now at most once a day.
+    activation_attempted_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -579,12 +592,17 @@ def _browser_endpoint() -> str | None:
 
 
 def telemetry_destination() -> str:
-    """Where this install's events go, for display: the custom collector, Google Analytics (from
-    the CLI and MCP server), or "" when nothing can be sent."""
+    """Where this install's events go, for display: Google Analytics (from the CLI and MCP
+    server), the custom collector (the launchpad's own events only), both, or "" when nothing
+    can be sent. It returned the collector ALONE when one was set, hiding that CLI and MCP
+    events still go to Google: a collector redirects the launchpad, never the Python sends."""
+    parts = []
+    if _ga4_credentials() is not None:
+        parts.append("Google Analytics (sent by the CLI and MCP server)")
     custom = _browser_endpoint()
     if custom:
-        return custom
-    return "Google Analytics (sent by the CLI and MCP server)" if _ga4_credentials() is not None else ""
+        parts.append(f"{custom} (the launchpad's own events)")
+    return "; ".join(parts)
 
 
 def launchpad_telemetry_state() -> dict[str, Any]:
@@ -696,7 +714,8 @@ def _send_event_to_ga4(
         Values must be primitives (str/int/float/bool). NO prompt content,
         NO lens text — only routing labels per CLAUDE.md commitment #2.
       settings: Optional TelemetrySettings; loads from disk when None.
-      blocking: When True, run the POST inline (test-only).
+      blocking: When True, run the POST inline: the activation send, so that marking it sent
+        means delivered.
     """
     settings = settings or load_telemetry_settings()
     if not settings.sharing_enabled or not settings.share_usage_events:
@@ -805,14 +824,37 @@ def record_activation(surface: str) -> bool:
     settings = load_telemetry_settings()
     if settings.activation_sent_at or surface not in ACTIVATION_SURFACES:
         return False
+    if not settings.sharing_enabled or _ga4_credentials() is None:
+        return False                             # nothing would be attempted; nothing to back off
+    if _within(settings.activation_attempted_at, ACTIVATION_RETRY_SECONDS):
+        return False
     # Sent inline, once per install: marking it sent must mean it was delivered, not merely queued.
     sent = _send_event_to_ga4("activation", {"activation_source": settings.activation_source or "none",
                                              "surface": surface}, settings=settings, blocking=True)
+    fresh = load_telemetry_settings()            # the send may have written a new install id
     if sent:
-        fresh = load_telemetry_settings()        # the send may have written a new install id
         fresh.activation_sent_at = now_iso()
-        save_telemetry_settings(fresh)
+    else:
+        fresh.activation_attempted_at = now_iso()
+    save_telemetry_settings(fresh)
     return sent
+
+
+ACTIVATION_RETRY_SECONDS = 24 * 3600
+
+
+def _within(stamp: str | None, seconds: float) -> bool:
+    """True when `stamp` (an ISO time) is less than `seconds` old. An unreadable stamp is old."""
+    if not stamp:
+        return False
+    try:
+        from datetime import datetime, timezone
+        t = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - t).total_seconds() < seconds
+    except ValueError:
+        return False
 
 
 def record_event(event_name: str, **params: Any) -> bool:

@@ -152,9 +152,10 @@ class TestRoute:
         assert "mode" in result
         assert "primary" in result
         assert "confidence" in result
-        # Coding task → codex (gpt-5.5 xhigh) wins AA Coding Index (59.1 > gemini 55.5 > claude 52.5)
-        assert result["primary"] == "codex"
-        assert result["chairman_source"] == "global_benchmarks"
+        # The pick is the fixed chair order (Claude, then Codex) since 2026-10-15; the
+        # benchmark blend chaired Gemini on installed builds (test_chair_fixed_order.py).
+        assert result["primary"] == "claude"
+        assert result["chairman_source"] == "fixed_order"
 
     def test_route_handles_minimal_args(self, home: Path):
         result = self._route("anything")
@@ -188,7 +189,6 @@ class TestRoute:
             latency="fast",
         )
         assert result["primary"] in ("claude", "antigravity")
-        assert "latency=fast" in result["reason"]
         assert result["latency"] == "fast"
 
     def test_route_returns_challenger_distinct_from_primary(self, home: Path):
@@ -215,8 +215,8 @@ class TestAskRouteMode:
         # dispatched answer (no model call in route mode).
         assert "mode" in result and "primary" in result and "confidence" in result
         assert "answer" not in result
-        # Deterministic: coding → codex, exactly like the route tool.
-        assert result["primary"] == "codex"
+        # Deterministic, exactly like the route tool: the fixed chair order.
+        assert result["primary"] == "claude"
 
     def test_ask_is_no_longer_advertised(self):
         """`ask` was soft-demoted 2026-09-08 (council fd416f42, agreed claim 3:
@@ -465,6 +465,7 @@ class TestRunCouncilCanonicalizesProviderSlugs:
                       '"confidence": "high", "agreed_claims": [], '
                       '"disagreed_claims": []}')
             stderr = ""
+            returncode = 0
 
         ran = {"called": False}
 
@@ -533,6 +534,7 @@ class TestHostMemberCouncil:
             stdout = ('{"winner": "claude", "runner_up": "codex", "confidence": "high", '
                       '"agreed_claims": [], "disagreed_claims": []}')
             stderr = ""
+            returncode = 0
 
         called: list[str] = []
 
@@ -576,6 +578,7 @@ class TestHostMemberCouncil:
         class _FakeResult:
             stdout = "MEMBER ANSWER"
             stderr = ""
+            returncode = 0
 
         called: list[str] = []
 

@@ -1080,43 +1080,29 @@ def format_one_line(report: DoctorReport) -> str:
 
 
 def _check_telemetry_destination() -> CheckResult:
-    """Sharing can be ON while nothing can possibly arrive.
+    """Where telemetry goes from this install, stated plainly. Informational.
 
-    `_send_event_to_ga4` returns False when `_ga4_credentials()` is None, which
-    is the documented behaviour for a contributor without GA4 env vars. On a
-    SHIPPED install nobody has those vars, so the default `sharing_enabled=True`
-    produces a system that reports healthy and transmits nothing, with no
-    surface saying why. That is this repo's signature failure — a green over
-    degenerate data — sitting on the one instrument the distribution plan
-    depends on. The check attests the INVARIANT (a destination exists), not the
-    proxy (the setting is on).
+    This used to FAIL whenever sharing was on and the build carried no key, to
+    catch a shipped install that silently sent nothing. Since v1.7.402 the
+    release wheel carries the key, so a keyless build is a deliberate one: a
+    source checkout, or the keyless fleet install enterprise.md recommends. Those
+    users saw a red check asking for the maintainer's secret. The invariant the
+    old check guarded, "a shipped build can send", is now checked where it can
+    be fixed: `internal/sync_public.sh` refuses to announce a release whose wheel
+    lacks the key (coherence review 2026-10-15).
     """
     try:
         from . import telemetry as _t
 
         settings = _t.load_telemetry_settings()
         if not settings.sharing_enabled:
-            return CheckResult(
-                name="telemetry_destination",
-                ok=True,
-                detail="sharing is off — nothing is sent, which is consistent.",
-            )
-        if _t._browser_send_enabled():
-            return CheckResult(
-                name="telemetry_destination",
-                ok=True,
-                detail="sharing is on and a destination is configured.",
-            )
-        return CheckResult(
-            name="telemetry_destination",
-            ok=False,
-            detail=("sharing is ON but no destination is configured, so every "
-                    "event is silently discarded. Counting activations will "
-                    "report zero users whether or not anyone installed."),
-            fix=("set TRINITY_TELEMETRY_ENDPOINT, or provide the GA4 "
-                 "measurement_id + api_secret env vars, or turn sharing off "
-                 "so the state is honest"),
-        )
+            detail = "sharing is off; nothing is sent."
+        elif _t._ga4_credentials() is not None:
+            detail = ("sharing is on: anonymous categorical events go to Google Analytics "
+                      "(`trinity-local telemetry-show --wire` shows the bytes).")
+        else:
+            detail = "this build carries no telemetry key, so nothing is sent."
+        return CheckResult(name="telemetry_destination", ok=True, detail=detail)
     except Exception as exc:  # never let a health check crash the report
         return CheckResult(
             name="telemetry_destination",

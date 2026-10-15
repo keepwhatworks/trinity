@@ -1,4 +1,4 @@
-"""verify — the pre-deploy gate. Kernel first, three reads, the rule.
+"""verify — the pre-deploy gate. The kernel and the blinded reads, then the rule.
 
     Run the relevant tests. Get three independent reads. Apply the rule.
 
@@ -148,6 +148,11 @@ def run_kernel(criteria: list[Criterion], cwd: Path, timeout: int = 600,
                      "seconds": round(time.time() - t0, 1), "tail": tail})
         if c.blocking and not ok:
             green = False
+    # A block with no blocking test has nothing that can vouch for the change: a
+    # single non-blocking red test used to read "tests: green" above "RED [t]"
+    # (coherence review 2026-10-15).
+    if not any(c.blocking for c in tests):
+        return Kernel(ran=True, relevant=False, green=None), runs
     return Kernel(ran=True, relevant=True, green=green), runs
 
 
@@ -223,61 +228,61 @@ def _parse_votes(text: str, ids: list[str], optional: frozenset = frozenset()) -
     already arrive. Discarding them and then asking a human to review blind is
     the single worst trade this product makes.
     """
-    votes = None
-    candidates: list[dict] = []
     decoder = json.JSONDecoder()
-    for m in _JSON_START_RE.finditer(text or ""):
+    # ONE SCAN, EVERY VOTE OBJECT. Decode the object after each `"votes":` key
+    # on its own, so a vote counts whether or not its envelope closed: a reviewer
+    # with a long `why` is cut off before the outer brace (diagnosed 2026-09-09),
+    # and the vote, which comes first in the requested shape, is still whole.
+    #
+    # AMBIGUITY IS A REFUSAL, NOT A RACE. A reviewer that illustrates the format
+    # before answering -- `Example: {"votes":{"c":"PASS"}} Final verdict:
+    # {"votes":{"c":"FAIL"}}` -- had its verdict INVERTED when the first object
+    # won (Astra audit 2026-09-16). Taking the last would be a different guess.
+    # When two readable verdicts disagree there is no fact to recover.
+    #
+    # The two fixes used to be two passes: complete envelopes first, the
+    # truncated vote only when there were none. So an echoed PASS example
+    # followed by a truncated real FAIL read as PASS, a false approval made of
+    # both documented failure modes at once (coherence review 2026-10-15).
+    #
+    # EVERY VOTE OBJECT MUST BE READABLE. An occurrence that does not decode to a
+    # dict could be the real verdict (cut off inside the votes object, or
+    # holding a value like "FAIL - unguarded"), so it refuses the whole read
+    # rather than being skipped: skipping it let an echoed PASS stand alone and
+    # win, a fail-open a security review caught the same day. The one thing
+    # skipped is the prompt's own placeholder echoed back FIRST, every value
+    # exactly "PASS|FAIL": the format line, repeated before the answer. A
+    # placeholder anywhere later is a reader that never filled in its verdict,
+    # and skipping it would let an earlier PASS win (Codex's read of the fix).
+    # A value other than PASS/FAIL on the winning dict refuses below.
+    candidates: list[dict] = []
+    for i, m in enumerate(re.finditer(r'"votes"\s*:\s*', text or "")):
         try:
-            d, _ = decoder.raw_decode(text, m.start())
+            d, _ = decoder.raw_decode(text, m.end())
         except json.JSONDecodeError:
-            continue
+            return None
         # Valid-JSON-of-the-wrong-type must not crash the caller
         # (guard_shape_not_just_parse).
-        if isinstance(d, dict) and isinstance(d.get("votes"), dict):
-            candidates.append(d["votes"])
-    # AMBIGUITY IS A REFUSAL, NOT A RACE. This took the FIRST object carrying a
-    # `votes` key, so a reviewer that illustrates the format before answering --
-    # `Example: {"votes":{"c":"PASS"}} Final verdict: {"votes":{"c":"FAIL"}}` --
-    # had its verdict INVERTED, and the FAIL's reasoning was attached to the
-    # example's PASS. Found by an Astra audit 2026-09-16, in a scan written days
-    # earlier to fix the previous parser bug.
-    #
-    # Taking the LAST would be a different guess, wrong on a different input.
-    # When two readable vote objects DISAGREE there is no fact here to recover,
-    # and inventing one is how this codebase keeps producing plausible wrong
-    # answers. Agreeing duplicates are fine -- they say the same thing.
-    if candidates:
-        first = candidates[0]
-        if all(c == first for c in candidates[1:]):
-            votes = first
-        else:
+        if not isinstance(d, dict) or not d:
             return None
-    if votes is None:
-        # TRUNCATION FALLBACK. A reviewer that writes a long `why` can have its
-        # response cut off before the closing brace, so the OUTER object never
-        # parses even though the vote is complete and sits at the front of it.
-        # Diagnosed 2026-09-09 from a banked raw_tail ending mid-sentence with
-        # no `}`; before the tail was banked, four of these read only as
-        # "unparseable vote" and I twice guessed wrong at the cause. `votes` is
-        # first in the requested shape, so decode THAT object alone rather than
-        # requiring the envelope that carries it.
-        for m in re.finditer(r'"votes"\s*:\s*', text or ""):
-            try:
-                d, _ = decoder.raw_decode(text, m.end())
-            except json.JSONDecodeError:
+        if all(str(v).strip().upper() == "PASS|FAIL" for v in d.values()):
+            if i == 0:
                 continue
-            if isinstance(d, dict):
-                votes = d
-                break
-    if votes is None:
+            return None
+        candidates.append(d)
+    if not candidates or any(c != candidates[0] for c in candidates[1:]):
         return None
+    votes = candidates[0]
+    # The reason comes from an envelope that carries THIS verdict, never from an
+    # echoed format line ("<one sentence per FAIL, or empty>").
     why = ""
     for m in _JSON_START_RE.finditer(text or ""):
         try:
             d, _ = decoder.raw_decode(text, m.start())
         except json.JSONDecodeError:
             continue
-        if isinstance(d, dict) and isinstance(d.get("why"), str):
+        if (isinstance(d, dict) and d.get("votes") == votes
+                and isinstance(d.get("why"), str) and d["why"].strip()):
             why = d["why"].strip()
             break
     out = {}
@@ -319,14 +324,21 @@ def _gemini_reader(pconf):
                                **({"effort": level} if hasattr(pconf, "effort") else {}))
 
 
+_EFFORT_RANK = {"none": 0, "minimal": 1, "low": 2, "medium": 3, "high": 4, "xhigh": 5, "max": 6}
+
+
 def _dispatch(provider_name: str, prompt: str, cwd: Path, config, effort: str | None = None):
     import dataclasses
     from . import providers as P
     pconf = config.providers[provider_name]
     if provider_name == "antigravity":
         pconf = _gemini_reader(pconf)
-    if effort and getattr(pconf, "effort", None) and provider_name != "antigravity":
-        # agy carries its level in the model SKU; claude/codex take a flag.
+    if (effort and getattr(pconf, "effort", None) and provider_name != "antigravity"
+            and _EFFORT_RANK.get(effort, -1) > _EFFORT_RANK.get(pconf.effort, 99)):
+        # agy carries its level in the model SKU; claude/codex take a flag. An
+        # override only RAISES a reader's level (founder 2026-10-12: lowering the
+        # reader that catches things "looses the accuracy"); an unknown level on
+        # either side keeps the configured one.
         pconf = dataclasses.replace(pconf, effort=effort)
     # A READER MUST NOT ACT. Given a real diff, a member will sometimes reach
     # for a tool to "check" -- headless agy auto-denies and emits nothing (the
@@ -359,6 +371,23 @@ def _dispatch(provider_name: str, prompt: str, cwd: Path, config, effort: str | 
         return prov.run(prompt, scratch), pconf
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
+
+
+def panel_members(members) -> tuple[str, ...]:
+    """Canonical, de-duplicated reader slugs from whatever a caller passed.
+
+    MCP took `tuple(args.get("members"))`, so a string became one reader per
+    character, and nothing folded brand names: `gemini` matched no provider and
+    was dropped. The same fold `run_council` applies at its launch boundary."""
+    from .council_schema import normalize_provider_slug
+    if isinstance(members, str):
+        members = members.split(",")
+    out: list[str] = []
+    for m in members or ():
+        slug = normalize_provider_slug(str(m).strip()) if str(m).strip() else ""
+        if slug and slug not in out:
+            out.append(slug)
+    return tuple(out) or DEFAULT_PANEL
 
 
 def _resolve_lab(value: str | None) -> str | None:
@@ -406,9 +435,14 @@ def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
         vote_keys=", ".join(f'"{i}": "PASS|FAIL"' for i in ids),
     )
     exclude_lab = _resolve_lab(exclude_lab)
-    eligible = [n for n in providers
-                if not (exclude_lab and LAB_OF.get(n, n) == exclude_lab)
-                and n in config.providers and config.providers[n].enabled]
+    providers = panel_members(providers)
+    wanted = [n for n in providers if not (exclude_lab and LAB_OF.get(n, n) == exclude_lab)]
+    eligible = [n for n in wanted if n in config.providers and config.providers[n].enabled]
+    # A requested reader that cannot run is a LOST read, shown as one, never a
+    # silent drop: `gemini` used to vanish while the card said "2 of 2 voted".
+    lost = [Read(n, LAB_OF.get(n, n), None, {}, False, 0.0,
+                 error=("not enabled in config" if n in config.providers else "not a configured provider"))
+            for n in wanted if n not in eligible]
 
     def one(name: str) -> Read:
         lab = LAB_OF.get(name, name)
@@ -427,7 +461,10 @@ def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
                             error="unparseable vote" if text.strip() else
                             f"empty stdout (rc={getattr(result, 'returncode', '?')})",
                             raw_tail=text[-300:], stderr_tail=err)
-            passed = all(parsed[c.id] for c in judgments if c.blocking)
+            # Vacuous truth is not a pass: with no blocking judgment, three readers
+            # who FAIL every advisory question would count as three labs agreeing.
+            blocking_j = [c for c in judgments if c.blocking]
+            passed = bool(blocking_j) and all(parsed[c.id] for c in blocking_j)
             tests = evidence = None
             if ask_tests:
                 from .doubts import parse_tests
@@ -446,6 +483,7 @@ def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=max(1, len(eligible))) as pool:
         reads = list(pool.map(one, eligible))      # provider order, whatever finishes first
+    reads += lost
     votes = {r.provider: r.passed for r in reads if r.error is None}
     return Panel(ran=bool(votes), votes=votes), reads
 
@@ -478,7 +516,7 @@ def verify(criteria_dicts: list[dict], diff: str, context: str, cwd: Path,
            run_panel: bool = True, run_tests: bool = True, config=None,
            effort: str | None = None, env: dict | None = None,
            differential: bool | None = None, quality: bool | None = None) -> dict:
-    """Panel first (blinded), then kernel, then the rule. Returns a plain dict.
+    """The blinded panel and the kernel run concurrently, then the rule. Returns a plain dict.
     `differential` (default: on unless TRINITY_VERIFY_DIFFERENTIAL=0) measures kernel
     relevance by rerunning each green test with the change's source reverted. `quality` (default:
     on unless TRINITY_VERIFY_QUALITY=0) adds the advisory QUALITY_CRITERIA to a panel that runs."""
@@ -516,6 +554,7 @@ def verify(criteria_dicts: list[dict], diff: str, context: str, cwd: Path,
     vacuous = sorted(cid for cid, s in ((measured or {}).get("status") or {}).items()
                      if s == "vacuous") if (measured or {}).get("ran") else []
     t: Triage = triage(kernel, panel)
+    green_ids = {r["id"] for r in runs if r.get("green")}
     # Report-only: which hunks no declared test notices. Never changes the triage.
     untested = None
     if run_tests and kernel.ran and kernel.green:
@@ -545,11 +584,13 @@ def verify(criteria_dicts: list[dict], diff: str, context: str, cwd: Path,
                   "consensus_pass": panel.consensus_pass(), "split": panel.split(),
                   "reads": [asdict(r) for r in reads]},
         "criteria": [asdict(c) for c in criteria],
-        # Criteria no test runs, plus tests that stay green without the change: neither
-        # verified this change, so a person must read them.
-        # Advisory panel questions are not acceptance criteria, so they are never listed here.
+        # Everything that did not verify this change, so a person must read it: criteria no
+        # test runs, tests that never ran (--no-tests) or ran red without blocking, and tests
+        # that stay green without the change. Advisory panel questions are not acceptance
+        # criteria, so they are never listed here.
         "unverified": [c.id for c in criteria
-                       if (c.kind == "judgment" and not c.advisory) or c.id in vacuous],
+                       if (c.kind == "judgment" and not c.advisory) or c.id in vacuous
+                       or (c.kind == "test" and c.id not in green_ids)],
         "untested": untested,
         "doubts": doubt_rows,
         "duplicates": dup_rows,

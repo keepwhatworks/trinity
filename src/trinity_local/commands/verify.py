@@ -30,7 +30,7 @@ def register(subparsers):
                    help="skip the advisory reuse / root-cause / dead-code questions the panel also answers")
     p.add_argument("--no-differential", action="store_true",
                    help="skip rerunning green tests with the change reverted (relevance stays declared)")
-    p.add_argument("--effort", help="panel effort for claude/codex (low|medium|high|xhigh); default is each provider's config")
+    p.add_argument("--effort", help="raise the claude/codex readers' effort (low|medium|high|xhigh); never lowers each provider's configured level")
     p.add_argument("--json", action="store_true",
                    help="raw result object instead of the review card (for scripts)")
     p.set_defaults(handler=handle_verify)
@@ -48,7 +48,7 @@ def handle_verify(args) -> int:
     context = Path(args.context).read_text(encoding="utf-8", errors="replace") if args.context else ""
     try:
         out = verify(raw, diff, context, Path(args.cwd),
-                     providers=tuple(m.strip() for m in args.members.split(",") if m.strip()),
+                     providers=args.members,
                      exclude_lab=args.exclude_lab, run_panel=not args.no_panel,
                      run_tests=not args.no_tests, effort=args.effort,
                      differential=False if getattr(args, "no_differential", False) else None,

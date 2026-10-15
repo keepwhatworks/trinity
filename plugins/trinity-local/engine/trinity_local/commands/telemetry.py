@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import sys
 
 from ..refresh import refresh_launchpad
 from ..telemetry import (
@@ -33,7 +34,7 @@ def register(subparsers):
     reset = subparsers.add_parser("telemetry-reset-id", help="Reset the anonymous share install id")
     reset.set_defaults(handler=handle_telemetry_reset_id)
 
-    endpoint = subparsers.add_parser("telemetry-endpoint", help="Set or clear the telemetry endpoint")
+    endpoint = subparsers.add_parser("telemetry-endpoint", help="Store an endpoint setting that nothing reads (does not redirect events)")
     endpoint.add_argument("--url", default=None)
     endpoint.add_argument("--clear", action="store_true")
     endpoint.set_defaults(handler=handle_telemetry_endpoint)
@@ -66,8 +67,8 @@ def _print_wire(settings) -> None:
     as importantly, names what is NOT in it, because the reassuring half of the
     contract is the absence.
     """
-    from ..telemetry import (DISCLOSED_EVENT_PARAMS, ROTATION_PERIOD,
-                             build_outbound_event_payload, outbound_client_id)
+    from ..telemetry import (DISCLOSED_EVENT_PARAMS, build_outbound_event_payload,
+                             outbound_client_id)
 
     example = {"task_type": "coding", "winner": "claude", "member_count": 3,
                "mode": "parallel", "prompt": "THIS WOULD BE STRIPPED",
@@ -86,11 +87,14 @@ def _print_wire(settings) -> None:
                  "your lens, tensions, vocabulary, and core.md",
                  "council answers, chairman synthesis, and disagreement text",
                  "file paths, project names, hostnames, IP-derived identifiers",
-                 f"the local install id itself — only sha256(id + {ROTATION_PERIOD}) ships"):
+                 "the local install id itself — only a hash of it and the current month ships"):
         print(f"  · {line}")
-    print(f"\nThe outbound id ROTATES every period ({ROTATION_PERIOD}), so events")
-    print("from this install cannot be linked across periods by anyone, including us.")
-    print(f"\nSharing is currently: {'ON' if settings.share_usage_events else 'OFF'}"
+    print("\nThe outbound id ROTATES every month, so events from this install")
+    print("cannot be linked across months by anyone, including us.")
+    # Both switches: telemetry-disable clears `sharing_enabled`, which is what the send path
+    # checks; this line read only `share_usage_events` and said ON after a disable.
+    on = settings.sharing_enabled and settings.share_usage_events
+    print(f"\nSharing is currently: {'ON' if on else 'OFF'}"
           "   (trinity-local telemetry-disable turns it off; "
           "telemetry-reset-id starts a new anonymous id)")
 
@@ -118,6 +122,12 @@ def handle_telemetry_reset_id(args):
 
 
 def handle_telemetry_endpoint(args):
+    # Nothing reads this setting: CLI and MCP events go to Google Analytics, and the launchpad's
+    # collector is the TRINITY_TELEMETRY_ENDPOINT environment variable. Say so rather than let a
+    # user believe events were redirected (coherence review 2026-10-15).
+    print("note: this setting does not redirect anything. CLI and MCP events go to Google "
+          "Analytics; TRINITY_TELEMETRY_ENDPOINT points only the launchpad's own events at a "
+          "collector. To stop sending, run `trinity-local telemetry-disable`.", file=sys.stderr)
     settings = load_telemetry_settings()
     if args.clear:
         settings.endpoint = None

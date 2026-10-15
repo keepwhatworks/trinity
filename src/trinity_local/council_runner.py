@@ -42,7 +42,10 @@ def _emit_council_telemetry(outcome) -> None:
         # (a DISCLOSED_EVENT_PARAM, so the analytics stream was corrupted to a
         # constant). Bind to the real field the rest of the codebase reads.
         member_count = len(getattr(outcome, "member_results", []) or [])
-        mode = getattr(outcome, "mode", "parallel") or "parallel"
+        # The synthesis-only paths record their mode in metadata; `outcome.mode` stays the
+        # dataclass default there, which would label every such council "parallel".
+        mode = ((getattr(outcome, "metadata", None) or {}).get("mode")
+                or getattr(outcome, "mode", "parallel") or "parallel")
         record_event(
             "council_complete",
             task_type=str(task_type)[:40],
@@ -1046,6 +1049,10 @@ def run_council(
         metadata=final_metadata,
     )
     outcome_path = save_council_outcome(final_outcome)
+    # The only council_complete / activation("council") emit. Its last callers went with the
+    # chain and consensus modes on 2026-07-22, and the tests called the helper directly, so
+    # councils sent nothing for three months while the suite stayed green.
+    _emit_council_telemetry(final_outcome)
     review_path = write_unified_council_page(bundle, final_outcome)
     _maybe_auto_open(review_path)
 

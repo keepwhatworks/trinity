@@ -103,7 +103,7 @@ class TestTelemetryPayloadIsCategoricalOnly:
         blob = json.dumps(payload)
         assert SECRET not in blob
         # And the disclosed param values are the categorical ones we passed.
-        assert params["task_type"] == "design"
+        assert params["task_type"] == "other"     # "design" is not in the closed set
         assert params["winner"] == "claude"
         assert params["member_count"] == 3
         assert params["mode"] == "parallel"
@@ -122,18 +122,21 @@ class TestTelemetryPayloadIsCategoricalOnly:
             {"task_type": leaky, "winner": "claude", "member_count": 3},
         )
         params = payload["events"][0]["params"]
-        assert "task_type" not in params, (
-            f"a free-text task_type leaked instead of being dropped: {params}"
+        assert params.get("task_type") == "other", (
+            f"a free-text task_type leaked instead of being folded: {params}"
         )
         assert SECRET not in json.dumps(payload)
-        # Real single-token snake_case labels (incl. domain-y ones) still pass —
-        # the guard discriminates on whitespace, not domain.
-        for real in ("design", "real_estate_development_planning",
-                     "architectural_standardization_analysis"):
+        # A single snake_case token is still the chairman's description of the
+        # work (2026-10-15): only the registry's closed set goes out as itself.
+        for label, wire in (("real_estate_development_planning", "other"),
+                            ("architectural_standardization_analysis", "other"),
+                            ("design", "other"),
+                            ("architecture_decision", "architecture_decision"),
+                            ("coding", "coding")):
             p = t.build_outbound_event_payload(
-                "council_complete", {"task_type": real, "winner": "claude"}
+                "council_complete", {"task_type": label, "winner": "claude"}
             )["events"][0]["params"]
-            assert p.get("task_type") == real, f"real categorical label dropped: {real}"
+            assert p.get("task_type") == wire, (label, p)
 
     def test_council_runner_emits_only_disclosed_params_at_the_source(self, monkeypatch) -> None:
         """Defense-in-depth at the EMIT SITE: the real council_runner emit

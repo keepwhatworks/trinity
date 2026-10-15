@@ -44,9 +44,12 @@ class TestCleanCompletionFlags:
         # The prompt still lands after -p.
         assert cmd[-1].startswith("look at the live app")
 
-    def test_default_run_has_no_clean_flags(self, monkeypatch):
+    def test_default_run_reads_but_cannot_act(self, monkeypatch):
+        """A council dispatch is read-only too (tests/test_council_dispatch_read_only.py),
+        but it keeps the read tools a clean completion strips."""
         cmd = self._captured_command(monkeypatch, clean=False)
-        assert "--strict-mcp-config" not in cmd
+        assert "--strict-mcp-config" in cmd
+        assert cmd[cmd.index("--disallowedTools") + 1] != "*"
 
     def test_flags_land_before_the_prompt_tail(self, monkeypatch):
         cmd = self._captured_command(monkeypatch, clean=True)

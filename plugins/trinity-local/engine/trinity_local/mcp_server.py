@@ -74,7 +74,9 @@ SERVER_INSTRUCTIONS = (
     "run_council with the goal, the plan, the evidence and one alternative. Report its decision, "
     "what would change it, and where the labs split.\n"
     "2. REVIEW: before saying a code change is done, call verify with the diff and an acceptance "
-    "block whose kind='test' items run the project's own tests; set exclude_lab to your own lab. "
+    "block: kind='test' items that run the project's own tests, plus at least one kind='judgment' "
+    "item stating what the change claims (the other labs read only judgment items); set exclude_lab "
+    "to your own lab. "
     "STOP means a relevant test is red. READ means a person still reads: name what is unverified. "
     "The other labs' read is a second opinion, not approval.\n"
     "Skip both for trivial edits, syntax and lookups. `trust` answers which model the user's later "
@@ -165,11 +167,11 @@ async def handle_list_tools() -> list[Tool]:
                 "WHEN TO REACH FOR THIS (the reflex): you're about to commit to a hard, "
                 "contested, or hard-to-reverse decision and you are NOT fully confident. You "
                 "alone are ONE model's opinion; this turns that into a panel of independent "
-                "models + a synthesis conditioned on THIS user's taste — strictly more than you "
-                "can do solo, and the move to make instead of quietly guessing. Concrete "
+                "models plus a chairman's account of where they agree and split, and the move "
+                "to make instead of quietly guessing. Concrete "
                 "triggers: an architecture / public-API / data-schema call two senior engineers "
-                "could disagree on; the user asks for a second opinion; ask() returned "
-                "mode='council'; or you'd otherwise hand the user a multi-option choice that's "
+                "could disagree on; the user asks for a second opinion; or you'd otherwise "
+                "hand the user a multi-option choice that's "
                 "product/architectural (NOT personal taste — that stays the user's). Skip "
                 "trivial bugs, syntax, mechanical refactors, retrieval — one right answer "
                 "wastes it.\n\n"
@@ -192,28 +194,15 @@ async def handle_list_tools() -> list[Tool]:
                 "or 'unresolved' when the evidence genuinely cannot decide — and `check` "
                 "{procedure, decision_rule}: the test, source or measurement that settles it later. An unresolved split "
                 "is a verdict, not a gap: treat it as a real open question.\n"
-                "- facets: the dimensions that ACTUALLY discriminated between the answers on this "
-                "task, named by the chairman in its own words (e.g. 'invalidation semantics'), "
-                "each with the provider that won it. Use these to see WHERE a model was strong, "
-                "not just whether it won.\n"
-                "- winner, runner_up, provider_scores (per-axis), routing_lesson.\n"
-                "- combined_answer + grafts, when the combine round is enabled "
-                "(TRINITY_COMBINE_SURVIVORS): the merged answer — the winner as the spine with "
-                "the surviving claims from other members grafted in — plus per-graft provenance "
-                "{claim, from, basis: evidence|lens}. Prefer combined_answer over the winner's "
-                "raw answer when it is present.\n\n"
+                "- winner, runner_up, confidence, and routing_lesson: the chairman's one-line "
+                "note on which model it would prefer for this kind of task.\n"
+                "- degraded, and when a lab could not answer, failed_members and "
+                "degraded_notice.\n\n"
                 "HONEST LIMITS, so you weight the output correctly: the chairman's winner is "
                 "~11% nondeterministic run-to-run (measured), so treat a single winner as a "
                 "signal and not a fact — the agreed/disagreed/resolution structure is the stable "
-                "part. provider_scores and facets are the chairman's judgement, not a "
-                "behaviour-validated ranking; the validated per-model signal lives in the `trust` "
-                "tool, which reads which side the user's own later work took.\n\n"
-                "HORIZON WEIGHTING (#139): the chairman receives a query-horizon classification "
-                "(tactical / strategic / philosophical) computed from the task text, and weights "
-                "lens cards tagged with the matching horizon heavier in synthesis. This means a "
-                "strategic question pulls strategic-tagged lens tensions to the front of the "
-                "winner-picking reasoning. The routing_lesson Trinity returns reflects which "
-                "lens tags were load-bearing in the verdict.\n\n"
+                "part. The winner and routing_lesson are the chairman's judgement, not a "
+                "behaviour-validated ranking.\n\n"
                 "When `responses` is provided (pre-supplied member outputs), skips member "
                 "dispatch and goes straight to chairman synthesis — one model call instead of "
                 "N+1. Use when you ALREADY HAVE multiple model outputs and just want the "
@@ -352,9 +341,10 @@ async def handle_list_tools() -> list[Tool]:
         Tool(
             name="verify",
             description=(
-                "THE PRE-DEPLOY GATE. Run it on a change before you call it done. Where "
-                "there is a test, it runs the test; where there is not, three labs that "
-                "cannot see each other read the diff. One output per artifact:\n"
+                "THE PRE-DEPLOY GATE. Run it on a change before you call it done. It runs "
+                "every kind='test' item, and labs that cannot see each other read the diff "
+                "against every kind='judgment' item (your own lab is excluded). One output "
+                "per artifact:\n"
                 "  STOP  a relevant test is red. The kernel wins over any consensus.\n"
                 "  READ  everything else -- blocked until a human has read it.\n\n"
                 "THERE IS NO SKIP. A green test PLUS unanimous approval still returns "
@@ -393,7 +383,7 @@ async def handle_list_tools() -> list[Tool]:
                     "members": {"type": "array", "items": {"type": "string"},
                                 "description": "panel; default claude, codex, antigravity"},
                     "exclude_lab": {"type": "string", "description": "never read from this lab (the change's author)"},
-                    "effort": {"type": "string", "description": "panel effort for claude/codex: low|medium|high|xhigh"},
+                    "effort": {"type": "string", "description": "raise the claude/codex readers' effort (low|medium|high|xhigh); never lowers a configured level"},
                     "run_panel": {"type": "boolean", "default": True},
                     "run_tests": {"type": "boolean", "default": True},
                 },
@@ -589,30 +579,52 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[Any]:
     _maybe_fire_lens_kicks()
 
     try:
-        if name == "ask":
-            return await _ask(arguments)
-        if name == "trust":
-            return await _trust(arguments)
-        if name == "run_council":
-            return await _run_council(arguments)
-        if name == "verify":
-            return await _verify(arguments)
-        # `record_outcome` dispatch removed 2026-05-21 (rating UX sunset).
-        if name == "get_persona":
-            return await _get_persona(arguments)
-        if name == "get_council_status":
-            return await _get_council_status(arguments)
-        if name == "import_provider_memory":
-            return await _import_provider_memory(arguments)
-        # `lens_generators`, `run_eval`, `choose` demoted off the MCP surface
-        # 2026-07-18 (founder soft-demote). Their CLI verbs + engines stay; the
-        # handlers below are retained but no longer dispatched here.
-        return [ErrorData(code=404, message=f"Tool not found: {name}")]
+        result = await _dispatch_tool(name, arguments)
     except Exception as exc:
-        return [ErrorData(code=500, message=f"{type(exc).__name__}: {exc}")]
+        result = [ErrorData(code=500, message=f"{type(exc).__name__}: {exc}")]
     finally:
         clear_active_session()
         clear_request_context()
+    errors = [r for r in result if isinstance(r, ErrorData)]
+    if errors:
+        raise ToolError(errors[0])
+    return result
+
+
+async def _dispatch_tool(name: str, arguments: dict) -> list[Any]:
+    if name == "ask":
+        return await _ask(arguments)
+    if name == "trust":
+        return await _trust(arguments)
+    if name == "run_council":
+        return await _run_council(arguments)
+    if name == "verify":
+        return await _verify(arguments)
+    # `record_outcome` dispatch removed 2026-05-21 (rating UX sunset).
+    if name == "get_persona":
+        return await _get_persona(arguments)
+    if name == "get_council_status":
+        return await _get_council_status(arguments)
+    if name == "import_provider_memory":
+        return await _import_provider_memory(arguments)
+    # `lens_generators`, `run_eval`, `choose` demoted off the MCP surface
+    # 2026-07-18 (founder soft-demote). Their CLI verbs + engines stay; the
+    # handlers below are retained but no longer dispatched here.
+    return [ErrorData(code=404, message=f"Tool not found: {name}")]
+
+
+class ToolError(Exception):
+    """A tool refusal or failure, raised so the SDK returns it as an `isError` result whose
+    text is {"ok": false, "error": ..., "code": ...}.
+
+    Returned as a list item, ErrorData is not valid tool content: the SDK's CallToolResult
+    validation failed and the agent received "5 validation errors for CallToolResult" with
+    the real message cut to `input_value=ErrorData(code=400, messa...`, for every refusal and
+    every exception, reproduced on the shipped v1.7.402 wheel through the real request
+    handler (coherence review 2026-10-15)."""
+
+    def __init__(self, err: ErrorData):
+        super().__init__(json.dumps({"ok": False, "error": err.message, "code": err.code}))
 
 
 def _choose(arguments: dict) -> list:
@@ -998,41 +1010,35 @@ async def handle_read_resource(uri: AnyUrl) -> list[ReadResourceContents]:
 # agent which Trinity tool to call — discovery for users who'd never read
 # a tool docstring. The arg becomes the task/query text.
 
+# Each prompt names a tool that list_tools advertises (tests/test_mcp_features.py checks it).
+# `/ask` and `/lens` pointed at `ask` and `get_persona`, both off the tool list since
+# 2026-09-08, and `/ask` advertised per-context routing, removed 2026-08-11; `/verify`, the
+# most-used tool, had no prompt (coherence review 2026-10-15).
 _PROMPT_CATALOG = [
     {
         "name": "council",
-        "description": "Compare a hard question across Claude, GPT, and Gemini "
-        "and synthesize the answer your taste would pick.",
-        "arg": ("task", "The question or task to run the council on.", True),
+        "description": "Put a hard question or plan to Claude, Codex and Gemini and get "
+        "the decision, what would change it, and where they split.",
+        "arg": ("task", "The question, plan or design to put to the council.", True),
         "tool": "run_council",
         "render": lambda task: (
-            f"Run a Trinity council on this, then report the chairman's verdict "
-            f"with the agreed_claims and disagreed_claims:\n\n{task}\n\n"
+            f"Run a Trinity council on this, then report its decision, what would change "
+            f"it, and the disagreed_claims:\n\n{task}\n\n"
             f"Use the `mcp__trinity-local__run_council` tool."
         ),
     },
     {
-        "name": "ask",
-        "description": "Route one question to the single best provider for it "
-        "(cheap — one call, chairman-blessed).",
-        "arg": ("query", "The question to route.", True),
-        "tool": "ask",
-        "render": lambda query: (
-            f"Route this question to the best provider for it and answer:\n\n{query}\n\n"
-            f"Use the `mcp__trinity-local__ask` tool."
-        ),
-    },
-    {
-        "name": "lens",
-        "description": "Read the user's taste lens so you can tailor this "
-        "session's answers to how they decide.",
-        "arg": ("focus", "Optional: what to focus the lens read on.", False),
-        "tool": "get_persona",
-        "render": lambda focus: (
-            "Read the user's Trinity taste lens via the "
-            "`mcp__trinity-local__get_persona` tool and condition your answers "
-            "on it for the rest of this session."
-            + (f" Focus especially on: {focus}." if focus else "")
+        "name": "verify",
+        "description": "Before calling a change done: run its tests and have the other "
+        "labs read the diff.",
+        "arg": ("change", "What the change claims to do.", True),
+        "tool": "verify",
+        "render": lambda change: (
+            f"Verify the current change before calling it done. It claims: {change}\n\n"
+            f"Call the `mcp__trinity-local__verify` tool with the diff, kind='test' items "
+            f"that run this project's own tests, and one kind='judgment' item stating the "
+            f"claim above; set exclude_lab to your own lab. Report STOP or READ and name "
+            f"what is unverified."
         ),
     },
 ]
@@ -1545,9 +1551,32 @@ def _load_trust_summary() -> dict:
     return agent_view(d)
 
 
+_HOST_LAB_HINTS = (("claude", "anthropic"), ("codex", "openai"),
+                   ("gemini", "google"), ("antigravity", "google"))
+
+
+def host_lab(client_name: str | None) -> str | None:
+    """The lab behind the MCP host, from its clientInfo name, or None when unknown.
+
+    Readers must exclude the host's own lab, and that rule was enforced only by
+    the host remembering `exclude_lab`; when it forgot, its own lab read its own
+    diff, silently. A host that can run any lab's model (Cursor) stays unknown:
+    a wrong guess would drop an independent reader."""
+    name = (client_name or "").lower()
+    return next((lab for key, lab in _HOST_LAB_HINTS if key in name), None)
+
+
+def _client_name() -> str | None:
+    try:
+        return server.request_context.session.client_params.clientInfo.name
+    except Exception:  # outside a request, or an SDK without client_params
+        return None
+
+
 async def _verify(args: dict) -> list[Any]:
-    """Handle mcp__trinity-local__verify -- the pre-deploy gate. Kernel first,
-    three blinded reads, the rule; no chairman. Engine: trinity_local.verify."""
+    """Handle mcp__trinity-local__verify -- the pre-deploy gate. The kernel and
+    the blinded reads run concurrently, then the rule; no chairman. Engine:
+    trinity_local.verify."""
     import asyncio as _asyncio
     from pathlib import Path as _Path
     from .verify import DEFAULT_PANEL, verify as _run
@@ -1562,15 +1591,20 @@ async def _verify(args: dict) -> list[Any]:
     if not isinstance(diff, str) or not diff.strip():
         return [ErrorData(code=400, message="verify: `diff` must be a non-empty unified diff")]
     cwd = _Path(args.get("cwd") or ".")
-    members = tuple(args.get("members") or DEFAULT_PANEL)
+    members = args.get("members") or DEFAULT_PANEL      # verify canonicalizes (panel_members)
+    exclude_lab, basis = args.get("exclude_lab"), "argument"
+    if not exclude_lab:
+        exclude_lab = host_lab(_client_name())
+        basis = "host client" if exclude_lab else "none (host lab unknown)"
     try:
         out = await _asyncio.to_thread(
             _run, criteria, diff, str(args.get("context") or ""), cwd,
-            providers=members, exclude_lab=args.get("exclude_lab"),
+            providers=members, exclude_lab=exclude_lab,
             run_panel=bool(args.get("run_panel", True)), run_tests=bool(args.get("run_tests", True)),
             effort=args.get("effort"))
     except ValueError as exc:
         return [ErrorData(code=400, message=f"verify: {exc}")]
+    out["excluded_lab"] = {"lab": exclude_lab, "basis": basis}
     return [_text(out)]
 
 
@@ -1797,7 +1831,6 @@ async def _synthesize_responses(args: dict, responses: list[dict]) -> list[Any]:
         save_prompt_bundle,
     )
     from .council_schema import normalize_provider_slug
-    from .providers import make_provider
     from .utils import stable_id
 
     task = args["task"]
@@ -1873,14 +1906,18 @@ async def _synthesize_responses(args: dict, responses: list[dict]) -> list[Any]:
                 "error": f"Chairman provider '{chairman}' missing or disabled in Trinity config",
             })]
         synthesis_prompt = render_primary_council_prompt(bundle, members)
-        primary = make_provider(chairman_config)
-        try:
-            # cwd is required by the runtime (subprocess.run cwd= can't be None)
-            from pathlib import Path
-            result = primary.run(synthesis_prompt, cwd=Path.cwd())
-        except Exception as exc:
-            return [_text({"ok": False, "error": f"Chairman call failed: {exc}"})]
-        synthesis_output = result.stdout or result.stderr or ""
+        # The same chair fallback CLI councils use. This path called the chair
+        # once, read `stdout or stderr`, and never checked the exit code, so a
+        # capped or timed-out chair's banner was saved as a completed synthesis.
+        from pathlib import Path
+        from .providers import run_with_chairman_fallback
+        result, used, chair_error = run_with_chairman_fallback(
+            synthesis_prompt, config, chairman, Path.cwd())
+        if result is None:
+            return [_text({"ok": False, "error": f"No chairman could synthesize: {chair_error}"})]
+        if used and used != chairman:
+            chairman, chairman_config = used, config.providers[used]
+        synthesis_output = result.stdout
 
     routing_label, parse_error = parse_routing_label(synthesis_output)
 
@@ -1905,6 +1942,8 @@ async def _synthesize_responses(args: dict, responses: list[dict]) -> list[Any]:
         metadata=outcome_metadata,
     )
     outcome_path = save_council_outcome(outcome)
+    from .council_runner import _emit_council_telemetry
+    _emit_council_telemetry(outcome)
 
     payload: dict = {
         "ok": True,

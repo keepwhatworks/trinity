@@ -65,3 +65,4 @@ def test_a_missing_release_installs_the_tarball(tmp_path):
 def test_the_channel_reaches_trinity_local_install(tmp_path):
     lines = _run(tmp_path, None, channel="hn")
     assert "trinity-local install channel=hn" in lines
+

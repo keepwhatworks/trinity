@@ -97,12 +97,86 @@ def test_the_first_stored_channel_wins():
     assert T.load_telemetry_settings().activation_source == "x"
 
 
-def test_a_completed_council_fires_the_activation(wire):
-    from trinity_local import council_runner as CR
-    outcome = SimpleNamespace(routing_label=SimpleNamespace(task_type="design", winner="claude"),
-                              member_results=[1, 2, 3], mode="parallel")
-    CR._emit_council_telemetry(outcome)
-    assert [e["name"] for body in wire for e in body["events"]] == ["council_complete", "activation"]
+CHAIR = ('Agreed claims\n- one\n\n```json\n'
+         '{"winner":"codex","confidence":"medium","task_type":"design_review"}\n```\n')
+
+
+def test_a_completed_council_fires_the_activation(wire, monkeypatch, patch_trinity_home):
+    """Through the REAL run_council. This test used to call the emit helper directly, and
+    stayed green for three months after the helper lost its last caller (2026-07-22): no
+    council sent anything. Only the subprocess is replaced."""
+    from pathlib import Path
+
+    from trinity_local.config import load_config
+    from trinity_local.council_runner import run_council
+    from trinity_local.council_runtime import create_prompt_bundle
+    from trinity_local.providers import BaseProvider, ProviderResult
+
+    def fake_run(self, command, cwd, *, timeout=None):
+        chair = any("synthesizer" in str(a).lower() for a in command)
+        return ProviderResult(provider=self.config.name, stdout=CHAIR if chair else "an answer",
+                              stderr="", returncode=0)
+    monkeypatch.setattr(BaseProvider, "_run_command", fake_run)
+    run_council(config=load_config(),
+                bundle=create_prompt_bundle(task_cluster_id="c_tel", task_text="pick one", goal="g"),
+                member_providers=["claude", "codex"], primary_provider="claude",
+                cwd=Path(patch_trinity_home))
+    names = [e["name"] for body in wire for e in body["events"]]
+    assert names == ["council_complete", "activation"], names
+    params = _events(wire, "council_complete")[0]["params"]
+    # The chairman's own label is not in the closed set, so it goes out as "other".
+    assert params == {"task_type": "other", "winner": "codex", "member_count": 2,
+                      "mode": "parallel"}, params
+
+
+def test_a_synthesis_only_council_is_counted_with_its_mode(wire, monkeypatch):
+    import asyncio
+
+    import trinity_local.providers as P
+    from trinity_local.mcp_server import handle_call_tool
+    from trinity_local.providers import ProviderResult
+
+    class Chair:
+        def run(self, prompt, cwd=None):
+            return ProviderResult(provider="claude", stdout=('{"winner": "chatgpt", "confidence": '
+                                  '"high", "agreed_claims": [], "disagreed_claims": []}'),
+                                  stderr="", returncode=0)
+    monkeypatch.setattr(P, "make_provider", lambda cfg: Chair())
+    asyncio.run(handle_call_tool("run_council", {
+        "task": "pick", "primary_provider": "claude",
+        "responses": [{"provider": "chatgpt", "content": "A"}, {"provider": "gemini", "content": "B"}]}))
+    params = _events(wire, "council_complete")[0]["params"]
+    assert params["mode"] == "synthesis_only" and params["winner"] == "codex"
+
+
+@pytest.mark.parametrize("winner,mode,want_w,want_m", [
+    ("answer_a", "parallel", "other", "parallel"),
+    ("Claude wins, clearly", "chain", "other", "other"),
+    ("gemini", "host_synthesis", "antigravity", "host_synthesis"),
+])
+def test_winner_and_mode_are_closed_sets_on_the_wire(winner, mode, want_w, want_m):
+    body = T.build_outbound_event_payload("council_complete", {"winner": winner, "mode": mode})
+    params = body["events"][0]["params"]
+    assert (params["winner"], params["mode"]) == (want_w, want_m)
+
+
+def test_a_failed_activation_is_retried_at_most_daily(monkeypatch):
+    """Where traffic to Google is dropped, every council and verify waited the inline deadline."""
+    monkeypatch.setattr(T, "_ga4_credentials", lambda: ("G-TEST", "secret"))
+    calls = []
+    monkeypatch.setattr(T, "_send_event_to_ga4", lambda *a, **k: calls.append(1) or False)
+    assert T.record_activation("council") is False and len(calls) == 1
+    assert T.record_activation("verify") is False and len(calls) == 1, "retried within the day"
+    s = T.load_telemetry_settings()
+    s.activation_attempted_at = "2000-01-01T00:00:00+00:00"
+    T.save_telemetry_settings(s)
+    assert T.record_activation("council") is False and len(calls) == 2
+
+
+def test_no_key_is_not_an_attempt(monkeypatch):
+    monkeypatch.setattr(T, "_ga4_credentials", lambda: None)
+    T.record_activation("council")
+    assert T.load_telemetry_settings().activation_attempted_at is None
 
 
 def test_the_suite_never_holds_real_ga4_credentials():
