@@ -81,6 +81,8 @@ def _fake_council(monkeypatch):
             return ProviderResult(provider=self.name, stdout=out, stderr="", returncode=0)
 
     monkeypatch.setattr("trinity_local.council_runner.make_provider", lambda cfg: Fake(cfg.name))
+    # The chairman over caller-supplied responses is reached through providers' own reference.
+    monkeypatch.setattr("trinity_local.providers.make_provider", lambda cfg: Fake(cfg.name))
     provider_quota.clear()
 
 
@@ -110,8 +112,7 @@ def test_every_path_uses_the_one_builder(patch_trinity_home, monkeypatch):
     assert launched["outcome"] == {"sentinel": True}
     status = _call("get_council_status", {"council_run_id": launched["council_run_id"]})
     assert status["outcome"] == {"sentinel": True}
-    monkeypatch.setenv("TRINITY_HOST_CLAUDE_MEMBER", "1")
-    synth = _call("run_council", {"task": "why?", "host_synthesis": '{"winner": "claude"}',
+    synth = _call("run_council", {"task": "why?", "primary_provider": "codex",
                                   "responses": [{"provider": "claude", "content": "a"},
                                                 {"provider": "codex", "content": "b"}]})
     assert synth["outcome"] == {"sentinel": True}, synth

@@ -1,4 +1,4 @@
-"""Handlers for install-mcp + install-hooks + install-launcher + install-extension + uninstall."""
+"""Handlers for install-mcp + install-launcher + install-extension + uninstall."""
 from __future__ import annotations
 
 import json
@@ -15,10 +15,6 @@ def register(subparsers):
     imp = subparsers.add_parser("install-mcp", help="Install Trinity as an MCP server in Claude Code, Antigravity, Codex CLI, and Cursor")
     imp.add_argument("--scope", choices=["user", "project"], default="user", help="User-wide or project-specific installation")
     imp.set_defaults(handler=handle_install_mcp)
-
-    ihp = subparsers.add_parser("install-hooks", help="Install Trinity Stop hook (calls `trinity-local ingest-recent --deadline 1.0` after each Claude turn for tool-triggered incremental ingest)")
-    ihp.add_argument("--path", default=".", help="Project directory to install hooks into")
-    ihp.set_defaults(handler=handle_install_hooks)
 
     iep = subparsers.add_parser(
         "install-extension",
@@ -592,77 +588,6 @@ def _write_codex_toml_mcp_config(target: Path, command: str, mcp_args: list[str]
     except OSError as exc:
         print(f"Error writing to {target}: {exc}")
         return False
-
-
-def handle_install_hooks(args):
-    target_dir = Path(args.path).expanduser().resolve()
-    settings_path = target_dir / ".claude.json" # Claude Code uses this for hooks
-    
-    hooks_config = {
-        "permissions": {
-            "allow": ["Bash(trinity-local *)"]
-        },
-        "hooks": {
-            "Stop": [
-                {
-                    "matcher": ".*",
-                    "hooks": [
-                        {
-                            "type": "command",
-                            "command": "trinity-local ingest-recent --deadline 1.0 2>/dev/null || true",
-                            "async": True
-                        }
-                    ]
-                }
-            ]
-        }
-    }
-
-    existing = {}
-    if settings_path.exists():
-        try:
-            existing = json.loads(settings_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            pass
-    
-    if not isinstance(existing, dict):
-        existing = {}
-    # Merge hooks
-    existing_hooks = existing.setdefault("hooks", {})
-    stop_hooks = existing_hooks.setdefault("Stop", [])
-    
-    # Detect existing Trinity hook + clean up the retired watch-once
-    # variant. Older Trinity versions installed `trinity-local watch-once
-    # --quiet ...`; the watch-once CLI was retired 2026-05-17 (commit
-    # 07ea7da). On re-install, strip the stale hook so the new
-    # ingest-recent shape lands cleanly.
-    stale_idx = [
-        i for i, h in enumerate(stop_hooks)
-        if "trinity-local watch-once" in str(h.get("command", ""))
-    ]
-    for i in reversed(stale_idx):
-        stop_hooks.pop(i)
-
-    exists = any(
-        "trinity-local ingest-recent" in str(h.get("command", ""))
-        for h in stop_hooks
-    )
-    if not exists:
-        stop_hooks.append(hooks_config["hooks"]["Stop"][0])
-        
-        # Merge permissions
-        perms = existing.setdefault("permissions", {})
-        allow = perms.setdefault("allow", [])
-        if "Bash(trinity-local *)" not in allow:
-            allow.append("Bash(trinity-local *)")
-            
-        try:
-            settings_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-            print(f"✓ Installed auto-ingest hooks to {settings_path}")
-        except OSError as exc:
-            print(f"Error writing to {settings_path}: {exc}")
-    else:
-        print(f"Hooks already present in {settings_path}")
 
 
 def _native_messaging_dirs(browsers: list[str]) -> list[tuple[str, Path]]:

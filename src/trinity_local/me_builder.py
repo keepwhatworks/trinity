@@ -176,6 +176,24 @@ def _stage0_batch_failed(result) -> bool:
     return getattr(result, "returncode", 0) == -1 or not (result.stdout or "").strip()
 
 
+def _record_stage0_run(batches: int, failed: int) -> None:
+    """Append one line per Stage-0 run to analytics/stage0_runs.jsonl: batches dispatched, batches failed.
+
+    A failed batch aborts the whole build (#203), which discards every successful batch's paid call
+    and makes the next run pay for all of them again. Checkpointing each batch was deferred until
+    the failure rate is measured (council_850cff5fe89c1d81, amd_0407). Pre-registered: build it when
+    at least 2 of the last 10 runs with batches lost one; below that, leave the abort as it is.
+    Counts only, best-effort: a write failure never affects the build.
+    """
+    try:
+        from .state_paths import analytics_dir
+        from .utils import now_iso
+        with (analytics_dir() / "stage0_runs.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"at": now_iso(), "batches": batches, "failed": failed}) + "\n")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def me_path() -> Path:
     """The lens file. Renamed from `me.md` → `memories/lens.md` per the
     brand axis (lens is one of the three thinking memories in the
@@ -842,6 +860,9 @@ def build_me_via_lens_pipeline(
                     # A heartbeat per batch: a first build's stage 0 can run longer than the
                     # window after which the launchpad calls a silent build stalled.
                     write_progress("stage0")
+
+        if batches:
+            _record_stage0_run(len(batches), sum(1 for r in results if _stage0_batch_failed(r)))
 
         # Per-batch failure detection (#203), now across all parallel
         # results: if ANY batch timed out (returncode == -1) or returned

@@ -82,7 +82,7 @@ DISCLOSED_EVENT_PARAMS = frozenset({"task_type", "winner", "member_count", "mode
 CHANNELS = frozenset({"hn", "x", "reddit", "linkedin", "github", "newsletter", "friend", "direct"})
 ACTIVATION_SURFACES = frozenset({"council", "verify"})
 _WIRE_WINNERS = frozenset({"claude", "codex", "antigravity", "unknown"})
-_WIRE_MODES = frozenset({"parallel", "synthesis_only", "host_synthesis"})
+_WIRE_MODES = frozenset({"parallel", "synthesis_only"})
 
 def build_outbound_event_payload(
     event_name: str, params: dict[str, Any]

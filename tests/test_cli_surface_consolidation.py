@@ -143,7 +143,6 @@ class TestInstallUmbrella:
             "install-skill",   # lens→skill (loop primitive)
             "install-agent",   # the cross-provider verifier sub-agent (loop primitive)
             "install-extension",
-            "install-hooks",
             "install-launcher",
             "uninstall",
         ):

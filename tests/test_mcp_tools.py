@@ -413,169 +413,52 @@ class TestRunCouncilCanonicalizesProviderSlugs:
         assert "chatgpt" not in member_providers and "gemini" not in member_providers
 
 
-class TestHostMemberCouncil:
-    """The provider-side loop (flag TRINITY_HOST_CLAUDE_MEMBER): the host agent supplies the
-    Claude voice in-session; Trinity dispatches ONLY the other members + synthesizes. The
-    MCP-sampling-deprecation-proof path — the Claude member never touches `claude -p`."""
+class TestRemovedHostParams:
+    """The host-member path and its three params were deleted (founder 2026-10-16): it never left
+    its off-by-default flag, and its member loop had missed six fixes the main path carries. An
+    old caller is refused by name, never given a normal council that also dispatches the member
+    it meant to supply."""
 
-    def test_members_to_dispatch_excludes_host_supplied(self):
-        from trinity_local.mcp_server import _members_to_dispatch
+    @pytest.mark.parametrize("args", [
+        {"host_responses": [{"provider": "claude", "content": "mine"}]},
+        {"host_synthesis": '{"winner": "claude"}', "responses": [{"provider": "codex", "content": "b"}]},
+        {"dispatch_only": True},
+        {"host_responses": []},
+        {"host_synthesis": ""},
+    ])
+    def test_removed_params_are_refused_without_dispatching(self, home: Path, monkeypatch, args):
+        import trinity_local.council_runner as CR
+        import trinity_local.providers as P
 
-        # claude supplied by the host → Trinity dispatches only the other two. Web-era labels
-        # fold to canonical slugs, so a 'chatgpt' host answer still excludes 'codex'.
-        assert _members_to_dispatch(
-            ["claude", "codex", "antigravity"], [{"provider": "claude", "content": "x"}]
-        ) == ["codex", "antigravity"]
-        assert _members_to_dispatch(
-            ["claude", "codex", "antigravity"], [{"provider": "chatgpt", "content": "x"}]
-        ) == ["claude", "antigravity"]
+        def _no_dispatch(*a, **k):
+            raise AssertionError("no provider may be dispatched here")
+        monkeypatch.setattr(CR, "make_provider", _no_dispatch)
+        monkeypatch.setattr(P, "make_provider", _no_dispatch)
+        result = _call_tool_sync("run_council", {"task": "why is the sky blue?", **args})
+        assert result.get("ok") is False and "host-member council path is gone" in result["error"], result
 
-    def test_host_responses_refused_when_flag_off(self, home: Path, monkeypatch):
-        monkeypatch.delenv("TRINITY_HOST_CLAUDE_MEMBER", raising=False)
-        result = _call_tool_sync("run_council", {
-            "task": "why is the sky blue?",
-            "host_responses": [{"provider": "claude", "content": "Rayleigh scattering."}],
-        })
-        assert result.get("ok") is False
-        assert "flag-gated OFF" in result.get("error", "")
+    @pytest.mark.parametrize("args", [{"dispatch_only": False}, {"host_synthesis": None}])
+    def test_an_explicit_default_is_not_refused(self, home: Path, monkeypatch, args):
+        # A client still sending the old schema default must not be turned away.
+        from trinity_local import mcp_server
+        from trinity_local.commands import council as C
+        launched = []
 
-    def test_host_member_council_does_not_dispatch_claude_and_synthesizes(self, home: Path, monkeypatch):
-        """Flag ON: the Claude member comes from host_responses (never dispatched), Trinity
-        dispatches only codex+antigravity, and the chairman (codex) synthesizes. make_provider
-        is NEVER called for claude — the proof the Claude voice rode the session, not `-p`."""
-        monkeypatch.setenv("TRINITY_HOST_CLAUDE_MEMBER", "1")
+        def fake_launch(launch_args):
+            launched.append(launch_args)
+            return {"council_run_id": "council_x", "task_path": "", "sync_path": "", "review_path": ""}
+        monkeypatch.setattr(C, "handle_council_launch", fake_launch)
+        monkeypatch.setattr(mcp_server, "_lookup_council_status", lambda cid: None, raising=False)
+        result = _call_tool_sync("run_council", {"task": "why?", **args})
+        assert "host-member council path is gone" not in str(result), result
+        assert launched, "a normal council should have launched"
 
-        class _FakeResult:
-            stdout = ('{"winner": "claude", "runner_up": "codex", "confidence": "high", '
-                      '"agreed_claims": [], "disagreed_claims": []}')
-            stderr = ""
-            returncode = 0
-
-        called: list[str] = []
-
-        class _FakeProvider:
-            def __init__(self, name):
-                self.name = name
-
-            def run(self, prompt, cwd=None):
-                called.append(self.name)
-                return _FakeResult()
-
-        import trinity_local.providers as providers_mod
-        monkeypatch.setattr(providers_mod, "make_provider", lambda cfg: _FakeProvider(cfg.name))
-
-        result = _call_tool_sync("run_council", {
-            "task": "why is the sky blue?",
-            "members": ["claude", "codex", "antigravity"],
-            "primary_provider": "codex",  # non-claude chairman → claude must never be invoked
-            "host_responses": [{"provider": "claude", "content": "HOST CLAUDE ANSWER"}],
-        })
-        assert result.get("ok") is True, result
-        # THE proof: claude was never dispatched as a member nor used as chairman.
-        assert "claude" not in called, called
-        # codex + antigravity were dispatched as members; codex also chaired.
-        assert "codex" in called and "antigravity" in called
-
-        # The host's Claude answer is preserved verbatim in the synthesized outcome.
-        from trinity_local.council_runtime import load_council_outcome
-        outcome = load_council_outcome(result["council_run_id"])
-        by_provider = {m.provider: m.output_text for m in outcome.member_results}
-        assert by_provider.get("claude") == "HOST CLAUDE ANSWER"
-        assert "codex" in by_provider and "antigravity" in by_provider
-
-    def test_dispatch_only_returns_members_for_host_synthesis(self, home: Path, monkeypatch):
-        """Flag ON + dispatch_only: Trinity dispatches the non-host members and hands the
-        assembled answers + synthesis prompt BACK to the host (no chairman runs here), so the
-        host can synthesize in its own session. The proof: mode=awaiting_host_synthesis and the
-        member set is complete (host claude + dispatched codex/antigravity)."""
-        monkeypatch.setenv("TRINITY_HOST_CLAUDE_MEMBER", "1")
-
-        class _FakeResult:
-            stdout = "MEMBER ANSWER"
-            stderr = ""
-            returncode = 0
-
-        called: list[str] = []
-
-        class _FakeProvider:
-            def __init__(self, name):
-                self.name = name
-
-            def run(self, prompt, cwd=None):
-                called.append(self.name)
-                return _FakeResult()
-
-        import trinity_local.providers as providers_mod
-        monkeypatch.setattr(providers_mod, "make_provider", lambda cfg: _FakeProvider(cfg.name))
-
-        result = _call_tool_sync("run_council", {
-            "task": "why is the sky blue?",
-            "members": ["claude", "codex", "antigravity"],
-            "host_responses": [{"provider": "claude", "content": "HOST CLAUDE ANSWER"}],
-            "dispatch_only": True,
-        })
-        assert result.get("ok") is True, result
-        # The dispatch_only branch bit — no chairman synthesis, the host gets the members back.
-        assert result.get("mode") == "awaiting_host_synthesis", result
-        assert "synthesis_prompt" in result and result["synthesis_prompt"], result
-        # claude was never dispatched (host-supplied); codex + antigravity were.
-        assert "claude" not in called, called
-        assert "codex" in called and "antigravity" in called
-        # All three member answers come back for the host to synthesize over.
-        by_provider = {r["provider"]: r["content"] for r in result["member_responses"]}
-        assert by_provider.get("claude") == "HOST CLAUDE ANSWER"
-        assert "codex" in by_provider and "antigravity" in by_provider
-
-    def test_host_synthesis_records_outcome_with_zero_chairman_calls(self, home: Path, monkeypatch):
-        """Flag ON: the host already synthesized the verdict in-session, so run_council records
-        the outcome with ZERO model calls — make_provider is never invoked at all. This is the
-        recording leg of chairman-on-host: the chairman ran in the host's session, not `-p`."""
-        monkeypatch.setenv("TRINITY_HOST_CLAUDE_MEMBER", "1")
-
-        called: list[str] = []
-
-        class _FakeProvider:
-            def __init__(self, name):
-                self.name = name
-
-            def run(self, prompt, cwd=None):  # pragma: no cover - must never run
-                called.append(self.name)
-                raise AssertionError("chairman-on-host must not dispatch any provider")
-
-        import trinity_local.providers as providers_mod
-        monkeypatch.setattr(providers_mod, "make_provider", lambda cfg: _FakeProvider(cfg.name))
-
-        verdict = ('{"winner": "claude", "runner_up": "codex", "confidence": "high", '
-                   '"agreed_claims": [], "disagreed_claims": []}')
-        result = _call_tool_sync("run_council", {
-            "task": "why is the sky blue?",
-            "responses": [
-                {"provider": "claude", "content": "Rayleigh scattering."},
-                {"provider": "codex", "content": "Short wavelengths scatter more."},
-            ],
-            "host_synthesis": verdict,
-        })
-        assert result.get("ok") is True, result
-        assert result.get("mode") == "host_synthesis", result
-        # THE proof: not a single provider call — the host did the synthesis.
-        assert called == [], called
-        assert verdict in result["outcome"]["synthesis_output"]
-
-        from trinity_local.council_runtime import load_council_outcome
-        outcome = load_council_outcome(result["council_run_id"])
-        # Winner parsed from the host's verdict; chairman attributed to the host's lab.
-        assert outcome.winner_provider == "claude", outcome.winner_provider
-        assert outcome.primary_provider == "claude"
-
-    def test_host_synthesis_refused_when_flag_off(self, home: Path, monkeypatch):
-        monkeypatch.delenv("TRINITY_HOST_CLAUDE_MEMBER", raising=False)
-        result = _call_tool_sync("run_council", {
-            "task": "why is the sky blue?",
-            "responses": [{"provider": "claude", "content": "Rayleigh scattering."}],
-            "host_synthesis": '{"winner": "claude"}',
-        })
-        assert result.get("ok") is False
-        assert "flag-gated OFF" in result.get("error", "")
+    def test_the_schema_no_longer_offers_them(self):
+        import asyncio
+        from trinity_local import mcp_server
+        tools = {t.name: t for t in asyncio.run(mcp_server.handle_list_tools())}
+        props = tools["run_council"].inputSchema["properties"]
+        assert not set(mcp_server._REMOVED_COUNCIL_PARAMS) & set(props)
 
 
 def test_mcp_server_reports_trinity_version_not_mcp_lib():

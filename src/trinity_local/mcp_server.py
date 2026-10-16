@@ -266,49 +266,6 @@ async def handle_list_tools() -> list[Tool]:
                             "required": ["provider", "content"],
                         },
                     },
-                    "host_responses": {
-                        "type": "array",
-                        "description": (
-                            "PROVIDER-SIDE LOOP (flag-gated by TRINITY_HOST_CLAUDE_MEMBER). "
-                            "Member answers YOU (the host agent) already produced in-session — "
-                            "typically the Claude voice, so the Claude member rides the session "
-                            "you are already in instead of `claude -p`/MCP sampling (the "
-                            "deprecated path) — same subscription, one fewer call against it. "
-                            "Trinity dispatches ONLY the members you did NOT "
-                            "supply (e.g. codex, antigravity) and synthesizes over the full set. "
-                            "To use: answer the task yourself, then call run_council with "
-                            "host_responses=[{provider:'claude', content:<your answer>}]."
-                        ),
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "provider": {"type": "string"},
-                                "content": {"type": "string"},
-                                "model": {"type": "string"},
-                            },
-                            "required": ["provider", "content"],
-                        },
-                    },
-                    "host_synthesis": {
-                        "type": "string",
-                        "description": (
-                            "PROVIDER-SIDE LOOP, chairman-on-host (flag-gated by "
-                            "TRINITY_HOST_CLAUDE_MEMBER). The Routing-JSON verdict YOU synthesized "
-                            "in-session over the members (no extra `claude -p` call). Pass with "
-                            "responses=[all members]; Trinity records the outcome with ZERO chairman "
-                            "model calls. Get the members first via host_responses + dispatch_only."
-                        ),
-                    },
-                    "dispatch_only": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": (
-                            "With host_responses (flag-gated): dispatch only the non-host members "
-                            "(codex/antigravity) and RETURN their answers + the synthesis prompt for "
-                            "YOU to synthesize, instead of running a chairman. Pair with a follow-up "
-                            "run_council(responses=..., host_synthesis=...) call."
-                        ),
-                    },
                     "wait_seconds": {
                         "type": "number",
                         "default": 0,
@@ -1495,49 +1452,41 @@ async def _synthesize_responses(args: dict, responses: list[dict]) -> list[Any]:
     )
     save_prompt_bundle(bundle)
 
-    # Chairman-on-host (the full provider-side loop): the host session — a Claude instance
-    # already in the conversation — produced the verdict, so there is NO chairman model call
-    # (no `claude -p`, no deprecated sampling). Record it directly; attribute the synthesis to
-    # the host's lab (claude, or a caller-supplied primary_provider) for the routing table.
-    host_synthesis = args.get("host_synthesis")
-    if host_synthesis:
-        _arg = args.get("primary_provider")
-        chairman = normalize_provider_slug(_arg) if isinstance(_arg, str) and _arg else "claude"
-        chairman_config = config.providers.get(chairman) if config else None
-        synthesis_prompt = "(host-synthesized — chairman ran on the host session)"
-        synthesis_output = str(host_synthesis)
-    else:
-        enabled = [
-            name for name, p in (config.providers if config else {}).items()
-            if p.enabled and p.type in ("cli", "codex")
-        ] or ["claude"]
-        # Canonicalize a caller-supplied chairman so `primary_provider='chatgpt'` resolves to
-        # the dispatchable `codex` config instead of erroring out as "missing or disabled".
-        _chairman_arg = args.get("primary_provider")
-        if isinstance(_chairman_arg, str) and _chairman_arg:
-            _chairman_arg = normalize_provider_slug(_chairman_arg)
-        chairman = _chairman_arg or predict_strongest_chairman(
-            task, available_providers=enabled
-        )
-        chairman_config = config.providers.get(chairman) if chairman in (config.providers if config else {}) else None
-        if chairman_config is None or not chairman_config.enabled:
-            return [_text({
-                "ok": False,
-                "error": f"Chairman provider '{chairman}' missing or disabled in Trinity config",
-            })]
-        synthesis_prompt = render_primary_council_prompt(bundle, members)
-        # The same chair fallback CLI councils use. This path called the chair
-        # once, read `stdout or stderr`, and never checked the exit code, so a
-        # capped or timed-out chair's banner was saved as a completed synthesis.
-        from pathlib import Path
-        from .providers import run_with_chairman_fallback
-        result, used, chair_error = run_with_chairman_fallback(
-            synthesis_prompt, config, chairman, Path.cwd())
-        if result is None:
-            return [_text({"ok": False, "error": f"No chairman could synthesize: {chair_error}"})]
-        if used and used != chairman:
-            chairman, chairman_config = used, config.providers[used]
-        synthesis_output = result.stdout
+    enabled = [
+        name for name, p in (config.providers if config else {}).items()
+        if p.enabled and p.type in ("cli", "codex")
+    ] or ["claude"]
+    # Canonicalize a caller-supplied chairman so `primary_provider='chatgpt'` resolves to
+    # the dispatchable `codex` config instead of erroring out as "missing or disabled".
+    _chairman_arg = args.get("primary_provider")
+    if isinstance(_chairman_arg, str) and _chairman_arg:
+        _chairman_arg = normalize_provider_slug(_chairman_arg)
+    chairman = _chairman_arg or predict_strongest_chairman(
+        task, available_providers=enabled
+    )
+    chairman_config = config.providers.get(chairman) if chairman in (config.providers if config else {}) else None
+    if chairman_config is None or not chairman_config.enabled:
+        return [_text({
+            "ok": False,
+            "error": f"Chairman provider '{chairman}' missing or disabled in Trinity config",
+        })]
+    synthesis_prompt = render_primary_council_prompt(bundle, members)
+    # The same chair fallback CLI councils use. This path called the chair
+    # once, read `stdout or stderr`, and never checked the exit code, so a
+    # capped or timed-out chair's banner was saved as a completed synthesis.
+    # Off the event loop: the chairman call takes minutes, and a blocked stdio server answers
+    # no ping, cancel or parallel verify meanwhile (the main council path moved off it in B9;
+    # this one was missed, council_850cff5fe89c1d81).
+    import asyncio
+    from pathlib import Path
+    from .providers import run_with_chairman_fallback
+    result, used, chair_error = await asyncio.to_thread(
+        run_with_chairman_fallback, synthesis_prompt, config, chairman, Path.cwd())
+    if result is None:
+        return [_text({"ok": False, "error": f"No chairman could synthesize: {chair_error}"})]
+    if used and used != chairman:
+        chairman, chairman_config = used, config.providers[used]
+    synthesis_output = result.stdout
 
     routing_label, parse_error = parse_routing_label(synthesis_output)
 
@@ -1545,12 +1494,10 @@ async def _synthesize_responses(args: dict, responses: list[dict]) -> list[Any]:
     # the routing_label. Without `winner_provider`, downstream consumers
     # (personal_routing aggregation) can't tell who won.
     winner_from_label = getattr(routing_label, "winner", None) if routing_label else None
-    _mode = "host_synthesis" if host_synthesis else "synthesis_only"
     from .council_runtime import chairman_format
-    outcome_metadata: dict = {"mode": _mode, "chairman_format": chairman_format()}
-    if _mode == "synthesis_only":
-        from .council_schema import RESPONSES_FROM_CALLER
-        outcome_metadata["responses_from"] = RESPONSES_FROM_CALLER   # not a legacy virtual council
+    from .council_schema import RESPONSES_FROM_CALLER
+    outcome_metadata: dict = {"mode": "synthesis_only", "chairman_format": chairman_format(),
+                              "responses_from": RESPONSES_FROM_CALLER}   # not a legacy virtual council
     if parse_error:
         outcome_metadata["routing_label_error"] = parse_error
     outcome = create_council_outcome(
@@ -1571,7 +1518,7 @@ async def _synthesize_responses(args: dict, responses: list[dict]) -> list[Any]:
     payload: dict = {
         "ok": True,
         "council_run_id": outcome.council_run_id,
-        "mode": _mode,
+        "mode": "synthesis_only",
         "status": "completed",
         "outcome": _outcome_summary(outcome),
         "_local_paths": {"outcome_path": str(outcome_path)},
@@ -1579,31 +1526,6 @@ async def _synthesize_responses(args: dict, responses: list[dict]) -> list[Any]:
     if parse_error:
         payload["routing_label_error"] = parse_error
     return [_text(payload)]
-
-
-def _host_member_council_enabled() -> bool:
-    """The provider-side loop is flag-gated OFF by default — the deprecation of MCP sampling
-    (in favor of direct provider APIs, which Trinity's no-API-key thesis forbids) is on a 12+
-    month window, so this path is shipped behind a flag and proven before it becomes default."""
-    import os
-    return os.environ.get("TRINITY_HOST_CLAUDE_MEMBER", "").strip().lower() in ("1", "true", "yes", "on")
-
-
-def _members_to_dispatch(members: list, host_responses: list[dict]) -> list:
-    """The members Trinity must dispatch via CLI = the council lineup MINUS the ones the host
-    agent already supplied (matched on canonical slug). Order-preserving, slug-deduped."""
-    from .council_schema import normalize_provider_slug
-
-    host = {normalize_provider_slug(str(r.get("provider", ""))) for r in host_responses}
-    out: list = []
-    seen: set[str] = set()
-    for m in members:
-        slug = normalize_provider_slug(str(m))
-        if slug in host or slug in seen:
-            continue
-        seen.add(slug)
-        out.append(m)
-    return out
 
 
 def _attach_council_guidance(response: dict) -> dict:
@@ -1632,124 +1554,25 @@ def _attach_council_guidance(response: dict) -> dict:
     return response
 
 
-async def _council_with_host_members(args: dict, host_responses: list[dict]) -> list[Any]:
-    """Provider-side loop (the MCP-sampling-deprecation-proof path for the Claude voice).
-
-    The host agent already produced some member answers in-session — typically the Claude
-    voice, riding the session the user is already in, so it never spends a second helping of
-    that same subscription on `claude -p` and never needs `sampling/createMessage`
-    (deprecated). Trinity dispatches ONLY the remaining members via their CLIs (codex/agy)
-    and reuses the chairman-synthesis path over the combined set. The Claude member's
-    cognition rides MCP *tools* (this call), not server-initiated sampling.
-    """
-    from pathlib import Path
-
-    from .config import default_council_members, load_config
-    from .council_runtime import create_prompt_bundle, render_member_prompt
-    from .council_schema import normalize_provider_slug
-    from .providers import make_provider
-    from .utils import stable_id
-
-    task = args["task"]
-    config = load_config()
-    members = args.get("members") or default_council_members()
-    to_dispatch = _members_to_dispatch(members, host_responses)
-
-    bundle = create_prompt_bundle(
-        task_cluster_id=stable_id("cluster", "mcp_host_council", task[:400]),
-        task_text=task,
-        goal=args.get("goal") or "Find the strongest answer.",
-        origin_provider="mcp_host_council",
-    )
-    member_prompt = render_member_prompt(bundle)
-    dispatched: list[dict] = []
-    for m in to_dispatch:
-        slug = normalize_provider_slug(str(m))
-        cfg = (config.providers if config else {}).get(slug)
-        if cfg is None or not cfg.enabled:
-            continue  # not installed/enabled — degrade, don't fail the council
-        try:
-            res = make_provider(cfg).run(member_prompt, cwd=Path.cwd())
-            # Carry the CONFIGURED effort forward. Trinity knows exactly what level it
-            # dispatched at (config.effort, defaulted for the providers whose CLI takes
-            # the flag), and the recording leg reads `effort` off these dicts — so
-            # omitting it here silently downgrades a KNOWN level to unknown and the
-            # trust tally loses the effort secondary for every host-loop council.
-            # Verified end-to-end 2026-07-26: without this the dispatched members
-            # recorded metadata={'source': ...} with no effort while the host-supplied
-            # member correctly carried its own.
-            dispatched.append({
-                "provider": m,
-                "model": cfg.model,
-                "effort": getattr(cfg, "effort", None),
-                "content": (res.stdout or res.stderr or ""),
-            })
-        except Exception:
-            continue  # a dead member must never break the council (#22 best-effort)
-
-    # Host-supplied first (the Claude voice), then the CLI-dispatched rest.
-    all_responses = list(host_responses) + dispatched
-
-    # dispatch_only (chairman-on-host): hand the assembled member answers + the synthesis
-    # prompt BACK to the host, which produces the verdict in its own turn (no separate
-    # `claude -p`) and records it via run_council(responses=<these>, host_synthesis=<verdict>).
-    # No chairman model call here.
-    if args.get("dispatch_only"):
-        from .council_runtime import render_primary_council_prompt
-        from .council_schema import CouncilMemberResult
-
-        member_results = [
-            CouncilMemberResult(
-                provider=normalize_provider_slug(str(r.get("provider", "unknown"))),
-                model=r.get("model"),
-                output_text=str(r.get("content", "")),
-                metadata={"source": "host_council"},
-            )
-            for r in all_responses
-        ]
-        synthesis_prompt = render_primary_council_prompt(bundle, member_results)
-        return [_text({
-            "ok": True,
-            "mode": "awaiting_host_synthesis",
-            "member_responses": all_responses,
-            "synthesis_prompt": synthesis_prompt,
-            "next": "Synthesize this prompt yourself (in this session, no `claude -p`), then call "
-                    "run_council(task, responses=<member_responses>, host_synthesis=<your Routing "
-                    "JSON verdict>) to record the outcome with zero chairman model calls.",
-        })]
-
-    # Default: Trinity synthesizes over all members (the chairman MAY be claude → `-p`).
-    return await _synthesize_responses(args, all_responses)
+_REMOVED_COUNCIL_PARAMS = ("host_responses", "host_synthesis", "dispatch_only")
 
 
 async def _run_council(args: dict) -> list[Any]:
-    # Chairman-on-host (the recording leg of the provider-side loop): the host already
-    # synthesized the verdict in-session, so there are zero chairman model calls. Same flag
-    # gate as host_responses — refuse it when the loop is disabled rather than silently
-    # recording a host verdict that the rest of the council never opted into.
-    if args.get("host_synthesis") and not _host_member_council_enabled():
+    # The host-member path and its three params were deleted (founder 2026-10-16, amd_0409): it
+    # never left its off-by-default flag, and its own member loop had missed six fixes the main
+    # path carries. Refuse them by name rather than run a normal council that also dispatches the
+    # member the caller meant to supply.
+    # Present with any value but null or false (the old dispatch_only default): an empty list or
+    # string is still a caller using the removed path (Codex's verify read).
+    removed = [k for k in _REMOVED_COUNCIL_PARAMS if k in args and args[k] is not None and args[k] is not False]
+    if removed:
         return [_text({
             "ok": False,
-            "error": "chairman-on-host is flag-gated OFF — set TRINITY_HOST_CLAUDE_MEMBER=1 "
-                     "to enable the provider-side loop, or omit host_synthesis for a normal council.",
+            "error": (f"{', '.join(removed)} {'was' if len(removed) == 1 else 'were'} removed: the "
+                      "host-member council path is gone. Pass answers you already have as "
+                      "`responses` (Trinity's chairman synthesizes them), or omit them for a "
+                      "normal council."),
         })]
-
-    # Provider-side loop: the host agent supplied some member answers (the Claude voice, from
-    # the live session); Trinity dispatches only the rest + synthesizes. Flag-gated OFF.
-    if "host_responses" in args:
-        host_responses = args.get("host_responses")
-        if not isinstance(host_responses, list) or not host_responses:
-            return [_text({"ok": False, "error": "`host_responses` must be a non-empty list of {provider, content} objects"})]
-        for i, r in enumerate(host_responses):
-            if not isinstance(r, dict) or "content" not in r or "provider" not in r:
-                return [_text({"ok": False, "error": f"`host_responses[{i}]` must contain 'provider' and 'content' fields"})]
-        if not _host_member_council_enabled():
-            return [_text({
-                "ok": False,
-                "error": "host-member council is flag-gated OFF — set TRINITY_HOST_CLAUDE_MEMBER=1 "
-                         "to enable the provider-side loop, or omit host_responses for a normal council.",
-            })]
-        return await _council_with_host_members(args, host_responses)
 
     # Pre-supplied responses → chairman synthesis only. One model call instead
     # of N+1. Same outcome shape (structured Routing JSON), persisted as

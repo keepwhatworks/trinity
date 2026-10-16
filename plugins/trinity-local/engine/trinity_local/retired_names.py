@@ -64,6 +64,57 @@ class RetirementRecord:
 # Add entries in the SAME commit as the deletion. Sorted by retirement
 # date (most recent first) for ease of audit.
 RETIRED: dict[str, RetirementRecord] = {
+    # ── 2026-10-16 coherence review, batch H' (council_850cff5fe89c1d81; founder amd_0409) ──
+    "install-hooks": RetirementRecord(
+        name="install-hooks",
+        retired_at="2026-10-16",
+        commit="coherence-h",
+        replacement="`trinity-local lens` (it reads new transcripts first)",
+        reason=(
+            "It wrote its hook to a file Claude Code does not read hooks from, replaced that "
+            "file whenever it could not parse it, and added a duplicate hook on every run. "
+            "Nothing was changed"
+        ),
+        kind="cli",
+    ),
+    "run_council.host_responses": RetirementRecord(
+        name="run_council.host_responses",
+        retired_at="2026-10-16",
+        commit="coherence-h",
+        replacement="run_council(responses=...)",
+        reason=(
+            "The host-member council path (with host_synthesis and dispatch_only) never left "
+            "its off-by-default flag TRINITY_HOST_CLAUDE_MEMBER, and its own member loop had "
+            "missed six fixes the main path carries: stderr and quota banners taken as answers, "
+            "no Gemini no-tools preamble (0/3 answers), no quota-wall skip, and synchronous "
+            "dispatch on the event loop. run_council refuses the three params by name"
+        ),
+        kind="concept",
+    ),
+    "run_council.host_synthesis": RetirementRecord(
+        name="run_council.host_synthesis",
+        retired_at="2026-10-16",
+        commit="coherence-h",
+        replacement="run_council(responses=...)",
+        reason="Removed with the host-member council path; see run_council.host_responses",
+        kind="concept",
+    ),
+    "run_council.dispatch_only": RetirementRecord(
+        name="run_council.dispatch_only",
+        retired_at="2026-10-16",
+        commit="coherence-h",
+        replacement="run_council(responses=...)",
+        reason="Removed with the host-member council path; see run_council.host_responses",
+        kind="concept",
+    ),
+    "TRINITY_HOST_CLAUDE_MEMBER": RetirementRecord(
+        name="TRINITY_HOST_CLAUDE_MEMBER",
+        retired_at="2026-10-16",
+        commit="coherence-h",
+        replacement="",
+        reason="The flag gated the host-member council path, which was deleted",
+        kind="config_field",
+    ),
     "trinity_local.cortex.save_routing_patterns": RetirementRecord(
         name="trinity_local.cortex.save_routing_patterns",
         retired_at="2026-08-31",

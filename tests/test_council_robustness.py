@@ -78,6 +78,41 @@ def test_a_council_does_not_block_other_tools(monkeypatch, patch_trinity_home):
     assert finished["trust"] < finished["council"], finished
 
 
+def test_a_council_over_supplied_answers_does_not_block_other_tools(monkeypatch, patch_trinity_home):
+    """run_council(responses=...) called its chairman on the event loop, so for the whole
+    synthesis the server answered nothing else (the main path moved off the loop; this one was
+    missed until council_850cff5fe89c1d81 named it, 2026-10-16)."""
+    from trinity_local import mcp_server
+    from trinity_local import providers as P
+    from trinity_local.providers import ProviderResult
+
+    chair = ('## Decision\n- b.\n\n```routing-json\n{"winner":"codex","confidence":"medium",'
+             '"task_type":"comparison","agreed_claims":[],"disagreed_claims":[]}\n```\n')
+
+    def slow_chair(prompt, config, chairman, cwd, *a, **k):
+        time.sleep(1.5)
+        return ProviderResult(provider="codex", stdout=chair, stderr="", returncode=0), "codex", None
+    monkeypatch.setattr(P, "run_with_chairman_fallback", slow_chair)
+    finished = {}
+
+    async def council():
+        await mcp_server.handle_call_tool("run_council", {
+            "task": "pick one", "primary_provider": "codex",
+            "responses": [{"provider": "claude", "content": "a"}, {"provider": "codex", "content": "b"}]})
+        finished["council"] = time.monotonic()
+
+    async def trust():
+        await asyncio.sleep(0.1)
+        await mcp_server.handle_call_tool("trust", {})
+        finished["trust"] = time.monotonic()
+
+    async def main():
+        await asyncio.gather(council(), trust(), return_exceptions=True)
+    asyncio.run(main())
+    assert set(finished) == {"council", "trust"}, finished
+    assert finished["trust"] < finished["council"], finished
+
+
 def test_the_council_handler_runs_off_the_main_thread(patch_trinity_home, monkeypatch):
     """Signal handlers can only be installed on the main thread; the council now runs on a
     worker thread and must not die there."""

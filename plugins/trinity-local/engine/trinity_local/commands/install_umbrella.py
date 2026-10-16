@@ -2,8 +2,8 @@
 
 The cron spec's 5-user-facing list
 mentions `install` as a single verb, but today the install module
-registers five separate subparsers (install-mcp, install-hooks,
-install-extension, install-launcher, uninstall). This umbrella
+registers separate subparsers (install-mcp, install-extension,
+install-launcher, uninstall). This umbrella
 advertises them so `trinity-local install` is the discoverable entry
 point; the bare names still work (the launchpad's install-extension
 dispatch and the README's `install-mcp` examples don't break).
@@ -26,7 +26,6 @@ _INSTALL_VERBS: list[tuple[str, str]] = [
     ("install-agent", "Add a trinity-verify sub-agent to .claude/agents and .codex/agents."),
     ("install-skill", "Write your lens as a SKILL.md other agents can load."),
     ("install-extension", "Connect the Chrome extension, which saves chats from claude.ai, chatgpt.com and gemini."),
-    ("install-hooks", "Add Claude Code hooks that capture each turn as it happens."),
     ("install-launcher", "Add a desktop launcher for the local launchpad (Linux, Windows)."),
     ("uninstall", "Remove Trinity's registrations and wrappers; your data in ~/.trinity stays."),
 ]
@@ -37,7 +36,7 @@ def register(subparsers) -> None:
         "install",
         help="Set Trinity up for Claude Code, Codex and agy (registers it in each, then "
              "checks). --check only reports. Optional verbs: install-skill, install-agent, "
-             "install-extension, install-hooks, install-launcher, uninstall.",
+             "install-extension, install-launcher, uninstall.",
     )
     parser.add_argument(
         "--check", action="store_true",

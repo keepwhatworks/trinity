@@ -122,7 +122,7 @@ The chairman reads `lens` (composed by `lens-build` from sampled diverse prompts
 
 ### CLI dispatcher
 
-`src/trinity_local/main.py` is a thin dispatcher. Command modules live under `commands/`. Selected commands shown below. The complete live surface (<!-- canonical:cli_command_count -->59<!-- /canonical --> subcommands across <!-- canonical:command_module_count -->24<!-- /canonical --> command modules) is enumerated by `trinity-local --help`.
+`src/trinity_local/main.py` is a thin dispatcher. Command modules live under `commands/`. Selected commands shown below. The complete live surface (<!-- canonical:cli_command_count -->58<!-- /canonical --> subcommands across <!-- canonical:command_module_count -->24<!-- /canonical --> command modules) is enumerated by `trinity-local --help`.
 
 | Module | Key commands |
 |--------|-------------|
@@ -132,7 +132,7 @@ The chairman reads `lens` (composed by `lens-build` from sampled diverse prompts
 | `commands/import_export.py` | `import-export` (auto-detect + bulk-ingest ChatGPT / Claude.ai / Gemini Takeout from any path, task #148) |
 | ~~`commands/replay.py`~~ | ~~`replay-history`~~. Retired 2026-05-27 (routing table now populates from normal council usage. See `retired_names.py`) |
 | `commands/portal.py` | `portal-html` (regenerates the launchpad), `open-review`, `review-link`, `serve` |
-| `commands/install.py` | `install-mcp`, `install-hooks`, `install-extension`, `install-launcher`, `uninstall` |
+| `commands/install.py` | `install-mcp`, `install-extension`, `install-launcher`, `uninstall` |
 
 ### MCP: four tools
 

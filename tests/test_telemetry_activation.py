@@ -153,7 +153,8 @@ def test_a_synthesis_only_council_is_counted_with_its_mode(wire, monkeypatch):
 @pytest.mark.parametrize("winner,mode,want_w,want_m", [
     ("answer_a", "parallel", "other", "parallel"),
     ("Claude wins, clearly", "chain", "other", "other"),
-    ("gemini", "host_synthesis", "antigravity", "host_synthesis"),
+    ("gemini", "synthesis_only", "antigravity", "synthesis_only"),
+    ("claude", "host_synthesis", "claude", "other"),   # the removed host path's mode
 ])
 def test_winner_and_mode_are_closed_sets_on_the_wire(winner, mode, want_w, want_m):
     body = T.build_outbound_event_payload("council_complete", {"winner": winner, "mode": mode})

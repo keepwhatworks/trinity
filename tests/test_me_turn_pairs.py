@@ -502,3 +502,34 @@ class TestStage0DeltaExtraction:
         assert first_ids <= {a.id for a in after_second}, (
             "delta build dropped previously-extracted rejections from the ledger"
         )
+
+
+def test_a_failed_stage0_batch_is_counted(patch_trinity_home, monkeypatch):
+    """The build aborts on a failed batch (#203); the counter records how often, so the deferred
+    per-batch checkpoint is decided on a measured rate (council_850cff5fe89c1d81, amd_0407)."""
+    import json
+    from types import SimpleNamespace
+
+    import trinity_local.me.pipeline as PL
+    from trinity_local import me_builder as MB
+    from trinity_local.state_paths import analytics_dir
+
+    pairs = [{"prompt_id": f"p{i}", "basin": "b0", "assistant_text": f"answer {i}",
+              "user_text": f"no, do it this way {i}"} for i in range(MB._STAGE0_BATCH_SIZE + 5)]
+    monkeypatch.setattr(MB, "_sample_diverse_with_embeddings",
+                        lambda **k: [SimpleNamespace(prompt_id="s0", text="a prompt")])
+    monkeypatch.setattr(PL, "stage1_basins", lambda **k: [])
+    monkeypatch.setattr(PL, "collect_turn_pairs",
+                        lambda limit: (pairs, {p["prompt_id"]: p for p in pairs}))
+
+    def batch(prompt, config, chairman, cwd, *, low_effort=False):
+        failed = "p0" in prompt.split("p1")[0]       # the batch that holds p0 comes back empty
+        return SimpleNamespace(returncode=0, stdout="" if failed else "[]", stderr="")
+    monkeypatch.setattr(MB, "_stage_run_with_fallback", batch)
+
+    _, out = MB.build_me_via_lens_pipeline(force=True)
+    assert out.get("aborted") == "stage0_batch_failed", out
+    rows = [json.loads(line) for line in
+            (analytics_dir() / "stage0_runs.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert rows[-1]["batches"] == 2 and rows[-1]["failed"] == 1, rows
+
