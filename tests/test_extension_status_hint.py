@@ -107,7 +107,10 @@ class TestTextWrapperInjection:
             "trinity_local.cold_start.cold_start_hint", lambda: None
         )
 
-        wrapped = mcp_server._text({"ok": True})
+        # Council replies only, once per process (2026-10-15): verify results carried it too.
+        monkeypatch.setattr(mcp_server, "_EXTENSION_HINT_SHOWN", False)
+        assert "extension_status" not in json.loads(mcp_server._text({"ok": True})["text"])
+        wrapped = mcp_server._text({"ok": True, "council_run_id": "c1"})
         parsed = json.loads(wrapped["text"])
         assert "extension_status" in parsed
         assert parsed["extension_status"]["configured"] is False
@@ -124,7 +127,8 @@ class TestTextWrapperInjection:
             "trinity_local.cold_start.cold_start_hint", lambda: None
         )
 
-        wrapped = mcp_server._text({"ok": True})
+        monkeypatch.setattr(mcp_server, "_EXTENSION_HINT_SHOWN", False)
+        wrapped = mcp_server._text({"ok": True, "council_run_id": "c1"})
         parsed = json.loads(wrapped["text"])
         assert "extension_status" not in parsed, (
             "Configured extension should produce no hint — silence is the "

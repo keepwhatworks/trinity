@@ -129,10 +129,12 @@ def test_a_test_the_copy_cannot_reproduce_is_not_read_as_detecting(repo):
     with the change. The control run marks it not_reproduced instead. MUTATION: drop the control
     run and it is reported as detecting the change."""
     cwd, diff = repo
-    (cwd / ".pytest_cache").mkdir()
-    (cwd / ".pytest_cache" / "marker").write_text("x")
+    # The copy carries what git carries (2026-10-15), so the file the test needs is one git ignores.
+    (cwd / ".gitignore").write_text("local_only/\n")
+    (cwd / "local_only").mkdir()
+    (cwd / "local_only" / "marker").write_text("x")
     (cwd / "tests" / "test_env.py").write_text(
-        "from pathlib import Path\n\ndef test_env():\n    assert Path('.pytest_cache/marker').exists()\n")
+        "from pathlib import Path\n\ndef test_env():\n    assert Path('local_only/marker').exists()\n")
     out = verify([_crit("t_env", "test_env.py")], diff, "", cwd, run_panel=False)
     assert out["differential"]["status"] == {"t_env": "not_reproduced"}
     assert "1 not reproduced" in out["differential"]["reason"]

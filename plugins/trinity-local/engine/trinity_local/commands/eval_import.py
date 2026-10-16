@@ -12,7 +12,7 @@ Score climbing = lens improvement, observable. OpenAI's "eval skills"
 pattern — evaluate a skill against the case suite it claims to handle.
 
 Schema mapping is in ``_provider_dict_to_rejection_signal`` — keep in
-sync with ``docs/evals-from-provider.md``.
+sync with ``evals-from-provider.md``.
 """
 from __future__ import annotations
 
@@ -33,14 +33,17 @@ _VALID_REJECTION_TYPES = {"REFRAME", "REDIRECT", "SHARPENING", "COMPRESSION"}
 
 
 def _prompt_doc_path() -> Path | None:
-    """Resolve docs/evals-from-provider.md (repo-relative or env override)."""
+    """The packaged evals-from-provider.md, or $TRINITY_EVAL_PROMPT_DOC when set.
+
+    It lived under the repo's docs/, which no wheel ships, so `eval-prompt` exited 1 on every
+    install (coherence review 2026-10-15); it is package data now."""
     import os
     override = os.environ.get("TRINITY_EVAL_PROMPT_DOC")
     if override:
         p = Path(override).expanduser()
         return p if p.exists() else None
-    candidate = Path(__file__).resolve().parents[3] / "docs" / "evals-from-provider.md"
-    return candidate if candidate.exists() else None
+    from .provider_import import packaged_prompt
+    return packaged_prompt("evals-from-provider.md")
 
 
 def register(subparsers):
@@ -66,7 +69,7 @@ def register(subparsers):
         "eval-import",
         help=(
             "Merge a provider's JSON-shaped rejection signals (see "
-            "docs/evals-from-provider.md) into ~/.trinity/me/preference_acts.jsonl."
+            "evals-from-provider.md) into ~/.trinity/me/preference_acts.jsonl."
         ),
     )
     imp.add_argument(
@@ -112,7 +115,7 @@ def handle_eval_prompt(args) -> int:
     doc = _prompt_doc_path()
     if doc is None:
         print(
-            "error: couldn't find docs/evals-from-provider.md. Set "
+            "error: couldn't find evals-from-provider.md. Set "
             "TRINITY_EVAL_PROMPT_DOC to its absolute path if you're "
             "running from a non-checkout install.",
             file=sys.stderr,
@@ -126,7 +129,7 @@ def handle_eval_prompt(args) -> int:
     if idx < 0:
         print(
             "warning: prompt-body marker not found in doc; emitting "
-            "full file. Update docs/evals-from-provider.md to restore "
+            "full file. Update evals-from-provider.md to restore "
             f"the '{_PROMPT_BODY_MARKER}' anchor.",
             file=sys.stderr,
         )
@@ -372,6 +375,6 @@ def handle_eval_import(args) -> int:
                 "rejection enters the ledger only WITH its `original_prompt` (the same "
                 "anchor every other ledger write carries) — a bare quote/substitute is "
                 "an assertion, not a record of your correction. See "
-                "docs/evals-from-provider.md."
+                "evals-from-provider.md."
             )
     return 0

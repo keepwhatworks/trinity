@@ -209,25 +209,16 @@ def test_spawned_mcp_server_initialize_list_and_read(tmp_path: Path):
 
         # tools/call — the path harnesses exercise most. List/read above prove
         # the server talks; this proves a real TOOL CALL round-trips over the
-        # wire. ask(mode="route") is the cheap no-dispatch routing decision
-        # (no model call), so it returns deterministically even in an empty
-        # isolated home (heuristic fallback — no cortex consolidation here).
+        # wire. trust() with no query is read-only and makes no model call, so it
+        # returns deterministically in an empty isolated home.
         send({"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {
-            "name": "ask",
-            "arguments": {
-                "query": "refactor this Python function to remove duplication",
-                "mode": "route",
-                "available_providers": ["claude", "antigravity", "codex"],
-            }}})
+            "name": "trust", "arguments": {}}})
         r = _read_response(proc)
-        assert r is not None and "result" in r, f"tools/call ask errored: {r}"
+        assert r is not None and "result" in r, f"tools/call trust errored: {r}"
         assert not r["result"].get("isError"), f"tool reported an error: {r['result']}"
         payload = json.loads(r["result"]["content"][0]["text"])
-        # The route decision shape the spec promises — proves the tool ran and
-        # serialized a real result, not just that the transport is alive.
-        assert payload["primary"] in ("claude", "antigravity", "codex")
-        assert payload["mode"] in ("single", "council")
-        assert payload["confidence"] in ("high", "medium", "low")
+        # The shape the tool promises: proves it ran and serialized a real result.
+        assert "tally" in payload
 
         # prompts/get — list above only proves the prompts ADVERTISE; harnesses
         # render them as slash-menu entries via get. A get that returns empty /
@@ -247,23 +238,20 @@ def test_spawned_mcp_server_initialize_list_and_read(tmp_path: Path):
             f"message over the wire: {prompt_text[:120]!r}"
         )
 
-        # tools/call get_persona — the harness calls this at session start to
-        # tailor responses to the lens. Prove the real lens.md content (not a
-        # stub) round-trips over the wire as a serialized tool result.
-        send({"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {
-            "name": "get_persona", "arguments": {}}})
+        # resources/read lens.md: the lens reaches an agent as a resource (the
+        # get_persona tool was deleted 2026-10-15). Prove the seeded content, not a
+        # stub, round-trips over the wire.
+        send({"jsonrpc": "2.0", "id": 9, "method": "resources/read", "params": {
+            "uri": "trinity://memories/lens.md"}})
         r = _read_response(proc)
-        assert r is not None and "result" in r, f"get_persona errored: {r}"
-        assert not r["result"].get("isError"), f"get_persona reported error: {r['result']}"
-        persona = json.loads(r["result"]["content"][0]["text"])
-        assert persona.get("available") is True, "get_persona: lens reported unavailable"
-        assert "UNIQUE-LENS-MARKER" in persona.get("text", ""), (
-            "get_persona didn't deliver the seeded lens.md content over the wire"
+        assert r is not None and "result" in r, f"lens resource errored: {r}"
+        assert "UNIQUE-LENS-MARKER" in r["result"]["contents"][0]["text"], (
+            "the lens resource didn't deliver the seeded lens.md content over the wire"
         )
 
         # resources/read an UNSEEDED resource → the cold-start STUB, not an error.
         # The cold-install agent UX depends on a missing resource returning
-        # actionable markdown ("run trinity-local lens --deep") rather than a dead 404 —
+        # actionable markdown ("run trinity-local lens") rather than a dead 404 —
         # and that only matters over the wire, where the harness renders it. The
         # populated reads above never exercise this branch.
         send({"jsonrpc": "2.0", "id": 10, "method": "resources/read",
@@ -271,7 +259,7 @@ def test_spawned_mcp_server_initialize_list_and_read(tmp_path: Path):
         r = _read_response(proc)
         assert r is not None and "result" in r, f"cold-start resource read errored: {r}"
         stub = r["result"]["contents"][0]["text"]
-        assert "does not exist" in stub and "trinity-local lens --deep" in stub, (
+        assert "does not exist" in stub and "trinity-local lens\n" in stub, (
             "an unseeded resource didn't return the actionable cold-start stub "
             f"over the wire (cold-install UX): {stub[:120]!r}"
         )
@@ -373,9 +361,9 @@ def test_mcp_wire_survives_malformed_tool_calls(tmp_path: Path):
               "params": {"name": "no_such_tool_xyz", "arguments": {}}})
         assert is_clean_error(_read_response(proc)), "unknown tool didn't error cleanly"
 
-        # 2) Required argument missing (`ask` needs `query`).
+        # 2) Required argument missing (`verify` needs `criteria` and `diff`).
         send({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
-              "params": {"name": "ask", "arguments": {}}})
+              "params": {"name": "verify", "arguments": {}}})
         assert is_clean_error(_read_response(proc)), "missing-required-arg didn't error cleanly"
 
         # 3) Malformed `arguments` (a string where an object is required).
@@ -391,11 +379,11 @@ def test_mcp_wire_survives_malformed_tool_calls(tmp_path: Path):
         # still succeed — the stdio loop survived. A crash here is invisible to
         # the happy-path test but lethal to the live harness integration.
         send({"jsonrpc": "2.0", "id": 6, "method": "tools/call",
-              "params": {"name": "get_persona", "arguments": {}}})
+              "params": {"name": "trust", "arguments": {}}})
         r = _read_response(proc)
         assert r is not None and "result" in r and not r["result"].get("isError"), (
             "the MCP server did not SURVIVE the malformed calls — a valid "
-            f"get_persona after the error storm failed: {r}. A crashed stdio loop "
+            f"trust after the error storm failed: {r}. A crashed stdio loop "
             "takes down the harness's entire Trinity tool menu for the session."
         )
     finally:

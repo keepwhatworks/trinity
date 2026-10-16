@@ -9,7 +9,7 @@ Trinity's local lens state.
 Two verbs ship together because they're two halves of the same loop:
 
 * ``lens-prompt`` — prints the canonical prompt (from
-  ``docs/lens-from-provider.md``) so the user can pipe to ``pbcopy`` /
+  ``lens-from-provider.md``) so the user can pipe to ``pbcopy`` /
   ``xclip`` and paste into any provider chat.
 
 * ``lens-import`` — reads the JSON the provider returns and merges it
@@ -19,7 +19,7 @@ Two verbs ship together because they're two halves of the same loop:
   ``verdict="accepted"`` ones without overwriting.
 
 Schema mapping is in ``_provider_dict_to_lens_pair`` — keep it in sync
-with ``docs/lens-from-provider.md`` if either side changes.
+with ``lens-from-provider.md`` if either side changes.
 """
 from __future__ import annotations
 
@@ -41,23 +41,18 @@ from .provider_import import read_provider_import
 # in dev, but the same file may live under the installed package dir
 # once we ship as a wheel. Resolve once at module import.
 def _prompt_doc_path() -> Path | None:
-    """Return the on-disk path to ``docs/lens-from-provider.md`` if we
-    can find it, else None. Checked in this order:
+    """The packaged lens-from-provider.md, or $TRINITY_LENS_PROMPT_DOC when set.
 
-    1. Repo-relative (running from a git checkout):
-       ``<repo>/docs/lens-from-provider.md`` where <repo> = parents[3]
-       of this file.
-    2. ``$TRINITY_LENS_PROMPT_DOC`` env var (escape hatch for installs
-       where the docs tree isn't shipped alongside the package).
-    """
+    It lived under the repo's docs/, which no wheel ships, so `lens-prompt` exited 1 on every
+    install and the launchpad's `lens-prompt | pbcopy` button copied nothing (coherence review
+    2026-10-15); it is package data now."""
     import os
     override = os.environ.get("TRINITY_LENS_PROMPT_DOC")
     if override:
         p = Path(override).expanduser()
         return p if p.exists() else None
-    # src/trinity_local/commands/lens_import.py → parents[3] is the repo root
-    candidate = Path(__file__).resolve().parents[3] / "docs" / "lens-from-provider.md"
-    return candidate if candidate.exists() else None
+    from .provider_import import packaged_prompt
+    return packaged_prompt("lens-from-provider.md")
 
 
 def register(subparsers):
@@ -83,7 +78,7 @@ def register(subparsers):
         "lens-import",
         help=(
             "Merge a provider's JSON-shaped lens output (see "
-            "docs/lens-from-provider.md) into ~/.trinity/me/lenses.json "
+            "lens-from-provider.md) into ~/.trinity/me/lenses.json "
             "+ orderings.json."
         ),
     )
@@ -136,7 +131,7 @@ def handle_lens_prompt(args) -> int:
     doc = _prompt_doc_path()
     if doc is None:
         print(
-            "error: couldn't find docs/lens-from-provider.md. Set "
+            "error: couldn't find lens-from-provider.md. Set "
             "TRINITY_LENS_PROMPT_DOC to its absolute path if you're "
             "running from a non-checkout install.",
             file=sys.stderr,
@@ -153,7 +148,7 @@ def handle_lens_prompt(args) -> int:
         # don't silently print nothing. Surface a warning.
         print(
             "warning: prompt-body marker not found in doc; emitting "
-            "full file. Update docs/lens-from-provider.md to restore "
+            "full file. Update lens-from-provider.md to restore "
             f"the '{_PROMPT_BODY_MARKER}' anchor.",
             file=sys.stderr,
         )

@@ -132,6 +132,7 @@ def test_a_completed_council_fires_the_activation(wire, monkeypatch, patch_trini
 def test_a_synthesis_only_council_is_counted_with_its_mode(wire, monkeypatch):
     import asyncio
 
+    __import__("importlib").import_module("trinity_local.council_runner")  # bind before patching
     import trinity_local.providers as P
     from trinity_local.mcp_server import handle_call_tool
     from trinity_local.providers import ProviderResult

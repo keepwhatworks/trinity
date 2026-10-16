@@ -2,24 +2,22 @@
 
 The user's analog to Anthropic's *Dreaming*. Walks ALL embedded prompts
 on disk, finds cross-provider question pairs, turns each into a virtual
-council via chairman synthesis, then re-consolidates cortex rules and
-re-builds the /me lenses.
+council via chairman synthesis, then re-builds the lens. (The cortex /
+routing-basin phase was removed 2026-08-11 with the router.)
 
-One command, four phases, end-to-end cold-start without fresh dispatch
+One command, end-to-end cold-start without fresh dispatch
 beyond chairman calls.
 
 Cost model (typical first run):
   - Phase 1 (discover): free, embeddings already on disk
   - Phase 2 (synthesize): ~one flagship call per cross-provider cluster.
     Usually 10–100 clusters.
-    outcomes. Caps at the cortex `--min-basin-size` default (3).
   - Phase 4 (lens-build): three flagship calls total (turn-pairs, decisions,
     pair-mining) per the existing lens-discovery pipeline.
 
-So a full dream = (n_clusters + n_basins + 3) flagship calls. For a
-fresh install with 18k seeded nodes, that's typically $5–15 of
-subscription credit — small for a one-time bootstrap that produces a
-fully populated routing table + lenses.
+So a full dream = (n_clusters + 3) flagship calls, on the user's subscription.
+The virtual councils feed the launchpad's per-task-type tally; the lens reads
+transcripts only (founder lock #1), and the trust ledger excludes them.
 """
 from __future__ import annotations
 

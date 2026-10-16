@@ -84,3 +84,13 @@ def read_provider_import(args, *, list_fields: tuple[str, ...]) -> Union[tuple[d
             return 2
 
     return payload, source_provider
+
+
+def packaged_prompt(name: str) -> Path | None:
+    """Path to a prompt shipped as package data (trinity_local/data/prompts/<name>), or None."""
+    from importlib import resources
+    try:
+        ref = resources.files("trinity_local").joinpath("data/prompts", name)
+        return Path(str(ref)) if ref.is_file() else None
+    except (ModuleNotFoundError, FileNotFoundError):
+        return None

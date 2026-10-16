@@ -76,3 +76,15 @@ def test_an_unknown_level_is_an_error_not_a_silent_default(monkeypatch, tmp_path
     monkeypatch.setenv(V.GEMINI_LEVEL_ENV, "fast")
     with pytest.raises(ValueError, match="not a Gemini level"):
         _dispatched("antigravity", monkeypatch, tmp_path)
+
+
+def test_a_model_other_than_flash_keeps_its_level(monkeypatch, tmp_path):
+    """Medium was measured on Flash only. Gemini 4 Argon, when agy serves it, reads at its
+    configured level (founder 2026-10-12: never lower a reader on speed alone)."""
+    monkeypatch.delenv(V.GEMINI_LEVEL_ENV, raising=False)
+    cfg = SimpleNamespace(providers={"antigravity": _cfg("antigravity", "gemini-4-argon-high", "high")})
+    model, _ = _dispatched("antigravity", monkeypatch, tmp_path, cfg)
+    assert model == "gemini-4-argon-high"
+    monkeypatch.setenv(V.GEMINI_LEVEL_ENV, "medium")
+    model, _ = _dispatched("antigravity", monkeypatch, tmp_path, cfg)
+    assert model == "gemini-4-argon-medium", "an explicit level still applies to any SKU"

@@ -20,7 +20,15 @@ from __future__ import annotations
 import subprocess
 import sys
 
+import os
+
 import pytest
+
+# These two load the real model in a subprocess that inherits the environment; under the
+# TF-IDF test hatch the backend is never constructed, so they cannot run, and they failed
+# the documented fast suite on unchanged main (coherence review 2026-10-15).
+_NEEDS_MLX = pytest.mark.skipif(os.environ.get("TRINITY_DISABLE_MLX") == "1",
+                                reason="TRINITY_DISABLE_MLX=1 disables the real backend")
 
 HEAVY = ("mlx.core", "mlx_embeddings", "torch", "sentence_transformers")
 
@@ -111,6 +119,7 @@ class TestSelectorContractPreserved:
             "instead of falling through to the torch backend."
         )
 
+    @_NEEDS_MLX
     def test_constructed_backend_still_reports_as_available(self):
         """Laziness must not change what the product believes about itself:
         is_available()/get_backend() are read by health checks, the launchpad,
@@ -127,6 +136,7 @@ class TestSelectorContractPreserved:
 
 
 class TestLazyLoadStillWorks:
+    @_NEEDS_MLX
     def test_first_embed_loads_the_model_and_returns_real_vectors(self):
         """Deferring the import must not break embedding. Proves the fix moved
         the cost rather than removing the capability."""

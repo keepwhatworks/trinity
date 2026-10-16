@@ -54,9 +54,10 @@ def register(subparsers):
     )
     build_parser.add_argument(
         "--deep", action="store_true",
-        help="Mine your history first: discover cross-provider question pairs, "
-             "synthesize each as a virtual council (chairman calls), re-consolidate "
-             "routing basins — then rebuild the lens. The one-command cold start. "
+        help="Before rebuilding the lens, also mine your history for cross-provider "
+             "question pairs, cluster them, and synthesize each cluster as a virtual council "
+             "(one chairman call per cluster, usually 10-100; they fill the launchpad's "
+             "per-task-type tally, not the lens). "
              "(Absorbed the former `dream` verb, 2026-07-04.)",
     )
     build_parser.add_argument(

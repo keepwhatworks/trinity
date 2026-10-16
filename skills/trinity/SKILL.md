@@ -56,11 +56,11 @@ If any required check fails, walk the user through the surfaced fix. Don't proce
 The installer in section 2 already ran this. If MCP needs re-registration (after a `trinity-local update`, or to wire a newly-installed harness), run:
 
 Trinity ships <!-- canonical:mcp_tool_count -->4<!-- /canonical --> MCP tools:
-- **canonical three** — `run_council`, `get_persona`, `get_council_status`
-- **v1.5** — `ask` (cheap default; `get_picks` removed 2026-08-11 with the per-basin router)
-- **in-protocol provider loop** — `import_provider_memory` (write-back path: agent pipes its own extracted lens tensions / rejection signals into Trinity)
-- **disagreement ledger** — `trust` (which model you side with when the labs split + the recurring cross-provider disagreements a topic maps into; retrieval read-only + LLM-free, per-model tally gated on its trustworthiness check and built via `trust --build`)
-  (`run_eval` / `choose` / `lens_generators` soft-demoted off the MCP surface 2026-07-18 — their CLI verbs + engines stay. `search_prompts` retired 2026-05-17; `get_eval_summary` retired 2026-05-18; `record_outcome` retired 2026-05-21 — chairman's pick is the supervision signal now, refinement prompts carry the "what differently" signal. `handoff` retired 2026-05-26 — 0 usage events in production; lens-via-MCP-Resources is the cross-provider continuity path. `route` removed 2026-06-08 — routing is now `ask(mode="route")`.)
+- `run_council` — before a substantive plan, design or hard-to-reverse step: Claude, Codex and Gemini answer independently, and the chairman reports the decision, what would change it, and where they split
+- `get_council_status` — poll a council that is still running
+- `verify` — before calling a change done: runs the project's own tests and has the other labs read the diff; returns STOP or READ
+- `trust` — which model the user's later work sided with when the labs split, and the recurring disagreements a topic maps into (read-only, LLM-free)
+  (`ask`, `get_persona`, `import_provider_memory`, `run_eval`, `choose` and `lens_generators` were deleted from the MCP server on 2026-10-15; their CLI verbs stay. Retired earlier: `search_prompts`, `get_eval_summary`, `record_outcome`, `handoff`, `route`.)
 
 !`trinity-local install-mcp`
 
@@ -86,15 +86,11 @@ For complex questions where two senior engineers could reasonably disagree (arch
 mcp__trinity-local__run_council(task="$ARGUMENTS", mode="parallel")
 ```
 
-The chairman reads `~/.trinity/memories/lens.md` and synthesizes the members' answers through the user's taste. Output: structured Routing JSON with `agreed_claims`, `disagreed_claims`, `winner`, `runner_up`, `provider_scores`, `routing_lesson`. Persisted at `~/.trinity/council_outcomes/<id>.json`.
+The chairman reads a compact slice of the user's lens and synthesizes the members' answers. Output: `decision`, `flip_condition`, `agreed_claims`, `disagreed_claims`, `winner`, `runner_up`, `routing_lesson`. Persisted at `~/.trinity/council_outcomes/<id>.json`.
 
-The chairman's pick is automatically the supervision signal — `routing_label.winner` is what `compute_personal_routing_table()` aggregates from, no rating call needed (`record_outcome` retired 2026-05-21). what sets Trinity apart is the personal ledger of cross-model preferences; the chairman writes to it every council. If the user wants to refine ("I would have picked X because Y"), they click Refine on the council page — the refinement prompt itself is the post-pivot signal of "what should it have been instead." No rating step in the loop; the lens governs selection.
+The chairman's pick is automatically the supervision signal — `routing_label.winner` is what `compute_personal_routing_table()` aggregates from, no rating call needed (`record_outcome` retired 2026-05-21). what sets Trinity apart is the personal ledger of cross-model preferences; the chairman writes to it every council. If the user wants to refine ("I would have picked X because Y"), they click Refine on the council page — the refinement prompt itself is the post-pivot signal of "what should it have been instead." No rating step in the loop.
 
-If the question doesn't warrant a full 3-provider council (lookups, syntax, mechanical refactors), prefer the cheaper single-call route:
-
-```
-mcp__trinity-local__run_council(task="...")
-```
+If the question doesn't warrant a full 3-provider council (lookups, syntax, mechanical refactors), skip Trinity and answer it directly.
 
 ## 7. Lens-flow via MCP Resources
 
@@ -147,22 +143,22 @@ Suggest these to the user after section 5 succeeds:
 
 If you're inside Claude Code / Cursor / Codex and the `lens-import` / `eval-import` CLI verbs are available, you (the agent) have the user's conversation history on YOUR side. That's the same vantage the lens-prompt / eval-prompt verbs ask claude.ai / chatgpt to take — but the loop closes inside the harness, no copy-paste. Trinity's lens + rejection signal compounds every time you push back what you learn.
 
-Four trigger conditions — call `import_provider_memory(kind, payload, dry_run?)` when you see any of these in the current chat:
+Four trigger conditions — pipe the payload as JSON to `trinity-local eval-import --from-json` (rejections) or `trinity-local lens-import --from-json` (tensions) when you see any of these in the current chat:
 
-1. **REFRAME / REDIRECT in the user's last turn.** The user said "no, actually…" / "skip that, just…" / "stop summarizing, give me the diff" — anything where your prior suggestion was replaced with a different one. Push it via `kind="eval"`, payload `{rejections: [{type: "REFRAME" | "REDIRECT", model_quote, user_substitute, why_signal, confidence}]}`. Your reaction to the substitution IS the signal. Captures preferences no static prompt can.
+1. **REFRAME / REDIRECT in the user's last turn.** The user said "no, actually…" / "skip that, just…" / "stop summarizing, give me the diff" — anything where your prior suggestion was replaced with a different one. Push it with `eval-import`, payload `{rejections: [{type: "REFRAME" | "REDIRECT", model_quote, user_substitute, why_signal, confidence}]}`. Your reaction to the substitution IS the signal. Captures preferences no static prompt can.
 
-2. **A new paired tension just crystallized.** Across the last ~5 turns you noticed the user trades off X against Y in a way that wouldn't be obvious from any single message (e.g. "shipping velocity over polish unless the polish blocks composition"). Push via `kind="lens"`, payload `{tensions: [{pole_a, pole_b, failure_a, failure_b, horizon: "tactical" | "strategic" | "philosophical", evidence: [...], confidence, why_matters}]}`. Don't push surface preferences — push the GENERATOR (the variable that gates when X wins vs Y).
+2. **A new paired tension just crystallized.** Across the last ~5 turns you noticed the user trades off X against Y in a way that wouldn't be obvious from any single message (e.g. "shipping velocity over polish unless the polish blocks composition"). Push with `lens-import`, payload `{tensions: [{pole_a, pole_b, failure_a, failure_b, horizon: "tactical" | "strategic" | "philosophical", evidence: [...], confidence, why_matters}]}`. Don't push surface preferences — push the GENERATOR (the variable that gates when X wins vs Y).
 
-3. **Post-council reaction.** The user said something like "yeah, claude was right" or "no, the chairman missed the point" about a `run_council` outcome. Even when they don't click the launchpad's refinement button, their verbal reaction is signal — push it as `kind="eval"` with `type: "REFRAME"` and `why_signal` naming the chairman's miss.
+3. **Post-council reaction.** The user said something like "yeah, claude was right" or "no, the chairman missed the point" about a `run_council` outcome. Even when they don't click the launchpad's refinement button, their verbal reaction is signal — push it with `eval-import` as `type: "REFRAME"` and `why_signal` naming the chairman's miss.
 
-4. **You're not sure if it's signal.** Use `dry_run=true` first. Trinity returns the merge plan (new vs duplicate vs malformed) without writing. If the plan says it would dedup against existing signal, the user has already taught Trinity that pattern — no need to push again.
+4. **You're not sure if it's signal.** Add `--dry-run` first. Trinity returns the merge plan (new vs duplicate vs malformed) without writing. If the plan says it would dedup against existing signal, the user has already taught Trinity that pattern — no need to push again.
 
-**Verifiable test** that you actually called the tool successfully:
+**Verifiable test** that the import landed:
 
-- For `kind="eval"`: `trinity-local lens-acts` shows `ledger: ~/.trinity/me/preference_acts.jsonl`, and `total` increments by the number of new non-duplicate signals.
-- For `kind="lens"`: `cat ~/.trinity/me/lenses.json | jq '.lenses | length'` increments by the number of net-new tensions; existing pole-pairs get evidence-augmented in place.
+- For `eval-import`: `trinity-local lens-acts` shows `ledger: ~/.trinity/me/preference_acts.jsonl`, and `total` increments by the number of new non-duplicate signals.
+- For `lens-import`: `cat ~/.trinity/me/lenses.json | jq '.lenses | length'` increments by the number of net-new tensions; existing pole-pairs get evidence-augmented in place.
 
-**Why this compounds**: every iteration of the user's `/loop` (or any session) becomes a signal-engine. The chairman reads `lens.md` + `core.md` on every council; richer lens → sharper future verdicts. Surface-minimal: requires zero new tools beyond the one already shipped (the lane added `import_provider_memory`; the count is now 7 — `handoff` and the standalone `route` tool both retired).
+**Why this compounds**: every iteration of the user's `/loop` (or any session) becomes a signal-engine. The chairman reads `lens.md` + `core.md` on every council; richer lens → sharper future verdicts. Surface-minimal: two CLI verbs, no MCP tool.
 
 ## 13. Agent behavior — ask Trinity before you ask the user
 

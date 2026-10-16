@@ -198,32 +198,6 @@ def test_generators_tab_is_conditional(tmp_path, monkeypatch):
 # ── the MCP tool handler writes generators.md + returns the structured set ─────
 
 
-def test_mcp_lens_generators_handler(tmp_path, monkeypatch):
-    """The `lens_generators` MCP handler runs the pass off-thread, writes
-    generators.md, and returns the structured generators. build_generators is
-    mocked — this guards the handler wiring, not the LLM."""
-    import asyncio
-    import json
-
-    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-    import trinity_local.me.generators as gmod
-
-    monkeypatch.setattr(gmod, "build_generators", lambda **k: {
-        "ok": True, "evidence_turns": 5, "task_tensions": 3,
-        "generators": [{"name": "X", "tension": "a over b", "projections": {"s": "1"}, "task_tensions": [1]}],
-        "cards": "## Generators\n### 1. X\n",
-    })
-    from trinity_local.mcp_server import _lens_generators
-
-    out = asyncio.run(_lens_generators({}))
-    payload = json.loads(out[0]["text"])
-    assert payload["ok"] is True and payload["count"] == 1
-    assert payload["generators"][0]["name"] == "X"
-
-    from trinity_local.state_paths import generators_path
-    assert generators_path().exists()
-
-
 def test_build_generators_guards_empty():
     r = gen.build_generators(dispatch_fn=lambda p: "x", tensions=[], evidence=["ev"])
     assert r["ok"] is False and r["reason"] == "no tensions"

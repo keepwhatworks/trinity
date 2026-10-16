@@ -1,24 +1,15 @@
-"""MCP server exposing Trinity's 7 public tools (see handle_list_tools).
+"""MCP server exposing Trinity's 4 public tools (see handle_list_tools).
 
-Public tools, in lifecycle order:
-  - run_council(task, members, mode, responses)
-      "Run the task across multiple models." — N+1 model calls.
-      When `responses` is provided, skips member dispatch and goes straight
-      to chairman synthesis (one model call). This is the structured
-      verdict path: agreed_claims, disagreed_claims, winner, routing_lesson.
-  - get_persona()
-      "Return the user's /me document." — chairman context for any harness.
-  - get_council_status(council_run_id)
-      "Poll an in-flight or completed council." — for harnesses without fs access.
+  - run_council(task, members, mode, responses): the plan-time council. With `responses`
+    it skips member dispatch and goes straight to the chairman's synthesis.
+  - get_council_status(council_run_id): poll an in-flight or completed council.
+  - trust(query?): which model the user's later work sided with when the labs split, and the
+    recurring disagreements a query maps into. Read-only.
+  - verify(criteria, diff, ...): the pre-deploy gate (verify.py).
 
-v1.5 pair: ask (single-call routing; ask(mode="route") returns the routing
-decision only) / get_picks.
-Disagreement ledger: trust — which model you side with when the labs split,
-read-only + gated (per-model verdict withheld unless it clears K3/K4); the tally
-keys a model×version primary with effort as a gated secondary.
-In-protocol provider loop: import_provider_memory.
-(route/choose/run_eval/lens_generators were removed or demoted off the surface —
-routing lives in ask(mode="route"); the eval/palate/generators verbs are CLI-only.)
+The soft-demoted handlers (ask / route, get_persona, import_provider_memory, the eval and
+generator handlers, choose) were deleted on 2026-10-15 with founder approval; their CLI verbs
+remain (retired_names.py).
 
 Plus MCP Resources (v2 substrate, 2026-05-26) for read-only context:
 ~/.trinity/memories/*, ~/.trinity/scoreboard/* exposed as
@@ -40,9 +31,8 @@ remain importable for the launchpad but are not exposed via MCP.
 """
 from __future__ import annotations
 
-import sys
-
 import json
+import sys
 import threading
 from typing import Any
 
@@ -53,7 +43,7 @@ from mcp.types import ErrorData, Resource, Tool
 from pydantic import AnyUrl
 
 from .config import load_config
-from .ranker import RoutingContext, build_default_ranker, predict_strongest_chairman, chairman_pick_reason
+from .ranker import predict_strongest_chairman
 from .telemetry import APP_VERSION
 
 # Pass Trinity's OWN version to the MCP Server. Without `version=`, the mcp SDK
@@ -79,8 +69,9 @@ SERVER_INSTRUCTIONS = (
     "to your own lab. "
     "STOP means a relevant test is red. READ means a person still reads: name what is unverified. "
     "The other labs' read is a second opinion, not approval.\n"
-    "Skip both for trivial edits, syntax and lookups. `trust` answers which model the user's later "
-    "work sided with when the labs split."
+    "Skip both for trivial edits, syntax and lookups. `trust` returns the disagreements the labs "
+    "keep having on a topic, with who argued which side; its per-model verdict is withheld while "
+    "its label is below its reliability floor."
 )
 
 server = Server("trinity-local", version=APP_VERSION, instructions=SERVER_INSTRUCTIONS)
@@ -379,7 +370,7 @@ async def handle_list_tools() -> list[Tool]:
                                  "description": "[{id, kind: test|judgment, statement, command?, blocking}]"},
                     "diff": {"type": "string", "description": "unified diff of the change"},
                     "context": {"type": "string", "description": "the symptom or task the change addresses"},
-                    "cwd": {"type": "string", "description": "where test commands run (default: the roots / cwd)"},
+                    "cwd": {"type": "string", "description": "the project root where test commands run; required unless this server already runs in the project's git work tree"},
                     "members": {"type": "array", "items": {"type": "string"},
                                 "description": "panel; default claude, codex, antigravity"},
                     "exclude_lab": {"type": "string", "description": "never read from this lab (the change's author)"},
@@ -393,14 +384,12 @@ async def handle_list_tools() -> list[Tool]:
         Tool(
             name="trust",
             description=(
-                "DECISION FIT, not capability: which model this user's LATER WORK sided "
-                "with when the labs split on build-and-kill decisions, and the recurring "
-                "CROSS-PROVIDER disagreements a topic keeps returning to. Two axes, kept "
-                "apart on purpose -- the lab that reads lowest here (Gemini 3.1, 36%) "
-                "ships the model that fixed defects best on this repo (Gemini 3.8 Flash, "
-                "36 of 36); `verify` measures the second axis. The ledger behind this "
-                "tool is also the standing proof that a split carries information. "
-                "With `query`: the recurring disagreements it maps into (semantic "
+                "The recurring CROSS-PROVIDER disagreements a topic keeps returning to, "
+                "each with its raw record, and which model this user's LATER WORK sided "
+                "with when the labs split (decision fit, not capability). The per-model "
+                "verdict is usually WITHHELD: it rests on an LLM-resolved label that "
+                "reproduces at test-retest kappa 0.47, below its 0.6 floor, so lead with "
+                "the raw record. With `query`: the recurring disagreements it maps into (semantic "
                 "retrieval over resolved council splits) — each with the raw record: "
                 "who argued which side, the chairman's pick, and how many councils "
                 "split on the same question. Without `query`: the count of "
@@ -528,17 +517,6 @@ def _maybe_fire_lens_kicks() -> None:
             maybe_offer_embedder_download()
         except Exception:
             pass
-        # Roots: ask the client what filesystem roots it exposes (e.g. the open
-        # project), and log them. Best-effort — surfaces what transcript dirs a
-        # future ingest could auto-discover; no-op when the client lacks roots.
-        try:
-            from .mcp_features import discover_roots, mcp_log
-
-            roots = discover_roots()
-            if roots:
-                mcp_log("info", f"Client exposed {len(roots)} root(s): {', '.join(roots[:5])}")
-        except Exception:
-            pass
 
 
 @server.call_tool()
@@ -592,8 +570,6 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[Any]:
 
 
 async def _dispatch_tool(name: str, arguments: dict) -> list[Any]:
-    if name == "ask":
-        return await _ask(arguments)
     if name == "trust":
         return await _trust(arguments)
     if name == "run_council":
@@ -601,16 +577,21 @@ async def _dispatch_tool(name: str, arguments: dict) -> list[Any]:
     if name == "verify":
         return await _verify(arguments)
     # `record_outcome` dispatch removed 2026-05-21 (rating UX sunset).
-    if name == "get_persona":
-        return await _get_persona(arguments)
     if name == "get_council_status":
         return await _get_council_status(arguments)
-    if name == "import_provider_memory":
-        return await _import_provider_memory(arguments)
-    # `lens_generators`, `run_eval`, `choose` demoted off the MCP surface
-    # 2026-07-18 (founder soft-demote). Their CLI verbs + engines stay; the
-    # handlers below are retained but no longer dispatched here.
+    # Every other name, including the tools deleted 2026-10-15 (ask, get_persona,
+    # import_provider_memory, run_eval, choose, lens_generators), is not found.
     return [ErrorData(code=404, message=f"Tool not found: {name}")]
+
+
+def _is_git_work_tree(path) -> bool:
+    import subprocess
+    try:
+        r = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=path,
+                           capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return r.returncode == 0 and r.stdout.strip() == "true"
 
 
 class ToolError(Exception):
@@ -625,18 +606,6 @@ class ToolError(Exception):
 
     def __init__(self, err: ErrorData):
         super().__init__(json.dumps({"ok": False, "error": err.message, "code": err.code}))
-
-
-def _choose(arguments: dict) -> list:
-    """The choice oracle (task #11, demoted off the MCP surface): rank the given
-    options on the frozen palate direction, always advisory. LLM-free (two local embeddings per option), so
-    it's synchronous and instant. The live prospective accuracy travels with
-    every answer — the consumer sees the instrument's measured trust."""
-    from .me.palate_registry import rank_options
-
-    options = arguments.get("options") or []
-    result = rank_options([str(o) for o in options])
-    return [_text(result)]
 
 
 # ─── MCP Resources — read-only context surfaces ────────────────────
@@ -683,7 +652,7 @@ def _resource_catalog() -> list[tuple[str, str, str, str, Any]]:
         (
             "trinity://memories/core.md",
             "Trinity Core Memory",
-            "Your one-paragraph manifesto — chairman reads this first; your lens decides quality-ties on every council.",
+            "Your one-paragraph manifesto, distilled from your prompts; the chairman reads it first.",
             "text/markdown",
             # core.md lives at the TOP LEVEL (~/.trinity/core.md via core_path()),
             # NOT under memories/ like lens/topics/vocabulary. The URI keeps the
@@ -696,7 +665,7 @@ def _resource_catalog() -> list[tuple[str, str, str, str, Any]]:
         (
             "trinity://memories/lens.md",
             "Trinity Lens",
-            "Paired tensions you reject vs accept. The chairman conditions synthesis on these. The load-bearing personalization layer.",
+            "Paired tensions in how you decide, mined from your prompts. The chairman reads a compact slice of them on every council.",
             "text/markdown",
             lambda: memories / "lens.md",
         ),
@@ -885,19 +854,6 @@ def _canonicalize_resource_routing_slugs(obj: Any) -> Any:
     return obj
 
 
-def _winner_margin_floor() -> float:
-    """The margin ask() routes on (lens_routing.WINNER_MARGIN_FLOOR). Below it a
-    basin's winner is a near-tie and ask falls to kNN. Local import + literal
-    fallback mirrors launchpad_data.py / memory_viewer.py."""
-    try:
-        from .lens_routing import WINNER_MARGIN_FLOOR
-        return float(WINNER_MARGIN_FLOOR)
-    except Exception:
-        return 0.15
-
-
-
-
 def _canonicalize_member_slugs(seq: list, *, dedupe: bool = True) -> list:
     """Canonicalize agent-supplied provider slugs at the council-LAUNCH boundary.
 
@@ -969,11 +925,10 @@ async def handle_read_resource(uri: AnyUrl) -> list[ReadResourceContents]:
             f"_(empty — this file does not exist yet)_\n\n"
             f"Trinity hasn't generated this resource yet. To populate it:\n\n"
             f"```bash\n"
-            f"trinity-local lens --deep\n"
+            f"trinity-local lens\n"
             f"```\n\n"
-            f"Dream reads your existing corpus and writes the four cognitive "
-            f"memories (`core.md`, `lens.md`, `topics.json`, `vocabulary.md`) "
-            f"plus the AGENTS.md lens-derived guidance. After the deep build finishes, "
+            f"The lens build reads your existing prompts and writes the four memories "
+            f"(`core.md`, `lens.md`, `topics.json`, `vocabulary.md`). After it finishes, "
             f"re-read this resource and it will be populated.\n\n"
             f"Resource URI: `{uri_str}`\n"
             f"On-disk path: `{path}`\n"
@@ -1096,6 +1051,7 @@ async def handle_set_logging_level(level: Any) -> None:
 
 
 _COLD_OPEN_SHOWN = False
+_EXTENSION_HINT_SHOWN = False
 
 
 def _synthesis_for_agent(text: str | None, label: Any) -> str:
@@ -1150,7 +1106,10 @@ def _outcome_summary(outcome: Any) -> dict:
     # distinguishing it from a two-member council someone asked for. Measured
     # 2026-09-28: 70% of the last 30 days' councils were degraded, and the
     # calling agent was told about none of them.
-    lost = [{"provider": f.get("provider"), "reason": f.get("reason")}
+    from .council_runner import _failure_detail
+    # `detail` carries the human reason ("codex usage limit reached, resets 4:12 AM"); the
+    # notice used to keep only the reason code, so an agent could not tell the user why.
+    lost = [{"provider": f.get("provider"), "reason": f.get("reason"), "detail": _failure_detail(f)}
             for f in (md.get("member_failures") or []) if isinstance(f, dict)]
     summary["degraded"] = bool(lost)
     if lost:
@@ -1158,7 +1117,7 @@ def _outcome_summary(outcome: Any) -> dict:
         summary["failed_members"] = lost
         summary["degraded_notice"] = (
             f"DEGRADED: {answered} of {answered + len(lost)} labs answered; lost "
-            + ", ".join(f"{x['provider']} ({x['reason']})" for x in lost)
+            + ", ".join(f"{x['provider']} ({x['detail']})" for x in lost)
             + ". Read agreement as agreement among the labs that answered, "
             "not as three-lab consensus.")
     return summary
@@ -1211,19 +1170,26 @@ def _text(payload: dict | str) -> dict:
                     _COLD_OPEN_SHOWN = True
             except Exception:
                 pass
-        if "extension_status" not in payload:
+        # Onboarding hints ride COUNCIL replies only, and the extension hint once per
+        # process: they used to be attached to every response, so each verify result (the
+        # most-used tool) carried a lens upsell and an extension nag (coherence review
+        # 2026-10-15). The extension is optional; most installs never add it.
+        global _EXTENSION_HINT_SHOWN
+        council_reply = "council_run_id" in payload
+        if council_reply and "extension_status" not in payload and not _EXTENSION_HINT_SHOWN:
             try:
                 hint = _extension_status_hint()
                 if hint is not None:
                     payload = dict(payload)
                     payload["extension_status"] = hint
+                    _EXTENSION_HINT_SHOWN = True
             except Exception:
                 pass
         # Staged onboarding: the next funnel rung (create-lens → add-web-history →
         # view-lens → lens-health), one per response, gated on live state. Self-
         # omits once the user adopts the step (the prereq flips). Fusion-first: a
         # no-lens user is nudged toward the lens add-on without ever being blocked.
-        if "tip" not in payload:
+        if council_reply and "tip" not in payload:
             try:
                 from .tips import next_tip
 
@@ -1290,243 +1256,6 @@ def _extension_status_hint() -> dict | None:
     return _EXTENSION_HINT_CACHED
 
 
-def _dispatch_via_config(provider_name: str, prompt: str) -> str:
-    """Production dispatch shim used by `ask`. Looks up the named provider in
-    config first; if not found, falls through to detected Ollama models
-    (provider_name="ollama:<model>"). Errors raise; the MCP handler catches
-    them and returns an error response so Claude in the harness knows the
-    route failed and can retry / replan.
-    """
-    from pathlib import Path
-
-    from .config import load_config
-    from .providers import make_provider, ProviderError
-
-    config = load_config()
-    # config.providers is a dict keyed by name; iterate values for ProviderConfig
-    # objects with .enabled and .name attributes.
-    for p in config.providers.values():
-        if p.name == provider_name and p.enabled:
-            provider = make_provider(p)
-            result = provider.run(prompt, Path.cwd())
-            if result.returncode != 0:
-                raise ProviderError(f"{provider_name} exit {result.returncode}: {result.stderr[:200]}")
-            return result.stdout
-
-    # Fall through: maybe this is a detected local model, e.g. "ollama:qwen3:32b".
-    if provider_name.startswith("ollama:"):
-        return _dispatch_to_ollama_model(provider_name, prompt)
-
-    raise ProviderError(f"Provider not configured or not enabled: {provider_name}")
-
-
-def _dispatch_to_ollama_model(provider_name: str, prompt: str) -> str:
-    """Build an ephemeral ProviderConfig for a detected Ollama model and run.
-    `provider_name` shape is `ollama:<model_name>` (the LocalModel.provider_name
-    stable identifier from local_models.py)."""
-    from pathlib import Path
-    from .config import ProviderConfig
-    from .providers import OllamaProvider, ProviderError
-
-    model = provider_name[len("ollama:"):]
-    cfg = ProviderConfig(
-        name=provider_name,
-        type="ollama",
-        enabled=True,
-        label=f"Ollama {model}",
-        command=["ollama"],
-        args=[],
-        task_types=set(),
-        model=model,
-    )
-    provider = OllamaProvider(cfg)
-    result = provider.run(prompt, Path.cwd())
-    if result.returncode != 0:
-        raise ProviderError(f"{provider_name} exit {result.returncode}: {result.stderr[:200]}")
-    return result.stdout
-
-
-def _trigger_incremental_ingest() -> None:
-    """Fire-and-forget: scan transcripts newer than the per-source memory
-    cursor and append fresh ``PromptNode``s. Runs at the start of ``ask``
-    so MCP-driven flows pick up new conversations without a manual
-    ``import-export`` rerun (or its retired predecessor seed-from-taste-
-    terminal). Bounded at 1s so it cannot dominate user-facing latency;
-    errors are swallowed so a parser breakage cannot take down the tool
-    surface.
-    """
-    try:
-        from .incremental_ingest import ingest_recent
-
-        ingest_recent(deadline_s=1.0)
-    except Exception:
-        return
-
-
-def _full_provider_pool() -> list[str]:
-    """Build the available-provider pool: enabled config providers + detected
-    local Ollama models, with currently-unhealthy providers demoted to the
-    end. The Conductor / ask uses this when the caller doesn't pass an
-    explicit `available_providers` list.
-
-    Demotion (not exclusion) preserves the option for routing to fall back to
-    an unhealthy provider when nothing else fits, while keeping it from being
-    the first choice. Unhealthy = recent rate-limit / billing / auth failure
-    within the decay window — see dispatch_health.py.
-    """
-    from .config import load_config
-    from .dispatch_health import unhealthy_providers
-    from .local_models import detect_local_models
-
-    pool: list[str] = []
-    config_error: str | None = None
-    # A broken config falls through to local models (an Ollama-only user has a
-    # legitimate pool with no config) — but the failure is no longer SILENT: it
-    # goes to stderr, and if NOTHING is left after both legs the call errors
-    # instead of proceeding with nobody to route to (2026-08-31 review,
-    # silent-failure census: this was the one swallow that hid a contract failure).
-    try:
-        config = load_config()
-        for p in config.providers.values():
-            if p.enabled:
-                pool.append(p.name)
-    except Exception as exc:
-        config_error = f"{type(exc).__name__}: {exc}"
-        print(f"trinity-local: provider config unreadable ({config_error}); "
-              "falling through to local models only", file=sys.stderr)
-    try:
-        for m in detect_local_models():
-            pool.append(m.provider_name)
-    except Exception:
-        pass
-
-    # Demote unhealthy providers to the end (preserve relative order otherwise).
-    try:
-        unhealthy = unhealthy_providers()
-    except Exception:
-        unhealthy = set()
-    if unhealthy:
-        healthy = [p for p in pool if p not in unhealthy]
-        sick = [p for p in pool if p in unhealthy]
-        pool = healthy + sick
-
-    if not pool:
-        raise RuntimeError(
-            "no providers available: "
-            + (f"config unreadable ({config_error}) and " if config_error else "")
-            + "no local models detected"
-        )
-    return pool
-
-
-async def _ask(args: dict) -> list[Any]:
-    """Handle mcp__trinity-local__ask. Routes via kNN + dispatches once.
-    See `src/trinity_local/ask.py` for orchestration logic.
-
-    Q4 surface-collapse (#213): `route` merged into `ask` as a mode.
-    `mode="route"` returns the routing decision (which model, council-or-not,
-    confidence) WITHOUT dispatching a call — the old `route` tool's job. The
-    standalone `route` tool was removed 2026-06-08 (loop-primitive surface cut);
-    `ask(mode="route")` is the one routing entrypoint.
-    """
-    from .ask import run_ask
-
-    query = args.get("query")
-    if not query or not isinstance(query, str):
-        return [ErrorData(code=400, message="`query` is required and must be a string")]
-
-    mode = (args.get("mode") or "answer").lower()
-    if mode == "route":
-        # Delegate to the routing path: query→task, available_providers→
-        # available_models; pass the routing hints through unchanged.
-        route_args: dict = {"task": query}
-        if "available_providers" in args:
-            route_args["available_models"] = args.get("available_providers")
-        for k in ("harness", "budget", "latency", "current_provider"):
-            if args.get(k) is not None:
-                route_args[k] = args[k]
-        return await _route(route_args)
-
-    _trigger_incremental_ingest()
-
-    available = args.get("available_providers")
-    if available is not None and not isinstance(available, list):
-        return [ErrorData(code=400, message="`available_providers` must be a list of provider names")]
-    # When caller doesn't specify available_providers, default to the full
-    # pool (config providers + detected local models). This is what makes
-    # ask aware of Ollama / MLX without each call having to declare them.
-    if available is None:
-        try:
-            available = _full_provider_pool()
-        except Exception as exc:  # config unreadable — say so instead of routing to nobody
-            return [ErrorData(code=500, message=f"provider config unreadable: {exc}")]
-
-    top_k = int(args.get("top_k", 5))
-
-    try:
-        result = run_ask(
-            query,
-            dispatch_fn=_dispatch_via_config,
-            top_k=top_k,
-            available_providers=available,
-        )
-    except Exception as exc:
-        # 100-persona audit D7: structured error shape lets the agent
-        # auto-retry around rate limits without parsing a free-form
-        # string. Detect the failure kind from the exception message
-        # so {error_code, recoverable, retry_with} can drive recovery.
-        from .dispatch_errors import classify_dispatch_failure
-        exc_text = str(exc)
-        try:
-            failure = classify_dispatch_failure(
-                provider=available[0] if available else "unknown",
-                returncode=getattr(exc, "returncode", 1),
-                stderr=exc_text,
-            )
-            failure_kind = failure.kind.value
-            recoverable = failure.retry_with_other_provider
-        except Exception:
-            failure_kind = "unknown"
-            recoverable = True
-        # Suggest the remaining pool minus the failing provider so the
-        # agent can immediately retry around it (the rate-limit-dodge
-        # wedge in one hop).
-        failing_provider = available[0] if available else None
-        retry_pool = [p for p in available if p != failing_provider] if available else []
-        return [_text({
-            "ok": False,
-            "error_code": {
-                "rate_limited": "RATE_LIMITED",
-                "billing_exceeded": "BILLING_EXCEEDED",
-                "auth_failed": "AUTH_FAILED",
-                "model_not_found": "MODEL_NOT_FOUND",
-                "timeout": "TIMEOUT",
-            }.get(failure_kind, "DISPATCH_FAILED"),
-            "provider": failing_provider,
-            "recoverable": bool(recoverable and retry_pool),
-            "retry_with": {"available_providers": retry_pool} if retry_pool else None,
-            "user_message": (
-                f"{failing_provider} {failure_kind.replace('_', ' ')}; "
-                f"try {retry_pool[0]} next" if retry_pool else
-                f"All providers failed ({failure_kind})"
-            ),
-            "detail": exc_text[:240],
-        })]
-
-    payload = result.to_dict()
-    # Make the success/failure shape symmetric: the failure branch above
-    # returns {"ok": False, error_code, ...}; the success branch needs
-    # ok=True so an agent doing `if response.get("ok"): proceed` works
-    # uniformly. Was asymmetric — happy path returned the raw answer
-    # dict with no ok key, agent's natural check treated success as
-    # failure.
-    payload["ok"] = True
-    # pending_ratings hint retired 2026-05-21 alongside record_outcome.
-    return [_text(payload)]
-
-
-
-
 def _load_trust_summary() -> dict:
     """The built disagreement ledger's aggregate (per-model tally + the K3/K4
     trustworthiness gate). Broad-guarded: a missing/corrupt summary yields {}
@@ -1591,6 +1320,13 @@ async def _verify(args: dict) -> list[Any]:
     if not isinstance(diff, str) or not diff.strip():
         return [ErrorData(code=400, message="verify: `diff` must be a non-empty unified diff")]
     cwd = _Path(args.get("cwd") or ".")
+    if not args.get("cwd") and not _is_git_work_tree(cwd):
+        # Without `cwd` the tests ran in the SERVER's directory: they failed there (a false
+        # STOP), or a command that cd'd into the project went green and the differential then
+        # copied the server's directory, the user's home when the host started there.
+        return [ErrorData(code=400, message=(
+            "verify: pass `cwd`, the project root where the tests run. This server's directory "
+            f"({cwd.resolve()}) is not a git work tree, so it is not your project."))]
     members = args.get("members") or DEFAULT_PANEL      # verify canonicalizes (panel_members)
     exclude_lab, basis = args.get("exclude_lab"), "argument"
     if not exclude_lab:
@@ -1639,180 +1375,6 @@ async def _trust(args: dict) -> list[Any]:
         payload["cross_provider_disagreements"] = sum(
             1 for p in load_disagreements() if p.is_cross_provider)
     return [_text(payload)]
-
-
-async def _route(args: dict) -> list[Any]:
-    task = args["task"]
-    # Distinguish absent from explicitly empty. `available_models=[]` is the
-    # caller signaling "no providers are available" — we should error rather
-    # than silently picking from defaults.
-    if "available_models" in args:
-        available = args.get("available_models")
-        if not isinstance(available, list):
-            return [_text({"ok": False, "error": "`available_models` must be a list of provider names"})]
-        if not available:
-            return [_text({"ok": False, "error": "`available_models` is empty — no providers to route to"})]
-    else:
-        from .config import default_council_members
-        available = default_council_members()
-    current_provider = args.get("current_provider") or available[0]
-    budget_pref = (args.get("budget") or "normal").lower()
-    latency_pref = (args.get("latency") or "normal").lower()
-
-    from .ranker import prompt_calls_for_council
-    from .task_types import guess_task_type, is_polish_task
-
-    chairman_pick = chairman_pick_reason(task, available_providers=available)
-    task_type = chairman_pick.get("task_type") or guess_task_type(task)
-    polish = is_polish_task(task)
-
-    # The lens-basin router used to run FIRST here, so ask(mode="route") would
-    # not silently bypass what answer-mode ask routed through. Removed
-    # 2026-08-11 (council_8817ca0c57a2e4ff, amd_0165-67) along with the ask-side
-    # consumer, so there is nothing left to bypass: both paths are now the
-    # ranker plus the heuristic, which is the parity the original comment wanted.
-    #
-    # hq_062 licensed it. Replayed against its own fallback on 653 councils
-    # under a group-disjoint split, the router fired on 58.6% and led 42.9% to
-    # 37.0% — and still missed its pre-registered bar (29 discordant pairs,
-    # McNemar p=0.2649). It failed a bar; it did not reverse.
-    cortex_primary = None
-    cortex_reason = ""
-    cortex_challenger = None
-
-    decision = None
-    try:
-        ranker = build_default_ranker()
-        decision = ranker.advise(RoutingContext(
-            task_text=task,
-            task_type=task_type,
-            current_provider=current_provider,
-            session_id="mcp_route",
-            metadata={"budget": budget_pref, "latency": latency_pref},
-        ))
-    except Exception:
-        decision = None
-
-    # Map RoutingDecision → MCP shape. The ranker exposes `needs_council`
-    # (bool) and `top_k` (ordered providers); the spec promises `mode` and
-    # `challenger`. Without this mapping, route() would silently return
-    # mode="single" for every task — defeating "council on disagreement."
-    decision_needs_council = bool(getattr(decision, "needs_council", False))
-    decision_top_k = list(getattr(decision, "top_k", []) or [])
-    decision_confidence_raw = getattr(decision, "confidence", None)
-    decision_evidence = getattr(decision, "evidence", []) or []
-
-    base_mode = "council" if decision_needs_council else "single"
-    base_confidence = _confidence_band(decision_confidence_raw)
-    if cortex_reason:
-        base_reason = cortex_reason
-    elif decision_evidence:
-        base_reason = "; ".join(decision_evidence[:2])
-    else:
-        base_reason = f"chairman picked from {chairman_pick.get('source', 'default')}"
-
-    # Latency-aware demotion: when the caller asked for latency='fast', the
-    # strongest-on-quality provider (codex+gpt-5.5 xhigh) is the wrong pick —
-    # it takes 30s+. Prefer claude/antigravity if either is available.
-    fast_demoted = False
-    # cortex_primary (the learned basin rule) wins over the heuristic chairman
-    # pick; the chairman pick is the fallback when no basin matched. Threading
-    # this here (not just the reason/challenger) is what keeps primary and
-    # reason consistent — otherwise the reason cites a cortex basin while the
-    # primary stays the heuristic pick (a reason/primary mismatch).
-    primary_pick = cortex_primary or chairman_pick.get("chairman") or available[0]
-    if latency_pref == "fast" and primary_pick == "codex":
-        fast_alt = next((p for p in ("claude", "antigravity") if p in available), None)
-        if fast_alt:
-            primary_pick = fast_alt
-            fast_demoted = True
-
-    # Prompt-shape escalation: if the task literally contains "A) ... B) ..."
-    # numbered alternatives, "vs.", "which is best", "tradeoffs", etc., the
-    # user is asking for a comparison — escalate to mode=council regardless
-    # of what task_type says. Single-answer routing on a multi-candidate
-    # prompt under-recommends council and starves the personal routing table.
-    council_signals: list[str] = []
-    escalate, council_signals = prompt_calls_for_council(task)
-    if escalate:
-        mode = "council"
-        confidence = "high"
-        reason = f"prompt shape suggests comparison: {', '.join(council_signals)}"
-    else:
-        mode = base_mode
-        confidence = base_confidence
-        reason = base_reason
-
-    # Challenger: ranker top_k[1] when distinct from primary AND in the
-    # caller-supplied available_models. Pre-fix, the ranker could return
-    # `challenger="codex"` even when `available_models=["claude"]` — useless
-    # advice. Always filter through `available`.
-    if cortex_challenger and cortex_challenger != primary_pick and cortex_challenger in available:
-        # The learned basin rule's challenger — prefer it over the kNN runner-up
-        # when cortex drove the primary, so the pair stays internally consistent.
-        challenger = cortex_challenger
-    else:
-        challenger = next(
-            (p for p in decision_top_k if p != primary_pick and p in available),
-            next((p for p in available if p != primary_pick), None),
-        )
-    # If only one provider is actually available, force mode="single" — there
-    # IS no second opinion to be had, so reporting mode="council" is a lie.
-    if len(available) < 2:
-        mode = "single"
-        challenger = None
-
-    if fast_demoted:
-        reason = f"{reason}; latency=fast → demoted codex"
-
-    payload = {
-        "mode": mode,
-        "primary": primary_pick,
-        "challenger": challenger,
-        "confidence": confidence,
-        "reason": reason,
-        "task_type": task_type,
-        "chairman_source": "cortex" if cortex_primary else chairman_pick.get("source", "default_order"),
-        "shape_signals": council_signals,
-        "budget": budget_pref,
-        "latency": latency_pref,
-        "should_auto_council": mode == "council",
-        # Polish-shape tasks ("make this better", "tighten this", ≤20 words
-        # + "shorter"/"simpler"/etc.) benefit from consensus_round iteration
-        # — the first pass catches the obvious; the value is in rounds 2-3
-        # where each model refines against the others' outputs. Surfaced
-        # here so harnesses + the launchpad can OFFER auto-iterate without
-        # changing default behavior.
-        "auto_iterate_recommended": polish,
-    }
-    # pending_ratings hint retired 2026-05-21 alongside record_outcome.
-    return [_text(payload)]
-
-
-def _confidence_band(raw) -> str:
-    """Normalize a 0..1 ranker confidence (or string) into 'high'/'medium'/'low'.
-
-    The MCP `route()` schema declares confidence as a string enum, but
-    `RoutingDecision.confidence` is a 0..1 float. Without this normalizer the
-    payload leaked floats like 0.72 into the contract.
-    """
-    if isinstance(raw, str):
-        if raw in ("high", "medium", "low"):
-            return raw
-        return "medium"
-    # bool subclasses int — `float(True) == 1.0` would silently coerce a
-    # malformed bool confidence into "high". Reject explicitly.
-    if isinstance(raw, bool):
-        return "medium"
-    try:
-        f = float(raw) if raw is not None else 0.5
-    except (TypeError, ValueError):
-        f = 0.5
-    if f >= 0.75:
-        return "high"
-    if f >= 0.55:
-        return "medium"
-    return "low"
 
 
 async def _synthesize_responses(args: dict, responses: list[dict]) -> list[Any]:
@@ -2150,8 +1712,6 @@ async def _run_council(args: dict) -> list[Any]:
 
     from .commands.council import handle_council_launch
     from types import SimpleNamespace
-    import contextlib
-    import io
 
     task = args["task"]
     goal = args.get("goal", "Find the strongest answer.")
@@ -2194,36 +1754,19 @@ async def _run_council(args: dict) -> list[Any]:
         open_browser=False,
     )
 
-    # handle_council_launch prints a JSON record with both the council_run_id
-    # (what MCP callers need) and several local filesystem paths (launchpad
-    # implementation detail). Capture, parse, and project to a clean shape.
-    buf = io.StringIO()
+    # The council runs on a worker thread. It ran on the event loop itself, so for its whole
+    # run (minutes) the server could not answer get_council_status, verify or trust, could not
+    # process a cancel, and its own progress notifications arrived after it finished
+    # (coherence review 2026-10-15). handle_council_launch returns its record directly: the old
+    # path captured stdout with redirect_stdout, which is process-wide and unsafe off-thread.
+    import asyncio as _asyncio
+    launch_args.quiet = True
     try:
-        with contextlib.redirect_stdout(buf):
-            handle_council_launch(launch_args)
+        raw = await _asyncio.to_thread(handle_council_launch, launch_args)
     except SystemExit as exc:
         return [_text({"ok": False, "error": f"council exited: {exc}"})]
-
-    captured = buf.getvalue().strip()
-    raw: dict = {}
-    if captured:
-        try:
-            raw = json.loads(captured)
-        except json.JSONDecodeError:
-            # Tolerate leading non-JSON noise (2026-07-13): a STALE long-lived
-            # server can carry pre-fix code whose progress prints still hit
-            # stdout ahead of the launch record (live case: a lens-kick's
-            # Stage-0 lines broke this parse while the council launched fine
-            # underneath). The record is the LAST {...} block in the buffer —
-            # recover it instead of failing a launch that succeeded.
-            tail = captured[captured.rfind("\n{") + 1:] if "\n{" in captured else captured
-            try:
-                raw = json.loads(tail)
-            except json.JSONDecodeError:
-                return [_text({"ok": False, "error": "council launch produced unparseable output", "raw": captured})]
-
     if not isinstance(raw, dict):
-        return [_text({"ok": False, "error": "council launch produced a non-object", "raw": captured})]
+        return [_text({"ok": False, "error": "council launch returned no record"})]
     council_run_id = raw.get("council_run_id")
     if not council_run_id:
         return [_text({"ok": False, "error": "council launch did not return a council_run_id", "raw": raw})]
@@ -2281,156 +1824,6 @@ async def _run_council(args: dict) -> list[Any]:
 # "we are sunsetting user ratings. Full retirement including MCP."
 # Chairman's pick is the supervision signal (commit bb817b6).
 # Registry entry: src/trinity_local/retired_names.py.
-
-
-async def _get_persona(args: dict) -> list[Any]:
-    from .me_builder import load_me, me_path
-    from .config import trinity_home
-
-    text = load_me()
-    home = trinity_home()
-    path = me_path()
-    # Symbolic relative path so consumers don't bake user-specific absolutes
-    # into their state. The harness can still use `path` if it has fs access.
-    try:
-        relative_path = "$TRINITY_HOME/" + str(path.relative_to(home))
-    except ValueError:
-        relative_path = str(path)
-    return [_text({
-        "path": str(path),
-        "trinity_home_relative": relative_path,
-        "size_chars": len(text),
-        "text": text,
-        "available": bool(text),
-    })]
-
-
-async def _lens_generators(args: dict) -> list[Any]:
-    """Run the generators pass in-session (samples via #263 — pollution-free) and
-    write generators.md. The sync build runs OFF the event loop via
-    ``asyncio.to_thread``, which copies the current contextvars Context so the
-    active sampling session (set in handle_call_tool) propagates to the worker —
-    request_claude_sample then bridges back to the loop. Returns the structured
-    generators."""
-    import asyncio
-
-    from .me.generators import build_generators
-    from .state_paths import generators_path
-
-    result = await asyncio.to_thread(build_generators)
-    if not result.get("ok"):
-        return [_text({
-            "ok": False,
-            "reason": result.get("reason"),
-            "evidence_turns": result.get("evidence_turns"),
-            "task_tensions": result.get("task_tensions"),
-        })]
-    out = generators_path()
-    try:
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(result["cards"], encoding="utf-8")
-    except OSError:
-        pass
-    return [_text({
-        "ok": True,
-        "count": len(result["generators"]),
-        "generators": result["generators"],
-        "evidence_turns": result["evidence_turns"],
-        "written": str(out),
-    })]
-
-
-def _blocking_eval(target: str, judge: str | None, limit: int, eval_id: str | None) -> dict:
-    """Run + score one eval, returning a structured summary. Mirrors
-    commands.eval.handle_eval_run but returns data instead of printing. Runs
-    synchronously (the caller hands it to asyncio.to_thread); the judge's Claude
-    dispatch rides the active MCP sampling session — that's the whole point: the
-    CLI eval-run had no session and so fell back to `claude -p`."""
-    from .config import load_config
-    from .council_schema import resolve_provider_alias
-    from .evals.builder import evals_dir, load_eval_set
-    from .evals.runner import run_eval, save_run_result
-    from .evals.scorer import score_run
-    from .state_paths import lens_path
-    from .commands.eval import _default_judge_provider
-
-    target = resolve_provider_alias(target)
-    if judge:
-        judge = resolve_provider_alias(judge)
-
-    if not eval_id:
-        # (-mtime, stem) total order so the run_eval MCP tool picks the SAME
-        # "latest" eval set under any glob order when two sets share an
-        # st_mtime — mirrors the eval-CLI selectors (commands/eval.py) and the
-        # launchpad canon.
-        candidates = sorted(
-            evals_dir().glob("eval_*.json"), key=lambda p: (-p.stat().st_mtime, p.stem)
-        )
-        if not candidates:
-            return {"ok": False, "reason": "no eval sets on disk — run `trinity-local eval-build` first"}
-        eval_id = candidates[0].stem
-
-    eval_set = load_eval_set(eval_id)
-    if eval_set is None:
-        return {"ok": False, "reason": f"eval set {eval_id!r} not found"}
-
-    config = load_config(None, required=True)
-    provider_configs = {name: p for name, p in config.providers.items() if p.enabled}
-    if target not in provider_configs:
-        return {"ok": False, "reason": f"target {target!r} not enabled; available: {sorted(provider_configs)}"}
-
-    run_result = run_eval(eval_set, target, provider_configs, limit=limit)
-
-    if judge is None:
-        judge = _default_judge_provider(target, provider_configs)
-    if judge is None:
-        return {"ok": False, "reason": "no judge available — need a second enabled provider, or pass `judge`"}
-
-    lens_md = lens_path()
-    lens_text = lens_md.read_text(encoding="utf-8") if lens_md.exists() else ""
-    score_run(run_result, lens_text, judge, provider_configs)
-    save_run_result(run_result)
-
-    d = run_result.to_dict()
-    return {
-        "ok": True,
-        "eval_id": eval_id,
-        "target": target,
-        "judge": judge,
-        "self_judge": d.get("self_judge"),
-        "items_total": d.get("items_total"),
-        "items_completed": d.get("items_completed"),
-        "items_failed": d.get("items_failed"),
-        "aggregate_score": d.get("aggregate_score"),
-        "by_rejection_type": d.get("by_rejection_type"),
-    }
-
-
-async def _run_eval(args: dict) -> list[Any]:
-    """Handle mcp__trinity-local__run_eval. Runs the blocking eval OFF the event
-    loop via asyncio.to_thread (copies the contextvars Context, so the active
-    sampling session set in handle_call_tool propagates to the worker and the
-    judge rides the user's subscription instead of `claude -p`)."""
-    import asyncio
-
-    target = args.get("target")
-    if not isinstance(target, str) or not target.strip():
-        return [ErrorData(code=400, message="`target` (provider/model to score) is required")]
-    judge = args.get("judge")
-    if judge is not None and not isinstance(judge, str):
-        return [ErrorData(code=400, message="`judge` must be a string when provided")]
-    eval_id = args.get("eval_id")
-    if eval_id is not None and not isinstance(eval_id, str):
-        return [ErrorData(code=400, message="`eval_id` must be a string when provided")]
-    try:
-        limit = int(args.get("limit", 5))
-    except (TypeError, ValueError):
-        return [ErrorData(code=400, message="`limit` must be an integer")]
-    if limit < 1:
-        return [ErrorData(code=400, message="`limit` must be >= 1")]
-
-    result = await asyncio.to_thread(_blocking_eval, target.strip(), judge, limit, eval_id)
-    return [_text(result)]
 
 
 # _build_rate_action() + _pending_ratings_hint() + _PENDING_HINT_CACHE
@@ -2627,80 +2020,6 @@ async def _get_council_status(args: dict) -> list[Any]:
     return [_text(status_response)]
 
 
-async def _import_provider_memory(args: dict) -> list[Any]:
-    """Pipe lens / eval JSON straight into Trinity's local state.
-
-    The agent reusing this loop INSIDE Claude Code / Codex / Cursor has
-    the user's full conversation history on its side — same as the
-    provider-side prompt loops (lens-prompt + eval-prompt) but closes
-    in-protocol. Dispatch reuses the same dict→signal mapping the
-    CLI verbs use, so the dedup / malformed-skip / append-only
-    semantics are identical.
-    """
-    from argparse import Namespace
-    import io
-    import json as _json
-    from contextlib import redirect_stdout
-
-    kind = (args.get("kind") or "").strip().lower()
-    if kind not in ("lens", "eval"):
-        return [_text({
-            "ok": False,
-            "error": f"kind must be 'lens' or 'eval' (got {kind!r})",
-        })]
-    payload = args.get("payload")
-    if not isinstance(payload, dict):
-        return [_text({
-            "ok": False,
-            "error": "payload must be an object (matching the lens or eval schema)",
-        })]
-
-    # The CLI handlers read raw text from stdin / file. To reuse them
-    # without disk I/O, serialize the payload and feed it via the
-    # --from-json path. Capture stdout (which carries the JSON summary
-    # when as_json=True) into a buffer.
-    raw = _json.dumps(payload)
-    ns = Namespace(
-        path=None,
-        from_json=False,
-        provider=args.get("provider"),
-        dry_run=bool(args.get("dry_run", False)),
-        as_json=True,
-    )
-
-    if kind == "lens":
-        from .commands.lens_import import handle_lens_import as _handler
-    else:
-        from .commands.eval_import import handle_eval_import as _handler
-
-    # The handlers read sys.stdin when from_json=True. Replace sys.stdin
-    # for the duration of the call to feed our serialized payload.
-    import sys as _sys
-    ns.from_json = True
-    saved_stdin = _sys.stdin
-    _sys.stdin = io.StringIO(raw)
-    buf = io.StringIO()
-    rc = None
-    try:
-        with redirect_stdout(buf):
-            rc = _handler(ns)
-    finally:
-        _sys.stdin = saved_stdin
-
-    out = buf.getvalue().strip()
-    try:
-        summary = _json.loads(out) if out else {}
-    except _json.JSONDecodeError:
-        summary = {"ok": rc == 0, "raw_output": out}
-
-    summary["kind"] = kind
-    summary["dry_run"] = bool(args.get("dry_run", False))
-    if rc not in (None, 0):
-        summary["ok"] = False
-        summary["exit_code"] = rc
-    return [_text(summary)]
-
-
 async def run_stdio_server():
     # Dev mode: watch source tree for edits and exit on change so the MCP
     # launcher respawns with fresh code. No-op when TRINITY_MCP_WATCH is unset.
@@ -2725,6 +2044,11 @@ async def run_stdio_server():
     maybe_kick_cold_start()
 
     async with stdio_server() as (read_stream, write_stream):
+        # The transport now holds the real stdout. Anything else that prints (a library
+        # progress line, a worker thread) goes to stderr, so it can never corrupt the
+        # JSON-RPC stream; the council used to be protected only while redirect_stdout
+        # wrapped it, which is process-wide and unsafe once councils run on a thread.
+        sys.stdout = sys.stderr
         await server.run(
             read_stream,
             write_stream,

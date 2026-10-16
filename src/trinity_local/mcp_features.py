@@ -86,12 +86,26 @@ def _session_and_loop():
 
 
 def _run_on_loop(coro, loop, timeout: float = 5.0):
-    """Schedule a coroutine onto the captured loop from any thread, swallow
-    every failure. Returns the result or None."""
+    """Schedule a coroutine onto the captured loop, swallow every failure. From a worker
+    thread: wait up to `timeout` for the result. On the loop's own thread: schedule it and
+    return None, since waiting there blocks the very loop that must run it. That wait cost
+    5.0 s per log, progress and roots call, measured (coherence review 2026-10-15)."""
     if loop is None:
+        coro.close()
         return None
     try:
+        on_loop = asyncio.get_running_loop() is loop
+    except RuntimeError:
+        on_loop = False
+    try:
+        if on_loop:
+            loop.create_task(coro)
+            return None
         future = asyncio.run_coroutine_threadsafe(coro, loop)
+    except Exception:
+        coro.close()            # never scheduled: close it so it is not left unawaited
+        return None
+    try:
         return future.result(timeout=timeout)
     except Exception:
         return None

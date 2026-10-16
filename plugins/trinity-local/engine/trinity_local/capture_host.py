@@ -345,7 +345,13 @@ def _write_capture(provider: str, conv_id: str, conversation: dict[str, Any]) ->
 # (`council-iterate` was detached here for the same reason until 2026-07-24,
 # when the verb, its run_consensus_round engine, and the live page's "Continue
 # the thread" composer were all removed together.)
-_DETACHED_ACTIONS = {"launch-council", "lens-build"}
+#
+# `dream` (Refresh memory: 10 to 100+ chairman calls) and `extension-repair-auto` (a full
+# council) ran under the 120 s timeout below: the CLI was killed partway, the provider calls
+# it had started kept spending quota, and the single-threaded host blocked the side panel's
+# status polls meanwhile. The launchpad already treats both as launch-only (coherence review
+# 2026-10-15).
+_DETACHED_ACTIONS = {"launch-council", "lens-build", "dream", "extension-repair-auto"}
 
 # Action kinds handled in-process (no subprocess). The popup uses
 # `get-council-status` to poll a council's status JSON without the

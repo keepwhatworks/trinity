@@ -106,7 +106,7 @@ Trinity's MCP server tells your agent when each moment comes up.
 
 **Not comfortable in a terminal?** Paste the one line into **Claude Code** (in your terminal or the **Claude Desktop** app) and let Claude run it for you.
 
-**The full installer** (`scripts/install.sh`) also wires the Chrome capture host and the optional embedder: see [`docs/install-deep.md`](docs/install-deep.md).
+**Chrome capture and the local embedding model** are one command each on any install: `trinity-local install-extension` and `trinity-local download-embedder` (details: [`docs/install-deep.md`](docs/install-deep.md)).
 
 **Manual MCP config.** If the bootstrap missed a harness, or you want to wire one by hand, that's exactly what `trinity-local install-mcp` writes. Substitute `PYTHON` with your interpreter (`which python3`, or the absolute path the bootstrap printed).
 
@@ -288,23 +288,25 @@ pipeline (Stage 0 turn-pair rejections + Stages 1-4 basins→decisions→pair-mi
 
 ## What's next
 
-Current repo state: v1.7 line, exact package `v<!-- canonical:version -->1.7.403<!-- /canonical -->`. The shipped surface is MCP-first: `lens`, `council`, `trust`, `status`, and `install` are the advertised CLI verbs. The older `lens-build` / `council-launch` / `dream` names remain as compatibility aliases (`dream` folded into `lens --deep` 2026-07-04, one concept) for launchpad dispatch and existing scripts. An earlier arc collapsed routing into the lens; that router was then measured (42.9% against a pick-the-leader constant's 37.0%, short of its bar) and removed on 2026-08-11, so nothing routes on your behalf today. Earlier work tightened the launch path: extension auto-wiring, schema migrations, real ModernBERT embeddings, TF-IDF abstain-gates for semantic flows, corpus-purity guards, personal eval integrity, no-PII telemetry gates, and install-wrapper Python fallback.
+Current repo state: v1.7 line, exact package `v<!-- canonical:version -->1.7.404<!-- /canonical -->`. The shipped surface is MCP-first: `lens`, `plan`, `verify`, `trust`, `status`, and `install` are the advertised CLI verbs. The older `lens-build` / `council-launch` / `dream` names remain as compatibility aliases (`dream` folded into `lens --deep` 2026-07-04, one concept) for launchpad dispatch and existing scripts. An earlier arc collapsed routing into the lens; that router was then measured (42.9% against a pick-the-leader constant's 37.0%, short of its bar) and removed on 2026-08-11, so nothing routes on your behalf today. Earlier work tightened the launch path: extension auto-wiring, schema migrations, real ModernBERT embeddings, TF-IDF abstain-gates for semantic flows, corpus-purity guards, personal eval integrity, no-PII telemetry gates, and install-wrapper Python fallback.
 
 ## Help
 
 | Command | What it does |
 |---|---|
-| `trinity-local status` | Health + scoreboard + recent councils (absorbed `doctor`) |
-| `trinity-local council --task "..."` | Run a council from the terminal |
+| `trinity-local status` | Health, what is missing, and the next command to run |
+| `trinity-local plan "..."` | Run a council from the terminal |
+| `trinity-local verify --diff <file> --criteria <file>` | Before calling a change done: run its tests and have the other labs read it |
 | `trinity-local trust "<topic>"` | The recurring cross-provider disagreements you keep returning to on a topic |
 | `trinity-local trust` | Which model you side with when the labs split, from your own resolved disagreements |
 | `trinity-local lens` | Build your lens from prompt history |
 | `trinity-local lens --deep` | Mine your history + rebuild the whole memory layer |
-| `trinity-local install` | Install or repair MCP / extension wiring |
+| `trinity-local install` | Install or repair the MCP wiring in each CLI |
+| `trinity-local install-extension` | Connect the optional Chrome extension |
 | `trinity-local me-card` | Render your strongest lens as a PNG |
 | `trinity-local portal-html --open-browser` | Open the launchpad |
 | `trinity-local review-link <council_id> --json` | Mobile-safe review links |
-| `trinity-local --help` | Full command list |
+| `trinity-local --help` | The advertised commands |
 
 ## License
 

@@ -81,7 +81,7 @@ def _snapshot(repo: Path, rev: str, dest: Path, paths: list[str] | None) -> None
 
 def _pytest(python: str, tree: Path, files: list[str], timeout: int) -> tuple[str, str]:
     """('green'|'failed'|'invalid'|'timeout', output). Uses the same classification as verify."""
-    from .untested import _INVALID
+    from .scratch import _INVALID
     env = {"PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin", "HOME": str(tree / ".home"),
            "PYTHONPATH": str(tree / "src") if (tree / "src").is_dir() else str(tree),
            "TRINITY_HOME": str(tree / ".home" / ".trinity"), "TRINITY_DISABLE_MLX": "1",

@@ -1,4 +1,4 @@
-"""SKILL.md agent-behavior block: trigger conditions for import_provider_memory.
+"""SKILL.md agent-behavior block: trigger conditions for lens-import / eval-import.
 
 Council 3e4564e9 (run 2026-05-25) ruled the highest-leverage post-launch ship
 is teaching agents WHEN to call the newly-shipped import_provider_memory MCP
@@ -30,18 +30,23 @@ def skills():
     return [(p, p.read_text(encoding="utf-8")) for p in SKILL_PATHS]
 
 
-class TestImportProviderMemoryListedInTools:
-    """Tool catalog block must mention the new tool so a casual reader
-    counting tools by reading the list doesn't end at 8."""
+class TestTheToolListIsTheLiveSurface:
+    """The skill listed six tools under "4", three of them off the tool list and verify
+    missing (coherence review 2026-10-15). Every `mcp__trinity-local__X` and every tool named
+    in the list must be one list_tools advertises."""
 
-    def test_both_skill_md_mention_import_provider_memory_in_tool_list(self, skills):
+    def test_every_tool_the_skill_names_is_listed(self, skills):
+        import asyncio
+        import re
+
+        from trinity_local import mcp_server
+        listed = {t.name for t in asyncio.run(mcp_server.handle_list_tools())}
         for path, text in skills:
-            assert "import_provider_memory" in text, (
-                f"{path} missing import_provider_memory mention. "
-                "The MCP tool shipped 2026-05-25 (commit 8deab36); the "
-                "SKILL must list it so agents reading the tool catalog "
-                "know it exists."
-            )
+            named = set(re.findall(r"mcp__trinity-local__(\w+)", text))
+            block = text[text.index("MCP tools:"):text.index("!`trinity-local install-mcp`")]
+            named |= {m for m in re.findall(r"^- `(\w+)`", block, flags=re.M)}
+            assert named and named <= listed, (path, named - listed)
+            assert listed <= named, (path, "missing from the skill", listed - named)
 
 
 class TestAgentBehaviorBlockPresent:
@@ -57,7 +62,7 @@ class TestAgentBehaviorBlockPresent:
             "REFRAME",          # axis name; trigger #1
             "tension",          # paired-tension trigger (#2)
             "Post-council",     # trigger #3
-            "dry_run",          # trigger #4 — and the safety valve
+            "--dry-run",        # trigger #4 — and the safety valve
         ]
         for path, text in skills:
             missing = [t for t in required_triggers if t not in text]

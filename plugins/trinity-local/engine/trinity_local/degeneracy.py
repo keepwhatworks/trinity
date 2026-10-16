@@ -190,12 +190,16 @@ def _check_lens() -> list[str]:
     return out
 
 
-def run_degeneracy_sweep() -> list[str]:
+def run_degeneracy_sweep(*, include_eval: bool = True) -> list[str]:
     """Run every producer-degeneracy check on the live ~/.trinity. Returns the
-    list of findings (empty == clean). Never raises — each check self-reports."""
+    list of findings (empty == clean). Never raises — each check self-reports.
+
+    `include_eval=False` skips the eval check, which rebuilds the eval set from the whole
+    prompt store (998 MB on one machine). `status` is documented as fast and runs this on
+    every call; `lens-health` and scripts/degeneracy_sweep.py still run it all."""
     findings: list[str] = []
     for fn in (
-        _check_eval,
+        *((_check_eval,) if include_eval else ()),
         _check_vocab,
         _check_basins,
         _check_elo,

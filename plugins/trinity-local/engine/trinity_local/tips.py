@@ -91,12 +91,14 @@ LADDER: tuple[Tip, ...] = (
     Tip(
         key="create-lens",
         kind="elicit",
-        message=("You just fused Claude, GPT, and Gemini — free, on your own subscriptions. "
-                 "Want it to learn which model to trust on YOUR kind of question? "
-                 "Build your taste lens from your history."),
+        message=("You just put one question to Claude, Codex and Gemini, on your own subscriptions. "
+                 "Build a lens of how you decide from your history; the chairman reads it on "
+                 "every council."),
         cta="trinity-local lens-setup",
         # First win landed, and they haven't started a lens yet.
         prereq=lambda s: s.councils_run >= 1 and not s.lens_enabled and not s.lens_built,
+        # Persistent by design (the conversion gate), and since 2026-10-15 it rides council
+        # replies only, not every MCP response (verify results carried it every time).
     ),
     Tip(
         key="add-web-history",

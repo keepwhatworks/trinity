@@ -113,6 +113,10 @@ def _synthesize(monkeypatch, behaviors):
     reply comes from `behaviors`, keyed by provider."""
     import asyncio
 
+    # council_runner binds `make_provider` at import; importing it inside the patch window
+    # (the synthesis path imports it for telemetry) froze the fake into it for every later
+    # test in the process (found when verify ran this file beside the read-only tests).
+    __import__("importlib").import_module("trinity_local.council_runner")  # bind before patching
     import trinity_local.providers as providers_mod
     from trinity_local.mcp_server import handle_call_tool
     called = []

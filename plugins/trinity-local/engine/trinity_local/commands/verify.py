@@ -86,7 +86,8 @@ def render_card(out: dict) -> str:
 
     kernel = out.get("kernel") or {}
     if kernel.get("ran"):
-        state = "red" if kernel.get("green") is False else "green"
+        # None is "no blocking test ran to a result", which printed as green (2026-10-15).
+        state = {False: "red", True: "green"}.get(kernel.get("green"), "no blocking result")
         rel = "" if kernel.get("relevant") else "  (does NOT exercise the changed files)"
         lines.append(f"  tests: {state}{rel}")
         # Evidence first (arXiv 2610.00972): what was run and what came back, before opinions.
@@ -96,32 +97,23 @@ def render_card(out: dict) -> str:
                  "no_load": "does not load without the change",
                  "vacuous": "VACUOUS: green without the change too",
                  "not_reproduced": "not checked: the scratch copy did not reproduce its green",
-                 "timeout": "not checked: timed out"}
+                 "timeout": "not checked: timed out",
+                 "not_loaded": "not checked: it loads the code from outside this tree "
+                               "(an editable install?), so no revert can reach it"}
         for run in kernel.get("runs") or []:
-            mark = "ok " if run.get("green") else "RED"
+            mark = {True: "ok ", False: "RED"}.get(run.get("green"), "n/a")
             cmd = (run.get("command") or "")
             cmd = cmd if len(cmd) <= 90 else cmd[:87] + "..."
             lines.append(f"    {mark} [{run.get('id')}] {cmd}  ({run.get('seconds', '?')}s)")
-            if run.get("id") in status:
+            if run.get("could_not_run"):
+                lines.append("        could not run (command not found or not executable): "
+                             "no test result, so it vouches for nothing")
+            elif run.get("id") in status:
                 lines.append(f"        {_said.get(status[run['id']], status[run['id']])}")
         if meas and not meas.get("ran"):
             lines.append(f"  relevance: declared (not measured: {meas.get('reason', '')})")
     else:
         lines.append("  tests: none ran")
-    untested = out.get("untested") or {}
-    if untested.get("ran"):
-        miss = untested.get("untested") or []
-        lines.append(f"  untested: {len(miss)} of {untested.get('assessed', 0)} changed hunks "
-                     "can be reverted with every test still green")
-        for h in miss:
-            lines.append(f"    - {h['path']} {h['hunk']}")
-    elif untested:
-        lines.append(f"  untested: not checked ({untested.get('reason', '')})")
-    dups = (out.get("duplicates") or {}).get("duplicated") or []
-    if dups:
-        lines.append(f"  duplicated: {len(dups)} value(s) this change now keeps in more than one place:")
-        for d in dups[:5]:
-            lines.append(f"    - {d['value'][:60]!r} in {d['added_in']} and {', '.join(d['also_in'][:3])}")
     # Unverified: criteria no test runs. They were only read, so a person reads them.
     crit = {c.get("id"): c for c in (out.get("criteria") or [])}
     unverified = out.get("unverified")
@@ -167,16 +159,8 @@ def render_card(out: dict) -> str:
         for r in doubters:
             why = (r.get("why") or "").strip()
             lab = r.get("lab") or r.get("provider")
-            backing = next((d["status"] for d in (out.get("doubts") or [])
-                            if d.get("provider") == r.get("provider") and d.get("criterion") == cid), None)
-            label = {"backed": "  [BACKED: its test passes before this change and fails after]",
-                     "backed_unquoted": "  [its test passes before and fails after, but cites no pre-change line]",
-                     "spec_disagreement": "  [its test fails before the change too: a preference, not a regression]",
-                     "not_backed": "  [its test passes: not backed]",
-                     "invalid": "  [its test does not load]", "unchecked": "  [its test hung]",
-                     "no_test": "  [no test given]"}.get(backing, f"  [{backing}]" if backing else "")
             if why:
-                lines.append(f"    - {lab}: {why}{label}")
+                lines.append(f"    - {lab}: {why}")
             else:
                 tail = (r.get("raw_tail") or "").strip()
                 lines.append(f"    - {lab}: (no reason given)"

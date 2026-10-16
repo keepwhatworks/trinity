@@ -55,7 +55,8 @@ bloating the agent's tool list.
 ```bash
 # One-liner: installs uv if needed, installs Trinity as a uv tool from the
 # newest public release, registers MCP in every CLI it finds, then checks.
-# (scripts/install.sh, the full installer, also wires Chrome capture.)
+# (Chrome capture: `trinity-local install-extension`. scripts/install.sh is the source-checkout
+# installer and refuses to run over a release install.)
 <!-- canonical:install_command -->curl -LsSf https://keepwhatworks.com/install.sh | sh<!-- /canonical -->
 
 # Then, in Claude Code, Codex or agy (restart them first):

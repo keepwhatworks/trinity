@@ -10,7 +10,6 @@ default behavior.
 """
 from __future__ import annotations
 
-import json
 
 
 
@@ -98,32 +97,3 @@ class TestLaunchpadPolishHint:
 # (covered by TestRouteSurfacesPolish below) — but there is no longer a
 # settings-driven branch that auto-fires the chain. Users click
 # auto-chain on the council review page when they want it.
-
-
-class TestRouteSurfacesPolish:
-    def test_route_includes_auto_iterate_recommended_true_for_polish(self, tmp_path, monkeypatch):
-        """When route() is asked about a polish task, the payload's
-        `auto_iterate_recommended` field must be True so harnesses + the
-        launchpad can offer iteration."""
-        import asyncio
-        from trinity_local.mcp_server import _route
-
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        result = asyncio.run(_route({
-            "task": "Make this tagline better. Any better?",
-            "available_models": ["claude", "antigravity", "codex"],
-        }))
-        payload = json.loads(result[0]["text"])
-        assert payload.get("auto_iterate_recommended") is True
-
-    def test_route_includes_auto_iterate_recommended_false_for_non_polish(self, tmp_path, monkeypatch):
-        import asyncio
-        from trinity_local.mcp_server import _route
-
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        result = asyncio.run(_route({
-            "task": "Which model is best for legal research workflows?",
-            "available_models": ["claude", "antigravity", "codex"],
-        }))
-        payload = json.loads(result[0]["text"])
-        assert payload.get("auto_iterate_recommended") is False

@@ -1648,14 +1648,15 @@ def _memory_health() -> dict:
             "href": None,
         })
     elif state == "missing":
-        # Missing → no upstream memories may exist yet either. Safer to
-        # run the full pipeline so the user gets a complete first-run.
-        # --only-distill would write a thin core.md from empty inputs.
+        # Missing → no upstream memories may exist yet either, so the full lens build;
+        # --only-distill would write a thin core.md from empty inputs. Not --deep: its
+        # extra phase spends a chairman call per history pair on councils the lens
+        # never reads (coherence review 2026-10-15).
         issues.append({
             "name": "core.md",
             "status": "missing",
             "hint": "The singular core memory has not been compiled.",
-            "command": "trinity-local lens --deep",
+            "command": "trinity-local lens",
             "href": None,
         })
 

@@ -139,7 +139,8 @@ class TestCoreStalenessSignal:
         core_issues = [i for i in issues if i["name"] == "core.md"]
         assert len(core_issues) == 1
         assert core_issues[0]["status"] == "missing"
-        assert core_issues[0]["command"] == "trinity-local lens --deep"
+        # Not --deep: its extra phase spends chairman calls the lens never reads (2026-10-15).
+        assert core_issues[0]["command"] == "trinity-local lens"
 
 
 class TestTopicsThreadAwareSignal:

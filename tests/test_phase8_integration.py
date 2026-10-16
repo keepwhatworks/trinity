@@ -216,7 +216,10 @@ def test_dispatch_readiness_doctor_launchpad_agree(
 
     # All three must agree on the "not ready" verdict.
     assert readiness["ready"] is False
-    assert doctor_check.ok is False
+    # The extension is optional, so not-ready is a soft check (2026-10-15): it agrees by
+    # saying not connected and naming the fix, without counting as a failed install.
+    assert doctor_check.ok is True and "not connected" in doctor_check.detail
+    assert doctor_check.fix == "trinity-local install-extension"
     assert page_data["browserExtension"]["configured"] is False
 
     # The recommended_action text the doctor + dispatch_readiness agree on.

@@ -26,7 +26,7 @@ That asymmetry is the whole point. Trinity reads your transcripts from all three
 | **Cursor** | Install target only. Trinity runs *inside* Cursor as an MCP server but does not ingest Cursor's own chat history — Cursor stores chats in a SQLite `state.vscdb`, not the JSONL these parsers read. |
 | **claude.ai / chatgpt.com / gemini.google.com** | The Chrome extension hooks the XHR responses on those tabs and posts the conversation JSON to a local Native-Messaging host. Files land in `~/.trinity/conversations/`. No upload, no listening port. |
 | **Bulk exports** (Claude.ai webapp export, ChatGPT export zip, Gemini Takeout) | `trinity-local import-export <path>` auto-detects the format and ingests. Claude.ai users: Settings → Privacy → Export data. |
-| **Provider-side memory loop** | The agent inside Claude Code / Codex / Cursor sees your full conversation history on its side. The `import_provider_memory` MCP tool lets it pipe extracted tensions or rejections to Trinity directly. No scraping, no re-ingest. |
+| **Provider-side memory loop** | The agent inside Claude Code / Codex / Cursor sees your full conversation history on its side. The `lens-import` / `eval-import` verbs let it pipe extracted tensions or rejections to Trinity directly. No scraping, no re-ingest. |
 
 **Trust boundary on the provider-side loop.** It trusts the agent inside the harness to extract honestly. A compromised agent could inject fabricated tensions or rejections. Mitigations: the same dedup logic catches duplicates, and the ≥3-basin lens-build threshold raises the bar (a poisoning attack needs to span unrelated topics to take). Single-basin signal is exploitable in principle.
 
@@ -86,11 +86,11 @@ The folder is the API. Everything in it is human-readable Markdown or JSON. Trin
 
 ## Runtime, using Trinity
 
-You drop a hard question into any harness (Claude Code, Codex, Cursor, Antigravity). The agent there sees Trinity registered as an MCP server and calls one of <!-- canonical:mcp_tool_count -->4<!-- /canonical --> MCP tools. The three that matter most, council first, routing later:
+You drop a hard question into any harness (Claude Code, Codex, Cursor, Antigravity). The agent there sees Trinity registered as an MCP server and calls one of <!-- canonical:mcp_tool_count -->4<!-- /canonical --> MCP tools. The three that matter most:
 
-- **`run_council(task)`**, the flagship and the day-one lead. Dispatches the question to Claude + ChatGPT + Gemini in parallel, collects three responses, runs chairman synthesis. The chairman emits a Routing JSON: agreed claims, disagreed claims, winner, why. It reads `core.md` first, and once a lens exists it also gets a compact block of your named tensions — six of them, kept small on purpose. The council is full-fidelity on minute one either way. Once a lens has warmed up, the chairman weights the synthesis by it, routing to the model you keep siding with on your kind of question. **The council is the value. The lens makes it yours.**
-- **`ask(query)`**, the cheap 90% path that *emerges* once you have a track record of councils. Pulls a high-trust extracted pick if one exists ("looks like a COMPRESSION task → codex wins on those for you") and returns a single answer instead of running a full council. With no council history yet it falls back to a heuristic, so routing is the layer that accrues after the council, not a prerequisite for it.
-- **`get_persona()`**, hands the lens to the agent at session handshake so it can tailor responses without an MCP round-trip per call.
+- **`run_council(task)`**, the flagship and the day-one lead. Dispatches the question to Claude, Codex and Gemini in parallel, collects three responses, runs chairman synthesis. The chairman emits a Routing JSON: agreed claims, disagreed claims, winner, why. It reads `core.md` first, and once a lens exists it also gets a compact block of your named tensions — six of them, kept small on purpose. The council is full-fidelity on minute one either way. **The council is the value. The lens makes it yours.**
+- **`verify(criteria, diff)`**, before a change is called done: it runs the change's own tests and has labs that cannot see each other read the diff, then returns STOP or READ.
+- **`trust(query?)`**, which model your later work sided with when the labs split, and the disagreements you keep returning to on a topic.
 
 ## The eval surface, score any model against YOUR rejections
 

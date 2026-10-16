@@ -36,6 +36,20 @@ TRINITY_BRANCH="${TRINITY_BRANCH:-main}"
 # probes $TRINITY_BIN_DIR to avoid baking a bare interpreter that ModuleNotFounds.
 export TRINITY_BIN_DIR
 
+# The one-line installer (docs/install.sh) installs the release wheel as a uv tool into the
+# same bin dir. Running this script over it replaced the release with unreleased `main`, a
+# build that carries no telemetry key and never recorded the install channel, and switched
+# `update` to git-pull mode (coherence review 2026-10-15; founder: "Refuse on a uv install").
+# Everything this script adds is a verb on the uv install. TRINITY_FORCE_SOURCE_INSTALL=1 overrides.
+if [ -d "${UV_TOOL_DIR:-$HOME/.local/share/uv/tools}/trinity-local" ] && [ "${TRINITY_FORCE_SOURCE_INSTALL:-}" != "1" ]; then
+  echo "trinity-local is already installed from a release (uv tool). This script would replace it" >&2
+  echo "with an unreleased source checkout. What it adds is available on your install:" >&2
+  echo "  trinity-local install-extension     # Chrome capture" >&2
+  echo "  trinity-local download-embedder     # the local embedding model" >&2
+  echo "To update: curl -LsSf https://keepwhatworks.com/install.sh | sh" >&2
+  exit 1
+fi
+
 # ─── Output helpers ────────────────────────────────────────────────
 
 # Colors only when stdout is a real terminal — clean output under

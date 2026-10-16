@@ -131,102 +131,17 @@ class TestToolList:
         assert "get_persona" not in d
 
 
-class TestRoute:
-    """The routing-decision behaviors, exercised through `ask(mode='route')` — the
-    one routing entrypoint after the standalone `route` tool was cut. The underlying
-    `_route` logic is unchanged; these pin its behavior at the surviving surface."""
+class TestDeletedToolsAreGone:
+    """ask, get_persona and import_provider_memory were soft-demoted 2026-09-08 and deleted
+    2026-10-15 with founder approval; a host that still calls one gets a readable not-found."""
 
-    @staticmethod
-    def _route(task: str, **hints):
-        args = {"query": task, "mode": "route"}
-        if "available_models" in hints:
-            args["available_providers"] = hints.pop("available_models")
-        args.update(hints)
-        return _call_tool_sync("ask", args)
+    @pytest.mark.parametrize("name", ["ask", "get_persona", "import_provider_memory", "route"])
+    def test_calling_a_deleted_tool_says_not_found(self, home: Path, name: str):
+        from trinity_local.mcp_server import ToolError
+        with pytest.raises(ToolError) as e:
+            asyncio.run(__import__("trinity_local.mcp_server", fromlist=["x"]).handle_call_tool(name, {}))
+        assert "Tool not found" in str(e.value)
 
-    def test_route_returns_canonical_payload_shape(self, home: Path):
-        result = self._route(
-            "refactor this Python function to remove duplication",
-            available_models=["claude", "antigravity", "codex"],
-        )
-        assert "mode" in result
-        assert "primary" in result
-        assert "confidence" in result
-        # The pick is the fixed chair order (Claude, then Codex) since 2026-10-15; the
-        # benchmark blend chaired Gemini on installed builds (test_chair_fixed_order.py).
-        assert result["primary"] == "claude"
-        assert result["chairman_source"] == "fixed_order"
-
-    def test_route_handles_minimal_args(self, home: Path):
-        result = self._route("anything")
-        assert "primary" in result
-
-    def test_route_honors_ranker_needs_council(self, home: Path):
-        # The HeuristicRanker sets needs_council=True for coding/research tasks.
-        # Before the fix, _route() looked for a nonexistent `recommended_mode`
-        # field and always emitted mode='single'. After: needs_council → council.
-        result = self._route(
-            "refactor this Python function",
-            available_models=["claude", "antigravity", "codex"],
-        )
-        # Coding is a needs_council task in the heuristic ranker.
-        assert result["mode"] == "council"
-        assert result["should_auto_council"] is True
-
-    def test_route_normalizes_confidence_to_band(self, home: Path):
-        # Schema declares confidence as enum {high, medium, low}; pre-fix it
-        # leaked the raw 0..1 float from RoutingDecision.confidence.
-        result = self._route("anything")
-        assert result["confidence"] in ("high", "medium", "low")
-
-    def test_route_demotes_codex_when_latency_fast(self, home: Path):
-        # codex+gpt-5.5 xhigh wins coding on quality but takes 30s+. When the
-        # caller asks for latency='fast', route() should pick claude or
-        # antigravity (the post-rename fallback set; see mcp_server.py L819).
-        result = self._route(
-            "refactor this Python function",
-            available_models=["claude", "antigravity", "codex"],
-            latency="fast",
-        )
-        assert result["primary"] in ("claude", "antigravity")
-        assert result["latency"] == "fast"
-
-    def test_route_returns_challenger_distinct_from_primary(self, home: Path):
-        result = self._route(
-            "refactor this Python function",
-            available_models=["claude", "antigravity", "codex"],
-        )
-        assert result["challenger"] != result["primary"]
-        assert result["challenger"] in ("claude", "antigravity", "codex")
-
-
-class TestAskRouteMode:
-    """`route` merged into `ask` as `mode='route'` (#213 Q4); the standalone `route`
-    tool was then REMOVED in the loop-primitive cut — `ask(mode='route')` is the one
-    routing entrypoint."""
-
-    def test_ask_mode_route_returns_routing_decision(self, home: Path):
-        result = _call_tool_sync("ask", {
-            "query": "refactor this Python function to remove duplication",
-            "mode": "route",
-            "available_providers": ["claude", "antigravity", "codex"],
-        })
-        # Same payload shape as the route tool — a routing decision, NOT a
-        # dispatched answer (no model call in route mode).
-        assert "mode" in result and "primary" in result and "confidence" in result
-        assert "answer" not in result
-        # Deterministic, exactly like the route tool: the fixed chair order.
-        assert result["primary"] == "claude"
-
-    def test_ask_is_no_longer_advertised(self):
-        """`ask` was soft-demoted 2026-09-08 (council fd416f42, agreed claim 3:
-        a single-provider default is unsupportable). Its handler and CLI path
-        stay — it is verify's cheap read — but an agent must not be offered
-        one prior as a way to check something."""
-        from trinity_local.mcp_server import _ask, handle_list_tools
-        names = {t.name for t in asyncio.run(handle_list_tools())}
-        assert "ask" not in names
-        assert callable(_ask), "the handler must stay callable in-process"
 
 class TestGetCouncilStatus:
     """Same silent-failure shape audit as TestRecordOutcome —
@@ -435,11 +350,11 @@ class TestRunCouncilCanonicalizesProviderSlugs:
         def _stub_handle(args):
             captured["members"] = list(args.members)
             captured["primary_provider"] = getattr(args, "primary_provider", None)
-            print(json.dumps({
+            return {
                 "council_run_id": "council_test_canon",
                 "task_path": "/tmp/x", "sync_path": "/tmp/y",
                 "review_path": "/tmp/z",
-            }))
+            }
 
         from trinity_local.commands import council as council_cmd
         monkeypatch.setattr(council_cmd, "handle_council_launch", _stub_handle)

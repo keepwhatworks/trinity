@@ -240,15 +240,16 @@ RETIRED: dict[str, RetirementRecord] = {
         name="mcp_tool:ask",
         retired_at="2026-09-08",
         commit="",
-        replacement="mcp__trinity-local__verify — the pre-deploy gate: runs the artifact's own tests, then three blinded cross-lab reads, then a deterministic STOP/SKIP/READ.",
+        replacement="mcp__trinity-local__verify — the pre-deploy gate: runs the artifact's own tests and a blinded cross-lab read, then a deterministic STOP/READ.",
         reason=(
             "One call to one provider is one prior checking nothing, which is the "
             "failure the product exists to catch (council fd416f42, agreed claim 3). "
             "Its router was already removed 2026-08-11 (42.9% vs a 37.0% constant, "
-            "p=0.26). Handler + dispatch path stay: `ask` is verify's cheap read."
+            "p=0.26). The handler, ask.py and the routing stack behind it (ranker "
+            "heuristic/fallback/knn, knn_advisor, knn_analytics) were deleted "
+            "2026-10-15 with founder approval; verify never called it."
         ),
         kind="mcp_tool",
-        artifact_persists=True,
     ),
     "mcp_tool:get_persona": RetirementRecord(
         name="mcp_tool:get_persona",
@@ -259,18 +260,47 @@ RETIRED: dict[str, RetirementRecord] = {
             "Demoted with the lens headline. The lens's CONSTRUCTION is measured "
             "(held-out validity, prospective palate 81.6%); its user-visible causal "
             "DELIVERY is null — transmission null, generation null (16/30), a 1-in-12 "
-            "tie-break. A chairman input, not a product surface."
+            "tie-break. A chairman input, not a product surface. Handler deleted "
+            "2026-10-15 (founder approval)."
         ),
         kind="mcp_tool",
-        artifact_persists=True,
     ),
     "mcp_tool:import_provider_memory": RetirementRecord(
         name="mcp_tool:import_provider_memory",
         retired_at="2026-09-08",
         commit="",
         replacement="CLI verbs `lens-import` / `eval-import` (unchanged), same schemas, same dedup.",
-        reason="Served the lens headline that was demoted. The import seam itself stays open — it is a CLI verb, not a tool an agent should reach for mid-task.",
+        reason="Served the lens headline that was demoted. The import seam itself stays open — it is a CLI verb, not a tool an agent should reach for mid-task. Handler deleted 2026-10-15 (founder approval).",
         kind="mcp_tool",
+    ),
+    "mcp_tool:run_eval / choose / lens_generators": RetirementRecord(
+        name="mcp_tool:run_eval / choose / lens_generators",
+        retired_at="2026-10-15",
+        commit="",
+        replacement="CLI verbs `eval-run`, `choose`, `lens-generators` (unchanged).",
+        reason="Soft-demoted off the MCP surface 2026-07-18 with their handlers kept; the handlers "
+               "were never dispatched again and were deleted 2026-10-15 (founder approval). "
+               "_blocking_eval printed to stdout, so re-wiring it would have corrupted the stdio stream.",
+        kind="mcp_tool",
+    ),
+    "local_models.py": RetirementRecord(
+        name="local_models.py",
+        retired_at="2026-10-15",
+        commit="",
+        replacement="(none) — a local model can still be configured as a council member (providers mlx / ollama)",
+        reason="Auto-discovered Ollama / MLX models into ask's routing pool; its only caller was "
+               "ask's local dispatch, deleted with ask.",
+        kind="module",
+    ),
+    "dispatch_health.py": RetirementRecord(
+        name="dispatch_health.py",
+        retired_at="2026-10-15",
+        commit="",
+        replacement="provider_quota.py (the in-process usage-wall breaker councils and chairs use)",
+        reason="Its only reader was mcp_server._full_provider_pool (ask's provider ordering), deleted "
+               "with ask; councils kept appending member failures to dispatch_outcomes.jsonl that "
+               "nothing read. The file on users' disks is left as is.",
+        kind="module",
         artifact_persists=True,
     ),
     "mcp_tool:handoff": RetirementRecord(
@@ -285,7 +315,7 @@ RETIRED: dict[str, RetirementRecord] = {
         name="mcp_tool:route",
         retired_at="2026-06-08",
         commit="",
-        replacement="ask(mode='route') — the identical routing decision through the one routing entrypoint. The _route() helper survives internally (ask delegates to it); only the standalone tool registration was removed.",
+        replacement="(none) — folded into ask(mode='route') in 2026-06, and the _route() helper went with ask on 2026-10-15.",
         reason="Loop-primitive surface cut (council_2eaa453fa20b69f6, all 3 labs agreed): a standalone route tool reinvented what ask already owns. Deprecated since #213 (Q4 surface-collapse) when ask(mode='route') subsumed it; removed now to fit the standardized primitives. Tool surface drops from 8 → 7.",
         kind="mcp_tool",
     ),
@@ -459,6 +489,46 @@ RETIRED: dict[str, RetirementRecord] = {
         commit="55499b8",
         replacement="(none — JS-side inline implementation in launchpad_template.py:2548-2574)",
         reason="Docstring claimed it was the canonical formatter \"used by commands/replay.py + launchpad_template.py\" but tick 81 audit found ZERO Python callers. replay.py uses its own `_build_hidden_context()` with a different format; launchpad_template.py must reimplement in JS because the file:// architecture (claude.md \"File:// is the substrate\") blocks JS from importing Python. The `_strip_thread_context()` reader in launchpad_data.py only PARSES the format, doesn't import the producer. Pure orphan; deleted cleanly with the JS-side comment updated to no longer point at the removed file. Pattern #4: when fixing a bug, audit for its shape — same orphan-module shape as the `feature_extractors` + `training_schema` sunset in tick 57.",
+        kind="module",
+    ),
+    # ── 2026-10-15 coherence review ──
+    "untested.py": RetirementRecord(
+        name="untested.py",
+        retired_at="2026-10-15",
+        commit="",
+        replacement="scratch.py (the scratch-copy helpers); internal/experiments/untested_hunks.py",
+        reason="verify's untested-hunk report (TRINITY_VERIFY_UNTESTED) was killed at hq_123 "
+               "(lift 0.81 against baselines of 1.42 and 1.52); the experiment moved to internal/, "
+               "and the copy helpers the differential check uses moved to scratch.py.",
+        kind="module",
+    ),
+    "doubts.py": RetirementRecord(
+        name="doubts.py",
+        retired_at="2026-10-15",
+        commit="",
+        replacement="internal/experiments/doubts.py",
+        reason="verify's backed doubts (TRINITY_VERIFY_BACKED) were killed at hq_124: they fired on "
+               "52.5% of clean commits against a 2x bar, and setting the flag rewrote the readers' prompt.",
+        kind="module",
+    ),
+    "duplicates.py": RetirementRecord(
+        name="duplicates.py",
+        retired_at="2026-10-15",
+        commit="",
+        replacement="internal/experiments/duplicates.py",
+        reason="verify's duplicated-value report (TRINITY_VERIFY_DUPLICATES) was killed at hq_125: "
+               "lift 1.43, below the churn and value-count baselines at 1.59.",
+        kind="module",
+    ),
+    "models.py": RetirementRecord(
+        name="models.py",
+        retired_at="2026-10-15",
+        commit="",
+        replacement="",
+        reason="The `status` new-model nudge and its data/models.json manifest. The manifest "
+               "named models two generations behind the shipped config, so every install was "
+               "told 'Claude Fable 5 shipped' and pointed at eval verbs whose run could never "
+               "clear the nudge.",
         kind="module",
     ),
     # ── 2026-05-20 consistency-sweep retirement ──

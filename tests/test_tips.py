@@ -139,8 +139,9 @@ def test_text_injects_the_tip(monkeypatch, tmp_path):
     (tmp_path / "council_outcomes" / "council_a.json").write_text("{}", encoding="utf-8")
     from trinity_local.mcp_server import _text
     import json as _json
-    payload = _json.loads(_text({"hello": "world"})["text"])
+    payload = _json.loads(_text({"hello": "world", "council_run_id": "c1"})["text"])
     assert payload["tip"]["key"] == "create-lens"
+    assert "tip" not in _json.loads(_text({"hello": "world"})["text"]), "council replies only"
 
 
 # ── CTA honesty: every rung points at a REAL CLI subcommand ──────────────────

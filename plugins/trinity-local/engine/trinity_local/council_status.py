@@ -61,14 +61,23 @@ def _runner_is_alive(payload: dict[str, Any]) -> bool:
     return False
 
 
-# A "running" council whose status hasn't been written in this long is dead. A live
-# runner rewrites its status every ~1.5s, so long-staleness means the council ended —
-# and pid-liveness ALONE can't catch it, because the dead runner's pid can be REUSED by
-# an unrelated live process (observed 2026-06-08: an interrupted council 17h old still
-# read "running" because its pid had been reassigned → the launchpad's Launch button
-# stayed disabled forever). So a council is "alive" only if its pid is alive AND its
-# status is fresh.
-_STALE_RUNNING_SECONDS = 30 * 60
+# A "running" council whose status hasn't been written in this long is dead: pid-liveness
+# ALONE can't tell, because a dead runner's pid can be REUSED by an unrelated live process
+# (observed 2026-06-08: an interrupted council 17h old still read "running" → the
+# launchpad's Launch button stayed disabled forever). So a council is "alive" only if its
+# pid is alive AND its status is fresh.
+#
+# There is no heartbeat: the status is written as members start and finish, so a member
+# legitimately silent for its whole timeout writes nothing meanwhile. The window is the
+# longest a live council can go quiet (one member timeout, then up to three chairs in
+# turn), not a fixed 30 minutes, which marked live councils "failed" mid-run once
+# TRINITY_PROVIDER_TIMEOUT_SECONDS passed 30 minutes (coherence review 2026-10-15).
+def _stale_running_seconds() -> float:
+    from .providers import DEFAULT_PROVIDER_TIMEOUT_SECONDS
+    return max(30 * 60, 4 * DEFAULT_PROVIDER_TIMEOUT_SECONDS + 5 * 60)
+
+
+_STALE_RUNNING_SECONDS = _stale_running_seconds()
 
 
 def _running_status_is_stale(status_token: str, payload: dict[str, Any]) -> bool:

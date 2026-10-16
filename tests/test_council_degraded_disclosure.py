@@ -58,7 +58,9 @@ def test_a_lost_lab_is_named_to_the_caller(patch_trinity_home, monkeypatch):
                             "usage credits at claude.ai/settings/usage, to continue.")
     o = _status(r.outcome.council_run_id)
     assert o["degraded"] is True
-    assert {"provider": "claude", "reason": "quota_banner_as_answer"} in o["failed_members"]
+    lost = [{k: f[k] for k in ("provider", "reason")} for f in o["failed_members"]]
+    assert {"provider": "claude", "reason": "quota_banner_as_answer"} in lost
+    assert all(f.get("detail") for f in o["failed_members"]), "each loss says why"
     assert o["degraded_notice"].startswith("DEGRADED: 1 of 2 labs answered")
 
 

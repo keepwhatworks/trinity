@@ -97,7 +97,7 @@ def register(subparsers):
     # delete; --include-data also removes ~/.trinity/.
     uin = subparsers.add_parser(
         "uninstall",
-        help="Remove Trinity from MCP configs, Chrome ext manifest, desktop launcher, and bundled skill (idempotent). Pass --include-data to also delete ~/.trinity/.",
+        help="Remove Trinity from MCP configs, the Chrome extension manifest, the bundled skill and the agent-instruction reflex blocks (idempotent). Pass --include-data to also delete ~/.trinity/.",
     )
     uin.add_argument(
         "--yes", action="store_true",
@@ -1084,6 +1084,7 @@ def handle_uninstall(args) -> int:
     _remove_trinity_from_codex_toml(Path.home() / ".codex" / "config.toml", plan, dry_run)
     _remove_native_messaging_manifest(plan, dry_run)
     _remove_trinity_skill(plan, dry_run)
+    _remove_reflex_blocks(plan, dry_run)
 
     # Opt-in destructive removals.
     if getattr(args, "include_data", False):
@@ -1175,6 +1176,23 @@ def handle_install_reflex(args):
                       "reinforce": "Also run `trinity-local install-skill` to make your "
                                    "taste lens agent-loadable."}, indent=2))
     return 0
+
+
+def _remove_reflex_blocks(plan: list[str], dry_run: bool) -> None:
+    """The managed block install-reflex wrote into each harness's instruction file. Left behind,
+    it tells agents to call run_council and verify after Trinity is gone (coherence review
+    2026-10-15). Only the marked block goes; the rest of each file is byte-preserved."""
+    home = Path.home()
+    for path in (home / ".claude" / "CLAUDE.md", home / ".codex" / "AGENTS.md",
+                 home / ".gemini" / "GEMINI.md"):
+        try:
+            text = path.read_text(encoding="utf-8") if path.exists() else ""
+        except OSError:
+            continue
+        if REFLEX_BEGIN in text and REFLEX_END in text:
+            plan.append(f"Trinity reflex block in {path}")
+            if not dry_run:
+                _reflex_one_file(path, remove=True)
 
 
 def _reflex_one_file(path, *, remove: bool) -> dict:

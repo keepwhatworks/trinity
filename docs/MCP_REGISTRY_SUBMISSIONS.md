@@ -78,7 +78,7 @@ keep what works, and Claude learns your voice over time"):
 > it into the synthesis, so the verdict weighs what you actually weigh:
 > the tensions you reject vs accept, the subject basins you actually care
 > about, your own vocabulary. Comes with the canonical supervision-loop
-> tools (`ask` / `run_council` / `get_persona` / `get_council_status`)
+> tools (`run_council` / `get_council_status` / `trust` / `verify`)
 > plus a personalized eval harness that benchmarks any provider
 > against the user's empirical rejection signal. (Chairman pick is
 > the auto-recorded supervision signal. The prior `record_outcome`
@@ -231,7 +231,7 @@ attribution + future reference:
   transcripts. Don't describe Trinity as "Claude + GPT + Gemini in one
   place." Describe it as "the layer above them that they can't build."
 - **"Yet another MCP server."** Mitigate: lead with the unique tools
-  (`get_persona`, `eval-run`, `import_provider_memory`) that no other
+  (`verify` with its blinded cross-lab read, `trust`) that no other
   MCP server in the registry offers. Generic council/chat features go
   AFTER the unique ones.
 - **"What's MCP?"** Mitigate: don't explain MCP in the pitch. The

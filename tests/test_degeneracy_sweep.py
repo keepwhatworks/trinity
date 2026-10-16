@@ -228,5 +228,19 @@ def test_data_degeneracy_check_surfaces_findings(home: Path):
 
     r = _check_data_degeneracy()
     assert r.ok is True  # degenerate data is dated, not a broken install
-    assert r.fix and "degeneracy_sweep" in r.fix
+    # scripts/ is not in the wheel, so the fix is a verb an install has (2026-10-15).
+    assert r.fix and r.fix.startswith("trinity-local lens-health")
     assert "run_in_background" in r.detail
+
+
+def test_status_does_not_rebuild_the_eval_set(home: Path, monkeypatch):
+    """`status` is documented fast; the eval check rebuilt the eval set from the whole prompt
+    store on every call. lens-health still runs it (include_eval defaults on)."""
+    from trinity_local import degeneracy
+    from trinity_local.health_checks import _check_data_degeneracy
+    calls = []
+    monkeypatch.setattr(degeneracy, "_check_eval", lambda: calls.append(1) or [])
+    _check_data_degeneracy()
+    assert calls == []
+    degeneracy.run_degeneracy_sweep()
+    assert calls == [1]

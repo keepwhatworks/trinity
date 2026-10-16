@@ -217,10 +217,20 @@ class BaseProvider:
             )
         except subprocess.TimeoutExpired as exc:
             elapsed = time.monotonic() - t0
+            # The partial output arrives as BYTES even in text mode, and was discarded. It is
+            # kept in the failure detail, not used as the answer: a reply cut off mid-thought
+            # must not reach the chairman as if it were complete.
+            partial = exc.stdout or b""
+            if isinstance(partial, bytes):
+                partial = partial.decode("utf-8", "replace")
+            partial = partial.strip()
+            detail = f"Timed out after {elapsed:.1f}s"
+            if partial:
+                detail += f"; partial output: {partial[:300]}"
             return ProviderResult(
                 provider=self.config.name,
-                stdout=(exc.stdout or "").strip() if isinstance(exc.stdout, str) else "",
-                stderr=f"Timed out after {elapsed:.1f}s",
+                stdout="",
+                stderr=detail,
                 returncode=-1,
                 elapsed_seconds=elapsed,
             )

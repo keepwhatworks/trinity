@@ -101,3 +101,22 @@ def run_with_runtime_env(
         input=input,
         env=build_runtime_env(env, python_executable=python_executable),
     )
+
+
+# Environment variables Trinity itself set at startup (main._pin_hf_offline). A subprocess that
+# runs the USER's command, such as verify's test kernel, must not inherit them: a test that
+# downloads a HuggingFace model went red only under verify, which returned STOP, the one
+# blocking outcome (coherence review 2026-10-15). Keys the user had set are never recorded.
+TRINITY_SET_ENV: set[str] = set()
+
+
+def set_default_env(key: str, value: str) -> None:
+    """os.environ.setdefault that remembers when Trinity, not the user, supplied the value."""
+    if key not in os.environ:
+        os.environ[key] = value
+        TRINITY_SET_ENV.add(key)
+
+
+def user_env() -> dict[str, str]:
+    """os.environ without the variables Trinity set for itself."""
+    return {k: v for k, v in os.environ.items() if k not in TRINITY_SET_ENV}

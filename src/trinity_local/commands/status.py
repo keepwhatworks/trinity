@@ -105,16 +105,15 @@ def _first_run_rung(health, council_count: int, total_transcripts: int) -> dict 
                        f"{ready} {'is' if ready == 1 else 'are'} ready."),
             "fix": "trinity-local install --check   # the install or sign-in command for each",
         }
-    if total_transcripts > 0:
-        return {
-            "detail": (f"First run. You already have {total_transcripts:,} transcripts across "
-                       "your CLIs — build your lens from them in one command (~5-15 min)."),
-            "fix": "trinity-local lens --deep",
-        }
+    # One rung, and it is a council: it needs no history and is what Trinity leads with. The
+    # transcripts branch used to send a first-time user to `lens --deep`, 10 to 100 chairman
+    # calls, before they had seen a single council.
+    later = (f" Your {total_transcripts:,} transcripts can build your lens afterwards "
+             "(`trinity-local lens`)." if total_transcripts > 0 else
+             " Your lens builds itself once you have some history.")
     return {
-        "detail": ("First run. Nothing to build from yet — start with a council; it "
-                   "needs no history. Your lens builds itself once you have some."),
-        "fix": 'type /trinity in Claude Code   # or: trinity-local council "<a question you would ask three models>"',
+        "detail": "First run. Start with a council; it needs no history." + later,
+        "fix": 'type /trinity in Claude Code   # or: trinity-local plan "<a question you would ask three models>"',
     }
 
 
@@ -316,7 +315,13 @@ def handle_status(args):
     for c in health.checks:
         if first_run and c.name in _COLD_START_CHECKS:
             continue
-        if c.ok and c.fix:
+        # A FAILED check is the one thing this screen exists to show, and it printed none:
+        # "red, 6 checks failing" with nothing named (coherence review 2026-10-15).
+        if not c.ok:
+            print(f"             ✗ {c.detail}")
+            if c.fix:
+                print(f"               └─ run: {c.fix}")
+        elif c.fix:
             print(f"             ⚠ {c.detail}")
             print(f"               └─ run: {c.fix}")
     # #183: schema version line — flags a failed migration (recorded < current).
@@ -463,8 +468,11 @@ def handle_status(args):
         stale = is_core_stale()
         marker = "⚠️ stale" if stale else "✅ fresh"
         print(f"    {marker} core.md       {core.stat().st_size:>8,} bytes — chairman reads this first")
-    else:
+    elif lens_path().exists():
         print("    · core.md       not distilled — run `trinity-local lens --only-distill` (~20s)")
+    else:
+        # Distilling needs a lens; on a fresh home that advice could only fail.
+        print("    · core.md       not distilled (it is written when your lens builds)")
     # Lens-build freshness (ground truth: built_at vs live corpus fingerprint —
     # NOT the refresh marker, which false-greened "done" while the lens sat 18
     # days / 677 prompts stale on a real install). A persistent "stale" means the
@@ -542,55 +550,9 @@ def handle_status(args):
     except Exception:
         pass
 
-    # Model news (#218) — a current provider model the user hasn't scored
-    # against their taste yet. The celebration nudge lives here (and on the
-    # launchpad), not behind a new verb — the surface stays collapsed to
-    # lens/council. Best-effort: a manifest/eval read failure must never
-    # break status.
-    try:
-        from ..models import detect_new_models
-
-        new_models = detect_new_models()
-        if new_models:
-            # Cold-home gate (#316 journey-audit): ev.nudge() says "run eval-run
-            # --target X", but eval-run → eval-build raises FileNotFoundError
-            # without a rejection ledger, so a fresh user is sent into a failing
-            # 3-hop chain. Gate on eval_set_available(): only surface the eval-run
-            # CTA when there's an eval set to run; otherwise point at the real
-            # prerequisite (build the lens first).
-            try:
-                from ..evals.builder import eval_set_available
-
-                have_eval = eval_set_available()
-            except Exception:
-                have_eval = True  # never let the gate itself suppress the news
-            if _first_run_rung(health, council_count, total_transcripts):
-                new_models = []   # a zero-council install has no taste to score a model against yet
-            if new_models:
-                print("  New models:")
-            for ev in new_models:
-                if have_eval:
-                    print(f"    {ev.nudge()}")
-                else:
-                    label = getattr(ev, "display", None) or getattr(ev, "slug", "a new model")
-                    print(f"    🎉 {label} is out — build your lens first "
-                          f"(`trinity-local lens`), then `trinity-local eval-build` "
-                          f"to score it against your taste.")
-            # #313: a new model may JUDGE differently — re-validate it doesn't
-            # inflate its own family (self-preference) before trusting a same-family
-            # eval score. Best-effort; never breaks status.
-            try:
-                from ..evals.self_preference import unvalidated_models
-
-                unval = unvalidated_models([ev.model for ev in new_models if getattr(ev, "model", None)])
-                if unval:
-                    print(f"    ↳ self-preference unvalidated for {', '.join(unval)} — "
-                          f"run `trinity-local eval-selfpref`")
-            except Exception:
-                pass
-            print()
-    except Exception:
-        pass
+    # The "new model shipped" nudge (#218) was removed 2026-10-15: its manifest named models two
+    # generations old against the shipped config, so it celebrated "Claude Fable 5 shipped" on
+    # every install and its own fix command could never clear it (coherence review).
 
     # #212 cold-start aha: ONE surprising true tension once the lens has
     # signal. Best-effort, self-hides on a cold install.

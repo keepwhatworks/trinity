@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trinity-local"
-version = "1.7.403"
+version = "1.7.404"
 description = "Cross-provider memory layer for Claude, Codex, and Gemini — local-first councils and personal benchmarks. Rides on your existing subscriptions."
 readme = "README.md"
 license = "MIT"
@@ -51,7 +51,7 @@ trinity_local = [
     "data/fonts/*.ttf",        # Hanken + JetBrains variable TTFs — the PIL share-card fonts
     "data/fonts/*.txt",        # the TTF OFL licenses
     "data/config.example.json",
-    "data/models.json",
+    "data/prompts/*.md",        # lens-prompt / eval-prompt bodies (were under docs/, never shipped)
 ]
 
 [project.optional-dependencies]

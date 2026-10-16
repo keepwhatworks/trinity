@@ -187,6 +187,10 @@ class TestDreamHandlerGateBehavior:
         from trinity_local.commands.dream import handle_dream
 
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        # This checks the PRODUCTION gate, so it clears the test-only TF-IDF hatch: under
+        # TRINITY_DISABLE_MLX=1 (the documented fast suite) the gate is open by design and
+        # this test failed on unchanged main (coherence review 2026-10-15).
+        monkeypatch.delenv("TRINITY_DISABLE_MLX", raising=False)
         # require_real_embedder short-circuits on a LIVE backend (an empty HF
         # cache is irrelevant once the model is loaded in memory), so simulate
         # "no real embedder" by forcing the active-backend probe False; the
@@ -212,6 +216,10 @@ class TestDreamHandlerGateBehavior:
         from trinity_local.commands.me import handle_me_build
 
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        # This checks the PRODUCTION gate, so it clears the test-only TF-IDF hatch: under
+        # TRINITY_DISABLE_MLX=1 (the documented fast suite) the gate is open by design and
+        # this test failed on unchanged main (coherence review 2026-10-15).
+        monkeypatch.delenv("TRINITY_DISABLE_MLX", raising=False)
         import trinity_local.embeddings as _emb
         monkeypatch.setattr(_emb, "mlx_actually_loaded", lambda: False)
         args = SimpleNamespace(

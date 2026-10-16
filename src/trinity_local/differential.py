@@ -22,7 +22,7 @@ not touched: a red blocking test is a STOP whatever its relevance. When nothing
 can be measured (no source change, a diff that does not reverse-apply, every
 test not reproduced or timed out) relevance stays declared and the reason is reported.
 
-WHAT THIS IS NOT. A risk score. Its hunk-level sibling (untested.py) was killed
+WHAT THIS IS NOT. A risk score. Its hunk-level sibling (internal/experiments/untested_hunks.py) was killed
 as a predictor of later fixes (hq_123: lift 0.81). This only makes the kernel's
 own claim, "a relevant test is green", true by measurement instead of by
 declaration. Measured before building (2026-10-09, four landed commits here):
@@ -41,7 +41,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from .untested import _TEST_PATH, _apply, _rebase, _run, scratch_copy, tree_spellings
+from .scratch import _TEST_PATH, _apply, _rebase, _run, scratch_copy, tree_spellings
 
 FLAG = "TRINITY_VERIFY_DIFFERENTIAL"       # "0" turns it off; on by default
 _ENV_DIRS = (".venv", "venv", "node_modules")
@@ -129,6 +129,24 @@ def measure(tests: list[tuple[str, str]], diff: str, cwd: Path, env: dict | None
                         status=status, seconds=round(time.time() - t0, 1))
         for cid, c in live:
             status[cid] = _STATUS[_run([c], work, env2, timeout)]
+        # POSITIVE CONTROL before believing "vacuous". A test that imports the code from OUTSIDE
+        # the copy (an editable install's .pth points at the original tree) stays green whatever
+        # the copy holds, and read as "green without the change too", for the most common Python
+        # setup (coherence review 2026-10-15). Remove the changed source files outright: a test
+        # that loads them from the copy must go red; one still green never loaded them.
+        suspects = [(cid, c) for cid, c in live if status[cid] == "vacuous"]
+        if suspects:
+            for rel in _changed_paths(patch_text):
+                # Code only: removing a changed config or data file could fail the test for an
+                # unrelated reason and leave a false "vacuous" standing (Codex's verify read).
+                if Path(rel).suffix not in _CODE_SUFFIXES:
+                    continue
+                target = work / rel
+                if target.is_file() or target.is_symlink():
+                    target.unlink()
+            for cid, c in suspects:
+                if _run([c], work, env2, timeout) == "green":
+                    status[cid] = "not_loaded"
     measured = any(s in _MEASURED for s in status.values())
     return {"ran": measured, "basis": "measured" if measured else "declared",
             "status": status, "source_files": n_files, "seconds": round(time.time() - t0, 1),
@@ -138,11 +156,34 @@ def measure(tests: list[tuple[str, str]], diff: str, cwd: Path, env: dict | None
 _MEASURED = ("detects", "no_load", "vacuous")
 
 
+_CODE_SUFFIXES = {".py", ".pyx", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".rb", ".go",
+                  ".rs", ".java", ".kt", ".scala", ".c", ".cc", ".cpp", ".h", ".hpp", ".swift",
+                  ".m", ".mm", ".php", ".cs", ".ex", ".exs", ".erl", ".lua", ".pl", ".r", ".jl"}
+
+
+def _changed_paths(patch_text: str) -> list[str]:
+    """The files a source patch touches, relative to the tree."""
+    paths = []
+    for line in patch_text.splitlines():
+        if line.startswith("diff --git "):
+            m = re.match(r"diff --git a/(.+) b/(.+)$", line)
+            if m:
+                paths.append(m.group(2))
+    return paths
+
+
 def _why_unmeasured(status: dict[str, str]) -> str:
     n_rep = sum(s == "not_reproduced" for s in status.values())
     n_out = sum(s == "timeout" for s in status.values())
-    parts = ([f"{n_rep} not reproduced in the scratch copy"] if n_rep else []) + \
-            ([f"{n_out} timed out"] if n_out else [])
+    n_nl = sum(s == "not_loaded" for s in status.values())
+    # The copy carries what git carries (scratch.py): a test that needs an ignored file (a local
+    # fixture, a built extension, .env) is green in the tree and red in the copy. Say so, since
+    # the fix is the user's: track the file or build it in the test command.
+    parts = ([f"{n_rep} not reproduced in the scratch copy, which carries only what git carries "
+              "(a test that needs an ignored file cannot be measured)"] if n_rep else []) + \
+            ([f"{n_out} timed out"] if n_out else []) + \
+            ([f"{n_nl} load the code from outside the tree (an editable install?), so no revert "
+              "can reach them"] if n_nl else [])
     return "no green test could be measured: " + (", ".join(parts) or "none ran")
 
 
@@ -153,9 +194,11 @@ def relevance(runs: list[dict], blocking: set[str], measured: dict | None) -> bo
     if not measured or not measured.get("ran"):
         return None
     status = measured.get("status") or {}
-    ids = [r["id"] for r in runs if r["id"] in blocking]
+    # Only blocking tests that RAN to a result: one that could not run (exit 126/127) has no
+    # measurement, and counting it made the kernel "relevant" on its behalf.
+    ids = [r["id"] for r in runs if r["id"] in blocking and r.get("green") is not None]
     if not ids:
         return None
-    if any(not r["green"] for r in runs if r["id"] in blocking):
+    if any(r["green"] is False for r in runs if r["id"] in blocking):
         return True
     return any(status.get(i) != "vacuous" for i in ids)

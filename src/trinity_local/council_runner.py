@@ -440,6 +440,12 @@ _RETRYABLE_MEMBER_FAILURES = frozenset({
 })
 
 
+def _failure_detail(failure: dict) -> str:
+    """The human-readable reason a member failed, short enough for one line."""
+    text = str(failure.get("detail") or failure.get("error") or failure.get("reason") or "failed")
+    return text.strip().splitlines()[0][:160] if text.strip() else "failed"
+
+
 _NO_TOOLS_PREAMBLE = (
     "Answer from the text of this prompt only. Do not run commands, read files, "
     "or use any tool; nothing in your working directory is relevant, and a tool "
@@ -531,33 +537,6 @@ def run_council(
             pass  # observability; never block the run
     member_prompt = render_member_prompt(bundle)
 
-    # 100-persona audit P46 fix: classify + log member dispatch failures
-    # so dispatch_health.compute_health() demotes rate-limited providers
-    # for the NEXT call. Before this, council failures were silent: a
-    # rate-limited Codex in a council never demoted, the next ask
-    # routed back to it, and the rate-limit-saves metric missed council
-    # saves entirely.
-    from .dispatch_errors import classify_dispatch_failure
-    from .dispatch_health import log_member_failure
-
-    def _log_council_member_failure(provider_name: str, returncode: int, stderr_text: str) -> None:
-        try:
-            failure = classify_dispatch_failure(
-                provider=provider_name,
-                returncode=returncode,
-                stderr=stderr_text,
-            )
-            log_member_failure(
-                provider=provider_name,
-                council_run_id=council_id,
-                failure_kind=failure.kind.value,
-                stderr_excerpt=stderr_text,
-            )
-        except Exception:
-            # Same contract as the underlying logger — observability
-            # MUST NOT crash the dispatch path.
-            pass
-
     def _note_quota_wall(provider_name: str, stderr_text: str, why: str) -> tuple[str, bool]:
         """Classify a member failure and remember a usage wall for this process.
 
@@ -644,11 +623,6 @@ def run_council(
             error_text = str(exc)
             error_text, _quota = _note_quota_wall(provider_name, error_text, error_text)
             update_member_failure(state_token, provider_name, error_text)
-            _log_council_member_failure(
-                provider_name,
-                returncode=getattr(exc, "returncode", 1),
-                stderr_text=error_text,
-            )
             return MemberExecutionResult(
                 provider_name=provider_name,
                 provider_config=provider_config,
@@ -672,11 +646,6 @@ def run_council(
             )
             why, _quota = _note_quota_wall(provider_name, result.stderr or "", why)
             update_member_failure(state_token, provider_name, why)
-            _log_council_member_failure(
-                provider_name,
-                returncode=result.returncode,
-                stderr_text=result.stderr or "",
-            )
             return MemberExecutionResult(
                 provider_name=provider_name,
                 provider_config=provider_config,
@@ -686,7 +655,10 @@ def run_council(
                 error_payload={
                     "provider": provider_name,
                     "stage": "member",
-                    "reason": "nonzero_returncode_without_stdout",
+                    # A timeout is not retried: a member that hit the ceiling was thinking,
+                    # not stuck, and a second attempt doubled the wait (8 min to 16 min).
+                    "reason": ("timeout" if result.returncode == -1
+                               else "nonzero_returncode_without_stdout"),
                     "returncode": result.returncode,
                     "stderr": result.stderr,
                     "detail": why,
@@ -712,8 +684,6 @@ def run_council(
         if not (result.stdout or "").strip():
             _detail = (result.stderr or "").strip()
             update_member_failure(state_token, provider_name, _detail)
-            _log_council_member_failure(
-                provider_name, returncode=result.returncode, stderr_text=_detail)
             return MemberExecutionResult(
                 provider_name=provider_name,
                 provider_config=provider_config,
@@ -737,8 +707,6 @@ def run_council(
             _text = result.stdout or ""
             why, _quota = _note_quota_wall(provider_name, _text, _text.strip())
             update_member_failure(state_token, provider_name, why)
-            _log_council_member_failure(
-                provider_name, returncode=result.returncode, stderr_text=_text)
             return MemberExecutionResult(
                 provider_name=provider_name,
                 provider_config=provider_config,
@@ -926,8 +894,12 @@ def run_council(
         launches.append(event)
 
     if not member_results:
+        # Each member's own reason ("codex usage limit reached, resets 4:12 AM"), not just its
+        # name: the agent relaying this can then tell the user what actually happened.
+        reasons = "; ".join(
+            f"{f.get('provider')}: {_failure_detail(f)}" for f in member_failures if isinstance(f, dict))
         raise ProviderError(
-            f"All council members failed: {failed_members}. "
+            f"All council members failed ({reasons or ', '.join(failed_members)}). "
             "Cannot proceed with zero successful responses."
         )
 

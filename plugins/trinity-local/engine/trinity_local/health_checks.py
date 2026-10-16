@@ -348,15 +348,16 @@ def _check_dispatch_ready() -> CheckResult:
             ok=True,
             detail="launchpad dispatch ready via Chrome extension",
         )
-    fix_command = (
-        "trinity-local install-extension --extension-id <ID>   "
-        "# 1. Load browser-extension/ in chrome://extensions first."
-    )
+    # The Chrome extension is optional: councils, verify and trust all run without it, and the
+    # one-line installer does not install it. This was a FAILED check for every such user, the
+    # reason a working install read "red" (coherence review 2026-10-15). A soft check with its
+    # fix; the extension id is pinned, so the command needs no flag.
     return CheckResult(
         name="dispatch_ready",
-        ok=False,
-        detail=readiness["recommended_action"] or "no dispatch path wired",
-        fix=fix_command,
+        ok=True,
+        detail=("optional: the Chrome extension is not connected, so the launchpad cannot start "
+                "councils (" + (readiness["recommended_action"] or "no dispatch path wired") + ")"),
+        fix="trinity-local install-extension",
     )
 
 
@@ -646,7 +647,7 @@ def _check_data_degeneracy() -> CheckResult:
     try:
         from .degeneracy import run_degeneracy_sweep
 
-        findings = run_degeneracy_sweep()
+        findings = run_degeneracy_sweep(include_eval=False)
     except Exception as e:  # noqa: BLE001
         return CheckResult(name="data_degeneracy", ok=True, detail=f"sweep skipped ({type(e).__name__})")
     if not findings:
@@ -659,7 +660,8 @@ def _check_data_degeneracy() -> CheckResult:
         name="data_degeneracy",
         ok=True,  # soft
         detail=f"{len(findings)} degenerate-data finding(s): {'; '.join(findings)[:240]}",
-        fix="python scripts/degeneracy_sweep.py   # see all findings + the fix per class",
+        # scripts/ is not in the wheel; `lens-health` runs the full sweep on an install.
+        fix="trinity-local lens-health   # every finding, including the eval set, with its fix",
     )
 
 

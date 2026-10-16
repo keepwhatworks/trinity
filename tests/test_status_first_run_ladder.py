@@ -46,14 +46,17 @@ class TestTheRung:
     def test_no_history_points_at_a_council(self):
         rung = status_cmd._first_run_rung(_fresh_health(), council_count=0, total_transcripts=0)
         assert rung is not None
-        assert "council" in rung["fix"] and "/trinity" in rung["fix"], (
+        assert 'trinity-local plan "' in rung["fix"] and "/trinity" in rung["fix"], (
             "with nothing to mine, the honest first step is a council, which needs no history"
         )
 
-    def test_history_points_at_the_deep_build(self):
+    def test_history_still_points_at_a_council_first(self):
+        """It pointed a first-time user with history at `lens --deep` (10 to 100 chairman
+        calls) before any council. The council leads; the lens is the follow-up, named in the
+        detail (coherence review 2026-10-15; council-first relaunch, 2026-06-16)."""
         rung = status_cmd._first_run_rung(_fresh_health(), council_count=0, total_transcripts=20_000)
-        assert rung == {"detail": rung["detail"], "fix": "trinity-local lens --deep"}
-        assert "20,000" in rung["detail"]
+        assert 'trinity-local plan "' in rung["fix"]
+        assert "20,000" in rung["detail"] and "trinity-local lens" in rung["detail"]
 
     def test_without_two_signed_in_clis_it_points_at_the_install_check(self):
         # Found in a sandboxed install (2026-10-08): with no CLI ready, the rung told a new

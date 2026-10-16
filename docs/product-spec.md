@@ -18,9 +18,9 @@ class: aspirational
 >
 > *v1.5 (shipped June 3):* *"Trinity is what Claude Code reaches for when it needs a different provider, a fresh perspective, or a way to dodge a rate limit. Learns at two levels — specific past decisions (hippocampus) and extracted patterns across them (cortex). Gets sharper, not slower, with use."*
 
-Trinity **convenes Claude, ChatGPT, and Gemini in a structured council** when you need the strongest answer. The chairman synthesizes the verdict and surfaces where they split. Underneath, it's a **routing substrate** that learns which model wins your kind of work and runs the cheap single-call path once it has a track record.
+Trinity **convenes Claude, ChatGPT, and Gemini in a structured council** when you need the strongest answer. The chairman synthesizes the verdict and surfaces where they split. Underneath, it keeps a ledger of which model your later work sided with when the labs split (`trust`), and `verify` puts a change's own tests and a cross-lab read in front of you before it ships.
 
-**The point is trust calibration, not cost optimization.** Cost savings become a real claim with local model dispatch, *which shipped as of 2026-05-20*: any Ollama / MLX model the user has pulled appears in the routing pool automatically as `ollama:<model>` / `mlx:<model>` via `local_models.py`'s auto-discovery probe. The consumer-visible primitive remains *"these models agreed on these claims, disagreed on these, here's why the disagreement matters."* The cost-savings narrative is now claimable post-2026-05-20, pending HN-demo-day resilience verification.
+**The point is trust calibration, not cost optimization.** The consumer-visible primitive is *"these models agreed on these claims, disagreed on these, here's why the disagreement matters."* (Local-model auto-discovery for the `ask` routing pool was deleted with `ask` on 2026-10-15; a local model can still be configured as a council member.)
 
 **Product hierarchy** (consumer pitch order):
 
@@ -134,19 +134,18 @@ The chairman reads `lens` (composed by `lens-build` from sampled diverse prompts
 | `commands/portal.py` | `portal-html` (regenerates the launchpad), `open-review`, `review-link`, `serve` |
 | `commands/install.py` | `install-mcp`, `install-hooks`, `install-extension`, `install-launcher`, `uninstall` |
 
-### MCP: canonical 3 + v1.5 trio + `import_provider_memory`
+### MCP: four tools
 
-`src/trinity_local/mcp_server.py` exposes these tools to any MCP-compatible harness (Claude Code, Codex CLI, Antigravity, Cursor). Canonical 3. v1.5 adds `ask` for cheap single-call routing (`get_picks` removed 2026-08-11 with the lens-basin router it introspected). The in-protocol provider loop adds `import_provider_memory`. The disagreement ledger adds `trust` (which model you side with when the labs split + recurring cross-provider disagreements; retrieval read-only + LLM-free, tally via `trust --build`). That makes 4 total. (The eval-harness / palate / generators tools — `run_eval` / `choose` / `lens_generators` — were soft-demoted off the surface 2026-07-18; their CLI verbs + engines stay.) Plus MCP Resources at session handshake exposing the lens hierarchy + scoreboards as readable URIs (`trinity://memories/lens.md` etc.). (`get_eval_summary` shipped post-#122 then retired 2026-05-18 in commit `6a7f176`. `record_outcome` retired 2026-05-21 per "we are sunsetting user ratings". Chairman's pick is the supervision signal now. `handoff` retired 2026-05-26 after 0 production usage. Lens flows via MCP Resources. `mark_pick_wrong` retired 2026-06-05. The user-pick/veto layer was removed. The chairman's pick stands alone. `route` removed 2026-06-08 in the loop-primitive surface cut. `ask(mode="route")` is the one routing entrypoint.)
+`src/trinity_local/mcp_server.py` exposes four tools to any MCP-compatible harness (Claude Code, Codex CLI, Antigravity, Cursor), in lifecycle order:
 
-1. **`ask(query, available_providers?, thread_id?, top_k?, mode?)`** *(v1.5)*: kNN + cortex match → single dispatched call → concise structured return `{answer, routed_to, trust_score, latency_ms, escalate_hint?}`. The 90%-of-consults tool. Returns `escalate_hint=run_council` when trust < 0.55 so the calling agent can choose to fan out instead. `mode="route"` returns the routing decision only (no model call), the one routing entrypoint after the standalone `route` tool was cut 2026-06-08.
-2. **`run_council(task, members, mode, sequence, primary_provider, responses)`**: spawns a council. Runs members in parallel (or chain) then chairman. **When `responses=[...]` is provided**, skips dispatch and runs chairman synthesis only, the structured verdict path. Subsumes the former `judge` tool.
-3. **`get_persona()`**: returns `~/.trinity/memories/lens.md`.
-4. **`get_council_status(council_run_id)`**: in-protocol polling for async councils.
-5. *(retired)* `get_picks` was the v1.5 introspection tool for the per-lens-basin routing tally. Removed 2026-08-11 with the router it read (council_8817ca0c57a2e4ff; hq_062 replay: fired 58.6%, 42.9% vs a constant's 37.0%, chance-level). A tool that reads a routing table cannot outlive the routing table.
-6. **`import_provider_memory(kind, payload, provider?, dry_run?)`** *(in-protocol provider loop)*: the agent inside Claude Code / Cursor has the user's conversation history on its side. This tool lets it pipe extracted lens tensions (kind=`lens`) or REFRAME/REDIRECT/SHARPENING/COMPRESSION rejection signals (kind=`eval`) straight into `~/.trinity/me/` without copy-paste. Same dedup/append-only semantics as the CLI mirrors (`lens-import`, `eval-import`).
-7. **`lens_generators()`** *(lens-lift)*: runs the generators pass in-session and returns the user's cross-domain GENERATING invariants (the deep preferences the task-level lens tensions are projections of). Writes `~/.trinity/memories/generators.md`. CLI mirror: `lens-generators`.
+1. **`run_council(task, goal?, members?, mode?, primary_provider?, responses?, ...)`**: the plan-time gate. Members answer in parallel without seeing each other, then the chairman reports the decision, what would change it, and where they split. With `responses=[...]` it skips member dispatch and runs the chairman's synthesis only.
+2. **`get_council_status(council_run_id)`**: polls a council that is still running.
+3. **`trust(query?, top_k?)`**: which model the user's later work sided with when the labs split, and the recurring disagreements a query maps into. Read-only and LLM-free; the per-model tally is withheld while its label reliability is below the floor.
+4. **`verify(criteria, diff, ...)`**: the pre-deploy gate. Runs the change's own tests, has labs that cannot see each other read the diff against each judgment item, and returns STOP or READ.
 
-(`record_outcome` was tool #4 until 2026-05-21. Retired alongside the rest of the rating UX. Chairman's `routing_label.winner` IS the supervision signal now, fed into `compute_personal_routing_table()` automatically.)
+Plus MCP Resources exposing the lens hierarchy and scoreboards as readable URIs (`trinity://memories/lens.md` etc.), and two slash prompts, `/council` and `/verify`.
+
+Deleted on 2026-10-15 with founder approval, after being off the tool list since 2026-09-08 or earlier: `ask` (including `mode="route"`), `get_persona`, `import_provider_memory`, `run_eval`, `choose`, `lens_generators`. Their CLI verbs stay (`lens-import`, `eval-import`, `eval-run`, `choose`, `lens-generators`). Earlier retirements: `get_eval_summary`, `record_outcome`, `handoff`, `mark_pick_wrong`, `get_picks`, `route` (`retired_names.py` has each one's reason).
 
 ### State layout
 

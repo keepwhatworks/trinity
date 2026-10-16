@@ -220,7 +220,10 @@ def handle_update(args: SimpleNamespace) -> int:
     # --deps short-circuits the git-pull path. Pip-dep refresh is
     # decoupled from source updates; the user can refresh deps without
     # touching the source dir at all.
-    if deps_only:
+    # On a uv tool install there is no pip and the dependencies are pinned by the wheel, so
+    # `--deps` (the fix `status` names for a missing or 2.x `mcp`) re-runs the installer like a
+    # plain update. It used to run `python -m pip` first and fail (coherence review 2026-10-15).
+    if deps_only and not _uv_managed():
         return _refresh_pip_deps(json_mode)
 
     # The one-line installer (docs/install.sh) installs Trinity as a uv tool,

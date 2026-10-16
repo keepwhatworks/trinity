@@ -40,11 +40,11 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from .scratch import run_shell
 from .verify_rule import LAB_OF, Kernel, Panel, Triage, triage
 
 DEFAULT_PANEL = ("claude", "codex", "antigravity")
@@ -115,11 +115,34 @@ class Read:
     why: str = ""          # the reviewer's own words: why it voted FAIL
     raw_tail: str = ""
     stderr_tail: str = ""          # an empty stdout is only diagnosable from here
-    tests: dict | None = None      # criterion id -> the test backing a FAIL (doubts.py), when asked
-    evidence: dict | None = None   # criterion id -> the reader's verbatim pre-change quote
 
 
 # --------------------------------------------------------------------------- kernel
+
+def _program_resolves(command: str, env: dict | None) -> bool:
+    """Can the shell find the program this command starts with? A test that itself runs a
+    missing tool also exits 127, and that is a real red (Codex's verify read): only a command
+    whose OWN program is missing is "could not run"."""
+    import shlex
+    import shutil
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        return True
+    words = [w for w in words if not ("=" in w and not w.startswith(("-", "/", ".")) and
+                                      w.split("=", 1)[0].isidentifier())]
+    if not words:
+        return True
+    prog = words[0]
+    if "/" in prog:
+        return os.access(prog, os.X_OK)
+    path = (env or os.environ).get("PATH")
+    return shutil.which(prog, path=path) is not None or prog in _SHELL_BUILTINS
+
+
+_SHELL_BUILTINS = {"cd", "exit", "true", "false", "test", "[", "echo", "export", "source", ".",
+                   "set", "eval", "exec", "command", "type", "printf", "read", "trap", "wait"}
+
 
 def run_kernel(criteria: list[Criterion], cwd: Path, timeout: int = 600,
                env: dict | None = None) -> tuple[Kernel, list[dict]]:
@@ -137,21 +160,27 @@ def run_kernel(criteria: list[Criterion], cwd: Path, timeout: int = 600,
     for c in tests:
         assert c.command, "from_dict guarantees a command on kind=test"
         t0 = time.time()
-        try:
-            r = subprocess.run(c.command, shell=True, cwd=cwd, capture_output=True,
-                               text=True, timeout=timeout, env=env)
-            ok = r.returncode == 0
-            tail = (r.stdout + r.stderr)[-400:]
-        except subprocess.TimeoutExpired:
-            ok, tail = False, f"timeout after {timeout}s"
+        # Its own process group, killed whole on timeout: killing only the shell left a hung
+        # test running in the user's tree after verify had reported (scratch.run_shell).
+        rc, out = run_shell(c.command, cwd, env, timeout)
+        tail = out[-400:] if rc is not None else f"timeout after {timeout}s"
+        if rc in (126, 127) and not _program_resolves(c.command, env):
+            # The shell could not run the command (not found / not executable): a GUI-launched
+            # host's PATH lacks the user's tools. That is no test result, and reading it as red
+            # returned STOP for a change nothing had tested (coherence review 2026-10-15).
+            runs.append({"id": c.id, "command": c.command, "green": None, "could_not_run": True,
+                         "seconds": round(time.time() - t0, 1), "tail": tail})
+            continue
+        ok = rc == 0
         runs.append({"id": c.id, "command": c.command, "green": ok,
                      "seconds": round(time.time() - t0, 1), "tail": tail})
         if c.blocking and not ok:
             green = False
-    # A block with no blocking test has nothing that can vouch for the change: a
+    # A block with no blocking test that ran has nothing that can vouch for the change: a
     # single non-blocking red test used to read "tests: green" above "RED [t]"
     # (coherence review 2026-10-15).
-    if not any(c.blocking for c in tests):
+    ran_ids = {r["id"] for r in runs if not r.get("could_not_run")}
+    if not any(c.blocking and c.id in ran_ids for c in tests):
         return Kernel(ran=True, relevant=False, green=None), runs
     return Kernel(ran=True, relevant=True, green=green), runs
 
@@ -310,13 +339,21 @@ def _gemini_reader(pconf):
     catches the other reader misses), so the swap gives up nothing that instrument can see; it
     cannot see much, since high itself flags 1/18. agy carries its level in the SKU suffix
     (providers.sku_effort), so the level swaps there. TRINITY_VERIFY_GEMINI_LEVEL=high restores high.
+
+    Only a Flash SKU swaps by default: Flash is what was measured. Another Gemini (4 Argon, say)
+    keeps its configured level until it is, because the founder's rule is never to lower a
+    reader's reasoning on speed alone (2026-10-12), and agy may not serve the swapped SKU at
+    all. Setting TRINITY_VERIFY_GEMINI_LEVEL applies the level to any SKU.
     """
     import dataclasses
     from .providers import _SKU_EFFORTS, sku_effort
-    level = (os.environ.get(GEMINI_LEVEL_ENV) or GEMINI_LEVEL).strip().lower()
+    explicit = os.environ.get(GEMINI_LEVEL_ENV)
+    level = (explicit or GEMINI_LEVEL).strip().lower()
     if level not in _SKU_EFFORTS:
         raise ValueError(f"{GEMINI_LEVEL_ENV}={level!r} is not a Gemini level; use one of {list(_SKU_EFFORTS)}")
     model = getattr(pconf, "model", None) or ""
+    if not explicit and "-flash-" not in model.lower():
+        return pconf
     current = sku_effort(model)
     if not current or current == level:
         return pconf                       # a SKU with no level suffix is left as configured
@@ -416,7 +453,7 @@ def _resolve_lab(value: str | None) -> str | None:
 def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
                providers: tuple[str, ...] = DEFAULT_PANEL, exclude_lab: str | None = None,
                config=None, effort: str | None = None,
-               ask_tests: bool = False) -> tuple[Panel, list[Read]]:
+) -> tuple[Panel, list[Read]]:
     judgments = [c for c in criteria if c.kind == "judgment"]
     if not judgments:
         return Panel.not_run(), []
@@ -424,11 +461,7 @@ def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
         from .config import load_config
         config = load_config()
     ids = [c.id for c in judgments]
-    template = _PROMPT
-    if ask_tests:
-        from .doubts import PROMPT_ADDENDUM
-        template = _PROMPT.replace("Reply with ONE line of JSON", PROMPT_ADDENDUM + "\nReply with ONE line of JSON")
-    prompt = template.format(
+    prompt = _PROMPT.format(
         context=context.strip() or "(none given)",
         diff=diff.strip()[:60000],
         criteria="\n".join(f"- {c.id}: {c.statement}" for c in judgments),
@@ -465,14 +498,9 @@ def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
             # who FAIL every advisory question would count as three labs agreeing.
             blocking_j = [c for c in judgments if c.blocking]
             passed = bool(blocking_j) and all(parsed[c.id] for c in blocking_j)
-            tests = evidence = None
-            if ask_tests:
-                from .doubts import parse_tests
-                tests = parse_tests(text, ids)
-                evidence = parse_tests(text, ids, key="evidence")
             return Read(name, lab, getattr(pconf, "model", None), parsed, passed,
                         round(time.time() - t0, 1), tokens, cost, getattr(pconf, "effort", None),
-                        why=why, raw_tail=text[-300:], tests=tests, evidence=evidence)
+                        why=why, raw_tail=text[-300:])
         except Exception as exc:   # a member that errors is a missing vote, never a vote
             return Read(name, lab, None, {}, False, round(time.time() - t0, 1),
                         error=f"{type(exc).__name__}: {exc}"[:200])
@@ -523,8 +551,11 @@ def verify(criteria_dicts: list[dict], diff: str, context: str, cwd: Path,
     criteria = [Criterion.from_dict(d) for d in with_quality(criteria_dicts, quality, run_panel)]
     _reject_duplicate_ids(criteria)
     cwd = Path(cwd)
-    from . import doubts as _doubts
-    backed_on = _doubts.enabled()
+    if env is None:
+        # The user's tests get the user's environment, not the HF offline pins Trinity set
+        # for itself at startup (runtime_env.TRINITY_SET_ENV).
+        from .runtime_env import user_env
+        env = user_env()
     from . import differential as _diff
 
     def tests_and_differential():
@@ -541,7 +572,7 @@ def verify(criteria_dicts: list[dict], diff: str, context: str, cwd: Path,
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=2) as pool:
         f_panel = pool.submit(lambda: read_panel(criteria, diff, context, cwd, providers, exclude_lab,
-                                                 config, effort, ask_tests=backed_on)
+                                                 config, effort)
                               if run_panel else (Panel.not_run(), []))
         f_tests = pool.submit(tests_and_differential)
         panel, reads = f_panel.result()
@@ -555,24 +586,9 @@ def verify(criteria_dicts: list[dict], diff: str, context: str, cwd: Path,
                      if s == "vacuous") if (measured or {}).get("ran") else []
     t: Triage = triage(kernel, panel)
     green_ids = {r["id"] for r in runs if r.get("green")}
-    # Report-only: which hunks no declared test notices. Never changes the triage.
-    untested = None
-    if run_tests and kernel.ran and kernel.green:
-        from . import untested as _untested
-        if _untested.enabled():
-            untested = _untested.untested_hunks(
-                diff, [c.command for c in criteria if c.kind == "test" and c.command], cwd, env=env)
-    # Report-only: values this change now keeps in two places (duplicates.py; hq_125 KILL).
-    dup_rows = None
-    from . import duplicates as _dup
-    if _dup.enabled():
-        dup_rows = _dup.duplicated_values(diff, cwd)
-    # Report-only: run each doubt's test in a sandboxed scratch copy (doubts.py).
-    doubt_rows = None
-    if backed_on and reads:
-        commands = [c.command for c in criteria if c.kind == "test" and c.command]
-        doubt_rows = _doubts.run_doubt_tests([asdict(r) for r in reads], cwd,
-                                             _doubts.python_for(commands), env=env, diff=diff)
+    # Three report-only extras were killed at their own measurements and moved to
+    # internal/experiments on 2026-10-15: untested hunks (hq_123, lift 0.81), duplicated values
+    # (hq_125, below its baselines) and backed doubts (hq_124, fired on 52.5% of clean commits).
     out = {
         "triage": t.outcome, "reason": t.reason, "false_green": t.false_green,
         "kernel": {"ran": kernel.ran, "relevant": kernel.relevant, "green": kernel.green,
@@ -591,9 +607,6 @@ def verify(criteria_dicts: list[dict], diff: str, context: str, cwd: Path,
         "unverified": [c.id for c in criteria
                        if (c.kind == "judgment" and not c.advisory) or c.id in vacuous
                        or (c.kind == "test" and c.id not in green_ids)],
-        "untested": untested,
-        "doubts": doubt_rows,
-        "duplicates": dup_rows,
     }
     record_run(out)
     try:                                   # the one activation event; never fails a verify
@@ -625,7 +638,8 @@ def record_run(out: dict) -> None:
                            for r in panel.get("reads") or [] for cid, ok in (r.get("votes") or {}).items() if not ok)
         row = {
             "at": now_iso(), "triage": out.get("triage"),
-            "tests": len(runs), "tests_red": sum(1 for r in runs if not r.get("green")),
+            "tests": len(runs), "tests_red": sum(1 for r in runs if r.get("green") is False),
+            "tests_not_run": sum(1 for r in runs if r.get("could_not_run")),
             "judgments": sum(1 for c in crit if c.get("kind") == "judgment" and not c.get("advisory")),
             "relevance_basis": kernel.get("relevance_basis"), "kernel_relevant": kernel.get("relevant"),
             "differential": dict(Counter((meas.get("status") or {}).values())) if meas else None,

@@ -43,8 +43,8 @@ It writes a **`trinity-verify`** sub-agent in each tool's native format:
 - `.codex/agents/trinity-verify.toml` (`developer_instructions`, `sandbox_mode = "read-only"`)
 
 The sub-agent is a thin, **read-only** shim. No Edit/Write, so the checker can't
-become the maker. Its whole job is to call `mcp__trinity-local__ask` for a cheap,
-single cross-provider, lens-judged second opinion, and escalate to
+become the maker. Its whole job is to call `mcp__trinity-local__verify` (the change's own
+tests plus a read from labs other than its own), and escalate to
 `mcp__trinity-local__run_council` only on disagreement or high stakes (security, data
 loss, anything irreversible). The native sub-agent stays same-lab. **Trinity does the
 cross-lab fan-out underneath.**
@@ -56,9 +56,10 @@ both, and only a different lab caught the second):
   a biased relay. A curated diff defeats it even across labs. The shim is instructed to
   obtain the primary evidence itself (read the changed files / run `git diff`) and to
   scope its verdict honestly when it can't.
-- **It stays genuinely cross-lab.** `ask`/`run_council` could route the check back to the
-  maker's own lab. The shim passes `available_providers` **excluding its own host lab**, so
-  the second opinion is always from a different lab than the one that wrote the code.
+- **It stays genuinely cross-lab.** `verify` and `run_council` could put the check back in
+  the maker's own lab. The shim passes `exclude_lab` (and `members` excluding its own host
+  lab), so the second opinion is always from a different lab than the one that wrote the
+  code; verify also defaults `exclude_lab` from the host it recognizes.
 
 In a loop, the checker step is then just:
 

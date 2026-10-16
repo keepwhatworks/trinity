@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import importlib
-import os
 from collections.abc import Iterable
 from types import ModuleType
 
@@ -23,11 +22,12 @@ def _pin_hf_offline() -> None:
     online behavior (e.g. CI pulling fresh model weights) can export
     ``HF_HUB_OFFLINE=0`` before invoking ``trinity-local`` and we honor it.
     """
-    os.environ.setdefault("HF_HUB_OFFLINE", "1")
-    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+    from .runtime_env import set_default_env
+    set_default_env("HF_HUB_OFFLINE", "1")
+    set_default_env("TRANSFORMERS_OFFLINE", "1")
     # Suppress the "no telemetry permission" log line that fires even when
     # the rest of HF is fully offline.
-    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+    set_default_env("HF_HUB_DISABLE_TELEMETRY", "1")
 
 
 CORE_COMMAND_MODULES = (
@@ -287,7 +287,14 @@ def main() -> None:
         sys.stderr.write(retired_names.format_migration_hint(retired) + "\n")
         raise SystemExit(0)
 
-    _pin_hf_offline()
+    # The one verb that exists to reach the Hub. The pin is set before any handler runs and HF
+    # reads it at import, so `download-embedder` could never download: the README's bare
+    # command failed for every new user (coherence review 2026-10-15).
+    # The VERB, not any argument: `plan download-embedder` must stay offline (Gemini's verify
+    # read of the first version, which skipped the pin for any argument equal to the name).
+    verb = next((a for a in sys.argv[1:] if not a.startswith("-")), None)
+    if verb != "download-embedder":
+        _pin_hf_offline()
     _run_schema_migrations()
     parser = build_parser()
     parser.add_argument("--mcp", action="store_true", help="Run as an MCP server")

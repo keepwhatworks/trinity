@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import signal
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -78,7 +79,12 @@ def register(subparsers):
         aliases=["council", "council-launch"],
         help="Before you commit to a plan: Claude, Codex and Gemini answer on their own; you get the decision, what would change it, and where they split.",
     )
-    council_launch_parser.add_argument("--task", required=True, help="Task text to compare across providers")
+    # The question goes positionally, as `status` and the README write it; --task stays for
+    # scripts and the launchpad. `status` printed `council "<question>"` while --task was
+    # required, so the one command a fresh user was shown exited 2 (coherence review 2026-10-15).
+    council_launch_parser.add_argument("task_positional", nargs="?", metavar="QUESTION",
+                                       help="The question, plan or design to put to the council")
+    council_launch_parser.add_argument("--task", default=None, help="Same as QUESTION")
     council_launch_parser.add_argument("--goal", default="Find the strongest answer.")
     council_launch_parser.add_argument("--instructions", default="Prefer the strongest answer for the user's current task.")
     council_launch_parser.add_argument("--context-file", default=None)
@@ -175,8 +181,13 @@ def handle_council_start(args):
         _mark_canceled(f"Council stopped ({sig_name}).")
         raise SystemExit(143)
 
-    signal.signal(signal.SIGTERM, _termination_handler)
-    signal.signal(signal.SIGINT, _termination_handler)
+    # Signal handlers can only be installed from the main thread; the MCP server runs the
+    # council on a worker thread (the host cancels it, not a signal).
+    import threading
+    on_main = threading.current_thread() is threading.main_thread()
+    if on_main:
+        signal.signal(signal.SIGTERM, _termination_handler)
+        signal.signal(signal.SIGINT, _termination_handler)
     if status_token:
         init_council_run_state(
             status_token,
@@ -206,20 +217,22 @@ def handle_council_start(args):
             run_state_token=status_token or bundle.bundle_id,
         )
     except Exception as exc:
-        if status_token:
-            write_council_status(
-                status_token,
-                status="failed",
-                task_text=bundle.task_text,
-                bundle_id=bundle.bundle_id,
-                error=str(exc),
-                metadata=status_metadata,
-            )
+        # Under the key the run state uses: an MCP council has no status token, so its failure
+        # was never written and the sidecar kept saying "running" for up to 30 minutes.
+        write_council_status(
+            status_token or bundle.bundle_id,
+            status="failed",
+            task_text=bundle.task_text,
+            bundle_id=bundle.bundle_id,
+            error=str(exc),
+            metadata=status_metadata,
+        )
         refresh_launchpad()
         raise
     finally:
-        signal.signal(signal.SIGTERM, original_sigterm)
-        signal.signal(signal.SIGINT, original_sigint)
+        if on_main:
+            signal.signal(signal.SIGTERM, original_sigterm)
+            signal.signal(signal.SIGINT, original_sigint)
     # (The per-council "review_ready" action record retired 2026-07-02, #332:
     # its completion path died 2026-05-18 with the action-complete CLI, so the
     # store only ever GREW — 18k pending records, 2.3s status scans, zero
@@ -237,9 +250,11 @@ def handle_council_start(args):
     refresh_launchpad()
 
     opened = open_path(result.review_path) if args.open_browser else False
-    # Interactive terminal users get offered the review page. Gated on a TTY
-    # so the launchpad's Native-Messaging dispatcher (non-TTY, consumes the
-    # JSON below) is never blocked on input.
+    # Interactive terminal users get the verdict here, then are offered the review page. Gated
+    # on a TTY so the launchpad's Native-Messaging dispatcher (non-TTY, consumes the JSON
+    # below) is never blocked on input and its JSON stays clean.
+    if sys.stdout.isatty():
+        print(format_verdict(result.outcome))
     if not opened:
         import sys as _sys
         if _sys.stdin.isatty() and _sys.stdout.isatty():
@@ -256,10 +271,38 @@ def handle_council_start(args):
         "opened": opened,
         "council_run_id": result.outcome.council_run_id,
     }
-    print(json.dumps(payload, indent=2))
+    if not getattr(args, "quiet", False):
+        print(json.dumps(payload, indent=2))
+    return payload
+
+
+def format_verdict(outcome) -> str:
+    """The council's answer as a terminal reader wants it: the decision, what would change
+    it, and where the labs split. `plan`'s help promised exactly this and printed only file
+    paths (coherence review 2026-10-15)."""
+    label = getattr(outcome, "routing_label", None)
+    get = (lambda k, d=None: getattr(label, k, d) if label else d)
+    lines = ["", "Decision: " + (get("decision") or "(the chairman gave none; see the review page)")]
+    if get("flip_condition"):
+        lines.append("What would change it: " + get("flip_condition"))
+    splits = list(get("disagreed_claims") or [])
+    if splits:
+        lines.append("Where they split:")
+        for d in splits[:5]:
+            lines.append("  - " + (d.get("claim", "") if isinstance(d, dict) else str(d)))
+    lost = [f for f in ((getattr(outcome, "metadata", None) or {}).get("member_failures") or [])
+            if isinstance(f, dict)]
+    if lost:
+        lines.append("Lost: " + ", ".join(f"{f.get('provider')} ({f.get('reason')})" for f in lost))
+    return "\n".join(lines)
 
 
 def handle_council_launch(args):
+    args.task = getattr(args, "task", None) or getattr(args, "task_positional", None)
+    if not args.task:
+        print('trinity-local plan: give the question, e.g. trinity-local plan "Should we ship '
+              'the cache now or after the migration?"', file=sys.stderr)
+        return 2
     status_token = getattr(args, "status_token", None)
     metadata = {
         "launch_source": "launchpad",
@@ -290,8 +333,9 @@ def handle_council_launch(args):
         cwd=args.cwd,
         status_token=status_token,
         open_browser=args.open_browser,
+        quiet=getattr(args, "quiet", False),
     )
-    handle_council_start(launch_args)
+    return handle_council_start(launch_args)
 
 
 def handle_council_stop(args):

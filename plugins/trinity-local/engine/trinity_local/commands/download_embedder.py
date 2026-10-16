@@ -81,7 +81,7 @@ def handle_download_embedder(args: SimpleNamespace) -> int:
         if success:
             print(f"✓ {message}")
             print(
-                "Re-run your previous command (lens-build / dream / vocabulary). "
+                "Re-run your previous command (for example `trinity-local lens`). "
                 "The model lives in ~/.cache/huggingface/hub/ and never "
                 "re-downloads.",
                 file=sys.stderr,
