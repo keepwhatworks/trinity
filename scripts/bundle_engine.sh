@@ -17,6 +17,12 @@ DST="$REPO/plugins/trinity-local/engine/trinity_local"
 [ -d "$SRC" ] || { echo "src/trinity_local not found at $SRC" >&2; exit 1; }
 command -v rsync >/dev/null 2>&1 || { echo "rsync required" >&2; exit 1; }
 
+# The page hook ships inside the package too: `trinity-local extension repair` reads it on
+# installs, which carry no browser-extension/ directory. browser-extension/page-hook.js is the
+# source; this copy is generated, like the engine below.
+mkdir -p "$SRC/data/extension"
+cp "$REPO/browser-extension/page-hook.js" "$SRC/data/extension/page-hook.js"
+
 mkdir -p "$(dirname "$DST")"
 # --delete so a removed source file disappears from the bundle. Exclude build cruft
 # and the test-only / dev-only bits that have no business shipping to a user.

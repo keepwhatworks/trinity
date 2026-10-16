@@ -89,6 +89,10 @@ class Criterion:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Criterion":
+        # A missing id escaped as a bare KeyError traceback while every other malformed field was
+        # refused with a message (coherence review 2026-10-16).
+        if not isinstance(d, dict) or not str(d.get("id") or "").strip():
+            raise ValueError(f"each criterion needs an 'id' (and a kind of test|judgment); got {d!r:.120}")
         kind = str(d.get("kind", "")).strip()
         if kind not in ("test", "judgment"):
             raise ValueError(f"criterion {d.get('id')!r}: kind must be test|judgment, got {kind!r}")

@@ -295,6 +295,14 @@ def main() -> None:
     _run_schema_migrations()
     parser = build_parser()
     parser.add_argument("--mcp", action="store_true", help="Run as an MCP server")
+    # A mistyped command made argparse print every registered verb, the ~58 compatibility and
+    # internal ones `--help` hides included (coherence review 2026-10-16). Say it briefly.
+    first = sys.argv[1] if len(sys.argv) > 1 else ""
+    sub = next((a for a in getattr(parser, "_actions", ()) if isinstance(a, argparse._SubParsersAction)), None)
+    if sub is not None and first and not first.startswith("-") and first not in sub.choices:
+        sys.stderr.write(f"trinity-local: unknown command {first!r}. "
+                         "Run `trinity-local --help` for the commands.\n")
+        raise SystemExit(2)
     args = parser.parse_args()
 
     if args.mcp:

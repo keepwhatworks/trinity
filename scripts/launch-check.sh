@@ -41,6 +41,11 @@ for arg in "$@"; do
     esac
 done
 
+# Test the tree this script lives in. The venv's editable install points at whichever checkout
+# installed it, so from a worktree every gate imported the primary checkout's code: the 1.7.406
+# release check compared one tree's version with the other's (coherence review 2026-10-16).
+export PYTHONPATH="$REPO_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
+
 PYTEST="${PYTEST:-.venv/bin/python -m pytest}"
 
 failed_steps=()

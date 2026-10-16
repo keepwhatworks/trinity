@@ -1,0 +1,73 @@
+{
+  "source": "artificialanalysis.ai",
+  "fetched_at": "2026-05-04",
+  "attribution": "Data sourced from artificialanalysis.ai. Required attribution: https://artificialanalysis.ai",
+  "providers": {
+    "claude": {
+      "name": "Claude Opus 4.7 (Adaptive Reasoning, Max Effort)",
+      "slug": "claude-opus-4-7",
+      "release_date": "2026-04-16",
+      "creator": "Anthropic",
+      "intelligence_index": 57.3,
+      "coding_index": 52.5,
+      "agentic_index": 71.3,
+      "cost_per_index_usd": 5335.23
+    },
+    "antigravity": {
+      "name": "Gemini 3.1 Pro Preview",
+      "slug": "gemini-3-1-pro-preview",
+      "release_date": "2026-02-19",
+      "creator": "Google",
+      "family": "Antigravity",
+      "intelligence_index": 57.2,
+      "coding_index": 55.5,
+      "agentic_index": 59.1,
+      "cost_per_index_usd": 892.28
+    },
+    "codex": {
+      "name": "GPT-5.5 (xhigh)",
+      "slug": "gpt-5-5",
+      "release_date": "2026-04-23",
+      "creator": "OpenAI",
+      "intelligence_index": 60.2,
+      "coding_index": 59.1,
+      "agentic_index": 74.1,
+      "cost_per_index_usd": 3357
+    }
+  },
+  "categories": {
+    "intelligence": {
+      "benchmark": "Artificial Analysis Intelligence Index",
+      "unit": "/100",
+      "source": "artificialanalysis.ai",
+      "fetched_at": "2026-05-04",
+      "models": {
+        "claude": 57.3,
+        "antigravity": 57.2,
+        "codex": 60.2
+      }
+    },
+    "coding": {
+      "benchmark": "Artificial Analysis Coding Index",
+      "unit": "/100",
+      "source": "artificialanalysis.ai",
+      "fetched_at": "2026-05-04",
+      "models": {
+        "claude": 52.5,
+        "antigravity": 55.5,
+        "codex": 59.1
+      }
+    },
+    "agentic": {
+      "benchmark": "Artificial Analysis Agentic Index",
+      "unit": "/100",
+      "source": "artificialanalysis.ai",
+      "fetched_at": "2026-05-04",
+      "models": {
+        "claude": 71.3,
+        "antigravity": 59.1,
+        "codex": 74.1
+      }
+    }
+  }
+}

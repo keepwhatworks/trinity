@@ -45,6 +45,11 @@ class TestRefusals:
         assert cmd.handle_verify(_ns(tmp_path, [{"id": "t", "kind": "vibe", "statement": "x"}])) == 1
         assert "test|judgment" in capsys.readouterr().err
 
+    @pytest.mark.parametrize("item", [{"kind": "test", "command": "true"}, "not an object"])
+    def test_a_criterion_without_an_id_is_refused_not_a_traceback(self, tmp_path, capsys, item):
+        assert cmd.handle_verify(_ns(tmp_path, [item])) == 1
+        assert "needs an 'id'" in capsys.readouterr().err
+
     def test_acceptance_object_form_accepted(self, tmp_path, capsys):
         rc = cmd.handle_verify(_ns(tmp_path, {"acceptance": [
             {"id": "t", "kind": "test", "statement": "ok", "command": "true"}]}))

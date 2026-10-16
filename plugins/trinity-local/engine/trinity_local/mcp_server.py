@@ -32,8 +32,11 @@ remain importable for the launchpad but are not exposed via MCP.
 from __future__ import annotations
 
 import json
+import re
 import sys
 import threading
+import time
+from pathlib import Path
 from typing import Any
 
 from mcp.server import Server
@@ -559,7 +562,9 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[Any]:
     try:
         result = await _dispatch_tool(name, arguments)
     except Exception as exc:
-        result = [ErrorData(code=500, message=f"{type(exc).__name__}: {exc}")]
+        stale = _stale_server_message(exc)
+        result = [ErrorData(code=503 if stale else 500,
+                            message=stale or f"{type(exc).__name__}: {exc}")]
     finally:
         clear_active_session()
         clear_request_context()
@@ -567,6 +572,59 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[Any]:
     if errors:
         raise ToolError(errors[0])
     return result
+
+
+_PKG_DIR = Path(__file__).resolve().parent
+_STARTED_AT = time.time()
+# The Trinity modules on disk when this server started, so a later failure can tell "an update
+# deleted it" from "it never existed" (a bug reconnecting would not fix).
+_STARTUP_MODULES = frozenset(
+    ".".join(("trinity_local",) + f.relative_to(_PKG_DIR).with_suffix("").parts).removesuffix(".__init__")
+    for f in _PKG_DIR.rglob("*.py"))
+_TRINITY_MODULE = re.compile(r"trinity_local(\.\w+)+")
+
+
+def _changed_since_start(module: str) -> bool:
+    """True when `module` was deleted or rewritten after this server started."""
+    base = _PKG_DIR.joinpath(*module.split(".")[1:])
+    for f in (base.with_suffix(".py"), base / "__init__.py"):
+        if f.is_file():
+            return f.stat().st_mtime > _STARTED_AT
+    return module in _STARTUP_MODULES
+
+
+def _stale_server_message(exc: BaseException) -> str | None:
+    """Say "reconnect" when this server's code needs a Trinity module an update changed under it.
+
+    A long-lived server keeps the code it started with; when an update deletes a module that
+    code imports lazily, every call that reaches the import fails. Servers started before
+    2026-10-15 returned a bare 500 (a KeyError from the editable finder, or ModuleNotFoundError
+    from a wheel) on every run_council and verify after dispatch_health.py was deleted (reported
+    by a peer session, 2026-10-16). The message needs evidence, not just an import error: the
+    module was deleted or rewritten since the server started, or the installed version moved
+    (Codex's verify read: a same-version defect is not fixed by reconnecting). Anything else
+    returns None and keeps the generic error.
+    """
+    if isinstance(exc, ImportError):
+        missing = exc.name or ""
+    elif isinstance(exc, KeyError) and exc.args and isinstance(exc.args[0], str):
+        missing = exc.args[0]
+    else:
+        return None
+    if not _TRINITY_MODULE.fullmatch(missing):
+        return None
+    from .telemetry import _resolve_app_version
+    try:
+        installed = _resolve_app_version()
+    except Exception:  # noqa: BLE001 — the message must not fail on top of the failure
+        installed = None
+    moved = bool(installed) and installed != APP_VERSION
+    if not (moved or _changed_since_start(missing)):
+        return None
+    ver = f" It started on {APP_VERSION}; {installed} is installed now." if moved else ""
+    return ("Trinity was updated after this MCP server started, and the code it still runs needs "
+            f"{missing}, which the update changed.{ver} Reconnect it: in Claude Code run /mcp "
+            "and reconnect trinity-local; in other agents, restart them.")
 
 
 async def _dispatch_tool(name: str, arguments: dict) -> list[Any]:
@@ -1871,7 +1929,6 @@ def _maybe_offer_open_council(council_run_id: str, review_path: str | None) -> d
     unset returns a text link. Each council is offered at most once.
     """
     import os
-    import re
 
     if os.environ.get("TRINITY_OPEN_COUNCIL_PROMPT") == "0":
         return None

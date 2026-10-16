@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trinity-local"
-version = "1.7.405"
+version = "1.7.406"
 description = "Cross-provider memory layer for Claude, Codex, and Gemini — local-first councils and personal benchmarks. Rides on your existing subscriptions."
 readme = "README.md"
 license = "MIT"
@@ -52,6 +52,8 @@ trinity_local = [
     "data/fonts/*.txt",        # the TTF OFL licenses
     "data/config.example.json",
     "data/prompts/*.md",        # lens-prompt / eval-prompt bodies (were under docs/, never shipped)
+    "data/reference_evals.json", # launchpad benchmark chart (was at the repo root, never shipped)
+    "data/extension/page-hook.js", # extension repair's council context (copy of browser-extension/)
 ]
 
 [project.optional-dependencies]

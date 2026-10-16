@@ -1,5 +1,5 @@
 """Convert an artificialanalysis.ai models export (xlsx) into Trinity's
-`data/reference_evals.json`. Run after downloading a fresh export so the
+`src/trinity_local/data/reference_evals.json` (package data, so installs carry it). Run after downloading a fresh export so the
 launchpad's reference evals table tracks the current model lineup.
 
 Usage:
@@ -88,7 +88,7 @@ def main(argv: list[str]) -> int:
         }
 
     repo_root = Path(__file__).resolve().parents[1]
-    dest = repo_root / "data" / "reference_evals.json"
+    dest = repo_root / "src" / "trinity_local" / "data" / "reference_evals.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(out, indent=2))
 

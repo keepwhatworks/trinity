@@ -50,7 +50,11 @@ _CHAT_DOMAINS = {
 # Path to the canonical page-hook source. Repair command reads this
 # verbatim into the council prompt so members see the actual current
 # state, not a paraphrase.
-_PAGE_HOOK_PATH = Path(__file__).resolve().parents[3] / "browser-extension" / "page-hook.js"
+# Package data, kept identical to browser-extension/page-hook.js by tests/test_packaged_data.py.
+# It read the repo's browser-extension/ folder, which no install has, so "Repair extension"
+# crashed with FileNotFoundError on every installed copy that had something to repair
+# (coherence review 2026-10-16).
+_PAGE_HOOK_PATH = Path(__file__).resolve().parents[1] / "data" / "extension" / "page-hook.js"
 
 
 def register(subparsers):

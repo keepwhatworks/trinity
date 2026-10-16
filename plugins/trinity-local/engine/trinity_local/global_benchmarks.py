@@ -1,6 +1,6 @@
 """Reference benchmark scores mapped to Trinity capability categories.
 
-Loads from `data/reference_evals.json` (sourced from artificialanalysis.ai)
+Loads from the package's `data/reference_evals.json` (sourced from artificialanalysis.ai)
 when present. Falls back to a small hardcoded baseline so the launchpad
 always has something to render.
 """
@@ -10,12 +10,11 @@ import json
 from pathlib import Path
 
 
-def _project_root() -> Path:
-    return Path(__file__).resolve().parents[2]
-
-
 def _reference_evals_path() -> Path:
-    return _project_root() / "data" / "reference_evals.json"
+    # Package data: it lived at the repo root, which no wheel carries, so every install showed
+    # the hardcoded fallback below (older categories) while the repo showed the real file
+    # (coherence review 2026-10-16).
+    return Path(__file__).resolve().parent / "data" / "reference_evals.json"
 
 
 def _hardcoded_fallback() -> dict:

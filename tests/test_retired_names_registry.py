@@ -197,6 +197,11 @@ class TestRegistryLookups:
         assert "2026-05-17" in msg
         assert "install-extension" in msg
 
+    def test_a_prose_replacement_is_not_code_quoted_and_no_period_doubles(self):
+        msg = format_migration_hint("debug")
+        assert "use the verbs themselves" in msg and "`the verbs" not in msg, msg
+        assert "..)" not in msg and ".)." not in msg, msg
+
     def test_format_migration_hint_for_unknown_name(self):
         msg = format_migration_hint("definitely-not-retired")
         assert "not a known retired" in msg

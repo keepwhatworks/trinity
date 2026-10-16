@@ -109,6 +109,17 @@ class Smoke:
         r, ok = self.run([str(self.venv / "bin" / "python"), "-c", code])
         self.check(f"parses: {command}", ok, "" if ok else (r.stderr or r.stdout)[-300:])
 
+    def packaged_data(self) -> None:
+        """Files the installed code reads must be in the wheel: a path into the repo (docs/,
+        data/, browser-extension/) resolves to nothing on an install."""
+        code = ("from trinity_local.commands import extension_repair as e\n"
+                "from trinity_local import global_benchmarks as g\n"
+                "assert e._PAGE_HOOK_PATH.is_file(), e._PAGE_HOOK_PATH\n"
+                "assert g._reference_evals_path().is_file(), g._reference_evals_path()\n")
+        r, ok = self.run([str(self.venv / "bin" / "python"), "-c", code])
+        self.check("the data files installed code reads are in the wheel", ok,
+                   "" if ok else (r.stderr or r.stdout)[-300:])
+
     def mcp(self) -> None:
         proc = subprocess.Popen([str(self.venv / "bin" / "trinity-local"), "--mcp"], cwd=self.home,
                                 env=self.env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -182,6 +193,7 @@ class Smoke:
             verb = shlex.split(command)[1]
             if verb in RUNNABLE_FIXES and "<" not in command:
                 self.cli(f"runs: {command}", shlex.split(command)[1:])
+        self.packaged_data()
         self.mcp()
 
 

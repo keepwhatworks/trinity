@@ -1402,8 +1402,12 @@ def format_migration_hint(name: str) -> str:
         return f"`{name}` is not a known retired CLI."
     msg = f"`{record.name}` was retired {record.retired_at}"
     if record.replacement:
-        msg += f" — use `{record.replacement}` instead"
-    msg += f". ({record.reason}.)"
+        # A bare name is code-quoted; prose (spaces, or its own backticks) is not, which printed
+        # "use `the verbs themselves (`vocabulary`, ...)` instead" (coherence review 2026-10-16).
+        rep = record.replacement
+        rep = rep if (" " in rep or "`" in rep) else f"`{rep}`"
+        msg += f" — use {rep} instead"
+    msg += f". ({record.reason.rstrip('.')}.)"
     if record.artifact_persists:
         msg += " Existing installs of the retired artifact may still work."
     return msg
