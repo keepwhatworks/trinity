@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import secrets
@@ -66,9 +65,10 @@ APP_VERSION = _resolve_app_version()
 # is that only categorical labels leave the machine — never prompt text,
 # lens tensions, or user_substitute strings. These frozensets ARE that
 # contract, enforced structurally (build_outbound_event_payload allowlists
-# against DISCLOSED_EVENT_PARAMS; tests assert the elo snapshot's keys stay
-# within the ELO sets). Growing an outbound field means adding it here
-# first — and that addition is reviewable in one place.
+# against DISCLOSED_EVENT_PARAMS). Growing an outbound field means adding it
+# here first — and that addition is reviewable in one place. (The launchpad's
+# own view and win-rate events, and their key sets, went with its
+# self-configured collector on 2026-10-15: the page sends nothing.)
 
 # The only categorical params any outbound GA4 event may carry. The one
 # live emitter (council_runner → "council_complete") passes exactly these.
@@ -83,37 +83,6 @@ CHANNELS = frozenset({"hn", "x", "reddit", "linkedin", "github", "newsletter", "
 ACTIVATION_SURFACES = frozenset({"council", "verify"})
 _WIRE_WINNERS = frozenset({"claude", "codex", "antigravity", "unknown"})
 _WIRE_MODES = frozenset({"parallel", "synthesis_only", "host_synthesis"})
-
-# Top-level keys the elo snapshot (provider win-rates) may expose to the
-# wire / the browser. All categorical or numeric — no free text.
-DISCLOSED_ELO_KEYS = frozenset(
-    {"version", "window", "council_count", "providers", "matchups"}
-)
-
-# Per-provider stat keys inside snapshot["providers"][slug]. Numeric only.
-DISCLOSED_ELO_PROVIDER_KEYS = frozenset(
-    {"elo", "wins", "total_games", "win_rate", "consistency"}
-)
-
-# Keys the browser-side `launchpad_view` event may carry. The #231(c) browser
-# path sends this verbatim — it never passes through the GA4
-# build_outbound_event_payload chokepoint — so build_launchpad_view_event
-# filters to EXACTLY these so the wire payload is provably-no-PII too. All
-# categorical / numeric / id: council_count is BUCKETED (never raw) and there
-# is deliberately no field carrying council titles, prompts, or lens text.
-DISCLOSED_VIEW_EVENT_KEYS = frozenset(
-    {
-        "event",
-        "version",
-        "client_id",
-        "app_version",
-        "timestamp",
-        "surface",
-        "council_count_bucket",
-        "provider_count",
-    }
-)
-
 
 def build_outbound_event_payload(
     event_name: str, params: dict[str, Any]
@@ -161,14 +130,8 @@ class TelemetrySettings:
     # Disable with `trinity-local telemetry-disable`.
     sharing_enabled: bool = True
     share_usage_events: bool = True
-    share_elo_summaries: bool = True
     share_install_id: str = ""
-    endpoint: str | None = None
     consented_at: str | None = None
-    last_view_upload_at: str | None = None
-    last_elo_upload_at: str | None = None
-    last_elo_hash: str | None = None
-    last_upload_status: str | None = None
     # auto_chain_enabled / max_chain_rounds / polish_auto_iterate retired
     # 2026-05-17 — auto-iterate is now a per-council click via the
     # council-page button, not a global setting.
@@ -204,24 +167,10 @@ def telemetry_settings_path() -> Path:
 GA4_ENDPOINT = "https://www.google-analytics.com/mp/collect"
 
 
-def _default_endpoint() -> str | None:
-    """Resolve the telemetry endpoint.
-
-    Lookup order:
-      1. `TRINITY_TELEMETRY_ENDPOINT` env (escape hatch for custom collectors)
-      2. The GA4 Measurement Protocol endpoint (the default)
-
-    The GA4 path requires `TRINITY_GA4_MEASUREMENT_ID` + `TRINITY_GA4_API_SECRET`
-    in env. When either is missing, `_send_event_to_ga4` no-ops silently —
-    we never block on telemetry, and we never error out a real CLI flow.
-    """
-    return os.environ.get("TRINITY_TELEMETRY_ENDPOINT") or GA4_ENDPOINT
-
-
 def load_telemetry_settings() -> TelemetrySettings:
     path = telemetry_settings_path()
     if not path.exists():
-        return TelemetrySettings(endpoint=_default_endpoint())
+        return TelemetrySettings()
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -236,14 +185,10 @@ def load_telemetry_settings() -> TelemetrySettings:
     # default-ON; only an unreadable existing file fails closed.
     if not isinstance(raw, dict):
         return TelemetrySettings(
-            endpoint=_default_endpoint(), sharing_enabled=False,
-            share_usage_events=False, share_elo_summaries=False,
+            sharing_enabled=False, share_usage_events=False,
         )
     known_fields = {f.name for f in fields(TelemetrySettings)}
-    settings = TelemetrySettings(**{k: v for k, v in raw.items() if k in known_fields})
-    if not settings.endpoint:
-        settings.endpoint = _default_endpoint()
-    return settings
+    return TelemetrySettings(**{k: v for k, v in raw.items() if k in known_fields})
 
 
 def save_telemetry_settings(settings: TelemetrySettings) -> Path:
@@ -303,16 +248,12 @@ def ensure_share_install_id(settings: TelemetrySettings) -> TelemetrySettings:
 
 def enable_telemetry(
     *,
-    endpoint: str | None = None,
     share_usage_events: bool = True,
-    share_elo_summaries: bool = True,
 ) -> TelemetrySettings:
     settings = load_telemetry_settings()
     ensure_share_install_id(settings)
     settings.sharing_enabled = True
     settings.share_usage_events = share_usage_events
-    settings.share_elo_summaries = share_elo_summaries
-    settings.endpoint = endpoint or settings.endpoint or _default_endpoint()
     settings.consented_at = settings.consented_at or now_iso()
     save_telemetry_settings(settings)
     return settings
@@ -328,14 +269,12 @@ def disable_telemetry() -> TelemetrySettings:
 def reset_share_install_id() -> TelemetrySettings:
     settings = load_telemetry_settings()
     settings.share_install_id = f"share_{secrets.token_hex(8)}"
-    settings.last_elo_hash = None
-    settings.last_view_upload_at = None
-    settings.last_elo_upload_at = None
     save_telemetry_settings(settings)
     return settings
 
 
 def _iter_council_payloads() -> list[dict[str, Any]]:
+    from .council_schema import is_hindsight_synthesis
     records: list[dict[str, Any]] = []
     for path in council_outcomes_dir().glob("*.json"):
         try:
@@ -345,7 +284,10 @@ def _iter_council_payloads() -> list[dict[str, Any]]:
         # Guard the SHAPE at the canonical reader so every consumer
         # (build_elo_snapshot, _is_current_era, …) is safe — a corrupted-but-
         # parseable outcome (a list/str) would otherwise crash `.get` downstream.
-        if isinstance(payload, dict):
+        # Legacy `lens --deep` virtual councils were 2/3 of one real install's files; they are
+        # hindsight synthesis, not councils the user ran, so they leave the win-rate snapshot
+        # and the council-count bucket that anonymous telemetry reports.
+        if isinstance(payload, dict) and not is_hindsight_synthesis(payload.get("metadata")):
             records.append(payload)
     return records
 
@@ -486,123 +428,12 @@ def _compute_elo_snapshot(window: str = "all_time") -> dict[str, Any]:
     }
 
 
-def elo_snapshot_hash(snapshot: dict[str, Any]) -> str:
-    payload = json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
-    return "sha1:" + hashlib.sha1(payload.encode("utf-8")).hexdigest()
-
-
-def build_launchpad_view_event(
-    *,
-    settings: TelemetrySettings | None = None,
-    app_version: str = APP_VERSION,
-) -> dict[str, Any]:
-    settings = settings or load_telemetry_settings()
-    if settings.sharing_enabled:
-        ensure_share_install_id(settings)
-    raw = {
-        "event": "launchpad_view",
-        "version": TELEMETRY_VERSION,
-        # The rotating id, never the local one (the privacy page promises the local id never
-        # leaves; this path used to send it raw, 2026-10-12).
-        "client_id": outbound_client_id(settings.share_install_id) if settings.share_install_id else "",
-        "app_version": app_version,
-        "timestamp": now_iso(),
-        "surface": "launchpad",
-        "council_count_bucket": _bucket_council_count(build_elo_snapshot()["council_count"]),
-        "provider_count": len(build_elo_snapshot()["providers"]),
-    }
-    # Chokepoint mirror of build_outbound_event_payload: the browser transmits
-    # this dict verbatim (it bypasses the GA4 guard), so drop anything outside
-    # the disclosed categorical allowlist. A future field addition that isn't
-    # also declared in DISCLOSED_VIEW_EVENT_KEYS can't silently leak onto the
-    # wire — it just won't be sent.
-    return {k: v for k, v in raw.items() if k in DISCLOSED_VIEW_EVENT_KEYS}
-
-
-def build_elo_snapshot_event(
-    *,
-    settings: TelemetrySettings | None = None,
-    app_version: str = APP_VERSION,
-) -> dict[str, Any]:
-    settings = settings or load_telemetry_settings()
-    if settings.sharing_enabled:
-        ensure_share_install_id(settings)
-    snapshot = build_elo_snapshot()
-    # Structural no-PII parity with build_outbound_event_payload /
-    # build_launchpad_view_event (#231): filter the snapshot to the disclosed
-    # allowlist HERE at the SINK, not just trust build_elo_snapshot()'s shape + a
-    # source test. This was the one wire path that spread `**snapshot` verbatim —
-    # so a field added upstream (or a per-provider stat) that isn't disclosed in
-    # DISCLOSED_ELO_KEYS / DISCLOSED_ELO_PROVIDER_KEYS could leak onto the wire even
-    # though the contract (line 113) promises "a coding mistake upstream can't leak."
-    # Behavior is unchanged for the current all-disclosed snapshot.
-    safe = {k: snapshot[k] for k in DISCLOSED_ELO_KEYS if k in snapshot}
-    provs = safe.get("providers")
-    if isinstance(provs, dict):
-        safe["providers"] = {
-            slug: ({pk: pv for pk, pv in stats.items() if pk in DISCLOSED_ELO_PROVIDER_KEYS}
-                   if isinstance(stats, dict) else stats)
-            for slug, stats in provs.items()
-        }
-    return {
-        "event": "elo_snapshot",
-        "version": TELEMETRY_VERSION,
-        "client_id": outbound_client_id(settings.share_install_id) if settings.share_install_id else "",
-        "app_version": app_version,
-        "timestamp": now_iso(),
-        **safe,
-    }
-
-
-def _bucket_council_count(value: int) -> str:
-    if value <= 0:
-        return "0"
-    if value < 10:
-        return "1-9"
-    if value < 50:
-        return "10-49"
-    return "50+"
-
-
-def _browser_send_enabled() -> bool:
-    """Whether the browser launchpad is allowed to POST telemetry (#231c).
-
-    Gated on the SAME credential guarantee as the Python path: a custom
-    collector endpoint, or GA4 measurement creds. Absent both, the Python
-    `_send_event_to_ga4` no-ops — so the browser MUST no-op too, or it
-    becomes a bypass that sends events the CLI suppressed. We enforce that
-    by withholding `endpoint` from pageData (see `launchpad_telemetry_state`),
-    which short-circuits the browser's `maybeSendTelemetry()`.
-    """
-    if os.environ.get("TRINITY_TELEMETRY_ENDPOINT", "").strip():
-        return True
-    return _ga4_credentials() is not None
-
-
-def _browser_endpoint() -> str | None:
-    """The endpoint the browser POSTs to: a custom collector the user configured, or None.
-
-    Never the GA4 Measurement Protocol (2026-10-12, found shipping the key in release wheels): the
-    page POSTs its events verbatim, which is not the envelope GA4 records (client_id + events with
-    flat params), and the URL would put the api_secret into a local page. GA4 is reached only from
-    Python (record_event, record_activation), which sends the rotating client id in the right shape.
-    """
-    custom = os.environ.get("TRINITY_TELEMETRY_ENDPOINT", "").strip()
-    return custom or None
-
-
 def telemetry_destination() -> str:
     """Where this install's events go, for display: Google Analytics (from the CLI and MCP
-    server), the custom collector (the launchpad's own events only), both, or "" when nothing
-    can be sent. It returned the collector ALONE when one was set, hiding that CLI and MCP
-    events still go to Google: a collector redirects the launchpad, never the Python sends."""
-    parts = []
+    server), or "" when this build carries no analytics key and nothing can be sent."""
     if _ga4_credentials() is not None:
-        parts.append("Google Analytics (sent by the CLI and MCP server)")
-    custom = _browser_endpoint()
-    if custom:
-        parts.append(f"{custom} (the launchpad's own events)")
-    return "; ".join(parts)
+        return "Google Analytics (sent by the CLI and MCP server)"
+    return ""
 
 
 def launchpad_telemetry_state() -> dict[str, Any]:
@@ -610,17 +441,7 @@ def launchpad_telemetry_state() -> dict[str, Any]:
     if settings.sharing_enabled:
         ensure_share_install_id(settings)
     snapshot = build_elo_snapshot()
-    # Close the browser-bypass (#231c): only expose a usable `endpoint` when
-    # sends are credential-enabled. Without it, the browser's
-    # maybeSendTelemetry() returns early — it can't transmit what the Python
-    # path would suppress. The default GA4 collect URL (no creds) is NOT a
-    # usable endpoint and must never reach pageData.
     settings_dict = settings.to_dict()
-    browser_endpoint = _browser_endpoint()
-    if browser_endpoint:
-        settings_dict["endpoint"] = browser_endpoint
-    else:
-        settings_dict.pop("endpoint", None)
     # For display only (the Endpoint row and the "sharing is live" note): the page must not say
     # nothing leaves the machine while the CLI and MCP server send to GA4.
     destination = telemetry_destination()
@@ -629,9 +450,6 @@ def launchpad_telemetry_state() -> dict[str, Any]:
     return {
         "settings": settings_dict,
         "snapshot": snapshot,
-        "snapshot_hash": elo_snapshot_hash(snapshot),
-        "view_event": build_launchpad_view_event(settings=settings),
-        "elo_event": build_elo_snapshot_event(settings=settings),
     }
 
 

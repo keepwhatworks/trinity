@@ -94,14 +94,6 @@ def council_outcomes_dir() -> Path:
     return path
 
 
-def council_runs_path() -> Path:
-    return state_dir() / "council_runs.jsonl"
-
-
-def launch_events_path() -> Path:
-    return state_dir() / "launch_events.jsonl"
-
-
 def review_pages_dir() -> Path:
     path = state_dir() / "review_pages"
     path.mkdir(parents=True, exist_ok=True)
@@ -211,21 +203,9 @@ def tasks_dir() -> Path:
     return path
 
 
-def task_sync_dir() -> Path:
-    path = state_dir() / "task_sync"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
 # (actions_dir retired 2026-07-02 with the action store, #332 — see
 # retired_names.py. The ~/.trinity/actions/ directory is no longer
 # created or read; stale installs may still carry one.)
-
-
-def reviews_dir() -> Path:
-    path = state_dir() / "reviews"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
 
 
 def telemetry_settings_dir() -> Path:

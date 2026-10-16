@@ -109,6 +109,8 @@ def _load_recent_councils(limit: int = 10) -> list[dict[str, str | None]]:
     timestamp, and the link points at `live_council.html?thread_id=<root>`
     so opening the card reveals every round on one scrollable page.
     """
+    from .council_schema import is_hindsight_synthesis
+
     threads: dict[str, dict] = {}
     for path in council_outcomes_dir().glob("council_*.json"):
         try:
@@ -129,6 +131,8 @@ def _load_recent_councils(limit: int = 10) -> list[dict[str, str | None]]:
         metadata = raw.get("metadata")
         if not isinstance(metadata, dict):
             metadata = {}
+        if is_hindsight_synthesis(metadata):
+            continue      # a legacy `lens --deep` virtual council: the user never ran it
         bundle_id = raw.get("bundle_id")
         # bundle_id is the canonical chain root identifier — it's allocated
         # at launch time and stays stable across all rounds in a chain. The
@@ -862,14 +866,10 @@ def _load_personal_routing_table() -> dict | None:
     Returns None when no councils have been rated yet so the launchpad shows
     the empty-state CTA. The single source of truth is the council_outcomes
     directory; aggregation is cached in-process by directory mtime.
-
-    Augments the table with a ``cold_start`` block per task_type so the
-    launchpad can render "X% personalized" badges that match the chairman
-    picker's actual sigmoid weighting (task #40).
+    (Its "X% personalized" block went 2026-10-15: it reported a blend the chairman
+    picker had stopped running, from a join that never fired, 0/716.)
     """
     from .personal_routing import compute_personal_routing_table
-    from .ranker.chairman_picker import sigmoid_alpha
-
     try:
         table = compute_personal_routing_table()
     except Exception:
@@ -878,23 +878,11 @@ def _load_personal_routing_table() -> dict | None:
     if not by_task:
         return None
 
-    cold_start: dict[str, dict] = {}
-    for task_type, providers in by_task.items():
-        n_personal = 0
-        for sub in providers.values():
-            if isinstance(sub, dict):
-                n_personal = max(n_personal, int(sub.get("n", 0) or 0))
-        alpha = sigmoid_alpha(n_personal)
-        cold_start[task_type] = {
-            "n_personal": n_personal,
-            "alpha": round(alpha, 3),
-            "personalization_pct": int(round(alpha * 100)),
-        }
     table = dict(table)
     # Strip the per-(task_type, provider) `wins` field from the page-data embed:
     # the launchpad client never reads it (the cheat-sheet's "picked X of Y" uses
-    # the SEPARATE top-level `wins_per_task_type`; the ELO chart uses `.overall`;
-    # cold_start uses `.n`). On the founder's home that's ~10KB of dead weight in
+    # the SEPARATE top-level `wins_per_task_type`; the ELO chart uses `.overall`).
+    # On the founder's home that's ~10KB of dead weight in
     # every launchpad.html, and it scales with task-type count. Build a FRESH
     # by_task_type so the mtime-cached table (a shared dict) isn't mutated; the
     # on-disk routing.json (memory-viewer "Raw JSON") keeps the full per-entry
@@ -906,7 +894,6 @@ def _load_personal_routing_table() -> dict | None:
         }
         for task_type, providers in by_task.items()
     }
-    table["cold_start"] = cold_start
     return table
 
 
@@ -1122,10 +1109,20 @@ def _lens_build_for_launchpad(*, lens_populated: bool = False) -> dict | None:
     the empty-state CTA says "no lens yet, build one" — that contradiction is
     the launchpad's worst first-run moment. The template branches on this."""
     try:
-        from .lens_progress import read_progress
+        from .lens_progress import STALLED_ERROR, is_stalled, read_progress
         p = read_progress()
         if p is None or not p.status:
             return None
+        if is_stalled(p):
+            # A dead build left "running" behind; say it stopped instead of animating forever.
+            # Shown for a day after its last update, then the card hides like any failure.
+            from .cold_start import _hours_since
+            age_h = _hours_since(p.updated_at)
+            if age_h is None or age_h > 24:
+                return None
+            return {"building": False, "stage": p.stage, "label": p.label, "pct": p.pct,
+                    "status": "failed", "error": STALLED_ERROR,
+                    "lensPopulated": bool(lens_populated)}
         # Surface while running, OR for a short window after a terminal state so
         # the user sees "done / canceled / failed" rather than the card just
         # vanishing mid-glance.
@@ -1481,7 +1478,7 @@ def dispatch_readiness() -> dict:
             recommendation = (
                 "No dispatch path active. Install the browser extension "
                 "(chrome://extensions → Load unpacked → browser-extension/), "
-                "then run `trinity-local install-extension --extension-id <ID>`."
+                "then run `trinity-local install-extension`."
             )
 
     return {
@@ -1622,7 +1619,13 @@ def _memory_health() -> dict:
     #             type can't forget it; non-file issues (the `extension` repair
     #             signals) stay None — they're actions, not viewable files.
     issues: list[dict[str, str | None]] = []
-    total = 7  # was 9; the picks centroid embedder-drift (#277) AND the picks
+    # The signals inspected below, counted rather than hardcoded: this read 7 after the
+    # routing-freshness signal left with the router, so the card said "N of 7 healthy" over six
+    # checks (coherence review 2026-10-15).
+    signals = ("core.md", "vocabulary.md", "topics.json", "lens.md",
+               "extension code patch", "extension sign-in")
+    total = len(signals)
+    # (was 9; the picks centroid embedder-drift (#277) AND the picks
                # chairman-audit-disagreed signals were retired 2026-06-06 with the
                # cortex collapse (#298) — the new lens-basin routing has no separate
                # cortex centroids (so they can't drift) and no LLM audit pass. Earlier:

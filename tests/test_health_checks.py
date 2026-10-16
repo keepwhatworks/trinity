@@ -364,12 +364,10 @@ class TestRetiredDirsReclaimableCheck:
         assert "rm -rf" in result.fix
         assert str(cache) in result.fix
 
-    def test_write_only_task_sync_surfaced_with_file_count_and_regrowth(self, tmp_path, monkeypatch):
-        """task_sync/ is WRITE-ONLY dead state — a TaskSyncRecord written on every
-        council, but its only reader (the task-sync CLI) was retired (0 readers in
-        src/scripts/extension). The check must flag it by FILE COUNT (the "too many
-        empty files" smell is a count problem — it was a 9255-file mirror of todos/)
-        AND note it REGROWS (rm alone won't fix it — the live writer must be retired)."""
+    def test_retired_task_sync_surfaced_by_file_count(self, tmp_path, monkeypatch):
+        """task_sync/ held a record written on every council that nothing read (a 9,255-file
+        mirror of todos/ on one install). Its writer retired 2026-10-15; the check surfaces what
+        older installs still hold, by FILE COUNT, and no longer says it regrows."""
         monkeypatch.setenv("TRINITY_HOME", str(tmp_path / "trinity"))
         home = tmp_path / "trinity"
         home.mkdir()
@@ -382,7 +380,7 @@ class TestRetiredDirsReclaimableCheck:
         assert result.ok is True  # soft
         assert "task_sync/" in result.detail
         assert "7 files" in result.detail  # surfaced by COUNT, not just bytes
-        assert "REGROWS" in result.detail  # the live-writer distinction is named
+        assert "REGROWS" not in result.detail
         assert str(ts) in result.fix
 
     def test_orphan_retired_dirs_surfaced(self, tmp_path, monkeypatch):

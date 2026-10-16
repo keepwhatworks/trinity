@@ -105,6 +105,26 @@ def read_progress() -> LensProgress | None:
         return None
 
 
+def is_stalled(p: LensProgress | None) -> bool:
+    """A "running" record nothing has updated within the window a live build always writes in.
+
+    A build that crashes or is killed writes no terminal state, so its last "running" record
+    stood forever and the launchpad showed "Building your lens..." with a moving bar
+    indefinitely (coherence review 2026-10-15). A live build writes at least once per provider
+    call (stage 0 after each batch), so the councils' staleness window applies.
+    """
+    if p is None or p.status != "running":
+        return False
+    from .cold_start import _hours_since
+    from .council_status import _stale_running_seconds
+    age_h = _hours_since(p.updated_at)
+    return age_h is not None and age_h * 3600 > _stale_running_seconds()
+
+
+STALLED_ERROR = ("The lens build stopped responding, so it most likely ended without "
+                 "finishing. Run `trinity-local lens` again.")
+
+
 def request_cancel() -> None:
     """Drop the cancel flag; the running build aborts at the next stage edge."""
     try:

@@ -41,19 +41,21 @@ def test_wire_view_says_off_after_disable(capsys):
     assert "%Y" not in out, "a strftime format string is not a word users can read"
 
 
-def test_a_collector_does_not_hide_that_cli_events_go_to_google(monkeypatch):
-    monkeypatch.setattr(T, "_ga4_credentials", lambda: ("G-X", "s"))
-    monkeypatch.setenv("TRINITY_TELEMETRY_ENDPOINT", "https://collector.example/t")
-    dest = T.telemetry_destination()
-    assert "Google Analytics" in dest and "collector.example" in dest
-
-
-def test_telemetry_endpoint_says_it_redirects_nothing(capsys):
-    from trinity_local.commands import telemetry as C
-    C.handle_telemetry_endpoint(SimpleNamespace(url="https://collector.example/t", clear=False))
-    assert "does not redirect" in capsys.readouterr().err
-
-
+def test_nothing_reads_a_self_configured_collector_any_more():
+    """The launchpad's collector path (TRINITY_TELEMETRY_ENDPOINT) and the telemetry-endpoint
+    verb were removed 2026-10-15 (founder-approved). No shipped code may read the variable,
+    register the verb, or give the page a sender."""
+    from pathlib import Path
+    src = Path(__file__).resolve().parents[1] / "src" / "trinity_local"
+    readers = [p.name for p in src.rglob("*.py")
+               if "TRINITY_TELEMETRY_ENDPOINT" in p.read_text(encoding="utf-8")
+               and p.name != "retired_names.py"]
+    assert not readers, f"code reads TRINITY_TELEMETRY_ENDPOINT again: {readers}"
+    from trinity_local.main import build_parser
+    import argparse
+    sub = next(a for a in build_parser()._actions if isinstance(a, argparse._SubParsersAction))
+    assert "telemetry-endpoint" not in sub.choices
+    assert "maybeSendTelemetry" not in (src / "launchpad_template.py").read_text(encoding="utf-8")
 def test_install_names_the_off_switch(monkeypatch, capsys):
     from trinity_local import setup_check
     from trinity_local.commands import install as I

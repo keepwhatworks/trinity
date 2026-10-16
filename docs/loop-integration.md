@@ -82,7 +82,7 @@ locally, so `install-skill` ships the *installer*, never a static taste artifact
 
 | Primitive | Trinity |
 |---|---|
-| Automations / heartbeat | A target: `lens --deep`, the activity-gated lens refresh, nightly `eval-run` |
+| Automations / heartbeat | A target: `lens`, the activity-gated lens refresh, nightly `eval-run` |
 | Worktrees | Orthogonal. Members can run worktree-aware |
 | Skills | `install-skill` registers your taste as an ambient `SKILL.md` |
 | Plugins | the **Trinity plugin** bundles the MCP connector + verifier agent (+ the skill installer) |

@@ -187,29 +187,10 @@ def me_path() -> Path:
     return lens_path()
 
 
-def _quality_is_inert(quality) -> bool:
-    """Did the replay-value term rank anything, or is it the same for everyone?
-
-    An additive constant in `base_score` shifts every candidate equally and so
-    changes no ordering. That makes a collapsed quality term INVISIBLE: the code
-    reads as though it ranks by signal while selection is really driven by the
-    rejection signal alone. This repo's recurring bug is exactly that shape — a
-    component that looks live over degenerate data — so the collapse is reported
-    rather than inferred. Uses a tolerance rather than exact equality because the
-    inputs are floats; the real corpus produces bit-identical values today.
-    """
-    import numpy as np
-
-    if len(quality) < 2:
-        return False
-    return bool(np.ptp(np.asarray(quality, dtype=np.float64)) < 1e-9)
-
-
 def _sample_diverse_with_embeddings(*, top_k: int, candidate_pool: int) -> list:
     """Pull recent PromptNodes and pick top_k via rejection-aware MMR.
 
-    Three signals are combined:
-      - quality: replay_value heuristic (high-signal prompts)
+    Two signals are combined:
       - diversity: embedding distance from already-selected (MMR)
       - rejection_signal: cosine distance between (preceding_assistant_text
         embedding, user text embedding) for each candidate. High distance
@@ -233,12 +214,7 @@ def _sample_diverse_with_embeddings(*, top_k: int, candidate_pool: int) -> list:
     from .me.authorship import lens_only
     from .memory import iter_prompt_nodes
     from .memory.index import SearchResult
-    from .memory.replay_value import (
-        infer_hardness,
-        replay_value_score,
-        staleness_score,
-        theme_score,
-    )
+    from .memory.replay_value import infer_hardness
 
     # Quality filter: drop very short prompts AND validate embedding shape.
     # `n.embedding` could be wrong-dim (legacy 4d test fixtures, partial
@@ -257,41 +233,11 @@ def _sample_diverse_with_embeddings(*, top_k: int, candidate_pool: int) -> list:
     if len(nodes) < top_k:
         return None
 
-    # Score each by replay value.
-    #
-    # MEASURED 2026-08-07 — on the real corpus this term is INERT. It returns
-    # exactly 0.084 for 100% of 5,000 sampled nodes, because all four of its
-    # inputs are degenerate at once, and three share one root cause:
-    #   known_theme  0.0   PromptNodes never get themes assigned
-    #   importance   0.0   never set
-    #   staleness    1.0   last_replayed_at never set
-    #   uncertainty  0.15  infer_hardness reads council_run_ids/themes/importance,
-    #                      so it too collapses to its no-council constant
-    # council_run_ids, importance and last_replayed_at are ALL written by
-    # memory.store.record_council_outcome(), which is exported, tested, and has
-    # ZERO production callers. The writer was built and the read path was wired
-    # into this selection; the two were never connected.
-    #
-    # base_score adds this to the rejection signal, so a constant shifts every
-    # candidate equally and changes NO ranking — selection is really rejection
-    # signal plus MMR diversity. That is why this went unnoticed: inert, not
-    # wrong. The comment here used to claim "high-signal AND diverse, not just
-    # diverse", which was the opposite of what shipped. _quality_is_inert()
-    # below now reports the collapse instead of letting it read as a ranking.
-    quality_scores: list[float] = []
-    for n in nodes:
-        recently_run = 1.0 if staleness_score(n.last_replayed_at) < 0.25 else 0.0
-        q = replay_value_score(
-            prompt_similarity=0.0,
-            known_theme=theme_score(n.themes),
-            uncertainty=infer_hardness(n),
-            importance=n.importance or 0.0,
-            staleness=staleness_score(n.last_replayed_at),
-            recently_run=recently_run,
-        )
-        quality_scores.append(q)
-    quality = np.asarray(quality_scores, dtype=np.float32)
-
+    # No replay-value quality term (removed 2026-10-15). MEASURED 2026-08-07 it returned exactly
+    # 0.084 for 100% of 5,000 real nodes: its inputs (importance, last_replayed_at, council_run_ids)
+    # were written only by memory.store.record_council_outcome, which had no caller and would have
+    # been a council -> lens edge (founder lock #1), and ingested themes never match its list. An
+    # additive constant ranks nothing, so selection was always rejection signal + MMR diversity.
     matrix = np.asarray([n.embedding for n in nodes], dtype=np.float32)
     norms = np.linalg.norm(matrix, axis=1, keepdims=True)
     norms[norms == 0] = 1.0
@@ -331,22 +277,11 @@ def _sample_diverse_with_embeddings(*, top_k: int, candidate_pool: int) -> list:
             mask = np.asarray(has_asst, dtype=np.float32)
             rejection_signal = (distance * mask).astype(np.float32)
 
-    # Combined "score" for the seed pick AND the MMR objective: quality
-    # baseline + rejection bonus (REJECTION_WEIGHT=0.4 chosen so a strong
-    # rejection-signal pair can outrank a moderately-higher-quality but flat
-    # pair). Tuned by inspection — the chairman explicitly asks for the
-    # rejection cards, so we want those over-represented in the sample.
+    # The seed pick and the MMR objective score by the rejection signal (REJECTION_WEIGHT kept
+    # from when it was added to a quality baseline, so MMR's balance against diversity is unchanged).
+    # The chairman explicitly asks for the rejection cards, so those are over-represented.
     REJECTION_WEIGHT = 0.4
-    if _quality_is_inert(quality):
-        # Not a failure — selection still works on rejection signal + diversity.
-        # But a reader must never infer that replay-value ranked anything.
-        print("me_builder: replay-value quality is CONSTANT across all "
-              f"{len(quality)} candidates (value {float(quality[0]):.4f}); "
-              "selection is rejection-signal + diversity only. Root cause: "
-              "record_council_outcome() has no production caller, so "
-              "council_run_ids/importance/last_replayed_at are null corpus-wide.",
-              file=_sys.stderr)
-    base_score = quality + REJECTION_WEIGHT * rejection_signal
+    base_score = REJECTION_WEIGHT * rejection_signal
 
     # Seed: highest combined score. Subsequent picks maximize the standard
     # MMR objective using the combined score as quality.
@@ -755,7 +690,7 @@ def build_me_via_lens_pipeline(
     clear_cancel()
     write_progress("basins")
 
-    basins = stage1_basins(k=k_basins, seed=seed)
+    basins = stage1_basins(k=k_basins, seed=seed, persist=not dry_run)
     sample_dicts = [
         {"prompt_id": getattr(s, "prompt_id", None) or getattr(s, "id", None), "text": getattr(s, "text", "")}
         for s in samples
@@ -904,6 +839,9 @@ def build_me_via_lens_pipeline(
                 ):
                     idx, res = fut.result()
                     results[idx] = res
+                    # A heartbeat per batch: a first build's stage 0 can run longer than the
+                    # window after which the launchpad calls a silent build stalled.
+                    write_progress("stage0")
 
         # Per-batch failure detection (#203), now across all parallel
         # results: if ANY batch timed out (returncode == -1) or returned

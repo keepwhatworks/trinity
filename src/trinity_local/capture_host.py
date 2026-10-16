@@ -406,12 +406,10 @@ ACTION_ALLOWLIST: dict[str, tuple | None] = {
     ),
     # Memory Health "Refresh memory" button (council_1f9cbecd7104f90f #3).
     # The user's intent is "don't make me open a terminal" — not "auto-run
-    # LLM calls without my knowledge." Dream is expensive and surprising
-    # (10+ flagship calls, several minutes). A single button labeled
+    # LLM calls without my knowledge." A lens build costs real calls (a few
+    # to 10+, depending on how much is new). A single button labeled
     # "Refresh memory" that the user clicks explicitly satisfies the
-    # intent. No args from the launchpad — the defaults (full pipeline
-    # incl. vocabulary, consolidate, lens-build, distill) are what
-    # "refresh memory" means for someone whose lens has drifted.
+    # intent. No args: `dream` runs `lens` (lens build, vocabulary, distill).
     "dream": (
         "dream",
         [],

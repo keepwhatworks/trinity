@@ -52,6 +52,7 @@ def write_unified_council_page(bundle: PromptBundle, outcome: CouncilOutcome) ->
 
 
 def render_live_council_page() -> str:
+    from .council_status import _stale_running_seconds
     from .launchpad_data import _browser_extension as _ext_config
     head = render_html_head("Trinity — Council")
     footer = render_html_footer()
@@ -69,6 +70,9 @@ def render_live_council_page() -> str:
         # extension. Without this, dispatcher.state='absent' and those
         # buttons can't find a path to the CLI.
         "browserExtension": _ext_config(),
+        # A "running" status older than this is a runner that died without writing a terminal
+        # state; the page reads the file directly, so it must apply the server's rule itself.
+        "staleRunningMs": int(_stale_running_seconds() * 1000),
     }
     return f"""{head}
   <style>
@@ -612,7 +616,7 @@ def render_live_council_page() -> str:
                when the council finishes (the .launch-status live region has
                disappeared by then), so without its OWN live region a screen-reader
                user was never told the council completed or who won (WCAG 4.1.3). -->
-          <span class="trophy">🏆</span>{{{{ formatProviderLabel(lensPickProviderFor(seg)) }}}} — the one to trust here.
+          <span class="trophy">🏆</span>{{{{ formatProviderLabel(lensPickProviderFor(seg)) }}}} — the chairman's pick.
         </div>
         <!-- The solo verdict literally claims "One model answered" — it must NOT
              fire when ZERO models answered (a completed-but-all-failed status: the
@@ -717,17 +721,17 @@ def render_live_council_page() -> str:
 
         <section class="mb-lg" v-if="seg.expanded && memberRowsFor(seg).length">
           <h2>Full Responses</h2>
-          <!-- The "Lens pick badge marks the chairman's pick" caption references a
+          <!-- The "Chairman's pick" badge caption references a
                badge that isSoloFor suppresses on a 1-responder council (no contest,
                no pick over the others). Pointing the user at a badge that isn't on
                the page is the same solo overclaim — gate the badge-explainer on the
                non-solo case and state the honest solo framing instead. -->
-          <p class="meta" v-if="seg.completed && !isSoloFor(seg)">Each member's full response below. The <strong>Lens pick</strong> badge marks the chairman's pick — synthesis is conditioned on your lens.</p>
+          <p class="meta" v-if="seg.completed && !isSoloFor(seg)">Each member's full response below. The <strong>Chairman's pick</strong> badge marks the member the chairman picked.</p>
           <!-- "The one model that answered" requires >= 1 responder — on a
                completed-but-all-failed (0-responder) council it's a flat lie
                (no model answered). The all-failed disclosure line below carries
                that state honestly. -->
-          <p class="meta" v-if="seg.completed && isSoloFor(seg) && respondedMembersFor(seg) >= 1">The one model that answered. With a second provider enabled, the chairman would mark a <strong>Lens pick</strong> here.</p>
+          <p class="meta" v-if="seg.completed && isSoloFor(seg) && respondedMembersFor(seg) >= 1">The one model that answered. With a second provider enabled, the chairman would mark its pick here.</p>
           <!-- Honest partial-council disclosure (#238 lineage). The lifecycle has
                THREE states, not two, and conflating "not completed" with "terminal"
                was a green-while-degraded bug: an IN-FLIGHT council (chairman still to
@@ -762,7 +766,7 @@ def render_live_council_page() -> str:
               <div class="provider-status-header">
                 <div class="provider-status-name">{{{{ row.label }}}}</div>
                 <div class="provider-status-badge" :class="row.statusClass" v-if="row.statusClass !== 'done'">{{{{ row.statusLabel }}}}</div>
-                <div class="provider-status-badge done" v-if="isLensPick(seg, row)">Lens pick</div>
+                <div class="provider-status-badge done" v-if="isLensPick(seg, row)">Chairman's pick</div>
                 <!-- Quote ↓ removed 2026-07-24 with the "Continue the thread"
                      composer it fed: the council-iterate CLI verb (and the
                      run_consensus_round engine behind it) were removed, so the
@@ -1091,7 +1095,7 @@ def render_live_council_page() -> str:
             if (this.isSoloFor(seg) && this.respondedMembersFor(seg) === 0) return `Council round ${{round}} complete. Every model failed to respond — no synthesis.`;
             if (this.isSoloFor(seg)) return `Council round ${{round}} complete. One model answered — no council.`;
             const pick = this.lensPickProviderFor(seg);
-            if (pick) return `Council round ${{round}} complete. ${{this.formatProviderLabel(pick)}} — the one to trust here.`;
+            if (pick) return `Council round ${{round}} complete. ${{this.formatProviderLabel(pick)}} — the chairman's pick.`;
             return `Council round ${{round}} complete.`;
           }}
           return '';
@@ -1177,7 +1181,7 @@ def render_live_council_page() -> str:
           // ONE member responded (a single provider was enabled, OR every
           // other member failed leaving one), there's no one to "win" against
           // and no one to "agree" with — so the chairman's winner-verdict
-          // ("X — the one to trust here"), the "Winner:" line, and the
+          // ("X — the chairman's pick"), the "Winner:" line, and the
           // "Agreed claims" block are degenerate competition framing that
           // OVERCLAIMS (the same #35 green-while-degenerate the SHARE CARD
           // suppresses in council_card.py's `solo = len(members) <= 1` branch —
@@ -1302,14 +1306,14 @@ def render_live_council_page() -> str:
           this._patchSegment(key, {{ expanded: !this.segments[idx].expanded }});
         }},
         lensPickProviderFor(seg) {{
-          // Source the "Lens pick" badge from the chairman's
+          // Source the "Chairman's pick" badge from the chairman's
           // routing_label.winner — chairman synthesis is conditioned on
           // the user's lens, so the chairman's pick IS the supervision
           // signal. Empty string when the routing_label is missing.
           return this.routingLabelFor(seg)?.winner || '';
         }},
         isLensPick(seg, row) {{
-          // SOLO suppression (the isSoloFor class). The "Lens pick" badge AND the
+          // SOLO suppression (the isSoloFor class). The "Chairman's pick" badge AND the
           // `winner-reveal` row highlight (both gate on this getter) frame a row as
           // the chairman's pick OVER THE OTHERS — degenerate competition framing on
           // a 1-responder council, where there are no others to be picked over. The
@@ -1514,7 +1518,7 @@ def render_live_council_page() -> str:
             }}
             const rs = outcomeToRunState(outcome);
             if (!rs) return;
-            // The "Lens pick" badge is sourced from
+            // The "Chairman's pick" badge is sourced from
             // routingLabelFor(seg).winner via lensPickProviderFor — no
             // per-segment selection state needed since the rating
             // click-flow was retired 2026-05-22 (Phase 3d).
@@ -1776,7 +1780,7 @@ def render_live_council_page() -> str:
                                "written, so dispatch likely failed silently. " +
                                "Common cause: the Chrome extension isn't " +
                                "installed in this browser. Run " +
-                               "`trinity-local install-extension --extension-id <ID>` " +
+                               "`trinity-local install-extension` " +
                                "and click Launch again from the launchpad.",
                   }});
                 }}
@@ -1789,6 +1793,22 @@ def render_live_council_page() -> str:
               const ref = this.segments.find((s) => s.key === segKey);
               if (!ref) return;
               if (status.status === 'running') {{
+                // The page reads the status file directly, so a runner that died without
+                // writing a terminal state left "running" here forever: the spinner never
+                // stopped (coherence review 2026-10-15). Apply the server's staleness rule.
+                const updated = Date.parse(status.updated_at || '');
+                const staleMs = pageData.staleRunningMs || 0;
+                if (staleMs && Number.isFinite(updated) && (Date.now() - updated) > staleMs) {{
+                  this.clearPolling();
+                  this._patchSegment(segKey, {{
+                    busy: false, failed: true, canceled: false,
+                    runState: normalizeStatus(status, ref.runState),
+                    errorText: "This council stopped updating, so the process running it most " +
+                               "likely ended before it finished. Launch it again from the " +
+                               "launchpad; `trinity-local status` shows what is running.",
+                  }});
+                  return;
+                }}
                 this._patchSegment(segKey, {{
                   busy: true, failed: false, canceled: false, errorText: '',
                   runState: normalizeStatus(status, ref.runState),

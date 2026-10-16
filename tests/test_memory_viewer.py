@@ -68,7 +68,7 @@ class TestViewerRebuildChip:
         )
         # Reset-after-flash restores the captured label (not a hardcoded string),
         # so the text doesn't drift on a second click in either state.
-        assert "textContent = buildLabel" in html, (
+        assert "flashCopy(rebuildChip, rebuildCmd, buildLabel" in html, (
             "the post-flash reset no longer restores the captured buildLabel — "
             "text drifts to a fixed label on the second click"
         )

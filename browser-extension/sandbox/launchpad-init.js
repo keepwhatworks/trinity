@@ -638,54 +638,6 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
         .join(' ');
     }
 
-    function maybeSendTelemetry() {
-      const telemetry = pageData.telemetry || {};
-      const settings = telemetry.settings || {};
-      if (!settings.sharing_enabled || !settings.endpoint) {
-        return;
-      }
-      // Skip obvious test/placeholder endpoints — sending to them produces
-      // ERR_NAME_NOT_RESOLVED noise in the console with no upside.
-      // example.invalid is the RFC 6761 reserved stub used during dev.
-      if (/example\.invalid|localhost(?:[:/]|$)|127\.0\.0\.1/.test(settings.endpoint)) {
-        return;
-      }
-
-      const endpoint = settings.endpoint;
-      const send = (payload) => {
-        const body = JSON.stringify(payload);
-        if (navigator.sendBeacon) {
-          const blob = new Blob([body], { type: 'application/json' });
-          navigator.sendBeacon(endpoint, blob);
-          return;
-        }
-        fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body,
-          keepalive: true,
-          mode: 'cors',
-        }).catch(() => null);
-      };
-
-      if (settings.share_usage_events !== false && telemetry.view_event) {
-        send(telemetry.view_event);
-      }
-
-      if (settings.share_elo_summaries !== false && telemetry.elo_event && telemetry.snapshot_hash) {
-        const hashKey = `trinity:last-elo-hash:${settings.share_install_id || 'default'}`;
-        const tsKey = `trinity:last-elo-ts:${settings.share_install_id || 'default'}`;
-        const lastHash = localStorage.getItem(hashKey);
-        const lastTs = Number(localStorage.getItem(tsKey) || '0');
-        const dayMs = 24 * 60 * 60 * 1000;
-        if (lastHash !== telemetry.snapshot_hash || (Date.now() - lastTs) > dayMs) {
-          send(telemetry.elo_event);
-          localStorage.setItem(hashKey, telemetry.snapshot_hash);
-          localStorage.setItem(tsKey, String(Date.now()));
-        }
-      }
-    }
-
     function renderChart() {
       // Charts live ONLY on /stats; the home (.lp-view-home) hides them, so skip
       // there — and DON'T pull the ~205 KB Chart.js on the chart-less home (it's
@@ -930,8 +882,8 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
       const normalized = normalizeProviderSlug(String(provider).trim().toLowerCase());
       // #275: provider labels read as the MODEL BRAND (Claude / GPT / Gemini),
       // matching the Elo chart + eval cards. Folded in 2026-06-06 (founder call)
-      // so every council surface — this panel, the live council page, AND the
-      // extension popup — agrees, instead of the old split where these read the
+      // so every council surface — this panel and the live council page —
+      // agrees, instead of the old split where these read the
       // harness trio (Codex / Antigravity) while the perf surfaces read the brand.
       const labels = {
         claude: 'Claude',
@@ -995,6 +947,7 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
         // surfaces it at the lowest precedence so it never masks a dispatch error
         // or a live council status. Cleared on the same timer as copiedKey.
         copyAnnouncement: '',
+        copyFailure: '',
         // WCAG 4.1.3 — the Bulk-import PROBE result is a v-if banner that mounts
         // AFTER a dry-run dispatch ("✓ Detected N export(s)" or "⚠ <error>"). It's
         // a plain <div> with no role=status, so a screen-reader user who clicks
@@ -1028,7 +981,6 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
         providerHealth: pageData.providerHealth || { providers: [], hasMissing: false, footerNote: '' },
         telemetry: {
           enabled: !!pageData.telemetry?.settings?.sharing_enabled,
-          endpoint: pageData.telemetry?.settings?.endpoint || '',
           destination: pageData.telemetry?.settings?.destination || '',
           shareInstallId: pageData.telemetry?.settings?.share_install_id || '',
         },
@@ -1139,28 +1091,35 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
             this.announceCopy();
             setTimeout(restore, 1800);
           };
+          this._copy(text).then((ok) => ok ? setCopied() : this._copyFailed());
+        },
+        _copy(text) {
+          // Resolves true only when the text reached the clipboard: the async API first, then
+          // the textarea + execCommand path file:// pages need. Every copy goes through here so
+          // none can report success it did not have.
           if (navigator.clipboard?.writeText) {
-            navigator.clipboard.writeText(text).then(setCopied, () => {
-              this._copyFallback(text);
-              setCopied();
-            });
-          } else {
-            this._copyFallback(text);
-            setCopied();
+            return navigator.clipboard.writeText(text).then(() => true, () => this._copyFallback(text));
           }
+          return Promise.resolve(this._copyFallback(text));
         },
         _copyFallback(text) {
           // file:// pages on some browsers block navigator.clipboard. Use the
           // legacy textarea + execCommand path so the lens copies even when
-          // the launchpad is opened directly from disk.
+          // the launchpad is opened directly from disk. Returns whether it worked.
           const ta = document.createElement('textarea');
           ta.value = text;
           ta.style.position = 'fixed';
           ta.style.opacity = '0';
           document.body.appendChild(ta);
           ta.select();
-          try { document.execCommand('copy'); } catch (_) { /* ignore */ }
+          let ok = false;
+          try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
           document.body.removeChild(ta);
+          return !!ok;
+        },
+        _copyFailed() {
+          this.copyFailure = "Couldn't copy to the clipboard here — select the text and press ⌘C (Ctrl+C).";
+          setTimeout(() => { this.copyFailure = ''; }, 4000);
         },
         get routingTableProviders() {
           if (!this.personalRoutingTable?.by_task_type) return [];
@@ -1219,14 +1178,6 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
           }
           return hidden;
         },
-        coldStartFor(taskType) {
-          // Returns {n_personal, alpha, personalization_pct} for a task_type
-          // when the cold-start block is present (server-side computed by
-          // launchpad_data._load_personal_routing_table). Null when the block
-          // is missing (older launchpad_data without the augmentation) so the
-          // column degrades to a "—" gracefully.
-          return this.personalRoutingTable?.cold_start?.[taskType] || null;
-        },
         winsFor(taskType) {
           // Chairman wins per task_type. Returns {wins, total} for the
           // current best_per_task_type[taskType] provider, or null when
@@ -1240,25 +1191,22 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
           if (!total) return null;
           return { wins: winCount, total };
         },
+        // Each health-card button shows only when it addresses an issue on the card: Refresh
+        // memory rebuilds the memory files; Repair extension runs a full council, which helps
+        // only a code-patch capture issue (a stale sign-in is fixed in the browser). Both used
+        // to show for any issue (coherence review 2026-10-15).
+        get memoryFileIssue() {
+          return (this.memoryHealth?.issues || []).some(i => i.name !== 'extension');
+        },
+        get extensionRepairIssue() {
+          return (this.memoryHealth?.issues || []).some(i => i.name === 'extension' && i.status === 'capture-drift');
+        },
         pickIsTie(taskType) {
           // True when the "best" is a tie / coin-flip (no strict chairman-win
           // lead, or no chairman supervision). Computed server-side in
           // personal_routing.aggregate_routing_table → pick_is_tie; the
           // surface demotes the confident chip for these (green-gate #35).
           return !!(this.personalRoutingTable?.pick_is_tie?.[taskType]);
-        },
-        evidenceUrl(councilId) {
-          // Each evidence chip links to the existing live council page for
-          // that outcome. Uses ?thread_id= so the harness page renders the
-          // full council UI with members + chairman synthesis. Falls back to
-          // a plain `?council_id=` fragment when the launchpad's live-council
-          // base URL isn't configured — degrades to a same-page anchor.
-          const base = pageData.liveReviewUrl || '';
-          if (base) {
-            const sep = base.includes('?') ? '&' : '?';
-            return `${base}${sep}thread_id=${encodeURIComponent(councilId)}`;
-          }
-          return `#${councilId}`;
         },
         statusScriptBaseUrl: pageData.statusScriptBaseUrl || '',
         councilStatusMessages: pageData.councilLoadingMessages || [],
@@ -1509,43 +1457,6 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
         get railExpanded() {
           return this.railIsDesktop ? !this.railCollapsed : this.railOpen;
         },
-        // Mirror of Python `is_polish_task` (task_types.py). Heuristic
-        // tuned for recall — better to over-suggest iteration than miss
-        // a polish task. Two paths:
-        //   1) literal polish phrase ("make this better", "tighten this",
-        //      "any better?", …)
-        //   2) ≤20 words AND contains a short imperative hint
-        //      ("shorter", "simpler", "clearer", …)
-        get isPolishLike() {
-          const text = (this.prompt || '').toLowerCase().trim();
-          if (!text) return false;
-          const phrases = [
-            'make this better', 'make it better',
-            'make this stronger', 'make it stronger',
-            'make this sharper', 'make it sharper',
-            'improve this', 'polish this', 'polish it',
-            'tighten this', 'tighten it',
-            'rewrite this', 'refine this', 'edit this',
-            'is this clearer', 'is this stronger', 'is this better',
-            'any better', 'does this make sense', 'is this right',
-          ];
-          for (const p of phrases) {
-            if (text.includes(p)) return true;
-          }
-          const wordCount = text.split(/\s+/).filter(Boolean).length;
-          if (wordCount <= 20) {
-            const hints = ['shorter', 'simpler', 'clearer', 'stronger', 'punchier', 'crisper'];
-            for (const h of hints) {
-              if (text.includes(h)) return true;
-            }
-          }
-          return false;
-        },
-        get polishHintVisible() {
-          // Only surface the hint once the user has actually typed something
-          // and we recognized polish. No hint = no noise.
-          return this.isPolishLike && (this.prompt || '').trim().length >= 8;
-        },
         get heroTitle() {
           if (this.operation?.kind === 'council' && this.busy) {
             return 'Council in Progress';
@@ -1557,28 +1468,19 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
           // lives in the lede below, where it has room to breathe.
           return 'Run a Council';
         },
-        // Hide developer/placeholder endpoint values from the settings UI;
-        // example.invalid is the RFC 6761 stub used during dev, localhost
-        // is a test value. Show "Not configured" so users don't think a
-        // broken URL is intentional.
+        // Where this install's events go: Google Analytics from the CLI and MCP server, or
+        // nowhere when the build carries no analytics key. The page itself never sends; its
+        // self-configured collector was removed 2026-10-15 (founder-approved).
         get displayedEndpoint() {
-          // The browser's own collector, else where the CLI and MCP server send (GA4 is never
-          // handed to the page; see telemetry._browser_endpoint).
-          const ep = this.telemetry?.endpoint || this.telemetry?.destination || '';
-          if (!ep) return 'Not configured';
-          if (/example\.invalid|^https?:\/\/(localhost|127\.0\.0\.1)/.test(ep)) {
-            return 'Not configured';
-          }
-          return ep;
+          return this.telemetry?.destination || 'Not configured';
         },
         // Whether sharing is BOTH consented AND wired — i.e. events actually leave
-        // this machine. A stock public install ships NO GA4 credentials, so
-        // launchpad_telemetry_state() pops `endpoint` and maybeSendTelemetry()
-        // early-returns: sharing is "on" as a CONSENT state but transmits nothing.
+        // this machine. A source build carries no analytics key, so sharing is "on"
+        // as a CONSENT state but transmits nothing.
         // The active-benefit nudge ("Trinity surfaces broken flows across users")
         // is only TRUE when this is true; otherwise it overclaims a collective
-        // benefit that can't happen on this install. Mirrors displayedEndpoint's
-        // dev/placeholder gate so the two agree.
+        // benefit that can't happen on this install. Reads the same destination as
+        // displayedEndpoint, so the two agree.
         get shareIsLive() {
           if (!this.telemetry?.enabled) return false;
           return this.displayedEndpoint !== 'Not configured';
@@ -1814,28 +1716,20 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
           if (!value) {
             return;
           }
-          if (navigator.clipboard?.writeText) {
-            navigator.clipboard.writeText(value).catch(() => this._copyFallback(value));
-          } else {
-            // file:// + older browsers block navigator.clipboard. Use the silent
-            // textarea+execCommand path (same as copyLens) — NOT a blocking
-            // window.prompt the user has to dismiss.
-            this._copyFallback(value);
-          }
           // Optional flash-feedback: caller passes a string key that
           // template v-if expressions can compare against `copiedKey`
-          // to show "✓ Copied" briefly. Resets after 2400ms — matches
-          // copyHealthCommand's existing cadence so transient chips
-          // animate consistently across the launchpad.
-          if (flashKey) {
-            this.copiedKey = flashKey;
-            // Announce the copy to AT (the ✓ glyph swap is visual-only). Re-set to
-            // '' first so two copies in a row re-fire the polite region.
-            this.announceCopy();
-            setTimeout(() => {
-              if (this.copiedKey === flashKey) this.copiedKey = '';
-            }, 2400);
-          }
+          // to show "✓ Copied" briefly — only once the copy actually worked.
+          this._copy(value).then((ok) => {
+            if (!ok) { this._copyFailed(); return; }
+            if (flashKey) {
+              this.copiedKey = flashKey;
+              // Announce the copy to AT (the ✓ glyph swap is visual-only).
+              this.announceCopy();
+              setTimeout(() => {
+                if (this.copiedKey === flashKey) this.copiedKey = '';
+              }, 2400);
+            }
+          });
         },
         announceCopy() {
           // Push "Copied to clipboard" through the sr-only role=status region by
@@ -2803,7 +2697,6 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
     }
 
     createApp({ LaunchpadApp, pageData }).mount();
-    maybeSendTelemetry();
     renderChart();
 
     // ── Council-rail title filter (founder 2026-06-01): with the full

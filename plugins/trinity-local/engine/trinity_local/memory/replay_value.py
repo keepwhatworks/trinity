@@ -11,26 +11,12 @@ from ..utils import now_dt
 from .schemas import PromptNode
 
 
-HIGH_VALUE_THEMES: set[str] = {
-    "trinity",
-    "router",
-    "model_council",
-    "verification",
-    "evals",
-    "capital_allocation",
-    "housing_os",
-    "agent_distribution",
-    "closed_loop_learning",
-}
-
-
 def replay_value_score(
     *,
     prompt_similarity: float,
     window_similarity: float = 0.0,
     transcript_similarity: float = 0.0,
     cluster_density: float = 0.0,
-    known_theme: float = 0.0,
     uncertainty: float = 0.0,
     importance: float = 0.0,
     staleness: float = 0.0,
@@ -42,7 +28,6 @@ def replay_value_score(
         + 0.14 * window_similarity
         + 0.06 * transcript_similarity
         + 0.14 * cluster_density
-        + 0.14 * known_theme
         + 0.16 * uncertainty
         + 0.10 * importance
         + 0.06 * staleness
@@ -61,8 +46,6 @@ def infer_hardness(node: PromptNode) -> float:
         score += 0.15
     if council_count > 1:
         score += 0.10
-    if node.themes and any(t in HIGH_VALUE_THEMES for t in node.themes):
-        score += 0.20
     if (node.importance or 0.0) > 0.7:
         score += 0.15
     return min(score, 1.0)
@@ -87,13 +70,6 @@ def staleness_score(last_replayed_at: str | None) -> float:
     if days < 30:
         return 0.6
     return 1.0
-
-
-def theme_score(themes: list[str]) -> float:
-    if not themes:
-        return 0.0
-    hits = sum(1 for t in themes if t in HIGH_VALUE_THEMES)
-    return min(hits / 2.0, 1.0)
 
 
 def diversify_mmr(

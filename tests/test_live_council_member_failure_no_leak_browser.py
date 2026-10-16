@@ -12,7 +12,7 @@ A `str(exc)` for a real dispatch failure carries an absolute filesystem path, an
 `[Errno N]`, and a Python type name — e.g.
 
     ProviderError: claude binary failed: [Errno 2] No such file or directory:
-        '/Users/vishi/.local/bin/claude'
+        '/Users/someone/.local/bin/claude'
 
 so the failed member's row painted that path to the user — a violation of the
 TYPE-only-honest error-copy constraint (#43102d25) and dishonest UX (a
@@ -34,7 +34,7 @@ and reads the RENDERED live-council member row:
 
 Mutation proof: drop the `safe_error_message(...)` call in
 `council_status.update_member_failure` (store the raw `error_text` again) → the
-member row paints `'/Users/vishi/.local/bin/claude'` and this guard reds with
+member row paints `'/Users/someone/.local/bin/claude'` and this guard reds with
 the founder symptom. Found 2026-06-21 driving a crashed-member council.
 """
 from __future__ import annotations
@@ -52,7 +52,7 @@ pytestmark = [pytest.mark.slow, pytest.mark.browser]
 # raises on a missing binary / unreadable state file.
 _CRASH_EXC = (
     "ProviderError: claude binary failed: [Errno 2] No such file or directory: "
-    "'/Users/vishi/.local/bin/claude'"
+    "'/Users/someone/.local/bin/claude'"
 )
 _LEAKS = ("/Users/", "/home/", "/private/", "[Errno", "Traceback",
           "ProviderError", "FileNotFoundError", ".local/bin")

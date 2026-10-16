@@ -16,7 +16,6 @@ from ..state_paths import (
     prompt_nodes_path,
     turn_windows_path,
 )
-from ..utils import now_iso
 from .schemas import PromptNode, TurnWindow
 
 
@@ -378,36 +377,14 @@ def load_prompt_node(node_id: str) -> PromptNode | None:
     """Look up a PromptNode by id with NO recency cap.
 
     `iter_prompt_nodes()` defaults to the recent-N working set (5000), which
-    is right for search/autofill but wrong for ID lookup: `record_council_outcome`
-    gets called with prompt IDs that may be older than the cap. Without
-    `limit=None` this silently returned no-match for old prompts.
+    is right for search/autofill but wrong for ID lookup: callers pass prompt IDs
+    that may be older than the cap. Without `limit=None` this silently returned
+    no-match for old prompts.
     """
     for node in iter_prompt_nodes(limit=None):
         if node.id == node_id:
             return node
     return None
-
-
-def record_council_outcome(
-    *,
-    prompt_node_id: str,
-    council_run_id: str,
-    chairman_winner: str | None = None,
-) -> bool:
-    """Attach a council outcome to a PromptNode by re-upserting the record.
-
-    Returns True if the node was found and updated.
-    """
-    node = load_prompt_node(prompt_node_id)
-    if node is None:
-        return False
-    if council_run_id not in node.council_run_ids:
-        node.council_run_ids = [*node.council_run_ids, council_run_id]
-    if chairman_winner is not None:
-        node.chairman_winner = chairman_winner
-    node.last_replayed_at = now_iso()
-    upsert_prompt_node(node)
-    return True
 
 
 def load_cursor(source: str) -> dict:

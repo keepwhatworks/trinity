@@ -79,8 +79,9 @@ def core_freshness() -> dict:
 
     States (mtime-only, no LLM): `empty` (no source memories — nothing to distill
     yet) / `missing` (sources exist but core.md doesn't) / `stale` (a source is
-    newer than core.md — re-distill) / `fresh`. When `stale`, `stale_source` names
-    the first offending source.
+    newer than core.md — re-distill) / `frozen` (a source is newer, but the core gate
+    cannot admit a replacement, so re-distilling would spend a call on a refusal) /
+    `fresh`. When `stale` or `frozen`, `stale_source` names the first offending source.
     """
     core = core_path()
     sources = (lens_path(), topics_path(), vocabulary_path())
@@ -96,10 +97,24 @@ def core_freshness() -> dict:
     for src in existing_sources:
         try:
             if src.stat().st_mtime > core_mtime:
-                return {"state": "stale", "stale_source": src.name}
+                from .core_gate import replacement_possible
+                frozen = not replacement_possible(stance_admitter=stance_admitter_armed())
+                return {"state": "frozen" if frozen else "stale", "stale_source": src.name}
         except OSError:
             continue
     return {"state": "fresh"}
+
+
+def stance_admitter_armed() -> bool:
+    """TRINITY_STANCE_ADMITTER is read here, not in core_gate: that module's own guard forbids
+    env flags (founder-lock hygiene), so arming is injected. Default OFF."""
+    import os as _os
+    return _os.environ.get("TRINITY_STANCE_ADMITTER", "0").strip().lower() in ("1", "true")
+
+
+FROZEN_REASON = ("core.md is kept as first written: Trinity cannot yet tell whether a new draft "
+                 "is better, so it does not replace it. To rebuild it, delete ~/.trinity/core.md "
+                 "and run `trinity-local lens`.")
 
 
 def is_core_stale() -> bool:
@@ -198,15 +213,8 @@ def write_core(text: str, *, gated: bool = True) -> Path:
 
     from .core_gate import propose_core
 
-    # TRINITY_STANCE_ADMITTER lives HERE, not in core_gate — that module's own
-    # guard forbids env flags (founder-lock hygiene), so arming is injected.
     # Default OFF: shipped dormant, measured matrix in stance_margin_admits.
-    import os as _os
-
-    verdict = propose_core(
-        text,
-        stance_admitter=_os.environ.get("TRINITY_STANCE_ADMITTER", "0")
-        .strip().lower() in ("1", "true"))
+    verdict = propose_core(text, stance_admitter=stance_admitter_armed())
     if verdict.admitted:
         path.write_text(text.strip() + "\n", encoding="utf-8")
     else:
@@ -228,6 +236,9 @@ def distill_via_chairman(*, provider: str = "claude", force: bool = False) -> di
             "skipped": True,
             "reason": "no core memories present yet — run lens-build + consolidate first",
         }
+    if not force and core_freshness().get("state") == "frozen":
+        return {"ok": True, "skipped": True, "frozen": True, "reason": FROZEN_REASON,
+                "path": str(core_path())}
     if not force and not is_core_stale():
         return {
             "ok": True,

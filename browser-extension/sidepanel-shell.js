@@ -245,8 +245,21 @@
       return;
     }
     // present / timeout → the launchpad iframe (already loading since page load) is
-    // the view. Hold the spinner until it mounts; fall back after 12s so a wedged
-    // mount can never trap the spinner.
-    setTimeout(reveal, 12000);
+    // the view. Hold the spinner until it mounts. After 12s without a mount, say so
+    // instead of revealing a frame that never rendered: the old fallback swapped the
+    // spinner for a blank panel (coherence review 2026-10-15).
+    setTimeout(() => {
+      if (revealed || !loader) return;
+      loader.textContent = "";
+      const msg = document.createElement("div");
+      msg.setAttribute("role", "alert");
+      msg.textContent = "Trinity's launchpad didn't load. Close and reopen the side panel; "
+        + "if it stays blank, run `trinity-local status` in a terminal.";
+      const show = document.createElement("button");
+      show.type = "button";
+      show.textContent = "Show it anyway";
+      show.addEventListener("click", reveal);
+      loader.append(msg, show);
+    }, 12000);
   })();
 })();

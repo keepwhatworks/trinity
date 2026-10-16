@@ -56,7 +56,7 @@ def _scan_outcomes() -> tuple[list[dict[str, Any]], bool]:
     scan supersedes them. Without this, a transient half-written outcome
     file could permanently poison the cached aggregate.
     """
-    from .council_schema import normalize_provider_slug
+    from .council_schema import is_hindsight_synthesis, normalize_provider_slug
 
     outcomes_dir = council_outcomes_dir()
     records: list[dict[str, Any]] = []
@@ -70,6 +70,8 @@ def _scan_outcomes() -> tuple[list[dict[str, Any]], bool]:
         except Exception:
             all_clean = False
             continue
+        if is_hindsight_synthesis(outcome.metadata):
+            continue          # a legacy `lens --deep` virtual council, not a council the user ran
         label = outcome.routing_label
         if label is None:
             continue
@@ -272,8 +274,8 @@ def council_value_proof() -> dict[str, Any]:
                 "changed_pick": changed, "changed_pct": changed_pct,
                 "min_changed_pct": _VALUE_PROOF_MIN_CHANGED_PCT,
                 "min_changed_count": _VALUE_PROOF_MIN_CHANGED_COUNT,
-                "reason": "the chairman agreed with the default too often to claim a "
-                          "single-tab habit would have shipped the worse answer"}
+                "reason": "the chairman picked your default too often for asking one model "
+                          "to have differed much"}
 
     # Denominator is `comparable` (not `n`): the win counts are tallied over the
     # comparable population above, so the percentages reconcile against the council
@@ -373,3 +375,28 @@ def _outcomes_signature() -> tuple:
             continue
         rows.append((p.name, st.st_mtime_ns, st.st_size))
     return tuple(rows)
+
+
+_COUNT_CACHE: dict[str, tuple] = {}
+
+
+def council_count() -> int:
+    """Councils the user ran: every saved outcome except legacy `lens --deep` virtual councils,
+    which on one real install were 1,048 of 1,564 files. Cached on the outcomes signature."""
+    import json
+
+    from .council_schema import is_hindsight_synthesis
+    sig = _outcomes_signature()
+    hit = _COUNT_CACHE.get("n")
+    if hit and hit[0] == sig:
+        return hit[1]
+    n = 0
+    for p in council_outcomes_dir().glob("*.json") if council_outcomes_dir().exists() else ():
+        try:
+            doc = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and not is_hindsight_synthesis(doc.get("metadata")):
+            n += 1
+    _COUNT_CACHE["n"] = (sig, n)
+    return n

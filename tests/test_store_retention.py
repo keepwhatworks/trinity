@@ -97,16 +97,16 @@ class TestStoreRetention:
         assert (tasks_dir() / f"{last_id}.json").exists()
 
 
-def test_all_three_capped_stores_wired():
-    """Static tripwire: all three high-churn store writers (todos / task_sync /
-    prompt_bundles) call prune_store_to_cap. Guards against a future refactor
-    silently dropping the retention hook from one of them."""
+def test_both_capped_stores_wired():
+    """Static tripwire: both high-churn store writers (todos / prompt_bundles) call
+    prune_store_to_cap. Guards against a future refactor silently dropping the retention hook
+    from one of them. (task_sync/ was the third; nothing read it and its writer retired
+    2026-10-15.)"""
     import inspect
 
     from trinity_local import council_runtime, task_runtime
 
     sources = inspect.getsource(task_runtime) + inspect.getsource(council_runtime)
-    assert sources.count("prune_store_to_cap(") >= 3, (
-        "expected all three high-churn store writers (todos / task_sync / "
-        "prompt_bundles) to call prune_store_to_cap"
+    assert sources.count("prune_store_to_cap(") >= 2, (
+        "expected both high-churn store writers (todos / prompt_bundles) to call prune_store_to_cap"
     )

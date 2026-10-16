@@ -39,7 +39,6 @@ CORE_COMMAND_MODULES = (
     "agent_emit",
     "config_cmd",
     "council",
-    "debug",
     # `decision_log` CLI verb retired 2026-05-27 — see retired_names.py.
     # The me/decisions.py loader survives so existing decision_log.jsonl
     # files keep flowing into lens-build at weight=2.0.
@@ -65,7 +64,6 @@ CORE_COMMAND_MODULES = (
     # normally; council outcomes accumulate on disk and aggregate
     # automatically via compute_personal_routing_table().
     "eval_replay",
-    "review",
     # `seed` CLI verb retired 2026-05-27 — see retired_names.py.
     # The bulk-ingest engine lives in src/trinity_local/ingest_helpers.py
     # and is exposed via `import-export` (auto-detects export type at
@@ -144,8 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
 # dispatch and the Chrome extension's action allowlist both call subparsers
 # by name — dropping the registrations would break real flows) but is
 # omitted from `trinity-local --help`. Power-user verbs keep working by
-# their original names and remain reachable under `trinity-local debug
-# <subcmd>` for discoverability. Order here IS the help order.
+# their original names. Order here IS the help order.
 USER_FACING_COMMANDS = (
     "lens",
     # The two gates, in the order you meet them: `plan` before you commit to a
@@ -157,7 +154,7 @@ USER_FACING_COMMANDS = (
     "status",
     "install",
 )
-# `dream` is deliberately NOT here: it folded into `lens --deep` on 2026-07-04
+# `dream` is deliberately NOT here: it folded into `lens --deep` on 2026-07-04, and both into `lens` on 2026-10-15
 # (one concept). It stays registered so launchpad dispatch keeps working, but
 # advertising both in --help showed a first-time user two names for one thing.
 

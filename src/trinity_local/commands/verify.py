@@ -135,6 +135,8 @@ def render_card(out: dict) -> str:
     lines.append(f"  panel: {len(voted)} of {len(reads)} reviewers voted"
                  + (f"  ({len(lost)} lost: " + ", ".join(
                      f"{r.get('provider')} {r.get('error')}" for r in lost) + ")" if lost else ""))
+    if panel.get("partial"):
+        lines.append(f"  the readers saw only part of the diff: {panel['partial']}")
 
     # concerns, grouped by the criterion they are about
     by_crit: dict = {}

@@ -594,8 +594,8 @@ def _check_lens_freshness() -> CheckResult:
         return CheckResult(
             name="lens_freshness",
             ok=True,
-            detail="lens vocab + topics not built yet — run `trinity-local lens --deep` (the one-command cold start)",
-            fix="trinity-local lens --deep",
+            detail="lens vocab + topics not built yet — run `trinity-local lens`",
+            fix="trinity-local lens",
         )
     newest = 0.0
     outcomes = council_outcomes_dir()
@@ -625,7 +625,7 @@ def _check_lens_freshness() -> CheckResult:
     # its own advice (the 2026-07-03 seam: `lens` didn't write vocabulary.md,
     # so the nag survived the fix it recommended). `trinity-local lens` now
     # rewrites topics.json (pipeline) AND vocabulary.md (the folded numpy
-    # scan); `lens --deep` also works but adds discovery/synthesis chairman calls.
+    # scan); `lens --deep` is the same command since 2026-10-15.
     return CheckResult(
         name="lens_freshness",
         ok=True,  # soft — stale, not broken
@@ -968,8 +968,8 @@ def _check_browser_capture() -> CheckResult:
             detail=(
                 "Native Messaging manifest not written — Chrome doesn't know how to "
                 "spawn the capture host. Load `browser-extension/` in chrome://extensions, "
-                "copy the extension ID, then `trinity-local install-extension "
-                "--extension-id <ID>`. Skip if you don't use chat-UI captures."
+                "then run `trinity-local install-extension` (the extension's ID is pinned, "
+                "so it needs none). Skip if you don't use chat-UI captures."
             ),
         )
 
@@ -1117,21 +1117,11 @@ def _check_telemetry_destination() -> CheckResult:
 def _check_retired_dirs_reclaimable() -> CheckResult:
     """Surface disk + FILE COUNT held by directories no live code reads.
 
-    Two shapes of cruft accumulate from agent-driven development:
-
-    1. **Retired-and-stopped** — Trinity stopped writing these when the
-       feature retired, but pre-retirement installs keep the files:
-       `cache/` (embedding cache retired 2026-05-17), `models/` (retired
-       2026-05-20 — model lives in the HF cache). Real install: 786 MB +
-       2.1 GB = 2.9 GB dead disk. A one-time `rm -rf` reclaims it.
-    2. **Write-only dead state** — a feature whose CONSUMER retired but
-       whose WRITER is still live, so it keeps GROWING: `task_sync/` (a
-       `TaskSyncRecord` written on every council, but the only reader —
-       the `task-sync` CLI — was retired; verified 0 readers across
-       src/scripts/extension). Plus orphan dirs from retired features
-       (`moves/` #184, `shortcut_setup/`). For the write-only one, `rm`
-       only reclaims today's files — the dir regrows until the writer is
-       retired (a code change, flagged in the detail).
+    Directories Trinity stopped writing when a feature retired, which older installs still
+    hold: `cache/` (embedding cache retired 2026-05-17), `models/` (retired 2026-05-20; the
+    model lives in the HF cache), `task_sync/` (a record written on every council that nothing
+    read; its writer retired 2026-10-15, after it reached a 9,255-file mirror of todos/), and
+    orphan dirs from retired features (`moves/` #184, `shortcut_setup/`).
 
     Counts FILES, not just bytes — the recurring "too many empty files
     with inconsistent data" smell is a file-count problem (task_sync was
@@ -1141,22 +1131,20 @@ def _check_retired_dirs_reclaimable() -> CheckResult:
     from .state_paths import trinity_home
 
     home = trinity_home()
-    # (label, path, reason, live_writer) — live_writer=True means the dir
-    # REGROWS after rm until the writing code path is retired.
     candidates = [
         ("cache/", home / "cache",
-         "embedding cache retired 2026-05-17", False),
+         "embedding cache retired 2026-05-17"),
         ("models/", home / "models",
-         "models dir retired 2026-05-20; nomic lives in ~/.cache/huggingface/", False),
+         "models dir retired 2026-05-20; nomic lives in ~/.cache/huggingface/"),
         ("task_sync/", home / "task_sync",
-         "write-only — its reader (the task-sync CLI) retired; 0 readers in code", True),
+         "nothing read it; no longer written since 2026-10-15"),
         ("moves/", home / "moves",
-         "v2 moves substrate retired to dormant code (#184)", False),
+         "v2 moves substrate retired to dormant code (#184)"),
         ("shortcut_setup/", home / "shortcut_setup",
-         "macOS-Shortcut dispatch tier retired 2026-05-26", False),
+         "macOS-Shortcut dispatch tier retired 2026-05-26"),
     ]
     reclaimable = []
-    for label, path, reason, live in candidates:
+    for label, path, reason in candidates:
         if not path.exists():
             continue
         try:
@@ -1165,7 +1153,7 @@ def _check_retired_dirs_reclaimable() -> CheckResult:
         except OSError:
             continue
         if files:  # present and non-empty
-            reclaimable.append((label, len(files), total, reason, live, path))
+            reclaimable.append((label, len(files), total, reason, path))
 
     if not reclaimable:
         return CheckResult(
@@ -1181,11 +1169,7 @@ def _check_retired_dirs_reclaimable() -> CheckResult:
             n /= 1024
         return f"{n:.1f}TB"
 
-    parts = [
-        f"{label} {count} files {_fmt(size)} ({reason})"
-        + (" — REGROWS until the writer is retired" if live else "")
-        for label, count, size, reason, live, _ in reclaimable
-    ]
+    parts = [f"{label} {count} files {_fmt(size)} ({reason})" for label, count, size, reason, _ in reclaimable]
     cmd_list = " ".join(f'"{path}"' for *_, path in reclaimable)
     return CheckResult(
         name="retired_dirs_reclaimable",

@@ -272,14 +272,12 @@ class TestCliCapabilityCoverage:
     # Verbs exempt from coverage-required because they're trivial
     # wrappers or compound umbrella commands handled by sub-guards.
     EXEMPT_VERBS = frozenset({
-        "debug",  # umbrella for replay-history / consolidate / vocabulary / seed
         "install",  # umbrella for install-mcp / install-extension / etc.
         # Telemetry verbs are tested via the GA4 wiring tests in
         # test_telemetry.py (when it exists) — for now they're plumbing
         # against the live GA4 Measurement Protocol endpoint, exercised
         # via the integration smoke.
         "telemetry-disable",
-        "telemetry-endpoint",
         "telemetry-reset-id",
     })
 

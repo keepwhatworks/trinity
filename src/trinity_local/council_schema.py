@@ -35,6 +35,24 @@ _LEGACY_PROVIDER_ALIASES: dict[str, str] = {
 }
 
 
+# `lens --deep` saved a "virtual council" per cluster of similar past prompts, synthesized with
+# hindsight from the user's own transcripts, until it was removed 2026-10-15
+# (council_6a9187cd799419e7). It saved them through the same path as a live
+# run_council(responses=...), with the same mode and no marker, so the two cannot be told apart
+# after the fact. From that date a live synthesis-only council is stamped RESPONSES_FROM_CALLER;
+# an unstamped one is legacy and is kept out of tallies, counts and telemetry, as the trust
+# ledger already keeps out every synthesis-only council. The cost, named rather than hidden: live
+# responses= councils saved before 2026-10-15 leave the tallies too.
+RESPONSES_FROM_CALLER = "caller"
+
+
+def is_hindsight_synthesis(metadata: Any) -> bool:
+    """True for a legacy `lens --deep` virtual council (see RESPONSES_FROM_CALLER above)."""
+    if not isinstance(metadata, dict) or metadata.get("mode") != "synthesis_only":
+        return False
+    return metadata.get("responses_from") != RESPONSES_FROM_CALLER
+
+
 def normalize_provider_slug(slug: Any) -> Any:
     """Canonicalize a provider slug at the JSON-on-disk → Python boundary.
 

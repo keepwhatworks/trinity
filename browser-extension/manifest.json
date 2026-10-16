@@ -27,16 +27,6 @@
       "128": "icons/icon-128.png"
     }
   },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "popup.html"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
-  ],
   "host_permissions": [
     "https://claude.ai/*",
     "https://chatgpt.com/*",

@@ -174,8 +174,11 @@ class TestStalenessSkip:
 
     def test_re_distills_when_a_source_is_newer(self, isolated_home, monkeypatch):
         """If a lens-build / consolidate has touched a memory since the last
-        distill, the next distill call MUST run."""
+        distill, the next distill call MUST run -- when the gate could admit a
+        replacement. With the stance admitter off it cannot, so the core is
+        "kept" and no call is spent (tests/test_core_frozen.py)."""
         from trinity_local.distill import distill_via_chairman
+        monkeypatch.setenv("TRINITY_STANCE_ADMITTER", "1")
         # These two tests are about STALENESS — does distill RUN when a source is
         # newer — not about ADMISSION. They assert the write as a proxy for "it
         # ran", and an isolated_home has no prompt corpus, so core_gate now
@@ -414,34 +417,20 @@ class TestVocabularyFoldHooks:
 
 
 class TestDeepFlagDelegation:
-    """`lens --deep` == the six-phase deep-mine engine; `dream` is only a
-    compatibility alias for it (one concept, 2026-07-04)."""
+    """`lens --deep` and `dream` run `lens` since 2026-10-15 (council_6a9187cd799419e7): the
+    deep build's own phase, a virtual council per cluster of past prompts, was removed.
+    Behaviour is in tests/test_deep_is_lens.py; this keeps the --only-distill route."""
 
-    def test_lens_deep_delegates_to_the_deep_engine(self, isolated_home, monkeypatch):
+    def test_lens_only_distill_runs_the_distill(self, isolated_home, monkeypatch):
         from types import SimpleNamespace
         from trinity_local.commands import dream as dream_cmd
         from trinity_local.commands.me import handle_me_build
         called = []
-        monkeypatch.setattr(dream_cmd, "handle_dream",
-                            lambda a: called.append(a) or 0)
-        args = SimpleNamespace(deep=True, dry_run=False, legacy=False,
-                               sample_size=80, k_basins=None, only_distill=False)
-        handle_me_build(args)
-        assert len(called) == 1, "lens --deep must delegate to the deep engine"
-        ns = called[0]
-        assert ns.skip_me_build is False and ns.only_distill is False
-
-    def test_lens_only_distill_delegates(self, isolated_home, monkeypatch):
-        from types import SimpleNamespace
-        from trinity_local.commands import dream as dream_cmd
-        from trinity_local.commands.me import handle_me_build
-        called = []
-        monkeypatch.setattr(dream_cmd, "handle_dream",
-                            lambda a: called.append(a) or 0)
+        monkeypatch.setattr(dream_cmd, "only_distill", lambda provider: called.append(provider) or 0)
         args = SimpleNamespace(deep=False, only_distill=True, dry_run=False,
                                legacy=False, sample_size=80, k_basins=None)
         handle_me_build(args)
-        assert len(called) == 1 and called[0].only_distill is True
+        assert called == ["claude"]
 
     def test_dream_alias_help_names_lens_deep(self):
         """The alias must SAY it's an alias — one concept in every surface."""
@@ -453,13 +442,13 @@ class TestDeepFlagDelegation:
         # Hidden from the advertised list (2026-08-31: a first-time user saw
         # `dream` and `lens --deep` as two things) …
         assert all(ca.dest != "dream" for ca in sub._choices_actions), (
-            "`dream` is advertised in --help again; it folded into `lens --deep`"
+            "`dream` is advertised in --help again; it is an alias for `lens`"
         )
         # … still callable for launchpad dispatch and old scripts …
         assert "dream" in sub.choices
         # … and `trinity-local dream --help` itself says it is an alias.
         desc = sub.choices["dream"].description or ""
-        assert "lens --deep" in desc and "alias" in desc.lower()
+        assert "`lens`" in desc and "alias" in desc.lower()
 
 
 class TestLensSatelliteFlags:

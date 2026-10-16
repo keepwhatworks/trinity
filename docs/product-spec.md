@@ -122,7 +122,7 @@ The chairman reads `lens` (composed by `lens-build` from sampled diverse prompts
 
 ### CLI dispatcher
 
-`src/trinity_local/main.py` is a thin dispatcher. Command modules live under `commands/`. Selected commands shown below. The complete live surface (<!-- canonical:cli_command_count -->62<!-- /canonical --> subcommands across <!-- canonical:command_module_count -->26<!-- /canonical --> command modules) is enumerated by `trinity-local --help`.
+`src/trinity_local/main.py` is a thin dispatcher. Command modules live under `commands/`. Selected commands shown below. The complete live surface (<!-- canonical:cli_command_count -->59<!-- /canonical --> subcommands across <!-- canonical:command_module_count -->24<!-- /canonical --> command modules) is enumerated by `trinity-local --help`.
 
 | Module | Key commands |
 |--------|-------------|
@@ -167,8 +167,7 @@ Deleted on 2026-10-15 with founder approval, after being off the tool list since
 │   └── lens.md                     # Built by `lens-build` via chairman call
 ├── analytics/
 │   └── routing_label_events.jsonl  # Chairman parse-success rate
-├── outcomes.jsonl                  # Per-session outcome records (drift)
-└── council_runs.jsonl              # Council outcome log
+└── outcomes.jsonl                  # Per-session outcome records (drift)
 ```
 
 The **personal routing table is computed on demand** from `council_outcomes/*.json`. No separate state file. Cached in-process by directory mtime.

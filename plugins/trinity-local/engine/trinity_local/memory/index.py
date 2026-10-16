@@ -3,7 +3,6 @@
 `search_prompt_nodes(query, top_k)` ranks past prompts by:
   - substring/token overlap with the query (0..1)
   - recency (exponential decay, 30-day half-life)
-  - theme tags (HIGH_VALUE_THEMES bonus)
   - council count (already-evaluated prompts have demonstrated value)
   - hardness (replay_value heuristics)
   - staleness penalty (recently-run prompts get pushed down)
@@ -28,7 +27,6 @@ from .replay_value import (
     infer_hardness,
     replay_value_score,
     staleness_score,
-    theme_score,
 )
 from .schemas import PromptNode
 from .store import iter_prompt_nodes_no_embedding
@@ -157,7 +155,7 @@ def search_prompt_nodes(
     """Heuristic search over PromptNodes — no embedding model load.
 
     Query mode (non-empty query): rank by substring × 2.5 + replay-value signals.
-    Empty-query mode (lens-build / replay-history): rank by replay-value alone.
+    Empty-query mode (the lens builds' fallback sampler): rank by replay-value alone.
 
     Returns top_k diversified results via MMR (token-jaccard, no embeddings).
     """
@@ -165,7 +163,11 @@ def search_prompt_nodes(
     # replay-value heuristics — embeddings are unused on this path.
     # Skip embedding-array parsing to save ~1.85s of json.loads on
     # cold-cache renders (1GB / 38K-node real corpus).
-    nodes = list(iter_prompt_nodes_no_embedding())
+    # Its only callers are the lens builds' fallback sampler, so it reads through the same
+    # "only the user" gate as every other lens-side reader (amd_0310). Ungated, it fed the lens
+    # 683 of the 1,000 most recent prompts the gate drops (lens_store_scan, 2026-10-15).
+    from ..me.authorship import lens_only
+    nodes = list(lens_only(iter_prompt_nodes_no_embedding()))
     if not nodes:
         return []
 
@@ -192,7 +194,6 @@ def search_prompt_nodes(
             continue
 
         recency = _recency_score(node.timestamp or node.created_at)
-        themes_val = theme_score(node.themes)
         council_count = len(node.council_run_ids)
         council_signal = min(1.0, council_count / 3.0)
         hardness = infer_hardness(node)
@@ -203,7 +204,6 @@ def search_prompt_nodes(
             score = (
                 2.5 * substring
                 + 0.3 * recency
-                + 0.4 * themes_val
                 + 0.4 * council_signal
                 + 0.3 * hardness
                 - 0.4 * recently_run
@@ -212,7 +212,6 @@ def search_prompt_nodes(
             # Empty query (lens-build sampling): replay-value heuristics
             score = replay_value_score(
                 prompt_similarity=0.0,
-                known_theme=themes_val,
                 uncertainty=hardness,
                 importance=node.importance or 0.0,
                 staleness=staleness_score(node.last_replayed_at),

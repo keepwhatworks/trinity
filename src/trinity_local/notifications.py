@@ -1,6 +1,6 @@
 """Cross-platform `open <path>` helper.
 
-Used by commands/portal.py, commands/council.py, commands/review.py, and
+Used by commands/portal.py, commands/council.py, and
 commands/me_card.py to launch the OS default handler (browser, Preview,
 etc.) for a generated artifact. macOS uses `open`, Linux uses `xdg-open`,
 Windows uses `cmd /c start`, with a `webbrowser.open(file://...)` fallback.

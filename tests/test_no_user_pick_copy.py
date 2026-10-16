@@ -46,14 +46,15 @@ def test_launchpad_has_no_removed_user_pick_copy():
     )
 
 
-def test_council_card_describes_automatic_router_training():
-    """Positive half (anti-vacuous, per the mutation-testing lesson): the corrected
-    copy — the router sharpens AUTOMATICALLY, no clicks/ratings — must be present, so a
-    revert that drops the fix but leaves the card is caught."""
+def test_council_card_says_what_a_council_does_not_router_training():
+    """Positive half (anti-vacuous): the council card says what happens — three labs answer
+    in parallel and a chairman picks — and no longer promises that every council "sharpens the
+    local router": nothing routes on your behalf since the router's removal on 2026-08-11
+    (coherence review 2026-10-15)."""
     text = TEMPLATE.read_text(encoding="utf-8").lower()
-    assert "sharpens the local router automatically" in text, (
-        "the council card lost the corrected 'router sharpens automatically' copy"
+    assert "claude, codex and gemini answer in parallel" in text, (
+        "the council card lost the line saying what a council does"
     )
-    assert "no clicks" in text and "you just chat" in text, (
-        "the council card must say the training is automatic — no clicks/ratings, you just chat"
+    assert "sharpens the local router" not in text, (
+        "the council card promises router training; there is no router since 2026-08-11"
     )

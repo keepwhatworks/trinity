@@ -111,7 +111,6 @@ def _maybe_auto_open(review_path) -> None:
 from .council_runtime import (
     chairman_format,
     member_prompt_framing,
-    append_launch_event,
     create_council_outcome,
     create_launch_event,
     parse_routing_label,
@@ -132,7 +131,7 @@ from .providers import (
     make_provider,
     result_hard_failed,
 )
-from .task_runtime import save_sync_record, save_task_record, task_from_council
+from .task_runtime import save_task_record, task_from_council
 
 
 @dataclass
@@ -142,7 +141,6 @@ class CouncilRunResult:
     review_path: Path
     launches: list[LaunchEvent]
     task_path: Path | None = None
-    sync_path: Path | None = None
 
 
 def _log_routing_label_event(
@@ -890,7 +888,6 @@ def run_council(
             source_session_id=bundle.origin_session_id,
             metadata={"bundle_role": "member"},
         )
-        append_launch_event(event)
         launches.append(event)
 
     if not member_results:
@@ -1038,7 +1035,6 @@ def run_council(
         source_session_id=bundle.origin_session_id,
         metadata={"bundle_role": "primary"},
     )
-    append_launch_event(primary_event)
     launches.append(primary_event)
     task = task_from_council(
         bundle=bundle,
@@ -1047,7 +1043,6 @@ def run_council(
         launch_ids=[launch.launch_id for launch in launches],
     )
     task_path = save_task_record(task)
-    sync_path = save_sync_record(task)
 
     finalize_council_run_state(
         state_token,
@@ -1062,5 +1057,4 @@ def run_council(
         review_path=review_path,
         launches=launches,
         task_path=task_path,
-        sync_path=sync_path,
     )

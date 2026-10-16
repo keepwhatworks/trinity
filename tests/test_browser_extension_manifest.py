@@ -268,8 +268,8 @@ def test_content_script_guards_against_invalidated_context():
 # ── Toolbar entry-point contract: the #318 side-panel migration removed
 #    `default_popup` from the manifest, so clicking the toolbar icon opens the
 #    SIDE PANEL (sidepanel.html via openPanelOnActionClick), NOT a popup and NOT
-#    a new-tab launchpad. popup.html survives only as a web-accessible resource;
-#    it is NOT the toolbar surface anymore.
+#    a new-tab launchpad. popup.html survived as a web-accessible resource that
+#    nothing opened until it was deleted on 2026-10-15.
 #
 #    Found 2026-06-17 by driving the REAL popup at chrome-extension://<id>/
 #    popup.html (every control worked + gave feedback — clean usability) and

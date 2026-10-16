@@ -98,8 +98,7 @@ they hold for every user:
 - **No LLM calls outside councils.** No background model calls, no hosted controller.
 - **Prompt content never uploads.** Telemetry is categorical-only and on by default, off
   with one command (routing labels: `task_type`, `winner`, `member_count`, `mode`, and once
-  per install the install channel and first-use surface; launchpad views and an aggregate
-  win-rate snapshot go only to a collector you configure). Never prompt text.
+  per install the install channel and first-use surface). Never prompt text.
   When a release includes a wheel, `install.sh` installs it and it carries the analytics
   key: anyone can extract it and use it to add fake events to the counts; it cannot read
   data and can be rotated. A release without that wheel, or a source install, carries no

@@ -226,224 +226,6 @@ class TestTelemetryPayloadIsCategoricalOnly:
 
 # ── #231(b) ───────────────────────────────────────────────────────────
 
-class TestEloSnapshotIsDisclosed:
-    def test_elo_snapshot_keys_are_disclosed(self, patch_trinity_home: Path) -> None:
-        _write_council_outcome(patch_trinity_home)
-        snapshot = t.build_elo_snapshot()
-        assert set(snapshot.keys()) <= t.DISCLOSED_ELO_KEYS
-        # Provider sub-dicts carry only numeric/categorical stats.
-        for provider, stats in snapshot["providers"].items():
-            assert set(stats.keys()) <= t.DISCLOSED_ELO_PROVIDER_KEYS
-            # provider key is a slug, values are numbers.
-            assert isinstance(provider, str)
-            for v in stats.values():
-                assert isinstance(v, (int, float))
-
-    def test_elo_event_filters_undisclosed_fields_at_the_SINK(
-        self, patch_trinity_home: Path, monkeypatch
-    ) -> None:
-        """STRUCTURAL no-PII parity (#231): build_elo_snapshot_event must DROP a
-        snapshot field that isn't in the disclosed allowlist — not merely trust
-        build_elo_snapshot()'s shape + the source test above. The other two wire
-        builders (build_outbound_event_payload, build_launchpad_view_event) filter
-        structurally; this one used to spread `**snapshot` verbatim, so a future
-        upstream field (or per-provider stat) carrying prompt text would reach the
-        wire even though the contract promises "a coding mistake upstream can't
-        leak." Simulate exactly that upstream mistake and assert the SINK stops it.
-        Mutation: revert to `**snapshot` → the planted prompt text leaks → reds."""
-        monkeypatch.setattr(t, "build_elo_snapshot", lambda: {
-            "version": 1, "window": "all", "council_count": 7, "matchups": {},
-            "providers": {"claude": {"elo": 1500, "wins": 4,
-                                     "LEAK_prompt": "a private question the user asked"}},
-            "LEAK_top_level": "raw lens text that must NOT reach the wire",
-        })
-        ev = t.build_elo_snapshot_event()
-        blob = json.dumps(ev)
-        assert "LEAK_top_level" not in ev, "undisclosed top-level field reached the wire"
-        assert "LEAK_prompt" not in blob, "undisclosed per-provider field reached the wire"
-        assert "private question" not in blob and "raw lens text" not in blob, (
-            "planted free text leaked onto the wire — the elo sink isn't filtering"
-        )
-        # Disclosed fields still pass through unchanged (no over-filtering).
-        assert ev["council_count"] == 7
-        assert ev["providers"]["claude"] == {"elo": 1500, "wins": 4}
-
-    def test_elo_snapshot_caches_and_invalidates_on_new_council(
-        self, patch_trinity_home: Path
-    ) -> None:
-        """build_elo_snapshot is a pure function of council_outcomes/, yet a
-        single launchpad render computed it FIVE times (build_page_data + the
-        view-event reading two fields with two calls + the elo event), and it
-        fires again on every telemetry view event — profiled at 0.40s/render on
-        the real 562-council home. It's now cached per-window, keyed by the
-        council_outcomes/ per-file signature. Two guarantees the cache must keep:
-          (1) a repeated call with no council change returns the SAME object
-              (the cache is genuinely hit, not recomputed), and
-          (2) adding a council INVALIDATES it — a stale snapshot would
-              silently under-report the user's councils on the launchpad ELO.
-        Mutations: drop the signature check → (2) fails (snap2 keeps the old
-        count); drop the cache entirely → (1) fails (a fresh dict each call)."""
-        _write_council_outcome(patch_trinity_home)
-        snap1 = t.build_elo_snapshot()
-        assert t.build_elo_snapshot() is snap1, (
-            "no council changed between calls — the second must hit the cache "
-            "and return the same dict object (the cache isn't engaged)"
-        )
-        before = snap1["council_count"]
-        # A SECOND, distinct council changes the council_outcomes/ signature.
-        second = {
-            "council_run_id": "council_cache_invalidation",
-            "primary_provider": "claude",
-            "winner_provider": "claude",
-            "created_at": "2026-05-30T11:00:00+00:00",
-            "task_text": "second council",
-            "member_results": [
-                {"provider": "claude", "model": "m", "output_text": "a"},
-                {"provider": "codex", "model": "m", "output_text": "b"},
-            ],
-            "routing_label": {"task_type": "code", "winner": "claude"},
-        }
-        (
-            patch_trinity_home
-            / "council_outcomes"
-            / "council_cache_invalidation.json"
-        ).write_text(json.dumps(second), encoding="utf-8")
-        snap2 = t.build_elo_snapshot()
-        assert snap2["council_count"] > before, (
-            "elo cache didn't invalidate after a new council — a stale snapshot "
-            "under-reports councils on the launchpad ELO"
-        )
-
-    def test_elo_cache_misses_when_payload_source_is_swapped(
-        self, monkeypatch: pytest.MonkeyPatch, patch_trinity_home: Path
-    ) -> None:
-        """The cache key also pins the live `_iter_council_payloads` function by
-        identity. Tests (and only tests) monkeypatch that source directly, which
-        the on-disk signature CANNOT observe — so without the source-identity
-        key a prior call's cached snapshot leaks into a test that swapped the
-        source. That is the exact cross-test contamination that turned CI red
-        2026-06-06: with only the disk-signature key,
-        `test_build_elo_snapshot_excludes_old_web_era_councils` read a stale
-        `council_count=0` from an earlier test's cache entry (same empty-home
-        signature) instead of recomputing its 1 current-era council. This guard
-        reproduces it deterministically. Mutation: drop `cached[1] is source`
-        from the key → the swapped source returns the stale primed snapshot."""
-        # Prime the cache under the ambient (empty) disk signature.
-        primed = t.build_elo_snapshot()
-        assert primed["council_count"] == 0, "patch_trinity_home should be empty"
-        # Swap the in-memory source WITHOUT touching disk (signature unchanged).
-        councils = [
-            {"council_run_id": "cur1", "winner_provider": "claude", "member_results": [
-                {"provider": "claude", "model": "claude-opus-4-8"},
-                {"provider": "codex", "model": "gpt-5.5"}]},
-        ]
-        monkeypatch.setattr(t, "_iter_council_payloads", lambda: iter(councils))
-        snap = t.build_elo_snapshot()
-        assert snap["council_count"] == 1, (
-            "a swapped council source must MISS the cache — a snapshot keyed only "
-            "on the unchanged disk signature would return the stale primed count"
-        )
-
-    def test_launchpad_elo_event_carries_no_free_text(
-        self, patch_trinity_home: Path
-    ) -> None:
-        """The elo_event the browser transmits must not carry the SECRET
-        free text that lives in the underlying council outcome."""
-        _write_council_outcome(patch_trinity_home)
-        t.enable_telemetry()
-        state = t.launchpad_telemetry_state()
-        blob = json.dumps(state["elo_event"]) + json.dumps(state["view_event"])
-        blob += json.dumps(state["snapshot"])
-        assert SECRET not in blob
-        # elo_event is a disclosed-snapshot superset + the install id +
-        # categorical event fields — assert its data keys stay disclosed.
-        elo_event = state["elo_event"]
-        allowed = t.DISCLOSED_ELO_KEYS | {
-            "event", "client_id", "app_version", "timestamp",
-        }
-        assert set(elo_event.keys()) <= allowed
-
-    def test_view_event_keys_disclosed_and_values_categorical(
-        self, patch_trinity_home: Path
-    ) -> None:
-        """The browser sends `launchpad_view` verbatim (it bypasses the GA4
-        chokepoint), so its keys must stay inside DISCLOSED_VIEW_EVENT_KEYS AND
-        every value must be categorical/id/numeric — never free text. This is
-        the gap a planted-SECRET scan misses: a future field pulling DIFFERENT
-        user text (a council title, a recent prompt) would slip past
-        `SECRET not in blob`. The structural assertion catches it (audited the
-        live payload 2026-06-01 — only elo_event keys were guarded before)."""
-        _write_council_outcome(patch_trinity_home)
-        t.enable_telemetry()
-        ve = t.build_launchpad_view_event()
-        undisclosed = set(ve.keys()) - t.DISCLOSED_VIEW_EVENT_KEYS
-        assert not undisclosed, f"view_event leaked undisclosed key(s): {undisclosed}"
-        for k, v in ve.items():
-            if isinstance(v, str):
-                # Categorical labels / slugs / ids / ISO timestamps / versions are
-                # all single-token and short; free text (a council title, a prompt)
-                # has spaces. A SPACE in any value is the tell — none of the legit
-                # fields (launchpad_view, share_…, 0.1.0, 10-49, ISO ts) contain one.
-                assert " " not in v and len(v) <= 40, (
-                    f"view_event[{k!r}] looks like free text (PII risk): {v!r}"
-                )
-
-    def test_view_event_is_filtered_through_the_allowlist(
-        self, monkeypatch: pytest.MonkeyPatch, patch_trinity_home: Path
-    ) -> None:
-        """Prove build_launchpad_view_event FILTERS through the constant (not
-        just that its literal happens to match): shrink the allowlist and the
-        output must shrink with it. Without the chokepoint this test fails —
-        a mutation guard so the filter can't be silently removed."""
-        _write_council_outcome(patch_trinity_home)
-        t.enable_telemetry()
-        monkeypatch.setattr(t, "DISCLOSED_VIEW_EVENT_KEYS", frozenset({"event", "surface"}))
-        ve = t.build_launchpad_view_event()
-        assert set(ve.keys()) == {"event", "surface"}
-
-
-# ── #231(c) ───────────────────────────────────────────────────────────
-
-class TestBrowserSendHonorsCredentialGate:
-    def test_endpoint_stripped_from_pagedata_without_creds(
-        self, patch_trinity_home: Path
-    ) -> None:
-        """Absent GA4 creds, the Python path no-ops — the browser must too.
-        With no `endpoint` in pageData, maybeSendTelemetry() returns early."""
-        t.enable_telemetry()
-        state = t.launchpad_telemetry_state()
-        assert "endpoint" not in state["settings"]
-        assert t._browser_send_enabled() is False
-
-    def test_ga4_creds_give_a_destination_but_no_browser_endpoint(
-        self, patch_trinity_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """GA4 is reached from Python only: the page must never get the Measurement Protocol URL
-        (api_secret in it, and the page's verbatim events are not GA4's envelope). It still learns
-        that events leave the machine, so it does not claim otherwise (2026-10-12)."""
-        monkeypatch.setenv("TRINITY_GA4_MEASUREMENT_ID", "G-TESTXXXX")
-        monkeypatch.setenv("TRINITY_GA4_API_SECRET", "test-secret")
-        t.enable_telemetry()
-        state = t.launchpad_telemetry_state()
-        assert "endpoint" not in state["settings"]
-        assert state["settings"]["destination"].startswith("Google Analytics")
-        assert t._browser_send_enabled() is True
-
-    def test_endpoint_present_with_custom_collector(
-        self, patch_trinity_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """The explicit-collector escape hatch opts the browser back in."""
-        monkeypatch.setenv(
-            "TRINITY_TELEMETRY_ENDPOINT", "https://collector.example/collect"
-        )
-        t.enable_telemetry()
-        state = t.launchpad_telemetry_state()
-        assert state["settings"].get("endpoint")
-        assert t._browser_send_enabled() is True
-
-
-# ── #237 share-card content leak ──────────────────────────────────────
-
 class TestShareCardsNoRawContentLeak:
     """The card PNGs render text into the image. council/eval cards must
     only carry chairman-extracted claims + scores + categorical labels —
@@ -492,13 +274,9 @@ class TestAppVersionIsReal:
     launchpad pageData on a 1.7.x build still reporting 0.1.0)."""
 
     def test_app_version_is_not_the_stale_literal(self, patch_trinity_home: Path) -> None:
-        ve = t.build_launchpad_view_event()
-        ee = t.build_elo_snapshot_event()
-        assert ve["app_version"] != "0.1.0", "view_event still hard-codes 0.1.0"
-        assert ee["app_version"] != "0.1.0", "elo_event still hard-codes 0.1.0"
-        # Both report the same resolved version (single source: APP_VERSION).
-        assert ve["app_version"] == t.APP_VERSION
-        assert ee["app_version"] == t.APP_VERSION
+        # APP_VERSION is what the MCP server reports (the page's events that also carried it
+        # went with its collector, 2026-10-15).
+        assert t.APP_VERSION != "0.1.0", "APP_VERSION still hard-codes 0.1.0"
 
     def test_app_version_tracks_source_version_not_stale_metadata(self) -> None:
         """APP_VERSION reports the CURRENT version. From a source checkout (where
@@ -533,7 +311,7 @@ class TestAppVersionIsReal:
     def test_app_version_stays_categorical_no_pii(self, patch_trinity_home: Path) -> None:
         """Whatever the resolved version, it stays a short single-token value —
         no spaces (the free-text/PII tell the no-PII guard relies on)."""
-        v = t.build_launchpad_view_event()["app_version"]
+        v = t.APP_VERSION
         assert " " not in v and 0 < len(v) <= 40
 
 
@@ -619,7 +397,7 @@ class TestSettingsCorruptionFailsClosed:
         t.telemetry_settings_path().write_text(bad, encoding="utf-8")
         s = t.load_telemetry_settings()  # must not raise
         assert s.sharing_enabled is False, "corrupt settings must fail CLOSED (no send)"
-        assert s.share_usage_events is False and s.share_elo_summaries is False
+        assert s.share_usage_events is False
 
     def test_valid_settings_unchanged(self, patch_trinity_home: Path):
         t.save_telemetry_settings(t.TelemetrySettings(sharing_enabled=True, share_install_id="abc"))

@@ -173,7 +173,10 @@ ALLOW = {
 
 
 def _unwrapped_reads():
-    files = sorted((SRC / "me").glob("*.py")) + [SRC / "me_builder.py", SRC / "vocabulary.py"]
+    # memory/index.py: search_prompt_nodes is the lens builds' fallback sampler, and it read the
+    # store ungated because this list did not include it (coherence review 2026-10-15).
+    files = sorted((SRC / "me").glob("*.py")) + [SRC / "me_builder.py", SRC / "vocabulary.py",
+                                                SRC / "memory" / "index.py"]
     out = []
     for f in files:
         rel = str(f.relative_to(SRC))

@@ -408,6 +408,19 @@ def should_refresh_lens() -> tuple[bool, str]:
         return False, f"gate error: {exc}"
 
 
+def _embedder_refusal() -> str | None:
+    """Why a background lens build must not run, or None. The manual `lens` path refuses
+    without a real embedder; the background builds did not, so on an install without the model
+    they sampled and clustered hashed TF-IDF vectors and wrote the result over topics.json
+    (coherence review 2026-10-15)."""
+    from .embeddings import EmbedderNotReadyError, require_real_embedder
+    try:
+        require_real_embedder()
+    except EmbedderNotReadyError:
+        return "the embedder is not ready, so the lens was not rebuilt: run `trinity-local download-embedder`"
+    return None
+
+
 def _refresh_marker_status(summary) -> str:
     """Map a build summary to an HONEST refresh-marker status. The build returns
     `ok:False` (+ `aborted`) on a chairman timeout/quota abort and
@@ -568,6 +581,11 @@ def maybe_kick_lens_refresh() -> dict | None:
 
         def _run():
             try:
+                refusal = _embedder_refusal()
+                if refusal:
+                    _write_refresh_marker({"last_kick_at": now_iso(), "reason": reason,
+                                           "status": "failed", "finished_at": now_iso(), "error": refusal})
+                    return
                 from .me_builder import build_me_via_lens_pipeline
                 _path, summary = build_me_via_lens_pipeline()
                 # Honest outcome: build_me returns ok:False on a chairman
@@ -707,13 +725,26 @@ def maybe_kick_first_lens_build() -> dict | None:
         def _run():
             from .lens_progress import LensBuildCanceled, write_progress
             try:
+                refusal = _embedder_refusal()
+                if refusal:
+                    write_progress("failed", status="failed", error=refusal)
+                    _write_refresh_marker({"last_kick_at": now_iso(), "reason": reason,
+                                           "status": "failed", "finished_at": now_iso(), "error": refusal})
+                    return
                 from .me_builder import build_me_via_lens_pipeline
                 from .me.build_meters import record_build_meters
-                build_me_via_lens_pipeline()  # per-stage progress + "done" on success
-                _write_refresh_marker({
-                    "last_kick_at": now_iso(), "reason": reason, "status": "done",
-                    "finished_at": now_iso(), "meters": record_build_meters(),
-                })
+                _path, summary = build_me_via_lens_pipeline()  # per-stage progress
+                # The same honest mapping the refresh kick uses: this recorded "done" for a
+                # refused or empty build (coherence review 2026-10-15).
+                mstatus = _refresh_marker_status(summary)
+                marker = {"last_kick_at": now_iso(), "reason": reason, "status": mstatus,
+                          "finished_at": now_iso()}
+                if mstatus == "done":
+                    marker["meters"] = record_build_meters()
+                elif mstatus == "failed" and isinstance(summary, dict):
+                    marker["error"] = str(summary.get("reason") or summary.get("aborted")
+                                          or "build did not land")[:200]
+                _write_refresh_marker(marker)
             except LensBuildCanceled:
                 write_progress("canceled", status="canceled")
                 _write_refresh_marker({
@@ -797,7 +828,7 @@ def cold_open_tension() -> str | None:
                     proof = (
                         f"Across {n} decisions you keep navigating “{t.pole_a}” "
                         f"vs “{t.pole_b}” — the chairman reads that tension on "
-                        f"every council — when answers tie on quality, your lens picks the winner."
+                        f"every council."
                     )
                 else:
                     proof = (

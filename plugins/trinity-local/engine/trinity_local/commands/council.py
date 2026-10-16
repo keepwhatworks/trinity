@@ -25,7 +25,7 @@ from ..council_status import (
 )
 from ..notifications import open_path
 from ..refresh import refresh_launchpad
-from ..task_runtime import ensure_task_record, save_sync_record, save_task_record
+from ..task_runtime import ensure_task_record, save_task_record
 from ..utils import stable_id
 from .helpers import read_text_file
 
@@ -156,14 +156,12 @@ def handle_council_start(args):
         metadata={"cwd": str(cwd)},
     )
     task_path = save_task_record(task)
-    sync_path = save_sync_record(task)
     original_sigterm = signal.getsignal(signal.SIGTERM)
     original_sigint = signal.getsignal(signal.SIGINT)
 
     def _mark_canceled(message: str) -> None:
         task.status = "canceled"
         save_task_record(task)
-        save_sync_record(task)
         if status_token:
             write_council_status(
                 status_token,
@@ -266,7 +264,6 @@ def handle_council_start(args):
                 opened = open_path(result.review_path)
     payload = {
         "task_path": str(result.task_path or task_path),
-        "sync_path": str(result.sync_path or sync_path),
         "review_path": str(result.review_path),
         "opened": opened,
         "council_run_id": result.outcome.council_run_id,

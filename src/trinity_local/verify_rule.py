@@ -60,6 +60,9 @@ class Panel:
     """What the independent readers said. votes: provider -> passed."""
     ran: bool
     votes: dict[str, bool] = field(default_factory=dict)
+    # Non-empty when the readers saw only part of the diff (verify.reader_diff says what was
+    # left out). A vote over part of a change is not agreement about the change.
+    partial: str = ""
 
     @classmethod
     def not_run(cls) -> "Panel":
@@ -84,8 +87,8 @@ class Panel:
         return {LAB_OF.get(p, _UNKNOWN_LAB) for p in self.votes}
 
     def consensus_pass(self) -> bool:
-        """Three distinct labs, every vote a pass."""
-        return (self.ran and len(self.labs()) >= MIN_LABS
+        """Three distinct labs, every vote a pass, on the whole diff."""
+        return (self.ran and not self.partial and len(self.labs()) >= MIN_LABS
                 and bool(self.votes) and all(self.votes.values()))
 
     def split(self) -> bool:
@@ -122,6 +125,16 @@ SKIP_SHIPS = False
 
 
 def triage(kernel: Kernel, panel: Panel) -> Triage:
+    t = _triage(kernel, panel)
+    if panel.ran and panel.partial and t.outcome != "STOP":
+        # Coherence review 2026-10-15: the diff was cut at 60,000 characters with no word to
+        # the readers or the user, so "panel agreed" could rest on the half they saw.
+        return Triage(t.outcome, f"{t.reason}; the readers saw only part of the diff ({panel.partial})",
+                      t.false_green)
+    return t
+
+
+def _triage(kernel: Kernel, panel: Panel) -> Triage:
     relevant_kernel = kernel.ran and kernel.relevant
     if relevant_kernel and kernel.green is False:
         return Triage(

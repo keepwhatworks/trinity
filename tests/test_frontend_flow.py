@@ -69,7 +69,7 @@ def _write_council_fixture(home: Path) -> tuple[str, str]:
 class TestLaunchpadFlow:
     def test_write_portal_html_renders_primary_flow(self, patch_trinity_home: Path, monkeypatch):
         _write_council_fixture(patch_trinity_home)
-        enable_telemetry(endpoint="https://telemetry.example/collect")
+        enable_telemetry()
         monkeypatch.setattr(
             "trinity_local.launchpad_data.check_all_adapters",
             lambda: [
@@ -307,20 +307,18 @@ class TestTelemetryFlow:
     def test_enable_disable_and_reset_round_trip(self, patch_trinity_home: Path):
         _write_council_fixture(patch_trinity_home)
 
-        enabled = enable_telemetry(endpoint="https://telemetry.example/collect")
+        enabled = enable_telemetry()
         assert enabled.sharing_enabled is True
         assert enabled.share_usage_events is True
-        assert enabled.share_elo_summaries is True
         assert enabled.share_install_id.startswith("share_")
 
         persisted = load_telemetry_settings()
-        assert persisted.endpoint == "https://telemetry.example/collect"
         assert persisted.share_install_id == enabled.share_install_id
 
         state = launchpad_telemetry_state()
         assert state["settings"]["sharing_enabled"] is True
-        assert state["view_event"]["event"] == "launchpad_view"
-        assert state["elo_event"]["event"] == "elo_snapshot"
+        # The page gets the local snapshot to draw, and no events to send (2026-10-15).
+        assert "view_event" not in state and "elo_event" not in state
         assert state["snapshot"]["council_count"] == 1
         assert state["snapshot"]["providers"]["antigravity"]["elo"] > 1500
 
@@ -481,10 +479,6 @@ class TestCouncilLaunchCommand:
         monkeypatch.setattr(
             "trinity_local.commands.council.save_task_record",
             lambda task: patch_trinity_home / "tasks" / "task_live.json",
-        )
-        monkeypatch.setattr(
-            "trinity_local.commands.council.save_sync_record",
-            lambda task: patch_trinity_home / "sync" / "task_live.json",
         )
         monkeypatch.setattr(
             "trinity_local.commands.council.refresh_launchpad",

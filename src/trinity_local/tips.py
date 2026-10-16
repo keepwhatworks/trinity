@@ -55,11 +55,8 @@ class TipState:
 def gather_state() -> TipState:
     s = TipState()
     try:
-        from .state_paths import council_outcomes_dir
-
-        d = council_outcomes_dir()
-        if d.is_dir():
-            s.councils_run = sum(1 for _ in d.glob("council_*.json"))
+        from .council_analytics import council_count
+        s.councils_run = council_count()
     except Exception:
         pass
     try:

@@ -109,69 +109,6 @@ def _write_prod_layout(html: str, serve_root: Path) -> str:
     return "portal_pages/launchpad.html"
 
 
-def test_single_council_captions_and_title_read_singular(tmp_path):
-    pytest.importorskip("playwright.sync_api")
-    from playwright.sync_api import sync_playwright
-    from trinity_local.launchpad_template import render_launchpad_html
-
-    html = render_launchpad_html(page_data=_PAGE_DATA, view="stats")
-    rel = _write_prod_layout(html, tmp_path)
-    httpd, port = _serve(tmp_path)
-    try:
-        with sync_playwright() as p:
-            try:
-                browser = p.chromium.launch()
-            except Exception as exc:  # pragma: no cover - env-dependent
-                pytest.skip(f"no launchable chromium: {exc}")
-            try:
-                page = browser.new_context(viewport={"width": 1280, "height": 1600}).new_page()
-                page.goto(
-                    f"http://127.0.0.1:{port}/{rel}", wait_until="networkidle", timeout=20000
-                )
-                page.wait_for_selector(".cortex-cheat-sheet td .meta", timeout=10000)
-                s = page.evaluate(_PROBE)
-
-                captions = s["metaCaptions"]
-                # Both routing captions must have rendered (fixture drove them).
-                assert any("from your own" in c.lower() for c in captions), (
-                    "no 'from your own N council(s)' caption rendered — the routing "
-                    f"table fixture didn't mount: {captions}"
-                )
-                for cap in captions:
-                    assert "1 councils" not in cap, (
-                        "a /stats count caption rendered ungrammatical '1 councils' at "
-                        f"n=1 (the hardcoded plural literal regressed): {cap!r}"
-                    )
-                    # The fixture is exactly n=1, so the singular form must appear.
-                    assert "1 council" in cap, (
-                        "a /stats count caption at n=1 must read '1 council' "
-                        f"(singular): {cap!r}"
-                    )
-
-                title = s["cheatMarginTitle"]
-                assert title is not None, (
-                    "the cheat-sheet margin .meta carried no title — the row didn't mount"
-                )
-                assert "1 councils" not in title, (
-                    "the cheat-sheet margin title rendered ungrammatical '1 councils' "
-                    f"at count=1 (the hardcoded plural literal regressed): {title!r}"
-                )
-                assert "1 council" in title, (
-                    "the cheat-sheet margin title at count=1 must read '1 council' "
-                    f"(singular): {title!r}"
-                )
-            finally:
-                browser.close()
-    finally:
-        httpd.shutdown()
-
-
-# A fixture where routing data EXISTS but EVERY task_type is a single council
-# (n=1) — the founder's real shape (349 of 424 task_types n=1-only). The
-# routingCheatSheetMap (n>=2 filtered) is therefore empty. personalRoutingTable
-# is non-null so the cold "Run a few councils" empty card does NOT fire — the
-# by-task-type section IS shown, and pre-fix it rendered a 5-column HEADER row
-# with ZERO body rows (a header-only ghost table) above a faint "+N hidden" note.
 _ALL_N1_PAGE_DATA = {
     "benchmarkProviders": ["claude", "codex"],
     "providerModels": {"claude": "Opus 4.8", "codex": "gpt-5.5"},

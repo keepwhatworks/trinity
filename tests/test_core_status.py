@@ -12,6 +12,10 @@ import pytest
 @pytest.fixture
 def isolated_home(tmp_path, monkeypatch):
     monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+    # These test the "stale" path, which exists only when the core gate could admit a
+    # replacement; with the stance admitter off a stale core reads "frozen" (kept) and costs
+    # no call -- covered in tests/test_core_frozen.py (2026-10-15).
+    monkeypatch.setenv("TRINITY_STANCE_ADMITTER", "1")
     return tmp_path
 
 

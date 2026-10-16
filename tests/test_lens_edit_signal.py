@@ -378,7 +378,9 @@ class TestMemoryHealthSurfacing:
         from trinity_local.launchpad_data import _memory_health
 
         health = _memory_health()
-        assert health["total_count"] == 7
+        # Six checks: the routing-freshness signal left with the router (2026-08-11) and the
+        # hardcoded 7 outlived it until 2026-10-15.
+        assert health["total_count"] == 6
 
 
 class TestBuildIntegration:

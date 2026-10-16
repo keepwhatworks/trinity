@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 
 from .council_schema import CouncilOutcome, PromptBundle
-from .state_paths import prune_store_to_cap, state_dir, tasks_dir, task_sync_dir
-from .task_schema import TaskRecord, TaskRecommendation, TaskRunRef, TaskSyncRecord
+from .state_paths import prune_store_to_cap, state_dir, tasks_dir
+from .task_schema import TaskRecord, TaskRecommendation, TaskRunRef
 from .utils import now_iso, stable_id
 
 
@@ -193,50 +193,3 @@ def task_from_council(
     )
     task.updated_at = now_iso()
     return task
-
-
-def make_sync_record(task: TaskRecord) -> TaskSyncRecord:
-    sync_runs = [
-        TaskRunRef(
-            kind=run.kind,
-            provider=run.provider,
-            run_id=run.run_id,
-            launched_at=run.launched_at,
-            status=run.status,
-            mode=run.mode,
-            metadata={k: v for k, v in run.metadata.items() if k in {"model"}},
-        )
-        for run in task.runs
-    ]
-    sync = TaskSyncRecord(
-        task_id=task.task_id,
-        task_cluster_id=task.task_cluster_id,
-        title=task.title,
-        status=task.status,
-        source_provider=task.source_provider,
-        current_provider=task.current_provider,
-        current_mode=task.current_mode,
-        winner_provider=task.winner_provider,
-        agreement_score=task.agreement_score,
-        needs_followup=task.needs_followup,
-        created_at=task.created_at,
-        updated_at=task.updated_at,
-        council_run_id=task.council_run_id,
-        review_ready=bool(task.review_page_path),
-        recommendation=task.recommendation,
-        runs=sync_runs,
-        metadata={
-            "local_only": True,
-            "launch_count": len(task.launch_ids),
-            "tag_count": len(task.tags),
-        },
-    )
-    return sync
-
-
-def save_sync_record(task: TaskRecord) -> Path:
-    sync = make_sync_record(task)
-    path = task_sync_dir() / f"{task.task_id}.json"
-    path.write_text(json.dumps(sync.to_dict(), indent=2), encoding="utf-8")
-    prune_store_to_cap(task_sync_dir())  # opt-in retention (#7); no-op by default
-    return path

@@ -1,6 +1,6 @@
 """trinity-local install — discovery surface for install verbs.
 
-Symmetric with `commands/debug.py`. The cron spec's 5-user-facing list
+The cron spec's 5-user-facing list
 mentions `install` as a single verb, but today the install module
 registers five separate subparsers (install-mcp, install-hooks,
 install-extension, install-launcher, uninstall). This umbrella

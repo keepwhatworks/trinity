@@ -36,7 +36,7 @@ def register(subparsers):
         "lens",
         aliases=["lens-build"],
         help="Build your lens (~/.trinity/memories/lens.md): the trade-offs you keep making, "
-             "read from your own prompts. --deep also mines your older history first.",
+             "read from your own prompts.",
     )
     build_parser.add_argument(
         "--sample-size", type=int, default=ME_SAMPLE_SIZE,
@@ -54,11 +54,9 @@ def register(subparsers):
     )
     build_parser.add_argument(
         "--deep", action="store_true",
-        help="Before rebuilding the lens, also mine your history for cross-provider "
-             "question pairs, cluster them, and synthesize each cluster as a virtual council "
-             "(one chairman call per cluster, usually 10-100; they fill the launchpad's "
-             "per-task-type tally, not the lens). "
-             "(Absorbed the former `dream` verb, 2026-07-04.)",
+        help="Same as `lens`, kept for old scripts. It used to synthesize a 'virtual council' "
+             "for each cluster of similar past prompts first (about 430 chairman calls on a "
+             "real history) for tallies nothing relied on; removed 2026-10-15.",
     )
     build_parser.add_argument(
         "--only-distill", dest="only_distill", action="store_true",
@@ -339,42 +337,17 @@ def handle_me_build(args):
     if getattr(args, "lens_generators", False):
         return handle_lens_generators(args)
 
-    # --deep: mine history first (discover cross-provider pairs → synthesize
-    # virtual councils → consolidate), then the full lens rebuild. Delegates to
-    # the six-phase engine in commands/dream.py — `dream` itself survives only
-    # as a compatibility alias for this flag (one concept, 2026-07-04; same
-    # alias pattern as `lens-build`).
     if getattr(args, "only_distill", False):
-        from types import SimpleNamespace
-        from .dream import handle_dream
-        return handle_dream(SimpleNamespace(
-            only_distill=True, skip_distill=False, dry_run=False,
-            primary_provider=None,
-        ))
+        from .dream import only_distill
+        return only_distill("claude")
 
     if getattr(args, "deep", False):
         import sys as _sys
-        from types import SimpleNamespace
-        from .dream import handle_dream
-        # Spend pre-flight (blindspot fix 2026-07-04): a first deep build
-        # synthesizes one virtual council per cross-provider cluster on the
-        # USER'S subscription — print the honest cost shape up front instead
-        # of surprising them minutes in. Print-only (no prompt) so launchpad
-        # dispatch and scripts stay non-interactive.
-        print(
-            "lens --deep mines your history: ~1 chairman call per cross-provider "
-            "cluster (typically 10-100 on a first run — minutes of wall time and "
-            "a real slice of your subscription quota) + the standard lens build. "
-            "Re-runs only pay for NEW clusters.",
-            file=_sys.stderr,
-        )
-        return handle_dream(SimpleNamespace(
-            similarity_threshold=0.85, max_clusters=None,
-            skip_consolidate=False, skip_me_build=False,
-            skip_vocabulary=False, skip_distill=False, only_distill=False,
-            dry_run=getattr(args, "dry_run", False),
-            primary_provider=None,
-        ))
+        # --deep's own phase (a virtual council per cluster of past prompts, ~430 chairman calls
+        # on a real history) was removed 2026-10-15 (council_6a9187cd799419e7); what it ran
+        # after that is what `lens` runs, so the flag now means `lens`.
+        print("lens --deep is now the same as `lens` (it no longer synthesizes virtual councils "
+              "from your history).", file=_sys.stderr)
 
     from ..lens_addon import enable_lens
     enable_lens()  # explicitly building the lens = opting into the lens add-on
@@ -439,6 +412,7 @@ def handle_me_build(args):
     )
     ok = not degenerate
     payload = {"ok": ok, "path": str(path), **summary, **hooks}
+    rc = 0 if ok else 1          # `lens` exited 0 after "Lens NOT rebuilt" (coherence review 2026-10-15)
     print(json.dumps(payload, indent=2))
     # 100-persona audit P51 fix: tell the user where to go next.
     import sys as _sys
@@ -469,13 +443,14 @@ def handle_me_build(args):
             "  Make your taste ambient (your agents load it with zero tool call):\n"
             "    trinity-local lens-skill   # writes a SKILL.md to symlink into ~/.claude/skills\n"
         )
+    return rc
 
 
 def handle_lens_setup(args):
     """`lens-setup` — guided "create your lens" (the opt-in lens add-on).
 
     Free fusion (the council) needs none of this. The lens does: this opts in,
-    ensures the embedder, ingests your CLI history, and builds the lens — in one
+    ensures the embedder, then runs `lens` (reads and embeds your CLI history, builds) — in one
     command. The Chrome extension + Takeout import are separate enrichment steps
     the wizard points at (they add the web-app surfaces to the corpus)."""
     import sys
@@ -492,9 +467,9 @@ def handle_lens_setup(args):
     from ..embeddings import mlx_actually_loaded
 
     if mlx_actually_loaded():
-        print("✓ Step 1/3: embedder already downloaded.")
+        print("✓ Step 1/2: embedder already downloaded.")
     else:
-        print("→ Step 1/3: the embedder (real semantic vectors).")
+        print("→ Step 1/2: the embedder (real semantic vectors).")
         from .download_embedder import handle_download_embedder
 
         if handle_download_embedder(SimpleNamespace(force=False, json=False)) != 0:
@@ -502,39 +477,22 @@ def handle_lens_setup(args):
                   "Fix the above and re-run `trinity-local lens-setup`.", file=sys.stderr)
             return 1
 
-    # Step 2 — ingest the always-local CLI baseline corpus.
-    print("→ Step 2/3: ingesting your CLI history (Claude Code / Codex / Antigravity)…")
-    try:
-        from ..cold_start import detect_available_sources
-        from ..incremental_ingest import ingest_recent
-
-        sources = detect_available_sources()
-        if sources:
-            res = ingest_recent(sources=sources)
-            print(f"  ingested {getattr(res, 'added', 0)} prompt(s) from {', '.join(sources)}.")
-        else:
-            print("  no local CLI transcripts found yet — building from whatever's present.")
-    except Exception as exc:  # noqa: BLE001 — ingest is best-effort; the build still runs
-        # TYPE only — a raw str(exc) here can leak a transcript FILESYSTEM PATH
-        # ("No such file or directory: '/Users/<name>/.claude/...'") into the CLI
-        # line; the build proceeds regardless, so the payload isn't actionable.
-        print(f"  (ingest skipped: {type(exc).__name__})", file=sys.stderr)
-
-    # Step 3 — build the lens.
-    print("→ Step 3/3: building the lens (a multi-minute chairman pass)…")
-    try:
-        path, _summary = build_me_via_lens_pipeline()
-        # The first build is where the palate canary's first snapshot gets frozen;
-        # without it there is nothing for later acts to be scored against.
-        from ..me.build_meters import record_build_meters
-        record_build_meters()
-    except Exception as exc:  # noqa: BLE001
-        print(f"✗ Lens build failed: {exc}", file=sys.stderr)
-        return 1
-
-    print(f"\n✓ Your lens is ready: {path}")
-    print("  The chairman now reads it on every council — when answers tie on quality, your lens picks the winner.\n")
-    print("Make it richer — add your web AI history (the all-six-surfaces moat):")
+    # Steps 2-3 are `lens` itself: it reads new transcripts with the pass that also embeds them,
+    # refuses without a real embedder, builds, refreshes vocabulary and core.md, and says
+    # whether the lens landed. The wizard used to run its own ingest (no embeddings, a short
+    # deadline), ignore the build's result, skip vocabulary and core.md, and print "ready"
+    # after a refused build (coherence review 2026-10-15).
+    print("→ Step 2/2: reading your history and building the lens (a few minutes)…")
+    rc = handle_me_build(SimpleNamespace(
+        sample_size=ME_SAMPLE_SIZE, k_basins=None, dry_run=False, deep=False,
+        only_distill=False, force=False, legacy=False))
+    if rc:
+        print("✗ Your lens was not built (the reason is above). Fix it, then run "
+              "`trinity-local lens`.", file=sys.stderr)
+        return rc
+    print(f"\n✓ Your lens is ready: {me_path()}")
+    print("  The chairman reads a short slice of it on every council.\n")
+    print("Make it richer — add your web AI history:")
     print("  • ChatGPT / Gemini / claude.ai exports:  trinity-local import-export <takeout>")
     print("  • live capture:                          trinity-local install-extension")
     print("Check it's trustworthy:                    trinity-local lens-health")
@@ -618,10 +576,10 @@ def handle_lens_acts(args):
 def handle_lens_stop(args):
     """#242a — request cancellation of a running lens build."""
     import json
-    from ..lens_progress import read_progress, request_cancel
+    from ..lens_progress import is_stalled, read_progress, request_cancel
     request_cancel()
     prog = read_progress()
-    running = bool(prog and prog.status == "running")
+    running = bool(prog and prog.status == "running" and not is_stalled(prog))
     print(json.dumps({
         "ok": True,
         "canceled_requested": True,

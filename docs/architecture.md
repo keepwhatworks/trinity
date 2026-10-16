@@ -18,14 +18,12 @@ It also looks back. Two transcript sources feed Trinity's lens: CLI sessions
 that live on disk by default (`~/.claude/`, `~/.codex/`, `~/.gemini/`)
 and web chats the Chrome extension auto-captures locally to
 `~/.trinity/conversations/` as you use claude.ai / chatgpt.com /
-gemini.google.com. Trinity finds questions you asked multiple providers
-separately, turns each cross-provider pair into a synthetic council, and
-bootstraps your context from your own history before you run a single fresh
-council.
+gemini.google.com. Trinity builds your lens from that history before you run a
+single fresh council.
 
 ## Where the repo is now
 
-`v<!-- canonical:version -->1.7.404<!-- /canonical -->` is launch-hardened around
+`v<!-- canonical:version -->1.7.405<!-- /canonical -->` is launch-hardened around
 the MCP-first path: `lens`, `council`, `status`, and `install` are the
 advertised CLI verbs, while older names stay registered for compatibility with
 launchpad dispatch and existing scripts. The core mechanics are in place:
@@ -48,13 +46,12 @@ install honesty, and the gated real-Chrome smoke.
 One verb owns the memory layer. `lens` runs the tension pipeline and then
 refreshes every thinking memory: the routing freeze, the LLM-free
 `vocabulary.md` scan (folded in 2026-07-04 so the staleness warning's own
-advice can clear it), and the `core.md` distill. `lens --deep` first mines
-your history (discover cross-provider question pairs, synthesize each as a
-virtual council), then runs the same build:
-the one-command cold start. (`dream` survives only as a compatibility alias
-for `--deep`, folded 2026-07-04. `lens --only-distill` is the ~20s core.md
-refresh.) Rule of thumb: `lens` = refresh what you have. `lens --deep` = also
-mine new signal from your history.
+advice can clear it), and the `core.md` distill. `lens --deep` and the hidden
+`dream` verb are compatibility names for `lens`: the deep build's own phase,
+which synthesized a "virtual council" for each cluster of similar past prompts
+(about 430 chairman calls on a real history), fed only tallies the lens and the
+trust ledger excluded, and was removed 2026-10-15. `lens --only-distill` is the
+~20s core.md refresh.
 
 ## Councils are a GPS: broad when you need coverage, deep when you need conviction
 

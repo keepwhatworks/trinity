@@ -82,7 +82,7 @@ Claude Code:
 
 ```bash
 trinity-local ingest-recent             # auto-discovers ~/.claude, ~/.codex, ~/.gemini transcripts
-trinity-local lens --deep               # ~5-15 minutes (the deep build)
+trinity-local lens                      # a few minutes, depending on your history
 trinity-local portal-html --open-browser
 ```
 

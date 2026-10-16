@@ -47,18 +47,19 @@ which trinity-local-capture-host   # should print a path
 #    a. Open chrome://extensions
 #    b. Toggle "Developer mode" on (top right)
 #    c. Click "Load unpacked" → select this browser-extension/ directory
-#    d. Copy the 32-character ID Chrome assigns (looks like "abcdef...")
 
-# 3. Wire up the Native Messaging manifest with that ID:
-trinity-local install-extension --extension-id <PASTE_THE_ID_HERE>
+# 3. Wire up the Native Messaging manifest (the extension's ID is pinned by the
+#    manifest "key", so no ID is needed):
+trinity-local install-extension
 
 # 4. Smoke test: visit claude.ai, send one message, then check:
 ls -la ~/.trinity/conversations/claude/
 # expected: <conv_id>.json (canonical state) + <conv_id>.stream.json (adapter output)
 ```
 
-The `--extension-id` is the Chrome-assigned hash. It is the security
-primitive: only that exact extension can invoke the local capture host.
+The extension ID (pinned by the manifest `key`) is the security primitive:
+only that exact extension can invoke the local capture host. A fork with its own
+key passes its ID with `--extension-id`.
 Any other extension hitting the host gets `Specified native messaging
 host not found.` (enforced by Chrome itself, not Trinity).
 
@@ -87,7 +88,7 @@ empty after sending a claude.ai message:
    `[trinity-bg] service worker started`. Errors like
    `Specified native messaging host not found` mean the manifest is
    missing or has the wrong extension ID — rerun
-   `trinity-local install-extension --extension-id <ID>`.
+   `trinity-local install-extension`.
 2. **Check the page console** — F12 on claude.ai. Should see
    `[trinity-hook] fetch + xhr wrappers installed on <host>` and adapter
    chunks logged on each turn.

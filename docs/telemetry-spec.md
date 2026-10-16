@@ -40,10 +40,9 @@ ships **on by default** to close the feedback loop. Trinity can't improve routin
 without seeing which providers win which task types. The guarantee is not *off*, it
 is *provably no-PII*: only categorical labels (`task_type` from a fixed list, anything else
 sent as `other`; `winner` folded to a known provider or `other`; `member_count`;
-`mode`; and once per install `activation_source` + `surface`) ever leave the machine for
-Google Analytics; launchpad views and an anonymous numeric Elo snapshot go only to a collector
-the user configures (`TRINITY_TELEMETRY_ENDPOINT`), carrying the rotating id, never the local one, enforced
-structurally by `telemetry.build_outbound_event_payload`'s `DISCLOSED_EVENT_PARAMS`
+`mode`; and once per install `activation_source` + `surface`) ever leave the machine, for
+Google Analytics, from the CLI and MCP server only, carrying the rotating id, never the local
+one. The launchpad page sends nothing. Enforced structurally by `telemetry.build_outbound_event_payload`'s `DISCLOSED_EVENT_PARAMS`
 allowlist (a param outside the set is dropped at the wire boundary) and asserted by
 `tests/test_telemetry_no_pii.py`.
 
@@ -73,12 +72,8 @@ Control:
 
 ## 2. Summary-level sharing only
 
-Telemetry should send:
-
-- anonymous usage events
-- Elo summaries
-- council counts
-- coarse benchmark signals
+Telemetry sends two events, both categorical: `council_complete` (task type, winner, member
+count, mode) and, once per install, `activation` (install channel, first-use surface).
 
 Telemetry should **not** send by default:
 
@@ -106,12 +101,6 @@ action via `trinity-local download-embedder` (or `HF_HUB_OFFLINE=0 huggingface-c
 MCP child processes inherit the env so the guarantee propagates through
 every spawn. Override per-invocation when explicitly pulling fresh weights.
 
-## 4. Split "views" from "ratings"
-
-Launchpad opens and Elo snapshots are different event types.
-
-Do not treat “viewed the page” as equivalent to “generated new benchmark data.”
-
 ---
 
 ## Consent Flow
@@ -126,10 +115,9 @@ The copy should clearly distinguish:
 
 ### Shared
 
-- launchpad views
-- council counts
-- anonymous Elo summaries
-- app version
+- per council: task type (a fixed list), winner, member count, mode
+- once per install: the install channel and whether the first use was a council or a verify
+- a monthly-rotating anonymous id
 
 ### Not shared
 
@@ -141,24 +129,19 @@ The copy should clearly distinguish:
 
 ## Launchpad settings
 
-Users must be able to:
+Users can:
 
-- enable sharing (shipped, launchpad settings modal)
-- disable sharing (shipped)
-- reset anonymous share identity (shipped, `telemetry-reset-id` CLI + modal button)
-- point the launchpad's own events at a collector you run (`TRINITY_TELEMETRY_ENDPOINT`). This does not redirect CLI or MCP events, which go to Google Analytics; `telemetry-endpoint` stores a setting nothing reads and says so.
+- enable and disable sharing (`telemetry-enable` / `telemetry-disable`, and the launchpad
+  settings modal)
+- reset the anonymous identity (`telemetry-reset-id` and the modal button)
+- see where events go (the modal's "Sent to" row: Google Analytics from the CLI and MCP server,
+  or "Not configured" for a source build with no analytics key)
+- see the exact outbound payload (`telemetry-show --wire`)
 
-**Future / not yet implemented:**
-- preview shared payload (UI not built. The shared event shape is documented below in this file, but no in-launchpad preview exists)
-- see last successful upload time (no `last_upload_at` field tracked in `~/.trinity/settings/telemetry.json` today)
-
-Recommended settings fields:
-
-- `sharing_enabled`
-- `share_usage_events`
-- `share_elo_summaries`
-- `last_upload_at`
-- `share_install_id`
+The launchpad's own events (`launchpad_view` and an `elo_snapshot` of provider win-rates), the
+self-configured collector they could be sent to (`TRINITY_TELEMETRY_ENDPOINT`), the
+`telemetry-endpoint` command and the `share_elo_summaries` setting were removed on 2026-10-15
+(founder-approved): without a configured collector the page sent nothing.
 
 ---
 
@@ -166,192 +149,36 @@ Recommended settings fields:
 
 ## Anonymous identity
 
-Generate a stable random ID on opt-in:
-
-- `share_install_id`
-
-Properties:
-
-- unique per local install
-- not derived from prompts or provider content
-- resettable by the user
+`share_install_id`, generated on opt-in: unique per install, not derived from prompts or provider
+content, resettable. It never leaves the machine; events carry a monthly-rotating id derived
+from it (`outbound_client_id`).
 
 ## Local settings record
 
-Recommended local structure:
+`~/.trinity/settings/telemetry.json`:
 
 ```json
 {
   "sharing_enabled": true,
   "share_usage_events": true,
-  "share_elo_summaries": true,
   "share_install_id": "share_xxx",
-  "consented_at": "2026-04-28T12:00:00Z",
-  "last_view_upload_at": "2026-04-28T12:10:00Z",
-  "last_elo_upload_at": "2026-04-28T12:10:00Z",
-  "last_elo_hash": "sha1:...",
-  "last_upload_status": "ok"
+  "consented_at": "2026-04-28T12:00:00Z"
 }
 ```
+
+plus, once per install, `activation_source`, `activation_sent_at` and `activation_attempted_at`.
 
 ---
 
 ## Event Types
 
-## 1. `launchpad_view`
+Both are sent from Python (`record_event`, `record_activation`) through
+`build_outbound_event_payload`, which drops any parameter outside `DISCLOSED_EVENT_PARAMS`.
 
-Sent when the user views the Launchpad and sharing is enabled.
-
-Purpose:
-
-- usage / retention measurement
-- rough heartbeat for active installs
-
-### Payload
-
-```json
-{
-  "event": "launchpad_view",
-  "version": 1,
-  "share_install_id": "share_xxx",
-  "app_version": "0.1.0",
-  "timestamp": "2026-04-28T12:10:00Z",
-  "surface": "launchpad",
-  "council_count_bucket": "10-49",
-  "provider_count": 3
-}
-```
-
-### Cadence
-
-- send on each Launchpad view if sharing is enabled
-- optionally dedupe views closer than a short threshold if needed later
-
----
-
-## 2. `elo_snapshot`
-
-Sent only when the Elo/radar state has changed materially or gone stale.
-
-Purpose:
-
-- public aggregate provider Elo
-- public task-kind comparison
-- future radar percentile / benchmark calculations
-
-### Payload
-
-```json
-{
-  "event": "elo_snapshot",
-  "version": 1,
-  "share_install_id": "share_xxx",
-  "app_version": "0.1.0",
-  "timestamp": "2026-04-28T12:10:00Z",
-  "window": "last_30_days",
-  "council_count": 42,
-  "providers": {
-    "claude": {
-      "elo": 1672,
-      "writing": 1730,
-      "research": 1580
-    },
-    "antigravity": {
-      "elo": 1615,
-      "writing": 1500,
-      "research": 1710
-    },
-    "codex": {
-      "elo": 1548,
-      "coding": 1695
-    }
-  },
-  "matchups": {
-    "claude_vs_gemini": { "claude_wins": 12, "gemini_wins": 8 },
-    "claude_vs_codex": { "claude_wins": 7, "codex_wins": 10 }
-  }
-}
-```
-
-### Cadence
-
-Send only if one of these is true:
-
-- first upload ever
-- council count changed
-- Elo summary hash changed
-- last Elo upload is older than 24 hours
-
-Do **not** post the full Elo payload on every page view if nothing changed.
-
----
-
-## 3. `settings_update`
-
-Optional event when sharing settings change and sharing is still enabled at the
-moment of update.
-
-Purpose:
-
-- understand opt-in / opt-out behavior
-
-### Payload
-
-```json
-{
-  "event": "settings_update",
-  "version": 1,
-  "share_install_id": "share_xxx",
-  "timestamp": "2026-04-28T12:12:00Z",
-  "sharing_enabled": true,
-  "share_usage_events": true,
-  "share_elo_summaries": false
-}
-```
-
-If the user turns sharing off, Trinity should simply stop sending future events.
-
----
-
-## Upload Timing
-
-## Recommended flow on Launchpad view
-
-When the user opens the Launchpad:
-
-1. render local page as usual
-2. if sharing disabled:
-   - do nothing
-3. if sharing enabled:
-   - send `launchpad_view`
-   - check whether `elo_snapshot` is stale or changed
-   - send `elo_snapshot` only if needed
-
-This produces:
-
-- a clean usage heartbeat
-- fresh public Elo without duplicate spam
-
----
-
-## Local Snapshot State
-
-To support dedupe, store:
-
-- `last_view_upload_at`
-- `last_elo_upload_at`
-- `last_elo_hash`
-- `last_upload_status`
-
-Recommended Elo hash input:
-
-- window
-- provider Elo values
-- task-kind Elo values
-- matchup summary
-- council count
-
-If the hash is unchanged, the snapshot does not need to be re-uploaded.
+- `council_complete`: `task_type` (a fixed list; anything else is `other`), `winner` (a known
+  provider or `other`), `member_count`, `mode`. Sent when a council finishes.
+- `activation`: `activation_source` (an allowlisted channel or `other`) and `surface`
+  (`council` or `verify`). Sent once, on the first completed council or verify.
 
 ---
 
@@ -389,13 +216,8 @@ without ever uploading raw local transcripts.
 
 ## Explicitly allowed to upload
 
-- anonymous install id
-- app version
-- page view event
-- council counts
-- Elo summaries
-- matchup counts
-- coarse provider / task-kind rating summaries
+- a monthly-rotating anonymous id
+- the categorical parameters of the two events above
 
 ## Explicitly not uploaded by default
 
@@ -425,13 +247,8 @@ The install prompt should say:
 
 ## Launchpad settings copy
 
-The settings page should include:
-
-- `Sharing enabled`
-- `Last upload`
-- `Preview shared data`
-- `Turn off sharing`
-- `Reset anonymous ID`
+The settings page includes: the sharing toggle, where events go ("Sent to"), and resetting the
+anonymous id. `trinity-local telemetry-show --wire` prints the exact payload.
 
 Trust depends on reversibility and clarity.
 

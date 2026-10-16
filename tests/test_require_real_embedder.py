@@ -54,6 +54,8 @@ def test_semantic_flows_gate_on_the_real_backend():
     (require_embedder_ready) which passes even when the backend can't embed and
     embed() silently falls back to TF-IDF. Reverting any one reds this test."""
     root = pathlib.Path(__file__).resolve().parents[1] / "src" / "trinity_local"
-    for rel in ("commands/vocabulary.py", "commands/dream.py", "commands/me.py", "stale_pass.py"):
+    for rel in ("commands/vocabulary.py", "commands/me.py", "stale_pass.py"):
         src = (root / rel).read_text()
         assert "require_real_embedder" in src, f"{rel} must gate on require_real_embedder"
+    # `dream` runs `lens` (2026-10-15), so it is gated by handle_me_build's gate.
+    assert "handle_me_build" in (root / "commands/dream.py").read_text()

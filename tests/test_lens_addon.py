@@ -111,15 +111,15 @@ def test_lens_setup_orchestrates_and_opts_in(monkeypatch, tmp_path, capsys):
     import trinity_local.commands.me as me
     _fresh(monkeypatch, tmp_path)
     monkeypatch.setattr("trinity_local.embeddings.mlx_actually_loaded", lambda: True)  # embedder present
-    monkeypatch.setattr("trinity_local.cold_start.detect_available_sources", lambda: ["claude"])
-    monkeypatch.setattr("trinity_local.incremental_ingest.ingest_recent", lambda **k: SimpleNamespace(added=5))
-    monkeypatch.setattr(me, "build_me_via_lens_pipeline", lambda: ("/x/lens.md", {}))
+    # Steps 2-3 are `lens` itself since 2026-10-15 (it reads and embeds history, builds, and
+    # says whether the lens landed); tests/test_lens_readiness_honest.py covers its outcomes.
+    monkeypatch.setattr(me, "handle_me_build", lambda a: 0)
 
     from trinity_local.lens_addon import lens_enabled
     assert lens_enabled() is False
     assert me.handle_lens_setup(SimpleNamespace()) == 0
     assert lens_enabled() is True          # the wizard opted in
-    assert "ready" in capsys.readouterr().out.lower()
+    assert "your lens is ready" in capsys.readouterr().out.lower()
 
 
 def test_lens_setup_aborts_when_embedder_fails(monkeypatch, tmp_path):

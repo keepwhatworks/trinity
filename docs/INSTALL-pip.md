@@ -59,7 +59,7 @@ trinity-local status
 trinity-local ingest-recent
 
 # Deep-build the core memories (~5-15 min)
-trinity-local lens --deep
+trinity-local lens
 
 # Run a council on a single question
 trinity-local council --task "what is the right caching strategy"

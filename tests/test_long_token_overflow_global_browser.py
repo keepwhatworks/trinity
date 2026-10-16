@@ -230,27 +230,6 @@ def _build_launchpad(home: Path, *, view: str) -> tuple[str, http.server.HTTPSer
     return f"http://127.0.0.1:{port}/portal_pages/{page}", httpd
 
 
-def _build_review(home: Path) -> tuple[str, None]:
-    os.environ["TRINITY_HOME"] = str(home)
-    os.environ["TRINITY_AUTOSCAN_DISABLED"] = "1"
-    import trinity_local.review as review_mod
-    from trinity_local.review import ReviewResult
-
-    review_mod.review_pages_dir = lambda: home  # type: ignore[assignment]
-    rev = ReviewResult(
-        review_id="rev-global-overflow",
-        task_id="task-overflow-0001",
-        original_provider="codex",
-        reviewer_provider="claude",
-        verdict=f"Incorrect at {_PATH} — see {_URL}.",
-        issues=[_REGEX, f"The token {_RUN} must wrap."],
-        suggestions=[f"Replace {_URL} and the run {_RUN}."],
-        reviewed_at="2026-06-22T00:00:00",
-    )
-    path = review_mod.render_review_html(rev)
-    return f"file://{path}", None
-
-
 _MEMBERS = ["claude", "codex", "antigravity"]
 
 
@@ -392,7 +371,6 @@ def _build_memory_viewer(home: Path, *, mfile: str) -> tuple[str, http.server.HT
 _SURFACES = [
     ("launchpad-home", lambda h: _build_launchpad(h, view="home"), 900),
     ("launchpad-stats", lambda h: _build_launchpad(h, view="stats"), 900),
-    ("review", lambda h: _build_review(h), 350),
     ("live-running", lambda h: _build_live_council(h, state="running"), 2800),
     ("live-failed", lambda h: _build_live_council(h, state="failed"), 2800),
     ("live-completed", lambda h: _build_live_council(h, state="completed"), 2800),
@@ -411,7 +389,7 @@ _SURFACES = [
 # token inside the SVG graph / a scroll table (not body innerText) — so don't
 # require hasLong there.
 _REQUIRE_LONG_PAINTED = {
-    "launchpad-home", "review", "live-running", "live-failed", "live-completed",
+    "launchpad-home", "live-running", "live-failed", "live-completed",
     "mv-core", "mv-lens", "mv-vocab", "mv-generators", "mv-picks",
 }
 

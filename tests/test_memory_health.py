@@ -17,6 +17,9 @@ import pytest
 def isolated_home(tmp_path, monkeypatch):
     """Empty TRINITY_HOME with the standard subdirs the health-check expects."""
     monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
+    # The stale-core cases need a core the gate could replace; a kept core is not "stale"
+    # (tests/test_core_frozen.py, 2026-10-15).
+    monkeypatch.setenv("TRINITY_STANCE_ADMITTER", "1")
     (tmp_path / "memories").mkdir(parents=True, exist_ok=True)
     return tmp_path
 
@@ -44,11 +47,11 @@ class TestMemoryHealthEmptyState:
         assert result["issues"] == []
         # ok_count tracks healthy signals (total minus issues). With no
         # data at all every signal is in "empty" state → not surfaced.
-        assert result["total_count"] == 7  # was 9; the picks centroid
+        assert result["total_count"] == 6  # 7 until 2026-10-15 (routing freshness left with the router); was 9; the picks centroid
         # embedder-drift (#277) AND chairman-audit-disagreed signals were retired
         # 2026-06-06 with the cortex collapse (#298) — the new lens-basin routing
         # has no separate cortex centroids (can't drift) and no LLM audit pass.
-        assert result["ok_count"] == 7
+        assert result["ok_count"] == 6
 
 
 class TestVocabularyStalenessSignal:

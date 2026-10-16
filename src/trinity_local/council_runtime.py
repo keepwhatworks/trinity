@@ -14,8 +14,6 @@ from .council_schema import (
 )
 from .state_paths import (
     council_outcomes_dir,
-    council_runs_path,
-    launch_events_path,
     prompt_bundles_dir,
     prune_store_to_cap,
 )
@@ -135,11 +133,6 @@ def create_launch_event(
         target_session_id=target_session_id,
         metadata=metadata or {},
     )
-
-
-def append_launch_event(event: LaunchEvent) -> None:
-    with launch_events_path().open("a") as handle:
-        handle.write(json.dumps(event.to_dict()) + "\n")
 
 
 # The optional sections render_member_prompt may add, in render order. The
@@ -676,11 +669,6 @@ def create_council_outcome(
     )
 
 
-def append_council_outcome(outcome: CouncilOutcome) -> None:
-    with council_runs_path().open("a") as handle:
-        handle.write(json.dumps(outcome.to_dict()) + "\n")
-
-
 def save_council_outcome(outcome: CouncilOutcome) -> Path:
     from .markdown_utils import render_markdown
     from .utils import atomic_write_text
@@ -765,7 +753,6 @@ def save_council_outcome(outcome: CouncilOutcome) -> Path:
         f"window.__TRINITY_COUNCIL_OUTCOME__[{json.dumps(outcome.council_run_id)}] = "
         f"{json.dumps(jsonp_payload)};\n",
     )
-    append_council_outcome(outcome)
     update_thread_manifest(outcome)
     return path
 

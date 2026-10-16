@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import sys
 
 from ..refresh import refresh_launchpad
 from ..telemetry import (
@@ -12,7 +11,6 @@ from ..telemetry import (
     launchpad_telemetry_state,
     load_telemetry_settings,
     reset_share_install_id,
-    save_telemetry_settings,
 )
 
 
@@ -23,9 +21,7 @@ def register(subparsers):
     show.set_defaults(handler=handle_telemetry_show)
 
     enable = subparsers.add_parser("telemetry-enable", help="Enable anonymous telemetry sharing")
-    enable.add_argument("--endpoint", default=None)
     enable.add_argument("--without-usage-events", action="store_true")
-    enable.add_argument("--without-elo", action="store_true")
     enable.set_defaults(handler=handle_telemetry_enable)
 
     disable = subparsers.add_parser("telemetry-disable", help="Disable anonymous telemetry sharing")
@@ -34,10 +30,6 @@ def register(subparsers):
     reset = subparsers.add_parser("telemetry-reset-id", help="Reset the anonymous share install id")
     reset.set_defaults(handler=handle_telemetry_reset_id)
 
-    endpoint = subparsers.add_parser("telemetry-endpoint", help="Store an endpoint setting that nothing reads (does not redirect events)")
-    endpoint.add_argument("--url", default=None)
-    endpoint.add_argument("--clear", action="store_true")
-    endpoint.set_defaults(handler=handle_telemetry_endpoint)
 
     # Auto-chain / polish-auto / auto-open settings retired 2026-05-17.
     # The auto-chain "always iterate" setting was killed per the
@@ -100,11 +92,7 @@ def _print_wire(settings) -> None:
 
 
 def handle_telemetry_enable(args):
-    settings = enable_telemetry(
-        endpoint=args.endpoint,
-        share_usage_events=not args.without_usage_events,
-        share_elo_summaries=not args.without_elo,
-    )
+    settings = enable_telemetry(share_usage_events=not args.without_usage_events)
     portal_path = refresh_launchpad()
     print(json.dumps({"settings": settings.to_dict(), "portal_path": str(portal_path)}, indent=2))
 
@@ -119,24 +107,3 @@ def handle_telemetry_reset_id(args):
     settings = reset_share_install_id()
     portal_path = refresh_launchpad()
     print(json.dumps({"settings": settings.to_dict(), "portal_path": str(portal_path)}, indent=2))
-
-
-def handle_telemetry_endpoint(args):
-    # Nothing reads this setting: CLI and MCP events go to Google Analytics, and the launchpad's
-    # collector is the TRINITY_TELEMETRY_ENDPOINT environment variable. Say so rather than let a
-    # user believe events were redirected (coherence review 2026-10-15).
-    print("note: this setting does not redirect anything. CLI and MCP events go to Google "
-          "Analytics; TRINITY_TELEMETRY_ENDPOINT points only the launchpad's own events at a "
-          "collector. To stop sending, run `trinity-local telemetry-disable`.", file=sys.stderr)
-    settings = load_telemetry_settings()
-    if args.clear:
-        settings.endpoint = None
-    elif args.url:
-        settings.endpoint = args.url
-    path = save_telemetry_settings(settings)
-    portal_path = refresh_launchpad()
-    print(json.dumps({"settings": settings.to_dict(), "path": str(path), "portal_path": str(portal_path)}, indent=2))
-
-
-
-

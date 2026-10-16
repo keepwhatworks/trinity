@@ -117,6 +117,26 @@ def _first_run_rung(health, council_count: int, total_transcripts: int) -> dict 
     }
 
 
+def _core_md_lines() -> list[str]:
+    """The status lines for core.md. A core the gate can never replace reads "kept", not "stale":
+    no command refreshes it, so none is advised as if one could (coherence review 2026-10-15)."""
+    from ..distill import core_freshness
+    from ..state_paths import core_path, lens_path
+    core = core_path()
+    if core.exists():
+        state = core_freshness().get("state")
+        marker = {"stale": "⚠️ stale", "frozen": "🔒 kept"}.get(state, "✅ fresh")
+        lines = [f"    {marker} core.md       {core.stat().st_size:>8,} bytes — chairman reads this first"]
+        if state == "frozen":
+            lines.append("        kept as first written (Trinity cannot yet tell whether a new draft is better);"
+                         " to rebuild: delete ~/.trinity/core.md, then run `trinity-local lens`")
+        return lines
+    if lens_path().exists():
+        return ["    · core.md       not distilled — run `trinity-local lens --only-distill` (~20s)"]
+    # Distilling needs a lens; on a fresh home that advice could only fail.
+    return ["    · core.md       not distilled (it is written when your lens builds)"]
+
+
 def handle_status(args):
     # Health (absorbed from former `doctor` command).
     health = run_doctor()
@@ -138,10 +158,6 @@ def handle_status(args):
 
     # State dir
     home = state_dir()
-
-    # Reviews
-    reviews_dir = home / "reviews"
-    review_count = _count_files(reviews_dir) if reviews_dir.exists() else 0
 
     # Council outcomes
     council_dir = home / "council_outcomes"
@@ -250,7 +266,6 @@ def handle_status(args):
             # `tasks_dir()` retained for back-compat with the v1.7
             # rename; external surfaces use the post-rename "todos".
             "todos": task_count,
-            "reviews": review_count,
             "councils": council_count,
             "first_run": _first_run_rung(health, council_count, total_transcripts),
             "drift_alerts": len(drift_alerts),
@@ -409,7 +424,6 @@ def handle_status(args):
     # Display label matches the on-disk directory (~/.trinity/todos/);
     # internal Python name `tasks_dir()` retained for back-compat.
     print(f"  Todos:     {task_count}")
-    print(f"  Reviews:   {review_count}")
     print(f"  Councils:  {council_count}")
     # Council value proof (#236) — the council-first painkiller, in one stat:
     # how often the chairman picked a DIFFERENT model than the user's default
@@ -446,7 +460,7 @@ def handle_status(args):
     # router on 2026-08-11). Reading paths from
     # state_paths so auto-migration kicks in transparently.
     from ..state_paths import (
-        core_path, lens_path, routing_path,
+        lens_path, routing_path,
         topics_path, vocabulary_path,
     )
     print("  Memories:  (lens hierarchy — chairman identity context)")
@@ -461,18 +475,8 @@ def handle_status(args):
             print(f"    ✅ {label} {size:>8,} bytes{extra}")
         else:
             print(f"    · {label} not built")
-    core = core_path()
-    if core.exists():
-        # Show whether core is fresh vs stale relative to its source memories.
-        from ..distill import is_core_stale
-        stale = is_core_stale()
-        marker = "⚠️ stale" if stale else "✅ fresh"
-        print(f"    {marker} core.md       {core.stat().st_size:>8,} bytes — chairman reads this first")
-    elif lens_path().exists():
-        print("    · core.md       not distilled — run `trinity-local lens --only-distill` (~20s)")
-    else:
-        # Distilling needs a lens; on a fresh home that advice could only fail.
-        print("    · core.md       not distilled (it is written when your lens builds)")
+    for line in _core_md_lines():
+        print(line)
     # Lens-build freshness (ground truth: built_at vs live corpus fingerprint —
     # NOT the refresh marker, which false-greened "done" while the lens sat 18
     # days / 677 prompts stale on a real install). A persistent "stale" means the

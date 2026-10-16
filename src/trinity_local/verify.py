@@ -450,6 +450,61 @@ def _resolve_lab(value: str | None) -> str | None:
         f"{sorted(labs | set(LAB_OF))}")
 
 
+READER_DIFF_CHARS = 60000
+
+
+def reader_diff(diff: str, cap: int = READER_DIFF_CHARS) -> tuple[str, str]:
+    """(the diff the readers get, what they do not see: "" when they see all of it).
+
+    A diff that fits reaches the readers whole. Over the cap, a deleted file is reduced to its
+    header first (Codex's verify read: below the cap a deleted safety check must stay visible). Code comes first, then tests, then everything else (docs, data), so
+    a cut drops prose before code. If the rest is still over `cap`, whole files are kept in that
+    order until it is reached and the others are named, both to the readers and in the verdict. This was a
+    silent `diff[:60000]`: a 135 KB diff whose first 60 KB were deleted files reached both
+    readers without the code under review, and nothing said so (coherence review 2026-10-15).
+    """
+    import re as _re
+    text = (diff or "").strip()
+    if len(text) <= cap:
+        return text, ""          # it fits: the readers see all of it, deleted files included
+    sections = _re.split(r"(?m)^(?=diff --git )", text)
+    kept: list[str] = []
+    for sec in sections:
+        if "\ndeleted file mode" in sec[:400] or sec[:400].startswith("deleted file mode"):
+            header = sec.split("\n", 1)[0]
+            removed = sum(1 for ln in sec.splitlines() if ln.startswith("-") and not ln.startswith("---"))
+            kept.append(f"{header}\ndeleted file ({removed} lines removed; contents not shown)\n")
+        else:
+            kept.append(sec)
+
+    def rank(sec: str) -> int:
+        m = _re.match(r"diff --git a/(\S+)", sec)
+        path = m.group(1) if m else ""
+        if _re.search(r"(^|/)tests?/|(^|/)test_[^/]*$", path):
+            return 1
+        return 0 if _re.search(r"\.(py|js|ts|tsx|jsx|sh|go|rs|rb|java|kt|swift|c|cc|cpp|h)$", path) else 2
+    kept.sort(key=rank)          # stable: git's order within each rank
+    out, used, left_out = [], 0, []
+    for sec in kept:
+        m = _re.match(r"diff --git a/(\S+)", sec)
+        name = m.group(1) if m else "the diff"
+        if used + len(sec) <= cap:
+            out.append(sec)
+            used += len(sec)
+        elif not out:
+            out.append(sec[:cap])          # one oversized file: show its start, never nothing
+            used = cap
+            left_out.append(f"{name} (cut at {cap:,} characters)")
+        else:
+            left_out.append(name)
+    if not left_out:
+        return "".join(out), ""
+    note = (f"{len(left_out)} of {len(kept)} files not shown, the diff being over "
+            f"{cap:,} characters: " + ", ".join(left_out[:12])
+            + (f" and {len(left_out) - 12} more" if len(left_out) > 12 else ""))
+    return "".join(out) + f"\n[verify: {note}]\n", note
+
+
 def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
                providers: tuple[str, ...] = DEFAULT_PANEL, exclude_lab: str | None = None,
                config=None, effort: str | None = None,
@@ -461,9 +516,10 @@ def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
         from .config import load_config
         config = load_config()
     ids = [c.id for c in judgments]
+    shown, partial = reader_diff(diff)
     prompt = _PROMPT.format(
         context=context.strip() or "(none given)",
-        diff=diff.strip()[:60000],
+        diff=shown,
         criteria="\n".join(f"- {c.id}: {c.statement}" for c in judgments),
         vote_keys=", ".join(f'"{i}": "PASS|FAIL"' for i in ids),
     )
@@ -513,7 +569,7 @@ def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
         reads = list(pool.map(one, eligible))      # provider order, whatever finishes first
     reads += lost
     votes = {r.provider: r.passed for r in reads if r.error is None}
-    return Panel(ran=bool(votes), votes=votes), reads
+    return Panel(ran=bool(votes), votes=votes, partial=partial), reads
 
 
 # --------------------------------------------------------------------------- verify
@@ -598,7 +654,7 @@ def verify(criteria_dicts: list[dict], diff: str, context: str, cwd: Path,
         "differential": measured,
         "panel": {"ran": panel.ran, "votes": panel.votes, "labs": sorted(panel.labs()),
                   "consensus_pass": panel.consensus_pass(), "split": panel.split(),
-                  "reads": [asdict(r) for r in reads]},
+                  "partial": panel.partial, "reads": [asdict(r) for r in reads]},
         "criteria": [asdict(c) for c in criteria],
         # Everything that did not verify this change, so a person must read it: criteria no
         # test runs, tests that never ran (--no-tests) or ran red without blocking, and tests

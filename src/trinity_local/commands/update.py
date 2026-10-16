@@ -11,7 +11,7 @@ Side-effects on every update:
   2. `trinity-local install-mcp` re-runs to pick up any new MCP tools
      or renamed entries (council c18f739a verdict: MCP config must
      refresh when the tool surface changes)
-  3. `trinity-local install-extension --extension-id <prior-id>`
+  3. `trinity-local install-extension`
      re-runs if the user previously configured the Chrome extension
      (Native Messaging manifest may need refresh)
   4. `trinity-local status` to verify the new state (the former

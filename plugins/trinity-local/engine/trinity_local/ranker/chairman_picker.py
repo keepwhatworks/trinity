@@ -23,20 +23,9 @@ Manual override (`--primary-provider`, `primary_provider=`) bypasses this.
 """
 from __future__ import annotations
 
-import math
 
 from ..providers import chair_order
 from ..task_types import guess_task_type
-
-# Kept only for the launchpad's "X% personalized" column, which reports a blend
-# this module no longer runs; that column goes in the UI batch of the same review.
-PERSONAL_MIDPOINT = 5
-PERSONAL_STEEPNESS = 2.0
-
-
-def sigmoid_alpha(n: int) -> float:
-    return 1.0 / (1.0 + math.exp(-(n - PERSONAL_MIDPOINT) / PERSONAL_STEEPNESS))
-
 
 def predict_strongest_chairman(task_text: str, *, available_providers: list[str]) -> str:
     """The chair for this council, from the caller's enabled providers ("" if none).

@@ -161,7 +161,7 @@ trinity-local eval-show       # per-axis bars: REFRAME / COMPRESSION / REDIRECT 
 
 ### Your lens, generated from your prompts.
 
-`trinity-local lens --deep` is the consolidation pass. Like sleep: it
+`trinity-local lens` is the consolidation pass. Like sleep: it
 **reweights old facts in light of everything that's come in since**,
 **resolves memories that contradicted each other**, and connects
 **memories that were just sitting there with their neighbors**. It turns
@@ -288,7 +288,7 @@ pipeline (Stage 0 turn-pair rejections + Stages 1-4 basins→decisions→pair-mi
 
 ## What's next
 
-Current repo state: v1.7 line, exact package `v<!-- canonical:version -->1.7.404<!-- /canonical -->`. The shipped surface is MCP-first: `lens`, `plan`, `verify`, `trust`, `status`, and `install` are the advertised CLI verbs. The older `lens-build` / `council-launch` / `dream` names remain as compatibility aliases (`dream` folded into `lens --deep` 2026-07-04, one concept) for launchpad dispatch and existing scripts. An earlier arc collapsed routing into the lens; that router was then measured (42.9% against a pick-the-leader constant's 37.0%, short of its bar) and removed on 2026-08-11, so nothing routes on your behalf today. Earlier work tightened the launch path: extension auto-wiring, schema migrations, real ModernBERT embeddings, TF-IDF abstain-gates for semantic flows, corpus-purity guards, personal eval integrity, no-PII telemetry gates, and install-wrapper Python fallback.
+Current repo state: v1.7 line, exact package `v<!-- canonical:version -->1.7.405<!-- /canonical -->`. The shipped surface is MCP-first: `lens`, `plan`, `verify`, `trust`, `status`, and `install` are the advertised CLI verbs. The older `lens-build` / `council-launch` / `dream` names remain as compatibility aliases (`dream` folded into `lens --deep` 2026-07-04, one concept) for launchpad dispatch and existing scripts. An earlier arc collapsed routing into the lens; that router was then measured (42.9% against a pick-the-leader constant's 37.0%, short of its bar) and removed on 2026-08-11, so nothing routes on your behalf today. Earlier work tightened the launch path: extension auto-wiring, schema migrations, real ModernBERT embeddings, TF-IDF abstain-gates for semantic flows, corpus-purity guards, personal eval integrity, no-PII telemetry gates, and install-wrapper Python fallback.
 
 ## Help
 
@@ -300,7 +300,6 @@ Current repo state: v1.7 line, exact package `v<!-- canonical:version -->1.7.404
 | `trinity-local trust "<topic>"` | The recurring cross-provider disagreements you keep returning to on a topic |
 | `trinity-local trust` | Which model you side with when the labs split, from your own resolved disagreements |
 | `trinity-local lens` | Build your lens from prompt history |
-| `trinity-local lens --deep` | Mine your history + rebuild the whole memory layer |
 | `trinity-local install` | Install or repair the MCP wiring in each CLI |
 | `trinity-local install-extension` | Connect the optional Chrome extension |
 | `trinity-local me-card` | Render your strongest lens as a PNG |

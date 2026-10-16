@@ -444,32 +444,6 @@ def test_drained_boundary_file_skipped_when_unchanged(tmp_path, monkeypatch):
     assert parse_calls["n"] == first + 1, "grown file should be re-parsed"
 
 
-def test_review_command_injects_reconciled_model(tmp_path, monkeypatch):
-    """#217: review.py must inject the authoritative config.model (which the
-    v1.7.40 loader strips out of command/args) so the reviewer doesn't run on
-    the CLI default."""
-    import json as _json
-    from trinity_local.commands.review import _reviewer_command_for
-
-    cfg = tmp_path / "config.json"
-    cfg.write_text(_json.dumps({
-        "providers": {
-            "codex": {"type": "codex", "command": ["codex", "--quiet"],
-                      "args": ["--model", "gpt-5.3-codex"]},
-            "antigravity": {"type": "antigravity", "command": ["agy", "-p"],
-                            "model": "Gemini 3.1 Pro (high)"},
-        },
-    }), encoding="utf-8")
-
-    codex_cmd = _reviewer_command_for(reviewer="codex", config_path=str(cfg))
-    assert "--model" in codex_cmd and "gpt-5.3-codex" in codex_cmd
-    assert codex_cmd[0] == "codex"  # binary stays first
-
-    # antigravity has no --model flag → never injected.
-    agy_cmd = _reviewer_command_for(reviewer="antigravity", config_path=str(cfg))
-    assert "--model" not in agy_cmd
-
-
 def test_real_end_to_end_claude_session_ingest(tmp_path, monkeypatch):
     """Integration guard (2026-06-01): every test above MOCKS _parse_source_path /
     _iter_recent_paths, so the REAL pipeline — the `~/.claude/projects/**/*.jsonl`

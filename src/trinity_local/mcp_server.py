@@ -700,8 +700,8 @@ async def handle_list_resources() -> list[Resource]:
     All resources are exposed unconditionally — even when their files
     don't exist yet (cold install). read_resource() returns a stub
     explaining how to populate them rather than 404'ing, so the
-    agent sees "AGENTS.md not yet generated — run trinity-local
-    lens --deep" and can offer that action to the user.
+    agent sees "not generated yet — run trinity-local lens" and can
+    offer that action to the user.
     """
     return [
         Resource(
@@ -1490,6 +1490,9 @@ async def _synthesize_responses(args: dict, responses: list[dict]) -> list[Any]:
     _mode = "host_synthesis" if host_synthesis else "synthesis_only"
     from .council_runtime import chairman_format
     outcome_metadata: dict = {"mode": _mode, "chairman_format": chairman_format()}
+    if _mode == "synthesis_only":
+        from .council_schema import RESPONSES_FROM_CALLER
+        outcome_metadata["responses_from"] = RESPONSES_FROM_CALLER   # not a legacy virtual council
     if parse_error:
         outcome_metadata["routing_label_error"] = parse_error
     outcome = create_council_outcome(
@@ -1779,7 +1782,6 @@ async def _run_council(args: dict) -> list[Any]:
         # to MCP callers. Nested under `_local_paths` so harnesses can ignore.
         "_local_paths": {
             "task_path": raw.get("task_path"),
-            "sync_path": raw.get("sync_path"),
             "review_path": raw.get("review_path"),
         },
     }

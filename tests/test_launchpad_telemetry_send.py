@@ -1,24 +1,9 @@
-"""Browser-level guard for the #231 privacy invariant: the launchpad must make
-NO outbound telemetry request from the browser unless an endpoint was explicitly
-provisioned (GA4 creds or a custom collector).
+"""The launchpad page makes no outbound telemetry request, ever.
 
-`test_telemetry_no_pii.py` guards this at the DATA layer — it asserts the
-`endpoint` is stripped from `launchpad_telemetry_state()` without creds and
-`_browser_send_enabled()` is False. But the actual gate is a line of JS
-(`if (!settings.sharing_enabled || !settings.endpoint) return;`) running in the
-page. A refactor that constructed a fallback URL, moved the guard, or read the
-endpoint from a different field would keep every data-level test green while the
-browser silently started POSTing to a collector. This exercises the gate where
-it executes: the default launchpad fires ZERO external requests on load.
-
-Non-vacuous by construction: the second test provisions a custom endpoint and
-asserts the browser DOES attempt the send (intercepted + aborted — nothing ever
-leaves the machine). That proves the default silence is the WITHHELD endpoint,
-not dead send code. Categorical-only payload (guaranteed by the data-layer
-guards); the request is aborted before any network egress regardless.
-
-Slow-marked (spawns portal-html + chromium); skips when Playwright/chromium are
-absent. Isolated synthetic home — no founder data, no real telemetry.
+Its own sender (maybeSendTelemetry) could POST launchpad_view and elo_snapshot events to a
+self-configured collector (TRINITY_TELEMETRY_ENDPOINT). That path was removed on 2026-10-15
+(founder-approved); CLI and MCP events go to Google Analytics from Python. This drives the real
+page in a browser and captures every non-local request.
 """
 from __future__ import annotations
 
@@ -60,7 +45,7 @@ def _render_launchpad(home: Path, extra_env: dict[str, str] | None = None) -> Pa
     return pages
 
 
-def _load_and_capture_external(pages: Path):
+def _load_and_capture_external(pages: Path, probe: str | None = None):
     """Serve the home over loopback, load the launchpad with every non-local
     request aborted+captured, return the list of external (method, url)."""
     import functools
@@ -98,6 +83,9 @@ def _load_and_capture_external(pages: Path):
                 page.goto(f"http://127.0.0.1:{port}/portal_pages/launchpad.html",
                           wait_until="networkidle")
                 page.wait_for_timeout(2500)  # let any deferred send fire
+                if probe:   # positive control: a request the page makes must be captured
+                    page.evaluate("u => fetch(u).catch(() => null)", probe)
+                    page.wait_for_timeout(500)
             finally:
                 browser.close()
     finally:
@@ -117,18 +105,18 @@ def test_default_launchpad_sends_no_telemetry_from_browser():
     )
 
 
-def test_provisioned_endpoint_does_fire_the_browser_send():
-    # Non-vacuous companion: prove the send path is REACHABLE, so the default
-    # test's silence is the withheld endpoint, not dead code. With a custom
-    # collector provisioned, the browser must attempt the POST (aborted here).
+def test_the_page_sends_nothing_even_with_the_old_collector_variable_and_ga4_creds():
+    """The launchpad's own sender and its collector (TRINITY_TELEMETRY_ENDPOINT) were removed
+    2026-10-15: whatever the environment, the page makes no outbound request. The probe is the
+    positive control: a request the page does make is captured, so silence is not a blind spot."""
     pytest.importorskip("playwright.sync_api")
     home = Path(tempfile.mkdtemp()) / "trinity"
     home.mkdir(parents=True)
-    pages = _render_launchpad(home, {"TRINITY_TELEMETRY_ENDPOINT": _CUSTOM_ENDPOINT})
-    external = _load_and_capture_external(pages)
-    hit = [u for _, u in external if "trinity-telemetry-probe.test" in u]
-    assert hit, (
-        "a provisioned custom endpoint did NOT trigger any browser send — the "
-        "send path may be dead, which would make the default-case guard vacuous. "
-        f"external requests seen: {external[:5]}"
-    )
+    pages = _render_launchpad(home, {"TRINITY_TELEMETRY_ENDPOINT": _CUSTOM_ENDPOINT,
+                                     "TRINITY_GA4_MEASUREMENT_ID": "G-PROBE",
+                                     "TRINITY_GA4_API_SECRET": "probe-secret"})
+    probe = "https://capture-control.trinity-telemetry-probe.test/x"
+    external = _load_and_capture_external(pages, probe=probe)
+    urls = [u for _, u in external]
+    assert probe in urls, f"the capture harness missed the control request: {urls[:5]}"
+    assert [u for u in urls if u != probe] == [], f"the page sent telemetry: {urls[:5]}"

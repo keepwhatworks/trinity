@@ -23,7 +23,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .state_paths import (
-    council_outcomes_dir,
     state_dir,
 )
 from .utils import atomic_write_text
@@ -70,8 +69,8 @@ def _count_basins() -> int:
 def compute_corpus_stats() -> dict[str, int]:
     """Current corpus size per tracked metric. Never raises."""
     try:
-        council_dir = council_outcomes_dir()
-        councils = sum(1 for _ in council_dir.glob("*.json")) if council_dir.exists() else 0
+        from .council_analytics import council_count
+        councils = council_count()
     except OSError:
         councils = 0
     # UNIQUE nodes, not lines: the store is append-only latest-wins-by-id, so an

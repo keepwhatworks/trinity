@@ -132,10 +132,19 @@ def _flip_to_stats(page):
     return page.frames[-1]
 
 
+def _home_frame(page):
+    lf = page.frames[-1]
+    assert "sandbox/launchpad.html" in (lf.url or ""), f"launchpad iframe missing: {lf.url}"
+    lf.evaluate(_STUB_DISPATCH_OK)
+    return lf
+
+
 def test_topology_chip_acknowledges_click_in_panel(tmp_path, monkeypatch):
-    """Clicking the /stats "→ topology" chip in the side panel must show a visible,
-    role=status acknowledgment that names the topology destination — not silently
-    open the dashboard in another window leaving the panel unchanged (a dead no-op).
+    """Clicking a lens "Spans" basin chip (a topology deep link) in the side panel must show a
+    visible, role=status acknowledgment that names the topology destination — not silently open
+    the dashboard in another window leaving the panel unchanged (a dead no-op). (This clicked the
+    cheat-sheet's "→ topology" chip, removed with the router on 2026-08-11; the test failed on a
+    missing element for two months.)
     """
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright
@@ -143,9 +152,9 @@ def test_topology_chip_acknowledges_click_in_panel(tmp_path, monkeypatch):
     with sync_playwright() as p:
         ctx, ext_id, page = _boot_panel(p, tmp_path, monkeypatch)
         try:
-            sf = _flip_to_stats(page)
-            chips = sf.locator("a.cortex-topology-chip")
-            assert chips.count() >= 1, "no '→ topology' chip on the side-panel /stats cheat-sheet (seed regression?)"
+            sf = _home_frame(page)   # the lens card, and its basin chips, live on the home view
+            chips = sf.locator("a.lens-basin-chip")
+            assert chips.count() >= 1, "no lens basin chip (a topology deep link) on the side-panel home view"
             # PRECONDITION: no notice before the click — proves the notice is a
             # RESPONSE to the click, not always-present.
             pre = sf.evaluate(
@@ -180,10 +189,10 @@ def test_topology_chip_acknowledges_click_in_panel(tmp_path, monkeypatch):
             ctx.close()
 
 
-def test_picks_link_acknowledges_with_specific_label(tmp_path, monkeypatch):
-    """The cheat-sheet's first-cell picks.json deep link must also acknowledge — and
-    its label must be SPECIFIC to picks.json (proves the label derives from the
-    clicked href, not a hard-coded string)."""
+def test_routing_link_acknowledges_with_specific_label(tmp_path, monkeypatch):
+    """The cheat-sheet's routing.json deep link must also acknowledge — and its label must be
+    SPECIFIC to routing.json (proves the label derives from the clicked href, not a hard-coded
+    string). (This used the picks.json link, removed with the router on 2026-08-11.)"""
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright
 
@@ -191,16 +200,16 @@ def test_picks_link_acknowledges_with_specific_label(tmp_path, monkeypatch):
         ctx, ext_id, page = _boot_panel(p, tmp_path, monkeypatch)
         try:
             sf = _flip_to_stats(page)
-            link = sf.locator('a[href*="file=picks.json"]')
-            assert link.count() >= 1, "no picks.json deep link on the side-panel /stats cheat-sheet"
+            link = sf.locator('a[href*="file=routing.json"]')
+            assert link.count() >= 1, "no routing.json deep link on the side-panel /stats cheat-sheet"
             link.first.click(timeout=5000)
             page.wait_for_timeout(450)
             text = sf.evaluate(
                 "()=>{const n=document.querySelector('.portal-open-notice');"
                 "return n?(n.innerText||'').replace(/\\s+/g,' ').trim():'';}"
             )
-            assert "picks.json" in text, (
-                "the picks.json deep-link ack didn't name picks.json — the label isn't "
+            assert "routing.json" in text, (
+                "the routing.json deep-link ack didn't name routing.json — the label isn't "
                 f"derived from the clicked destination: {text!r}"
             )
         finally:

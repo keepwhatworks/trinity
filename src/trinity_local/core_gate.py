@@ -460,6 +460,18 @@ def stance_prefers_candidate(candidate: str, incumbent: str,
 # CLOSED: it never admits over a live incumbent on ruler evidence alone.
 LENGTH_CONFOUNDED_RULER = True
 
+
+def replacement_possible(*, stance_admitter: bool) -> bool:
+    """Can propose_core ever admit a candidate over a live incumbent?
+
+    While the bits ruler is length-confounded, only the dormant stance admitter can; with it
+    off, every candidate after the first core is refused whatever it says. Distill asks this
+    BEFORE spending a flagship call on a draft that cannot be admitted (coherence review
+    2026-10-15: every `lens` paid that call, and `status` called the core "stale" and advised
+    a command that could not clear it).
+    """
+    return (not LENGTH_CONFOUNDED_RULER) or stance_admitter
+
 _ERROR_SHAPES = (
     "session limit", "usage limit", "rate limit", "quota",
     "failed to authenticate", "oauth", "session expired",
@@ -543,7 +555,7 @@ def propose_core(candidate: str, *, heldout: list[str] | None = None,
             "no corpus to score against, but an incumbent EXISTS — keeping it. "
             "An unreadable corpus is a fact about this run, not about the core.",
                            heldout_n=0,
-                           archived=_archive(cand, "admitted", {"reason": "cold-install"}))
+                           archived=_archive(cand, "refused-no-corpus", {"reason": "cold-install"}))
     if len(texts) < MIN_HELDOUT:
         # FAIL CLOSED: cannot score => keep the incumbent. Freezing is the safe
         # direction for a core, and the candidate is preserved on disk.

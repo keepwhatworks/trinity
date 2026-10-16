@@ -82,7 +82,7 @@ class PipelineState:
 
 
 def stage1_basins(
-    *, k: int | None = None, seed: int = 42, split_megas: bool | None = None,
+    *, k: int | None = None, seed: int = 42, split_megas: bool | None = None, persist: bool = True,
 ) -> list[Basin]:
     """Cluster PromptNodes into basins. Pure numpy, no LLM.
 
@@ -92,9 +92,13 @@ def stage1_basins(
     split_megas=None (default) defers to the TRINITY_SPLIT_MEGA_BASINS env knob
     (default off) — the combined mega-basin splitter refines the topology by
     splitting ONLY oversized + incoherent basins into coherent sub-basins
-    (#308). Opt-in until the founder flips it; behaviour-preserving when off."""
+    (#308). Opt-in until the founder flips it; behaviour-preserving when off.
+
+    persist=False computes the topology without writing topics.json: `lens --dry-run` exists to
+    inspect it before committing, and used to overwrite the live file on the way."""
     basins = compute_basins(k=k, seed=seed, split_megas=split_megas)
-    save_basins(basins)
+    if persist:
+        save_basins(basins)
     return basins
 
 

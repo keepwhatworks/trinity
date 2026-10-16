@@ -262,6 +262,7 @@ def compute(rows: Iterable[dict]) -> dict[str, DissentRecord]:
 def load_rows() -> tuple[list[dict], dict[str, int]]:
     """Read both stores; return (rows, per-source counts) so any readout can disclose
     where its evidence came from."""
+    from .council_schema import is_hindsight_synthesis
     from .state_paths import council_outcomes_dir
 
     rows: list[dict] = []
@@ -272,6 +273,8 @@ def load_rows() -> tuple[list[dict], dict[str, int]]:
                 o = json.loads(f.read_text())
             except Exception:
                 continue
+            if not isinstance(o, dict) or is_hindsight_synthesis(o.get("metadata")):
+                continue      # a legacy `lens --deep` virtual council, not a production one
             rl = o.get("routing_label") or {}
             if any(d.get("resolution") for d in (rl.get("disagreed_claims") or [])):
                 rows.append(o)

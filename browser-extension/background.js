@@ -80,7 +80,7 @@ const EXTENSION_TIPS = [
     // sweep flagged the same line appearing twice on one narrow panel.)
     key: "capture-nudge",
     prereq: (s) => (s.captured || 0) === 0,
-    message: "Once a few are captured, you can run them through a council across all three — and build a taste lens that answers in your voice.",
+    message: "Once a few are captured, you can run them through a council across all three — and build a taste lens from your own history.",
     cta: "",
   },
   {
@@ -92,7 +92,7 @@ const EXTENSION_TIPS = [
   {
     key: "create-lens",
     prereq: (s) => s.hostPresent && !s.lensBuilt,
-    message: "Build your taste lens from your captured history — answers come back in your voice.",
+    message: "Build your taste lens from your captured history.",
     cta: "trinity-local lens-setup",
   },
 ];

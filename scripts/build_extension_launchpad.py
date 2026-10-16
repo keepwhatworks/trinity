@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""Generate the in-extension launchpad (browser-extension/launchpad.html +
-launchpad-init.js + vendor/) from the canonical launchpad template.
+"""Transform the canonical launchpad template for the extension, and publish vendor/.
+
+`build()` is the transform scripts/build_extension_sidepanel.py writes into
+browser-extension/sandbox/ (the side panel's launchpad). This script used to write a
+second copy at browser-extension/launchpad.html, which no manifest entry or code opened;
+it was deleted with the toolbar popup on 2026-10-15. `main()` now only publishes the
+vendored assets the side panel and the memory viewer load.
 
 WHY a build step: MV3 forbids inline <script> in extension pages, but the served
 file:// launchpad emits its ~76 KB Vue app logic INLINE. So we render the
@@ -123,14 +128,8 @@ def build() -> tuple[str, str]:
 def main() -> int:
     from trinity_local.vendor import publish_vendor_files
 
-    html_ext, init_js = build()
-    (EXT / "launchpad.html").write_text(html_ext, encoding="utf-8")
-    (EXT / "launchpad-init.js").write_text(init_js, encoding="utf-8")
     vendored = publish_vendor_files(EXT)
-    print(
-        f"wrote {EXT / 'launchpad.html'} ({len(html_ext):,} B) + "
-        f"launchpad-init.js ({len(init_js):,} B) + vendor/ ({len(vendored)} files)"
-    )
+    print(f"published vendor/ ({len(vendored)} files) into {EXT}")
     return 0
 
 

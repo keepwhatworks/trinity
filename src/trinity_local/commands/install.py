@@ -26,7 +26,8 @@ def register(subparsers):
     )
     iep.add_argument(
         "--extension-id",
-        help="Chrome-assigned extension ID (the long hash from chrome://extensions). Required on first install; cached afterwards.",
+        help="Only for a fork of the extension with its own manifest key. Trinity's extension ID is "
+             "pinned, so a normal install needs none.",
     )
     iep.add_argument(
         "--host-path",

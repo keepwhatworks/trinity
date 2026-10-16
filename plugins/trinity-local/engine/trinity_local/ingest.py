@@ -2042,8 +2042,11 @@ def parse_gemini_takeout_html(
     use_v3 = use_embedding_grouping
     if use_v3:
         try:
-            from .embeddings import get_backend
-            if get_backend() != "mlx":
+            # The real probe, not get_backend(): the module can import with no model on disk,
+            # and then these cells are embedded by the TF-IDF fallback and grouped with a
+            # threshold calibrated for ModernBERT (coherence review 2026-10-15).
+            from .embeddings import mlx_actually_loaded
+            if not mlx_actually_loaded():
                 use_v3 = False
         except Exception:
             use_v3 = False

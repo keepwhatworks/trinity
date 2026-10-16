@@ -5,10 +5,10 @@ Public API:
     upsert_turn_window(window)      — write a TurnWindow (local context)
     iter_prompt_nodes()             — stream all PromptNodes
     search(query_text, top_k)       — vector search across tiers, replay-ranked
-    record_council_outcome(...)     — attach a CouncilRun id + chairman winner to a PromptNode
 
-The index is the closed-loop spine: prompts -> embeddings -> replay-ranked search
--> council -> outcome -> updated PromptNode -> better future ranking.
+The store holds what the user's transcripts say and nothing else. Councils never write
+back into it (founder lock #1); the writer that once attached council runs and chairman
+winners to PromptNodes had no caller and was deleted 2026-10-15.
 """
 from __future__ import annotations
 
@@ -19,7 +19,6 @@ from .store import (
     iter_prompt_nodes,
     iter_turn_windows,
     load_prompt_node,
-    record_council_outcome,
     load_cursor,
     save_cursor,
 )
@@ -35,7 +34,6 @@ __all__ = [
     "iter_prompt_nodes",
     "iter_turn_windows",
     "load_prompt_node",
-    "record_council_outcome",
     "load_cursor",
     "save_cursor",
     "search",

@@ -92,7 +92,6 @@ SANCTIONED_LEDGER_WRITERS = {
 # distillation, cross-provider clustering→synthesis). None may ever write the ledger.
 SYNTHESIS_MODULES = {
     "distill.py",
-    "cross_provider_pairs.py",
     "mcp_server.py",
     "council_runtime.py",
 }

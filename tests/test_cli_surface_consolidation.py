@@ -120,41 +120,6 @@ class TestHiddenCommandsStillCallable:
     # `commands.replay`).
 
 
-class TestDebugUmbrella:
-    def test_debug_no_args_lists_verbs(self, capsys):
-        """`trinity-local debug` with no subcommand prints the
-        power-user verb directory."""
-        from trinity_local.commands.debug import handle_debug
-        from types import SimpleNamespace
-
-        rc = handle_debug(SimpleNamespace(subcommand=None))
-        assert rc == 0
-        out = capsys.readouterr().out
-        # Each surviving debug verb must be listed. `replay-history` +
-        # `seed-from-taste-terminal` were retired 2026-05-27, `consolidate`
-        # 2026-08-11 with the router that read its output (see
-        # retired_names.py); `import-export` replaced the seed verb.
-        for verb in (
-            "vocabulary",
-            "import-export",
-        ):
-            assert verb in out, (
-                f"debug umbrella must list {verb!r}; got: {out!r}"
-            )
-
-    def test_debug_with_subcommand_points_user_at_bare_name(self, capsys):
-        """`trinity-local debug <verb>` doesn't (yet) execute the verb
-        itself — it tells the user to run the bare name. This satisfies
-        the discovery requirement without re-nesting every parser."""
-        from trinity_local.commands.debug import handle_debug
-        from types import SimpleNamespace
-
-        rc = handle_debug(SimpleNamespace(subcommand="vocabulary"))
-        assert rc == 0
-        err = capsys.readouterr().err
-        assert "trinity-local vocabulary" in err
-
-
 class TestInstallUmbrella:
     def test_install_no_args_sets_up_then_lists_verbs(self, capsys, monkeypatch):
         """`trinity-local install` registers Trinity (install-mcp), then lists

@@ -220,7 +220,7 @@ launch requirement.
   catches manifest drift in CI.
 - **HF-Hub cold start**: ~3-minute one-time download of
   `modernbert-embed-base` on first embedding call. Surface this in
-  SKILL.md Section 3 before the user runs `lens --deep`.
+  SKILL.md Section 3 before the user runs `lens`.
 
 ---
 

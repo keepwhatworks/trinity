@@ -70,11 +70,11 @@ If the user has CLI transcripts in `~/.claude/projects/`, `~/.codex/sessions/`, 
 
 !`trinity-local ingest-recent`
 
-That produces `~/.trinity/prompts/prompt_nodes.jsonl` — the indexed corpus. Then build the core memories (one command, ~5-15 minutes depending on corpus size):
+That produces `~/.trinity/prompts/prompt_nodes.jsonl` — the indexed corpus. Then build the core memories (one command, a few minutes depending on corpus size):
 
-!`trinity-local lens --deep`
+!`trinity-local lens`
 
-`lens --deep` runs cross-provider pair mining → virtual councils → lens build → core distillation end-to-end (the former `dream` verb, folded 2026-07-04). Output: `~/.trinity/core.md`, `~/.trinity/memories/lens.md`, `~/.trinity/memories/topics.json`, `~/.trinity/memories/vocabulary.md`. Open the launchpad to inspect:
+`lens` runs the lens build → vocabulary → core distillation end-to-end (`lens --deep` and the former `dream` verb are compatibility names for it). Output: `~/.trinity/core.md`, `~/.trinity/memories/lens.md`, `~/.trinity/memories/topics.json`, `~/.trinity/memories/vocabulary.md`. Open the launchpad to inspect:
 
 !`trinity-local portal-html --open-browser`
 
@@ -119,7 +119,6 @@ The marketing-headline form: "Model X scored 0.YZ on YOUR kind of question." Emp
 ## 9. Memory maintenance
 
 - `trinity-local lens` — rebuild paired-tension lenses from `me/preference_acts.jsonl` plus prompt history (`lens-build` remains an alias)
-- `trinity-local lens --deep` — full memory-rebuild pass (Phase 5 refreshes `~/.trinity/core.md` automatically; `dream` remains a compatibility alias)
 - `trinity-local me-card --open` — render the strongest lens as a 1200×630 PNG for sharing
 
 ## 10. Trust + privacy (current state, v1.0)

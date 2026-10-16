@@ -740,7 +740,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
          viewport — the dispatch-failure ribbon streamed off-screen right and the
          320px home horizontal-scrolled to ~1580px. The live-council twin
          (.status-error in council_review.py) + the running card
-         (.provider-status-detail) + the popup .panel-tip all break this class;
+         (.provider-status-detail) all break this class;
          this ribbon was the asymmetric miss. */
       overflow-wrap: anywhere;
       min-width: 0;
@@ -1019,22 +1019,6 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
       background: var(--surface-muted);
     }}
 
-    /* Cheat-sheet variant — the cortex routing rules reframed as a
-       glanceable one-line-per-row list (no header row, tighter padding,
-       arrow column). Keeps the .cortex-rules-table contract the smoke
-       gate reads (first-cell picks.json link + .cortex-topology-chip)
-       while reading as "which model for what" instead of a 6-col grid. */
-    .cortex-cheat-sheet td {{
-      padding: 8px 10px;
-      vertical-align: baseline;
-    }}
-
-    .cortex-cheat-sheet .cheat-arrow {{
-      width: 24px;
-      padding-left: 0;
-      padding-right: 0;
-    }}
-
     .benchmark-unit {{
       font-size: 12px;
       color: var(--text-muted);
@@ -1230,6 +1214,10 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
            onto the launchpad's own dynamic status. .sr-only is the shared
            visually-hidden-but-AT-available utility in SHARED_CSS. -->
       <div id="live-announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{{{ liveAnnouncement }}}}</div>
+      <!-- A failed copy says so (coherence review 2026-10-15): every copy button used to show
+           "Copied" whether or not anything reached the clipboard. -->
+      <div class="copy-failure" v-if="copyFailure" role="alert"
+           style="position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 50; max-width: calc(100% - 32px); padding: 8px 12px; border-radius: 6px; background: var(--surface); border: 1px solid #b26a1f; color: var(--text-primary); font-size: 13px;">{{{{ copyFailure }}}}</div>
       <!-- Stats-page header — only visible on /stats (stats-card). Gives the
            analytics page its own title + a way back to the simple council home. -->
       <section class="card stats-card" style="border-left: 3px solid #7fa0ad; background: rgba(43, 80, 112, 0.04);">
@@ -1300,7 +1288,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
             ⚖ Across your <b>{{{{ pageData.councilValue.councils }}}}</b> head-to-head councils
             <span class="meta" title="Real contests where both the chairman's winner and your default were recorded — the councils where a single-tab pick can actually be compared. Your full council history (including walkovers and unlabeled runs) is larger; see /stats.">(ⓘ)</span>,
             the synthesized winner differed from your default <b>{{{{ pageData.councilValue.changedPct }}}}%</b> of the time —
-            that's how often a single-tab habit would have shipped the worse answer.
+            that's how often asking one model would have given you a different answer than the one the chairman picked.
             <span class="meta" style="display: block; margin-top: 4px;">
               wins:
               <span v-for="(w, i) in pageData.councilValue.wins" :key="w.label">
@@ -1352,20 +1340,19 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           <button @click="closeSettings()" style="position: absolute; top: 6px; right: 6px; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; font-size: 24px; line-height: 1; opacity: 0.6; transition: opacity 0.2s; z-index: 10;" aria-label="Close settings">×</button>
           <div class="eyebrow">Settings</div>
           <h2>Launchpad controls</h2>
-          <p class="meta">Telemetry is on by default — toggle it off anytime. Trinity shares anonymous routing labels — the task type, the winning provider, the council's member count and mode, and once the channel your install link named (such as hn) and whether your first use was a council or a verify; Launchpad views and aggregate provider win-rates go only to a collector you configure yourself — never raw prompts, outputs, code, or file paths.</p>
+          <p class="meta">Telemetry is on by default — toggle it off anytime. Trinity shares anonymous routing labels — the task type, the winning provider, the council's member count and mode, and once the channel your install link named (such as hn) and whether your first use was a council or a verify — never raw prompts, outputs, code, or file paths.</p>
           <!-- The active-benefit nudge promises a CROSS-USER outcome ("surface
                broken flows across users"). That only happens when sharing is BOTH
-               consented AND wired to a collector — i.e. shareIsLive. A stock public
-               install ships no GA4 creds, so the endpoint is "Not configured" and
-               maybeSendTelemetry() never fires: the nudge would overclaim a benefit
-               that can't happen. Gate it on shareIsLive, and tell the not-live user
-               the honest truth instead (consent on, nothing leaving this build). -->
+               consented AND this build can send (it carries the analytics key) —
+               i.e. shareIsLive. A source build has no key, so nothing leaves it:
+               the nudge would overclaim. Gate it on shareIsLive, and tell the
+               not-live user the honest truth instead. -->
           <p v-if="shareIsLive" class="meta" style="margin-top: 8px; padding: 10px 12px; background: rgba(79, 144, 149, 0.06); border-left: 3px solid rgba(79, 144, 149, 0.4); border-radius: 0 6px 6px 0; font-size: 13px;">
             <b>Catch more issues like the bugs you've hit by keeping sharing on.</b>
             Anonymous usage events let Trinity surface broken flows (silent dispatches, stale tabs, missing prompts) across users — issues a single install can't see on its own.
           </p>
           <!-- v-else-if (not bare v-else): shareIsLive is false in TWO states —
-               (a) enabled but no endpoint, and (b) sharing toggled OFF. This line
+               (a) enabled but no analytics key, and (b) sharing toggled OFF. This line
                says "Sharing is on", so it must only show in state (a); a bare
                v-else would falsely claim "Sharing is on" the moment the user turns
                the toggle OFF (the same self-contradiction this nudge fix targets).
@@ -1373,12 +1360,12 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
                above already convey the off state. -->
           <p v-else-if="telemetry.enabled" class="meta" style="margin-top: 8px; padding: 10px 12px; background: rgba(79, 144, 149, 0.06); border-left: 3px solid rgba(79, 144, 149, 0.4); border-radius: 0 6px 6px 0; font-size: 13px;">
             <b>Nothing is leaving this machine.</b>
-            Sharing is on, but this build has no collector endpoint configured (see Endpoint below), so no anonymous events are sent. Your consent is remembered for if that changes.
+            Sharing is on, but this build carries no analytics key (a source install), so no anonymous events are sent. Your consent is remembered for if that changes.
           </p>
 
           <div class="settings-list">
             <div class="setting-row">
-              <span class="meta">Endpoint</span>
+              <span class="meta">Sent to</span>
               <span class="meta">{{{{ displayedEndpoint }}}}</span>
             </div>
             <div class="setting-row">
@@ -1669,9 +1656,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
       <!-- Proactive "Install Chrome extension" CTA — visible on first
            paint when the user installed via curl|bash (terminal-first
            path) and never wired the extension. Closes the cross-
-           bootstrap: the extension popup tells users to "paste install
-           brief into Claude Code" (tick c797c64); this card is the
-           reciprocal — tells curl-bash users to grab the extension for
+           bootstrap: tells curl-bash users to grab the extension for
            browser capture + auto-updates.
 
            Different from `dispatchBannerOpen` below: that banner is
@@ -1705,8 +1690,8 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
         </h2>
         <p class="meta" style="margin-top: 8px;" v-if="inExtensionPanel">
           The extension is installed (you're in its side panel) — one step left to
-          turn on capture: run <code>trinity-local install-extension --extension-id &lt;ID&gt;</code>
-          (the popup shows your ID) to register the Native-Messaging host. Then
+          turn on capture: run <code>trinity-local install-extension</code>
+          to register the Native-Messaging host. Then
           conversations from claude.ai / chatgpt.com / gemini.google.com flow into
           <code>~/.trinity/conversations/</code> automatically.
         </p>
@@ -1746,7 +1731,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
         <article class="card">
           <div class="eyebrow">Council</div>
           <h2>Ask every model at once</h2>
-          <p class="meta">Every model you use — frontier and local — answers in parallel. A local chairman synthesizes — agreed claims, disagreed claims with <em>why each matters</em>, picked winner. Every council sharpens the local router automatically — no clicks, no ratings; you just chat.</p>
+          <p class="meta">Claude, Codex and Gemini answer in parallel. A chairman synthesizes — agreed claims, disagreed claims with <em>why each matters</em>, and a picked winner.</p>
           <label class="label mb-sm" for="council-prompt">Task</label>
           <!-- ⌘/Ctrl+Enter submits — the same keyboard convention the council
                REFINE composer (council_review.py) already ships + advertises.
@@ -1765,10 +1750,6 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
             @keydown.enter.ctrl.prevent="launchCouncil"
             placeholder="Ask a council question… (⌘/Ctrl+Enter to launch)"
           ></textarea>
-
-          <p class="meta" v-if="polishHintVisible" style="background: rgba(43, 80, 112, 0.08); border-left: 3px solid #7fa0ad; padding: 8px 12px; margin-top: 12px; border-radius: 4px;">
-            💡 Polish task detected. Click "Auto-chain" on the council page to iterate up to 3 rounds toward convergence.
-          </p>
 
           <div class="actions" style="margin-top: 18px;">
             <!-- When a council is already running the button is disabled — but a
@@ -1973,7 +1954,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
         <div class="eyebrow">Cheat-sheet · by task type</div>
         <h2>Who the chairman picks, by task type</h2>
         <p class="meta">
-          The same "which model for what" answer, broken out by task type — from your own {{{{ personalRoutingTable.councils_aggregated || 0 }}}} council{{{{ (personalRoutingTable.councils_aggregated || 0) === 1 ? '' : 's' }}}}. The chairman synthesizes through your taste lens and picks a winner; the <strong>Best</strong> column is who it picks most often (and how often). <strong>Personalization</strong> is how much this pick leans on YOUR councils vs the global default — it climbs from near 0% toward 100% as you run more councils on that task type. The per-provider scores trail behind as supporting detail.
+          The same "which model for what" answer, broken out by task type — from your own {{{{ personalRoutingTable.councils_aggregated || 0 }}}} council{{{{ (personalRoutingTable.councils_aggregated || 0) === 1 ? '' : 's' }}}}. The chairman picks a winner on each council; the <strong>Best</strong> column is who it picks most often (and how often). The per-provider scores trail behind as supporting detail.
         </p>
         <p class="meta" v-if="coreStatus.state === 'stale'" style="background: rgba(79, 144, 149, 0.08); border-left: 3px solid #b26a1f; padding: 8px 12px; margin-top: 12px; border-radius: 4px;">
           ⚠️ Your <code>core.md</code> is stale — a memory file was updated since the last distillation. Run <code>trinity-local lens --only-distill</code> (~20s) so the chairman reads the freshest synthesis on the next council.
@@ -1996,8 +1977,6 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
             <tr>
               <th>Task type</th>
               <th>Best</th>
-              <th style="text-align: right;"
-                  title="How much this pick leans on YOUR councils vs the global default. Climbs from near 0% toward 100% as you run more councils on this task type.">Personalization</th>
               <th v-for="provider in routingTableProviders" style="text-align: right;">{{{{ formatProviderLabel(provider) }}}}</th>
             </tr>
           </thead>
@@ -2039,12 +2018,6 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
                 <span class="meta" v-if="winsFor(taskType)" style="display: block; font-size: 11px; font-weight: 400; margin-top: 2px;">
                   {{{{ pickIsTie(taskType) ? 'tied' : 'picked' }}}} {{{{ winsFor(taskType).wins }}}} of {{{{ winsFor(taskType).total }}}}
                 </span>
-              </td>
-              <td style="text-align: right;"
-                  :title="coldStartFor(taskType) ? ('This pick leans ' + coldStartFor(taskType).personalization_pct + '% on YOUR ' + coldStartFor(taskType).n_personal + ' council' + (coldStartFor(taskType).n_personal === 1 ? '' : 's') + ' for this task type, the rest on the global default. Run more councils here to raise it.') : null">
-                <span class="benchmark-score" v-if="coldStartFor(taskType)">{{{{ coldStartFor(taskType).personalization_pct }}}}%</span>
-                <span class="benchmark-unit" v-if="coldStartFor(taskType)">n={{{{ coldStartFor(taskType).n_personal }}}}</span>
-                <span class="benchmark-unit" v-if="!coldStartFor(taskType)">—</span>
               </td>
               <td v-for="provider in routingTableProviders" style="text-align: right;">
                 <span class="benchmark-score" v-if="scores[provider]">{{{{ scores[provider].overall.toFixed(1) }}}}</span>
@@ -2479,21 +2452,23 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
                Click → dispatches `dream` via Chrome extension → spinner →
                'Updated' flash. Explicit user action; nothing auto-fires.
                COST-BLIND class (UX sweep iter 54, the Auto-chain sibling):
-               dream is ~10+ flagship model calls over several minutes on the
-               user's OWN subscription quota — the button must say so, not look
+               it runs `lens`: one model call per 20 new prompt pairs since the last
+               build plus three, so a few to 10+ over minutes, on the user's OWN
+               subscription quota — the button must say so, not look
                like a free one-click refresh. Tooltip + the co-located cost
                line below carry the honest cost signal. -->
           <button type="button"
                   class="suggestion-chip"
                   style="margin-left: auto; padding: 4px 10px; font-size: 12px; cursor: pointer;"
+                  v-if="memoryFileIssue"
                   :disabled="refreshMemoryStatus === 'running'"
-                  title="Rebuilds your lens (lens --deep): ~10+ model calls over several minutes on your own subscription"
+                  title="Rebuilds your lens (lens): a few to 10+ model calls over several minutes, depending on how much is new, on your own subscription"
                   @click="refreshMemory">
             <span v-if="refreshMemoryStatus === 'running'">
               <span class="spinner" aria-hidden="true" style="display: inline-block; width: 10px; height: 10px; border-width: 1px; vertical-align: -1px; margin-right: 4px;"></span>
               Refreshing…
             </span>
-            <span v-else-if="refreshMemoryStatus === 'done'">✓ Updated</span>
+            <span v-else-if="refreshMemoryStatus === 'done'">✓ Started — reload later to see it</span>
             <span v-else-if="refreshMemoryStatus === 'failed'">⚠ Failed</span>
             <span v-else>Refresh memory</span>
           </button>
@@ -2507,6 +2482,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           <button type="button"
                   class="suggestion-chip"
                   style="padding: 4px 10px; font-size: 12px; cursor: pointer;"
+                  v-if="extensionRepairIssue"
                   :disabled="repairExtensionStatus === 'running'"
                   title="Dispatches a full council (all your providers) on your own subscription"
                   @click="repairExtension">
@@ -2527,7 +2503,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
              like a free one-click refresh, so this line discloses the real
              cost honestly (lead with the answer, no scaremongering). -->
         <p class="meta" style="margin-top: 4px; font-size: 11px;">
-          Refresh memory rebuilds your lens (<code>lens --deep</code>) — ~10+ model calls over several minutes; Repair extension dispatches a full council. Both run on your own subscription.
+          Refresh memory rebuilds your lens (<code>lens</code>) — a few to 10+ model calls over several minutes, depending on how much is new; Repair extension dispatches a full council. Both run on your own subscription.
         </p>
         <!-- Co-located failure detail (#242(a) class): the WHY a Refresh /
              Repair dispatch failed stays on this card. Before, the bare button
@@ -2612,20 +2588,18 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
         <p class="meta" style="margin-top: 8px;" v-if="dispatchBannerReason === 'native-host-unavailable'">
           The Chrome extension is loaded and responding, but the local helper
           (<code>trinity-local-capture-host</code>) isn't registered. Run:
-          <code>trinity-local install-extension --extension-id &lt;ID&gt;</code>
+          <code>trinity-local install-extension</code>
           and reload the launchpad.
         </p>
         <p class="meta" style="margin-top: 8px;" v-else-if="inExtensionPanel">
           The extension is installed (you're in its side panel) — the dispatch
           had no route because the local helper isn't registered yet. Run
-          <code>trinity-local install-extension --extension-id &lt;ID&gt;</code>
-          (the popup shows your ID) and reload.
+          <code>trinity-local install-extension</code> and reload.
         </p>
         <p class="meta" style="margin-top: 8px;" v-else>
           1. Open <code>chrome://extensions</code> in Chrome, enable Developer mode,
           and load the <code>browser-extension/</code> folder.<br>
-          2. Copy the 32-character ID Chrome assigns.<br>
-          3. Run <code>trinity-local install-extension --extension-id &lt;ID&gt;</code>.
+          2. Run <code>trinity-local install-extension</code> (the extension's ID is pinned, so it needs none).
         </p>
         <p class="meta" style="margin-top: 8px;">
           <a href="#" @click.prevent="dismissDispatchBanner">Dismiss</a>
@@ -3031,54 +3005,6 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
         .join(' ');
     }}
 
-    function maybeSendTelemetry() {{
-      const telemetry = pageData.telemetry || {{}};
-      const settings = telemetry.settings || {{}};
-      if (!settings.sharing_enabled || !settings.endpoint) {{
-        return;
-      }}
-      // Skip obvious test/placeholder endpoints — sending to them produces
-      // ERR_NAME_NOT_RESOLVED noise in the console with no upside.
-      // example.invalid is the RFC 6761 reserved stub used during dev.
-      if (/example\\.invalid|localhost(?:[:/]|$)|127\\.0\\.0\\.1/.test(settings.endpoint)) {{
-        return;
-      }}
-
-      const endpoint = settings.endpoint;
-      const send = (payload) => {{
-        const body = JSON.stringify(payload);
-        if (navigator.sendBeacon) {{
-          const blob = new Blob([body], {{ type: 'application/json' }});
-          navigator.sendBeacon(endpoint, blob);
-          return;
-        }}
-        fetch(endpoint, {{
-          method: 'POST',
-          headers: {{ 'Content-Type': 'application/json' }},
-          body,
-          keepalive: true,
-          mode: 'cors',
-        }}).catch(() => null);
-      }};
-
-      if (settings.share_usage_events !== false && telemetry.view_event) {{
-        send(telemetry.view_event);
-      }}
-
-      if (settings.share_elo_summaries !== false && telemetry.elo_event && telemetry.snapshot_hash) {{
-        const hashKey = `trinity:last-elo-hash:${{settings.share_install_id || 'default'}}`;
-        const tsKey = `trinity:last-elo-ts:${{settings.share_install_id || 'default'}}`;
-        const lastHash = localStorage.getItem(hashKey);
-        const lastTs = Number(localStorage.getItem(tsKey) || '0');
-        const dayMs = 24 * 60 * 60 * 1000;
-        if (lastHash !== telemetry.snapshot_hash || (Date.now() - lastTs) > dayMs) {{
-          send(telemetry.elo_event);
-          localStorage.setItem(hashKey, telemetry.snapshot_hash);
-          localStorage.setItem(tsKey, String(Date.now()));
-        }}
-      }}
-    }}
-
     function renderChart() {{
       // Charts live ONLY on /stats; the home (.lp-view-home) hides them, so skip
       // there — and DON'T pull the ~205 KB Chart.js on the chart-less home (it's
@@ -3323,8 +3249,8 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
       const normalized = normalizeProviderSlug(String(provider).trim().toLowerCase());
       // #275: provider labels read as the MODEL BRAND (Claude / GPT / Gemini),
       // matching the Elo chart + eval cards. Folded in 2026-06-06 (founder call)
-      // so every council surface — this panel, the live council page, AND the
-      // extension popup — agrees, instead of the old split where these read the
+      // so every council surface — this panel and the live council page —
+      // agrees, instead of the old split where these read the
       // harness trio (Codex / Antigravity) while the perf surfaces read the brand.
       const labels = {{
         claude: 'Claude',
@@ -3388,6 +3314,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
         // surfaces it at the lowest precedence so it never masks a dispatch error
         // or a live council status. Cleared on the same timer as copiedKey.
         copyAnnouncement: '',
+        copyFailure: '',
         // WCAG 4.1.3 — the Bulk-import PROBE result is a v-if banner that mounts
         // AFTER a dry-run dispatch ("✓ Detected N export(s)" or "⚠ <error>"). It's
         // a plain <div> with no role=status, so a screen-reader user who clicks
@@ -3421,7 +3348,6 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
         providerHealth: pageData.providerHealth || {{ providers: [], hasMissing: false, footerNote: '' }},
         telemetry: {{
           enabled: !!pageData.telemetry?.settings?.sharing_enabled,
-          endpoint: pageData.telemetry?.settings?.endpoint || '',
           destination: pageData.telemetry?.settings?.destination || '',
           shareInstallId: pageData.telemetry?.settings?.share_install_id || '',
         }},
@@ -3532,28 +3458,35 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
             this.announceCopy();
             setTimeout(restore, 1800);
           }};
+          this._copy(text).then((ok) => ok ? setCopied() : this._copyFailed());
+        }},
+        _copy(text) {{
+          // Resolves true only when the text reached the clipboard: the async API first, then
+          // the textarea + execCommand path file:// pages need. Every copy goes through here so
+          // none can report success it did not have.
           if (navigator.clipboard?.writeText) {{
-            navigator.clipboard.writeText(text).then(setCopied, () => {{
-              this._copyFallback(text);
-              setCopied();
-            }});
-          }} else {{
-            this._copyFallback(text);
-            setCopied();
+            return navigator.clipboard.writeText(text).then(() => true, () => this._copyFallback(text));
           }}
+          return Promise.resolve(this._copyFallback(text));
         }},
         _copyFallback(text) {{
           // file:// pages on some browsers block navigator.clipboard. Use the
           // legacy textarea + execCommand path so the lens copies even when
-          // the launchpad is opened directly from disk.
+          // the launchpad is opened directly from disk. Returns whether it worked.
           const ta = document.createElement('textarea');
           ta.value = text;
           ta.style.position = 'fixed';
           ta.style.opacity = '0';
           document.body.appendChild(ta);
           ta.select();
-          try {{ document.execCommand('copy'); }} catch (_) {{ /* ignore */ }}
+          let ok = false;
+          try {{ ok = document.execCommand('copy'); }} catch (_) {{ ok = false; }}
           document.body.removeChild(ta);
+          return !!ok;
+        }},
+        _copyFailed() {{
+          this.copyFailure = "Couldn't copy to the clipboard here — select the text and press ⌘C (Ctrl+C).";
+          setTimeout(() => {{ this.copyFailure = ''; }}, 4000);
         }},
         get routingTableProviders() {{
           if (!this.personalRoutingTable?.by_task_type) return [];
@@ -3612,14 +3545,6 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           }}
           return hidden;
         }},
-        coldStartFor(taskType) {{
-          // Returns {{n_personal, alpha, personalization_pct}} for a task_type
-          // when the cold-start block is present (server-side computed by
-          // launchpad_data._load_personal_routing_table). Null when the block
-          // is missing (older launchpad_data without the augmentation) so the
-          // column degrades to a "—" gracefully.
-          return this.personalRoutingTable?.cold_start?.[taskType] || null;
-        }},
         winsFor(taskType) {{
           // Chairman wins per task_type. Returns {{wins, total}} for the
           // current best_per_task_type[taskType] provider, or null when
@@ -3633,25 +3558,22 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           if (!total) return null;
           return {{ wins: winCount, total }};
         }},
+        // Each health-card button shows only when it addresses an issue on the card: Refresh
+        // memory rebuilds the memory files; Repair extension runs a full council, which helps
+        // only a code-patch capture issue (a stale sign-in is fixed in the browser). Both used
+        // to show for any issue (coherence review 2026-10-15).
+        get memoryFileIssue() {{
+          return (this.memoryHealth?.issues || []).some(i => i.name !== 'extension');
+        }},
+        get extensionRepairIssue() {{
+          return (this.memoryHealth?.issues || []).some(i => i.name === 'extension' && i.status === 'capture-drift');
+        }},
         pickIsTie(taskType) {{
           // True when the "best" is a tie / coin-flip (no strict chairman-win
           // lead, or no chairman supervision). Computed server-side in
           // personal_routing.aggregate_routing_table → pick_is_tie; the
           // surface demotes the confident chip for these (green-gate #35).
           return !!(this.personalRoutingTable?.pick_is_tie?.[taskType]);
-        }},
-        evidenceUrl(councilId) {{
-          // Each evidence chip links to the existing live council page for
-          // that outcome. Uses ?thread_id= so the harness page renders the
-          // full council UI with members + chairman synthesis. Falls back to
-          // a plain `?council_id=` fragment when the launchpad's live-council
-          // base URL isn't configured — degrades to a same-page anchor.
-          const base = pageData.liveReviewUrl || '';
-          if (base) {{
-            const sep = base.includes('?') ? '&' : '?';
-            return `${{base}}${{sep}}thread_id=${{encodeURIComponent(councilId)}}`;
-          }}
-          return `#${{councilId}}`;
         }},
         statusScriptBaseUrl: pageData.statusScriptBaseUrl || '',
         councilStatusMessages: pageData.councilLoadingMessages || [],
@@ -3902,43 +3824,6 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
         get railExpanded() {{
           return this.railIsDesktop ? !this.railCollapsed : this.railOpen;
         }},
-        // Mirror of Python `is_polish_task` (task_types.py). Heuristic
-        // tuned for recall — better to over-suggest iteration than miss
-        // a polish task. Two paths:
-        //   1) literal polish phrase ("make this better", "tighten this",
-        //      "any better?", …)
-        //   2) ≤20 words AND contains a short imperative hint
-        //      ("shorter", "simpler", "clearer", …)
-        get isPolishLike() {{
-          const text = (this.prompt || '').toLowerCase().trim();
-          if (!text) return false;
-          const phrases = [
-            'make this better', 'make it better',
-            'make this stronger', 'make it stronger',
-            'make this sharper', 'make it sharper',
-            'improve this', 'polish this', 'polish it',
-            'tighten this', 'tighten it',
-            'rewrite this', 'refine this', 'edit this',
-            'is this clearer', 'is this stronger', 'is this better',
-            'any better', 'does this make sense', 'is this right',
-          ];
-          for (const p of phrases) {{
-            if (text.includes(p)) return true;
-          }}
-          const wordCount = text.split(/\\s+/).filter(Boolean).length;
-          if (wordCount <= 20) {{
-            const hints = ['shorter', 'simpler', 'clearer', 'stronger', 'punchier', 'crisper'];
-            for (const h of hints) {{
-              if (text.includes(h)) return true;
-            }}
-          }}
-          return false;
-        }},
-        get polishHintVisible() {{
-          // Only surface the hint once the user has actually typed something
-          // and we recognized polish. No hint = no noise.
-          return this.isPolishLike && (this.prompt || '').trim().length >= 8;
-        }},
         get heroTitle() {{
           if (this.operation?.kind === 'council' && this.busy) {{
             return 'Council in Progress';
@@ -3950,28 +3835,19 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           // lives in the lede below, where it has room to breathe.
           return 'Run a Council';
         }},
-        // Hide developer/placeholder endpoint values from the settings UI;
-        // example.invalid is the RFC 6761 stub used during dev, localhost
-        // is a test value. Show "Not configured" so users don't think a
-        // broken URL is intentional.
+        // Where this install's events go: Google Analytics from the CLI and MCP server, or
+        // nowhere when the build carries no analytics key. The page itself never sends; its
+        // self-configured collector was removed 2026-10-15 (founder-approved).
         get displayedEndpoint() {{
-          // The browser's own collector, else where the CLI and MCP server send (GA4 is never
-          // handed to the page; see telemetry._browser_endpoint).
-          const ep = this.telemetry?.endpoint || this.telemetry?.destination || '';
-          if (!ep) return 'Not configured';
-          if (/example\\.invalid|^https?:\\/\\/(localhost|127\\.0\\.0\\.1)/.test(ep)) {{
-            return 'Not configured';
-          }}
-          return ep;
+          return this.telemetry?.destination || 'Not configured';
         }},
         // Whether sharing is BOTH consented AND wired — i.e. events actually leave
-        // this machine. A stock public install ships NO GA4 credentials, so
-        // launchpad_telemetry_state() pops `endpoint` and maybeSendTelemetry()
-        // early-returns: sharing is "on" as a CONSENT state but transmits nothing.
+        // this machine. A source build carries no analytics key, so sharing is "on"
+        // as a CONSENT state but transmits nothing.
         // The active-benefit nudge ("Trinity surfaces broken flows across users")
         // is only TRUE when this is true; otherwise it overclaims a collective
-        // benefit that can't happen on this install. Mirrors displayedEndpoint's
-        // dev/placeholder gate so the two agree.
+        // benefit that can't happen on this install. Reads the same destination as
+        // displayedEndpoint, so the two agree.
         get shareIsLive() {{
           if (!this.telemetry?.enabled) return false;
           return this.displayedEndpoint !== 'Not configured';
@@ -4207,28 +4083,20 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           if (!value) {{
             return;
           }}
-          if (navigator.clipboard?.writeText) {{
-            navigator.clipboard.writeText(value).catch(() => this._copyFallback(value));
-          }} else {{
-            // file:// + older browsers block navigator.clipboard. Use the silent
-            // textarea+execCommand path (same as copyLens) — NOT a blocking
-            // window.prompt the user has to dismiss.
-            this._copyFallback(value);
-          }}
           // Optional flash-feedback: caller passes a string key that
           // template v-if expressions can compare against `copiedKey`
-          // to show "✓ Copied" briefly. Resets after 2400ms — matches
-          // copyHealthCommand's existing cadence so transient chips
-          // animate consistently across the launchpad.
-          if (flashKey) {{
-            this.copiedKey = flashKey;
-            // Announce the copy to AT (the ✓ glyph swap is visual-only). Re-set to
-            // '' first so two copies in a row re-fire the polite region.
-            this.announceCopy();
-            setTimeout(() => {{
-              if (this.copiedKey === flashKey) this.copiedKey = '';
-            }}, 2400);
-          }}
+          // to show "✓ Copied" briefly — only once the copy actually worked.
+          this._copy(value).then((ok) => {{
+            if (!ok) {{ this._copyFailed(); return; }}
+            if (flashKey) {{
+              this.copiedKey = flashKey;
+              // Announce the copy to AT (the ✓ glyph swap is visual-only).
+              this.announceCopy();
+              setTimeout(() => {{
+                if (this.copiedKey === flashKey) this.copiedKey = '';
+              }}, 2400);
+            }}
+          }});
         }},
         announceCopy() {{
           // Push "Copied to clipboard" through the sr-only role=status region by
@@ -5196,7 +5064,6 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
     }}
 
     createApp({{ LaunchpadApp, pageData }}).mount();
-    maybeSendTelemetry();
     renderChart();
 
     // ── Council-rail title filter (founder 2026-06-01): with the full

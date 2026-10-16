@@ -40,17 +40,6 @@ def test_load_task_record_or_exit_systemexits():
 
 
 @pytest.mark.usefixtures("patch_trinity_home")
-def test_review_bad_task_id_exits_clean():
-    from trinity_local.commands.review import handle_review
-
-    # The handler loads the task on its FIRST line — a bad id must SystemExit, not
-    # raise FileNotFoundError. (reviewer/cwd are never reached.)
-    with pytest.raises(SystemExit) as exc:
-        handle_review(SimpleNamespace(task="task_nope", reviewer="claude", cwd=None, config=None))
-    assert "task_nope" in str(exc.value)
-
-
-@pytest.mark.usefixtures("patch_trinity_home")
 def test_open_review_bad_task_and_outcome_exit_clean():
     from trinity_local.commands.portal import handle_open_review
 

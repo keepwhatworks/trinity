@@ -114,12 +114,21 @@ def test_memory_health_card_discloses_dispatch_cost(tmp_path, monkeypatch):
                 "name": "core.md",
                 "status": "stale",
                 "hint": "A memory file changed since the last dream.",
-                "command": "trinity-local lens --deep",
+                "command": "trinity-local lens",
+                "href": None,
+            },
+            # Each button shows only for its own issue since 2026-10-15, so both kinds are
+            # seeded for the cost disclosure of both to be on screen.
+            {
+                "name": "extension",
+                "status": "capture-drift",
+                "hint": "1 provider(s) with code-patch pattern (chatgpt.com).",
+                "command": "trinity-local extension repair --auto",
                 "href": None,
             },
         ],
-        "ok_count": 6,
-        "total_count": 7,
+        "ok_count": 4,
+        "total_count": 6,
     }
     html = render_launchpad_html(page_data=page_data, view="stats")
 

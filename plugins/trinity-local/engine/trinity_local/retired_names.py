@@ -292,6 +292,185 @@ RETIRED: dict[str, RetirementRecord] = {
                "ask's local dispatch, deleted with ask.",
         kind="module",
     ),
+    "launchpad Personalization column": RetirementRecord(
+        name="launchpad Personalization column",
+        retired_at="2026-10-15",
+        commit="",
+        replacement=None,
+        reason="The /stats cheat-sheet showed 'X% personalized' per task type from "
+               "chairman_picker.sigmoid_alpha, a personal-vs-global blend the picker no longer ran "
+               "(the chair order is fixed), over a join measured at 0/716. Deleted with sigmoid_alpha "
+               "and launchpad_data's cold_start block.",
+        kind="concept",
+        artifact_persists=False,
+    ),
+    "task_types.is_polish_task": RetirementRecord(
+        name="task_types.is_polish_task",
+        retired_at="2026-10-15",
+        commit="",
+        replacement=None,
+        reason="Fed only the launchpad's 'Polish task detected. Click Auto-chain' hint (a JS mirror) "
+               "and the deleted route() tool; the Auto-chain button it pointed at was removed "
+               "2026-07-24. Both the hint and the function are gone.",
+        kind="function",
+        artifact_persists=False,
+    ),
+    "telemetry-endpoint": RetirementRecord(
+        name="telemetry-endpoint",
+        retired_at="2026-10-15",
+        commit="",
+        replacement="TRINITY_TELEMETRY_ENDPOINT is gone too; CLI and MCP events go to Google Analytics",
+        reason="Founder-approved deletion with the launchpad's self-configured collector. The verb "
+               "stored an endpoint setting nothing read. The collector path let the launchpad page "
+               "POST its own launchpad_view and elo_snapshot events to TRINITY_TELEMETRY_ENDPOINT; "
+               "with that unset, the default, the page sent nothing. Gone with it: the page's "
+               "maybeSendTelemetry, build_launchpad_view_event, build_elo_snapshot_event, their "
+               "disclosed key sets, the share_elo_summaries setting (`telemetry-enable --without-elo`), "
+               "`telemetry-enable --endpoint`, and settings fields nothing set (endpoint, last_*_upload).",
+        kind="cli",
+        artifact_persists=False,
+    ),
+    "debug": RetirementRecord(
+        name="debug",
+        retired_at="2026-10-15",
+        commit="",
+        replacement="the verbs themselves (`vocabulary`, `import-export`)",
+        reason="Founder-approved deletion: a CLI verb that only listed two other verbs by name. "
+               "Unused since 2026-09-08 (0 uses against verify's 113).",
+        kind="cli",
+        artifact_persists=False,
+    ),
+    "review": RetirementRecord(
+        name="review",
+        retired_at="2026-10-15",
+        commit="",
+        replacement="`trinity-local verify` (the pre-deploy readers) and `plan` (a council)",
+        reason="Founder-approved deletion: a post-hoc single-reviewer pass over a task, unused "
+               "since 2026-09-08. Its engine (review.py) and the reviews/ store had no other "
+               "user; `status` stopped counting reviews/. Files on disk are left as is.",
+        kind="cli",
+        artifact_persists=True,
+    ),
+    "memory.replay_value.HIGH_VALUE_THEMES": RetirementRecord(
+        name="memory.replay_value.HIGH_VALUE_THEMES",
+        retired_at="2026-10-15",
+        commit="",
+        replacement=None,
+        reason="A hardcoded list of one user's own topic names, shipped in public code, behind a "
+               "theme bonus no ingested theme could reach (themes come from guess_task_type's "
+               "task-type vocabulary; measured 0.0 on 47,536 of 47,536 real nodes). Deleted with "
+               "theme_score and the search ranking's theme term.",
+        kind="function",
+        artifact_persists=False,
+    ),
+    "browser-extension/popup.html": RetirementRecord(
+        name="browser-extension/popup.html",
+        retired_at="2026-10-15",
+        commit="",
+        replacement="the side panel (sidepanel.html, which the toolbar icon opens)",
+        reason="The toolbar popup lost its manifest entry (default_popup) in the #318 side-panel "
+               "migration, so no click could open it; it stayed listed as a web-accessible "
+               "resource for every site and was shipped in the Web Store package. Deleted with "
+               "popup.js, harness-snippets.js (only the popup loaded it) and the popup-only tests. "
+               "The launchpad copy that said 'the popup shows your ID' went with it: the ID is "
+               "pinned by the manifest key, so `install-extension` needs none.",
+        kind="file",
+        artifact_persists=False,
+    ),
+    "browser-extension/launchpad.html": RetirementRecord(
+        name="browser-extension/launchpad.html",
+        retired_at="2026-10-15",
+        commit="",
+        replacement="browser-extension/sandbox/launchpad.html (the side panel's launchpad)",
+        reason="A second build of the launchpad at the extension root, with launchpad-init.js. "
+               "No manifest entry or code opened it, and MV3's extension-page CSP could not "
+               "render it (petite-vue needs eval). build_extension_launchpad.build() stays: the "
+               "side-panel build reuses its transform.",
+        kind="file",
+        artifact_persists=False,
+    ),
+    "lens --deep virtual councils": RetirementRecord(
+        name="lens --deep virtual councils",
+        retired_at="2026-10-15",
+        commit="",
+        replacement="lens (what --deep and dream now run)",
+        reason="--deep clustered similar past prompts (cross_provider_pairs.py) and spent one "
+               "chairman call per cluster on a synthesis-only 'virtual council': about 430 calls "
+               "and three hours on a real history, 1,048 of one install's 1,564 saved councils. "
+               "The lens and the trust ledger excluded them; only launchpad tallies, council "
+               "counts and telemetry read them (council_6a9187cd799419e7 chose deletion). Saved "
+               "ones stay on disk and are filtered by council_schema.is_hindsight_synthesis. "
+               "Also gone: dream's --similarity-threshold, --max-clusters, --skip-lens-build, "
+               "--skip-vocabulary and --skip-distill.",
+        kind="concept",
+        artifact_persists=True,
+    ),
+    "cross_provider_pairs.py": RetirementRecord(
+        name="cross_provider_pairs.py",
+        retired_at="2026-10-15",
+        commit="",
+        replacement=None,
+        reason="Found the same question asked of several providers so lens --deep could "
+               "synthesize it as a virtual council; that phase was its only user.",
+        kind="module",
+        artifact_persists=False,
+    ),
+    "dream_synthesized.jsonl": RetirementRecord(
+        name="dream_synthesized.jsonl",
+        retired_at="2026-10-15",
+        commit="",
+        replacement=None,
+        reason="lens --deep's record of clusters already synthesized, so re-runs skipped them; "
+               "nothing writes or reads it now. The file on users' disks is left as is.",
+        kind="file",
+        artifact_persists=True,
+    ),
+    "trinity_local.memory.record_council_outcome": RetirementRecord(
+        name="trinity_local.memory.record_council_outcome",
+        retired_at="2026-10-15",
+        commit="",
+        replacement=None,
+        reason="Attached council run ids and the chairman's winner to the user's PromptNodes, which "
+               "the lens sampler and search ranking read: a council -> lens edge (founder lock #1). "
+               "It had no caller; it was exported and tested 'for wiring'. Deleted with the lens "
+               "sampler's replay-value quality term, a constant 0.084 on every real node because "
+               "only this function fed it, and the me_builder diagnostic that advised wiring it.",
+        kind="function",
+        artifact_persists=False,
+    ),
+    "council_runs.jsonl": RetirementRecord(
+        name="council_runs.jsonl",
+        retired_at="2026-10-15",
+        commit="",
+        replacement="council_outcomes/<id>.json (the canonical record, written as before)",
+        reason="Every council appended its full outcome here, duplicating council_outcomes/; nothing "
+               "read it. The file on users' disks is left as is.",
+        kind="file",
+        artifact_persists=True,
+    ),
+    "launch_events.jsonl": RetirementRecord(
+        name="launch_events.jsonl",
+        retired_at="2026-10-15",
+        commit="",
+        replacement=None,
+        reason="One line per council member and chair; nothing read it after the handoff feature "
+               "it measured retired. Launch ids still reach the task record. The file on users' "
+               "disks is left as is.",
+        kind="file",
+        artifact_persists=True,
+    ),
+    "task_sync/": RetirementRecord(
+        name="task_sync/",
+        retired_at="2026-10-15",
+        commit="",
+        replacement="tasks/ (the task record, written as before)",
+        reason="A TaskSyncRecord per council (save_sync_record), whose only reader, the task-sync "
+               "CLI, retired earlier; one install held 9,255 files. The `sync_path` field left the "
+               "council CLI and MCP replies with it. status's reclaimable-dirs check still lists "
+               "the directory for older installs.",
+        kind="file",
+        artifact_persists=True,
+    ),
     "dispatch_health.py": RetirementRecord(
         name="dispatch_health.py",
         retired_at="2026-10-15",

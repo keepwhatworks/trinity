@@ -1330,6 +1330,36 @@ def render_memory_viewer_html() -> str:
       __srClearTimer = setTimeout(() => {{ region.textContent = ""; }}, 2000);
     }}
 
+    // Resolves true only when the text reached the clipboard (async API, then the
+    // textarea + execCommand path file:// pages need). The copy chips said "Copied"
+    // whether or not it worked (coherence review 2026-10-15).
+    function copyToClipboard(text) {{
+      const fallback = () => {{
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try {{ ok = document.execCommand("copy"); }} catch (_) {{ ok = false; }}
+        document.body.removeChild(ta);
+        return !!ok;
+      }};
+      if (navigator.clipboard?.writeText) {{
+        return navigator.clipboard.writeText(text).then(() => true, () => fallback());
+      }}
+      return Promise.resolve(fallback());
+    }}
+
+    function flashCopy(chip, text, restoreLabel, ms) {{
+      copyToClipboard(text).then((ok) => {{
+        chip.textContent = ok ? "✓ Copied" : "Copy failed — select it";
+        announceCopy(ok ? "Copied: " + text : "Couldn't copy; select the command and press Command-C");
+        setTimeout(() => {{ chip.textContent = restoreLabel; }}, ms);
+      }});
+    }}
+
     // Bridge between picks.json and topics.json. Returns
     // {{ basinIdToTask, taskToBasinId }} — bidirectional Maps for the
     // cross-memory links. Both Reader views (picks, topics) call this
@@ -1477,14 +1507,7 @@ def render_memory_viewer_html() -> str:
       rebuildChip.title = "Copy: " + rebuildCmd;
       rebuildChip.dataset.file = file.name;
       rebuildChip.dataset.built = isBuilt ? "1" : "0";
-      rebuildChip.addEventListener("click", () => {{
-        if (navigator.clipboard?.writeText) {{
-          navigator.clipboard.writeText(rebuildCmd).catch(() => null);
-        }}
-        rebuildChip.textContent = "✓ Copied";
-        announceCopy("Copied: " + rebuildCmd);
-        setTimeout(() => {{ rebuildChip.textContent = buildLabel; }}, 2200);
-      }});
+      rebuildChip.addEventListener("click", () => flashCopy(rebuildChip, rebuildCmd, buildLabel, 2200));
       if (historical) {{
         const hist = el("span", "viewer-historical-chip", "Historical — nothing rebuilds this");
         hist.title = "Writer and reader removed 2026-08-11; the file is kept for the record.";
@@ -1537,14 +1560,7 @@ def render_memory_viewer_html() -> str:
           chip.type = "button";
           chip.textContent = issue.command;
           chip.title = "Copy: " + issue.command;
-          chip.addEventListener("click", () => {{
-            if (navigator.clipboard?.writeText) {{
-              navigator.clipboard.writeText(issue.command).catch(() => null);
-            }}
-            chip.textContent = "✓ Copied";
-            announceCopy("Copied: " + issue.command);
-            setTimeout(() => {{ chip.textContent = issue.command; }}, 2200);
-          }});
+          chip.addEventListener("click", () => flashCopy(chip, issue.command, issue.command, 2200));
           banner.appendChild(chip);
         }}
         wrap.appendChild(banner);
@@ -2604,14 +2620,7 @@ def render_memory_viewer_html() -> str:
           chip.type = "button";
           chip.textContent = "trinity-local lens";
           chip.title = "Copy: trinity-local lens";
-          chip.addEventListener("click", () => {{
-            if (navigator.clipboard?.writeText) {{
-              navigator.clipboard.writeText("trinity-local lens").catch(() => null);
-            }}
-            chip.textContent = "✓ Copied";
-            announceCopy("Copied: trinity-local lens");
-            setTimeout(() => {{ chip.textContent = "trinity-local lens"; }}, 2200);
-          }});
+          chip.addEventListener("click", () => flashCopy(chip, "trinity-local lens", "trinity-local lens", 2200));
           banner.appendChild(chip);
           detail.appendChild(banner);
         }}
@@ -2650,12 +2659,7 @@ def render_memory_viewer_html() -> str:
           replay.dataset.transcriptId = rep.transcript_id || "";
           replay.addEventListener("click", (event) => {{
             event.stopPropagation();
-            if (navigator.clipboard?.writeText) {{
-              navigator.clipboard.writeText(replayCmd).catch(() => null);
-            }}
-            replay.textContent = "✓ Copied";
-            announceCopy("Copied: " + replayCmd);
-            setTimeout(() => {{ replay.textContent = "Replay"; }}, 2200);
+            flashCopy(replay, replayCmd, "Replay", 2200);
           }});
           headRow.appendChild(replay);
         }}
@@ -2849,14 +2853,7 @@ def render_memory_viewer_html() -> str:
           chip.type = "button";
           chip.title = "Copy: " + launchCmd;
           chip.dataset.basin = b.id || "";
-          chip.addEventListener("click", () => {{
-            if (navigator.clipboard?.writeText) {{
-              navigator.clipboard.writeText(launchCmd).catch(() => null);
-            }}
-            chip.textContent = "✓ Copied";
-            announceCopy("Copied: " + launchCmd);
-            setTimeout(() => {{ chip.textContent = "Launch council on this topic"; }}, 2200);
-          }});
+          chip.addEventListener("click", () => flashCopy(chip, launchCmd, "Launch council on this topic", 2200));
           detail.appendChild(chip);
         }}
         // The viewer payload ships `prompt_id_count` (the slimmed form — the

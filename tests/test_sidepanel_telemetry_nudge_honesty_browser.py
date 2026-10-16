@@ -144,7 +144,7 @@ def test_telemetry_nudge_does_not_overclaim_on_stock_install(tmp_path, monkeypat
                 "const modal=document.querySelector('.settings-modal');"
                 "if(!modal) return {open:false};"
                 "const ps=[...modal.querySelectorAll('p.meta')].map(p=>p.textContent.replace(/\\s+/g,' ').trim());"
-                "const epRow=[...modal.querySelectorAll('.setting-row')].find(r=>/Endpoint/.test(r.textContent));"
+                "const epRow=[...modal.querySelectorAll('.setting-row')].find(r=>/Sent to/.test(r.textContent));"
                 "const epText=epRow?epRow.textContent.replace(/\\s+/g,' ').trim():'';"
                 "const toggle=(modal.querySelector('.sharing-toggle input')||{}).checked;"
                 "return {open:true,"
@@ -164,7 +164,7 @@ def test_telemetry_nudge_does_not_overclaim_on_stock_install(tmp_path, monkeypat
             # right state.
             assert "Not configured" in probe["endpoint"], (
                 "precondition failed: the seeded stock install should read "
-                f"'Endpoint: Not configured' (got {probe['endpoint']!r}) — without "
+                f"'Sent to: Not configured' (got {probe['endpoint']!r}) — without "
                 "this the nudge-honesty test isn't exercising the no-endpoint state"
             )
             assert probe["toggleOn"], (

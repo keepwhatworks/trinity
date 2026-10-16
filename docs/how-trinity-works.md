@@ -42,9 +42,9 @@ Every node gets passed through `modernbert-embed-base` when a real embedding run
 
 ## Dream, the offline synthesis pass
 
-`trinity-local lens --deep` (the deep build, the former `dream` verb, folded 2026-07-04) walks six phases:
+`trinity-local lens` (also reachable as `lens --deep` and the former `dream` verb) walks these phases:
 
-**Phase 1, Discover.** Find pairs of nodes across providers that are semantically the SAME question (cosine ≥ 0.85). That's how Trinity knows you asked "the same thing" of Claude AND Codex AND Gemini.
+**(Phase 1, Discover, removed 2026-10-15.)** It found the same question asked of several providers and synthesized each as a virtual council: about 430 chairman calls on a real history, read only by tallies the lens and the trust ledger excluded.
 
 **Phase 2, Topics / basins.** k-means over embeddings writes subject basins to `~/.trinity/memories/topics.json`. The default basin count now scales with corpus size instead of staying fixed at 20. Each basin gets a centroid vector and representative verbatim prompts. Basins are the substrate the lens grades against.
 
@@ -119,7 +119,7 @@ The eval is **structurally asymmetric** in your favor. Only Trinity sees your cr
 
 ## When does the deep build run
 
-**Today: manual.** You run `trinity-local lens --deep` when you want a full refresh (`lens` alone is the fast rebuild). The launchpad surfaces a "lens is stale" indicator when the rejection-corpus delta vs the last deep build crosses a threshold.
+**Today: manual.** You run `trinity-local lens` when you want a refresh. The launchpad surfaces a "lens is stale" indicator when the rejection-corpus delta vs the last build crosses a threshold.
 
 **Roadmap: auto-trigger.** Mirroring Anthropic's Auto-Dream cadence (24h + 5-sessions) plus a rejection-corpus-delta trigger. Trinity and Auto-Dream share the same primitive (offline synthesis from session transcripts) but differ in scope: Trinity is cross-provider, Auto-Dream is single-provider. Same idea, asymmetric data access.
 

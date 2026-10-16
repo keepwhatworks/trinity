@@ -69,7 +69,11 @@ def is_available() -> bool:
 
 
 def get_backend() -> str:
-    """Return the active backend name: 'mlx' or 'tfidf'."""
+    """The backend that IMPORTED: 'mlx' or 'tfidf'. A cheap check that never loads the model,
+    and so not proof that real vectors come out: with the module importable but no model on
+    disk it says "mlx" while embed() falls back to TF-IDF. A caller that acts on the vectors
+    asks mlx_actually_loaded() (coherence review 2026-10-15: ingest's embedding grouping read
+    this and scored hashed vectors against a ModernBERT-calibrated threshold)."""
     return _backend_name
 
 

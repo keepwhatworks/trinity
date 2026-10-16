@@ -351,76 +351,26 @@ def test_background_sender_gate_accepts_http_localhost_launchpad():
     )
 
 
-def test_chrome_extension_popup_action_kinds_match_allowlist():
-    """The capture_host action allowlist and the extension popup's
-    action kinds must agree.
-
-    The extension's duplicate launchpad.html was removed (2026-05-19)
-    in favor of a single canonical file:// launchpad — the popup
-    now dispatches `open-launchpad` to open that. popup.js is the
-    only extension-specific UI; its dispatch() calls must reference
-    kinds in capture_host's ACTION_ALLOWLIST.
-    """
+def test_extension_action_kinds_match_allowlist():
+    """Every action kind the extension's live surfaces dispatch must be in capture_host's
+    ACTION_ALLOWLIST, or the host refuses it. This read popup.js, a page no manifest entry
+    could open (deleted 2026-10-15); the surfaces users reach are the side panel's launchpad,
+    the council page and the panel shell."""
     from trinity_local.capture_host import ACTION_ALLOWLIST
 
-    repo_root = Path(__file__).resolve().parents[1]
-    popup_js = repo_root / "browser-extension" / "popup.js"
-    assert popup_js.exists(), "browser-extension/popup.js missing"
-    js_src = popup_js.read_text()
-    # The popup dispatches via `dispatch("kind", ...)` calls.
+    ext = Path(__file__).resolve().parents[1] / "browser-extension"
     import re
-    kinds = set(re.findall(r'dispatch\("([^"]+)"', js_src))
-    assert kinds, "No dispatch() calls found in popup.js"
-    for kind in kinds:
-        assert kind in ACTION_ALLOWLIST, (
-            f"popup.js dispatches kind={kind!r} but capture_host "
-            f"allowlist does not include it. "
-            f"Allowlist: {sorted(ACTION_ALLOWLIST.keys())!r}"
-        )
-
-
-def test_popup_setup_card_offers_paste_into_agent_brief():
-    """The popup's setup card (shown when Native Messaging isn't wired)
-    must offer a paste-into-Claude-Code / Claude-Desktop brief as the
-    PRIMARY install path — that's the non-technical-user entry point
-    the audience-expansion claim depends on.
-
-    Pins:
-      - "Copy install brief" button exists and is primary (not .secondary)
-      - "Copy shell commands" button exists for terminal users (secondary)
-      - The brief mentions Claude Code or Claude Desktop by name
-      - The brief includes the three install steps and the extension ID
-        placeholder so the agent has everything it needs
-    """
-    repo_root = Path(__file__).resolve().parents[1]
-    popup_js = (repo_root / "browser-extension" / "popup.js").read_text()
-
-    # Primary brief button (paste-into-agent path).
-    assert 'id: "copy-setup-brief"' in popup_js, (
-        "popup.js must define the 'copy-setup-brief' button — primary "
-        "non-technical-user install path."
+    kinds: set[str] = set()
+    for rel in ("sandbox/launchpad-init.js", "sandbox/live_council.html"):
+        # A dispatch is `extensionAction: { kind: '...' }`; a bare `kind:` is also a UI
+        # operation type (beginOperation({kind: 'council'})) or prose in a comment.
+        kinds |= set(re.findall(r"extensionAction:\s*\{\s*kind:\s*['\"]([a-z][a-z-]+)['\"]",
+                                (ext / rel).read_text()))
+    assert len(kinds) >= 5, f"found too few dispatched kinds to be checking anything: {kinds}"
+    missing = sorted(k for k in kinds if k not in ACTION_ALLOWLIST)
+    assert not missing, (
+        f"the extension dispatches {missing}, which capture_host's allowlist refuses. "
+        f"Allowlist: {sorted(ACTION_ALLOWLIST)!r}"
     )
-    # Secondary shell-commands button still available for terminal users.
-    assert 'id: "copy-setup-cmds"' in popup_js, (
-        "popup.js must keep the 'copy-setup-cmds' button as a secondary "
-        "affordance for terminal-native users."
-    )
-    # The shell button must be marked secondary so the brief is visibly
-    # the primary action.
-    assert 'class: "btn secondary",\n    id: "copy-setup-cmds"' in popup_js, (
-        "'copy-setup-cmds' must be styled as a secondary button so the "
-        "brief reads as the primary action."
-    )
-    # Brief content must reference Claude Code / Desktop explicitly so
-    # the user knows where to paste, and must include the three install
-    # steps the agent needs to run.
-    for required in (
-        "Claude Code",
-        "Claude Desktop",
-        "install-extension",
-        "trinity-local status",
-    ):
-        assert required in popup_js, (
-            f"Install brief missing {required!r} — agent or user can't "
-            f"complete setup without it."
-        )
+
+

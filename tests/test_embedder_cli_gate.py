@@ -148,17 +148,12 @@ class TestCLIHandlersUseGate:
     ~600 MB requirement mid-command."""
 
     def test_dream_handler_imports_gate(self):
-        """Source-level grep — handle_dream must import and call
-        require_embedder_ready. Cheap regression guard that doesn't
-        require wiring up the full handler test apparatus."""
+        """`dream` runs `lens` (2026-10-15), so it is gated by handle_me_build's
+        require_real_embedder; the functional test below proves the exit."""
         path = Path(__file__).resolve().parents[1] / "src" / "trinity_local" / "commands" / "dream.py"
-        src = path.read_text()
-        assert "require_real_embedder" in src, (
-            "dream handler must call require_real_embedder — the active-backend "
-            "gate (not the model-file probe alone), so a broken backend that "
-            "would fall back to the TF-IDF stub is refused, not silently used."
+        assert "handle_me_build" in path.read_text(), (
+            "dream must run the gated lens build, not a build of its own"
         )
-        assert "EmbedderNotReadyError" in src
 
     def test_me_build_handler_imports_gate(self):
         path = Path(__file__).resolve().parents[1] / "src" / "trinity_local" / "commands" / "me.py"
