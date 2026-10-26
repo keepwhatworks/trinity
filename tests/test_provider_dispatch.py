@@ -23,6 +23,9 @@ def test_codex_model_guard_honours_the_short_flag_alias(monkeypatch, tmp_path):
         return _Fake()
 
     monkeypatch.setattr("subprocess.run", _fake_run)
+    # The argv is under test, not whether codex is installed: a CI runner has no codex, and the provider checks
+    # for its binary before it runs (public CI, 2026-10-26).
+    monkeypatch.setattr("trinity_local.providers.which_on_runtime_path", lambda name: f"/usr/local/bin/{name}")
     from trinity_local.config import load_config
 
     cfg = load_config(None).providers["codex"]

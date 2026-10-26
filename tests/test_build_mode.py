@@ -42,7 +42,13 @@ def _git(repo: Path, *args: str) -> None:
 
 
 @pytest.fixture
-def repo(tmp_path: Path) -> Path:
+def repo(tmp_path: Path, monkeypatch) -> Path:
+    # Where there is no OS sandbox (Linux CI), grade through build mode's own opt-in: these tests apply only their
+    # own synthetic patches, and the sandbox itself has the needs_sandbox tests below. Without it every flow and
+    # input-refusal test stopped at the missing-sandbox refusal before reaching what it checks (public CI's
+    # Ubuntu jobs, 2026-10-26). On macOS the sandbox runs as before.
+    if build_mode._sandbox_exec() is None:
+        monkeypatch.setenv("TRINITY_BUILD_UNSANDBOXED", "1")
     r = tmp_path / "repo"
     (r / "tests").mkdir(parents=True)
     (r / "calc.py").write_text("def add(a, b):\n    return a - b\n")

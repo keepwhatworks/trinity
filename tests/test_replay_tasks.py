@@ -130,3 +130,44 @@ def test_without_git_on_path_it_says_so(tmp_path, monkeypatch, capsys):
                               python=None, agent_network="allowlist")
     assert handle_replay(args) == 2
     assert "git is not installed" in capsys.readouterr().err
+
+
+def _tar(*members: tuple[str, str, str]) -> tarfile.TarFile:
+    import io
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tf:
+        for name, kind, extra in members:
+            ti = tarfile.TarInfo(name)
+            if kind == "file":
+                ti.size = len(extra.encode())
+                tf.addfile(ti, io.BytesIO(extra.encode()))
+            elif kind == "sym":
+                ti.type, ti.linkname = tarfile.SYMTYPE, extra
+                tf.addfile(ti)
+            else:
+                ti.type = tarfile.FIFOTYPE
+                tf.addfile(ti)
+    buf.seek(0)
+    return tarfile.open(fileobj=buf)
+
+
+@pytest.mark.parametrize("member", [("../x", "file", "a"), ("/abs/x", "file", "a"), ("link", "sym", "/etc/hosts"),
+                                    ("d/link", "sym", "../../x"), ("fifo", "fifo", "")])
+def test_without_the_data_filter_an_unsafe_member_is_refused(tmp_path, monkeypatch, member):
+    """Python 3.10.0-3.10.11 has no tarfile `filter=` (public CI's macOS 3.10 raised TypeError, 2026-10-26). There
+    the snapshot refuses what the "data" filter would, before writing anything."""
+    monkeypatch.delattr(tarfile, "data_filter", raising=False)
+    dest = tmp_path / "d"
+    dest.mkdir()
+    with pytest.raises(tarfile.TarError):
+        rt._extract_data(_tar(member), dest)
+    assert list(dest.iterdir()) == [] and not (tmp_path / "x").exists()
+
+
+def test_without_the_data_filter_a_repo_snapshot_still_extracts(tmp_path, monkeypatch):
+    monkeypatch.delattr(tarfile, "data_filter", raising=False)
+    dest = tmp_path / "d"
+    dest.mkdir()
+    rt._extract_data(_tar(("pkg/a.py", "file", "x = 1\n"), ("pkg/b.py", "sym", "a.py")), dest)
+    assert (dest / "pkg" / "a.py").read_text() == "x = 1\n"
+    assert (dest / "pkg" / "b.py").is_symlink() and (dest / "pkg" / "b.py").read_text() == "x = 1\n"

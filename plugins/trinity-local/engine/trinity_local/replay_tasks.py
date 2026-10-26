@@ -76,7 +76,33 @@ def _snapshot(repo: Path, rev: str, dest: Path, paths: list[str] | None) -> None
     data = subprocess.run(["git", "archive", "--format=tar", rev, *(paths or [])], cwd=repo,
                           capture_output=True, check=True).stdout
     with tarfile.open(fileobj=io.BytesIO(data)) as tf:
+        _extract_data(tf, dest)
+
+
+def _extract_data(tf: tarfile.TarFile, dest: Path) -> None:
+    """Extract with tarfile's "data" filter where the stdlib has it (3.10.12+, 3.11.4+, 3.12+). Python 3.10.0 to
+    3.10.11 has no `filter=` and raised TypeError (public CI's macOS 3.10, 2026-10-26; python.org's last macOS
+    installer for 3.10 is 3.10.11). There, refuse what the filter would: an absolute or '..' name, a link that
+    resolves outside dest, a device or fifo; and drop set-id bits."""
+    if hasattr(tarfile, "data_filter"):
         tf.extractall(dest, filter="data")
+        return
+    root = dest.resolve()
+    members = []
+    for m in tf.getmembers():
+        name = Path(m.name)
+        if name.is_absolute() or ".." in name.parts or not (root / name).resolve().is_relative_to(root):
+            raise tarfile.TarError(f"refusing archive member outside {root}: {m.name!r}")
+        if m.issym() or m.islnk():
+            link = Path(m.linkname)
+            target = (root / name).parent / link if m.issym() else root / link
+            if link.is_absolute() or not target.resolve().is_relative_to(root):
+                raise tarfile.TarError(f"refusing archive link outside {root}: {m.name!r} -> {m.linkname!r}")
+        if m.ischr() or m.isblk() or m.isfifo():
+            raise tarfile.TarError(f"refusing special archive member: {m.name!r}")
+        m.mode &= 0o755
+        members.append(m)
+    tf.extractall(dest, members=members)
 
 
 def _pytest(python: str, tree: Path, files: list[str], timeout: int) -> tuple[str, str]:
