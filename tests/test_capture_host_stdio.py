@@ -340,9 +340,12 @@ def test_query_launchpad_data_returns_page_data(tmp_path):
 
     assert ack["ok"] is True, ack
     assert "pageData" in ack and isinstance(ack["pageData"], dict)
-    # A stable key the Vue app relies on — proves it's the real page-data, not a stub.
-    # (order is config-derived, so compare as a set.)
-    assert set(ack["pageData"].get("defaultMembers") or []) == {"claude", "codex", "antigravity"}
+    # A stable key the Vue app relies on — proves it's the real page-data, not a stub. Its value is the providers
+    # whose CLI is installed here, or all three when none is (config.installed_council_providers), so it is a
+    # non-empty subset of the trio: asserting all three passed only on machines with every CLI installed or none
+    # (2026-10-26). Order is config-derived, so compare as a set.
+    members = set(ack["pageData"].get("defaultMembers") or [])
+    assert members and members <= {"claude", "codex", "antigravity"}, members
     assert "recentSidebarHtml" in ack
     # Must stay under Chrome's 1 MB host→extension cap (we budget 900 KB).
     assert len(_struct.pack("<I", 0) + json.dumps(ack).encode("utf-8")) < 900 * 1024

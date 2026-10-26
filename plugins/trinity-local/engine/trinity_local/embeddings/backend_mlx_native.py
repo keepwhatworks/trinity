@@ -20,6 +20,7 @@ falls through to the torch backend, then TF-IDF.
 from __future__ import annotations
 
 import math
+import os
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,43 @@ def _hf_cache_dir(model_id: str) -> Path:
 # (modernbert is a STANDARD arch: MLX on Apple, torch-CUDA/CPU elsewhere).
 MLX_MODEL_ID = "nomic-ai/modernbert-embed-base"
 DEFAULT_DIM = 768
+
+# MLX keeps every freed Metal buffer in a cache that, by default, grows toward the device memory limit
+# and never shrinks; RSS does not show it, the process footprint does. Measured 2026-10-20 in an
+# isolated process: ten 16-text batches left 8.2 GB cached while 0.6 GB was in use. Long-lived MCP
+# servers embedding in batches of 128 reached 6-39 GB each and crashed the founder's machine. Capped
+# and cleared after each chunk, the cache stays near 0 with the same peak, for ~7% more time.
+def _cache_limit_bytes() -> int:
+    """TRINITY_MLX_CACHE_LIMIT_MB, else 256 MB; a malformed value falls back rather than breaking
+    every embed at import."""
+    try:
+        mb = int(os.environ.get("TRINITY_MLX_CACHE_LIMIT_MB", "256"))
+    except ValueError:
+        mb = 256
+    return max(0, mb) * 1024 * 1024
+
+
+_MLX_CACHE_LIMIT = _cache_limit_bytes()
+# One chunk's transient peak scales with texts x length (16 texts of ~1,500 words peaked at 2.8 GB),
+# so a chunk is bounded by characters as well as by count: 128 short prompts still go in one chunk,
+# 128 long transcript windows no longer allocate ~20 GB at once. A single text over the budget goes
+# alone. Order is kept, and each text is embedded on its own row, so vectors do not change.
+_CHUNK_CHAR_BUDGET = 64_000
+
+
+def _chunks(texts: list[str], batch_size: int, budget: int = _CHUNK_CHAR_BUDGET):
+    """Consecutive slices of `texts`, each at most `batch_size` long and `budget` characters (unless a
+    single text is longer), in order."""
+    chunk: list[str] = []
+    size = 0
+    for t in texts:
+        if chunk and (len(chunk) >= batch_size or size + len(t) > budget):
+            yield chunk
+            chunk, size = [], 0
+        chunk.append(t)
+        size += len(t)
+    if chunk:
+        yield chunk
 
 # nomic/ModernBERT embedders use task prefixes; documents/clustering use this.
 _DOC_PREFIX = "search_document: "
@@ -184,6 +222,9 @@ class MlxNativeEmbedder:
         # Loads from the local HF cache (one-time download). No network at
         # steady state — honours the HF_HUB_OFFLINE pin once cached.
         self._model, self._tok = self._load(MLX_MODEL_ID)
+        import mlx.core as mx
+
+        mx.set_cache_limit(_MLX_CACHE_LIMIT)
         self._loaded = True
 
     def embed(self, text: str, *, dim: int = DEFAULT_DIM) -> list[float]:
@@ -198,11 +239,12 @@ class MlxNativeEmbedder:
         import mlx.core as mx
 
         out: list[list[float]] = []
-        for start in range(0, len(texts), batch_size):
-            chunk = [_ensure_doc_prefix(t) for t in texts[start : start + batch_size]]
+        for raw in _chunks(texts, batch_size):
+            chunk = [_ensure_doc_prefix(t) for t in raw]
             res = self._generate(self._model, self._tok, texts=chunk)
             # bf16 → float32 in MLX before crossing to Python (avoids the
             # PEP-3118 buffer dtype error a direct numpy cast hits).
             vectors = mx.array(res.text_embeds).astype(mx.float32).tolist()
             out.extend(_l2_truncate(v, dim) for v in vectors)
+            mx.clear_cache()           # the chunk's buffers go back to the OS, not to the cache
         return out

@@ -76,18 +76,23 @@ def run_shell(command: str, cwd: Path, env: dict | None, timeout: float) -> tupl
         return None, out or ""
 
 
+def classify(rc: int | None, out: str) -> str:
+    """One run's outcome: 'green' | 'failed' (a test failed) | 'invalid' (the code did not load)
+    | 'timeout'. pytest exits 1 when tests fail, 2 on an interrupt or collection error, 3/4 on an
+    internal or usage error."""
+    if rc is None:
+        return "timeout"
+    if rc == 0:
+        return "green"
+    return "invalid" if rc in (2, 3, 4) or _INVALID.search(out or "") else "failed"
+
+
 def _run(commands: list[str], cwd: Path, env: dict | None, timeout: int) -> str:
-    """'green' | 'failed' (a test failed) | 'invalid' (the code did not load) | 'timeout'."""
+    """The first non-green outcome of `commands`, else 'green' (see classify)."""
     for cmd in commands:
-        rc, out = run_shell(cmd, cwd, env, timeout)
-        if rc is None:
-            return "timeout"
-        if rc == 0:
-            continue
-        # pytest: 1 = tests failed; 2 = interrupted or collection error; 3/4 = internal or usage
-        if rc in (2, 3, 4) or _INVALID.search(out):
-            return "invalid"
-        return "failed"
+        status = classify(*run_shell(cmd, cwd, env, timeout))
+        if status != "green":
+            return status
     return "green"
 
 

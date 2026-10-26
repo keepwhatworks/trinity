@@ -66,6 +66,15 @@ def test_normalize_provider_slug_folds_all_web_era_capture_slugs():
     assert "claude_ai: 'claude'" in html
     # the old incomplete one-slug form must be gone
     assert "slug === 'gemini' ? 'antigravity' : slug" not in html
+    # Every Python alias, not only the capture slugs: a legacy winner like "gpt" or "anthropic" painted
+    # "Gpt" / "Anthropic" while Python branded it GPT / Claude. A browser test guarded that through the
+    # cortex cheat-sheet; the sheet went 2026-08-11 and the test with it (2026-10-26), so the parity is
+    # pinned here, on the map itself.
+    from trinity_local.council_schema import _LEGACY_PROVIDER_ALIASES
+
+    missing = [f"{k}->{v}" for k, v in _LEGACY_PROVIDER_ALIASES.items()
+               if f"{k}: '{v}'" not in html and f"'{k}': '{v}'" not in html]
+    assert not missing, f"the JS normalizeProviderSlug map lacks Python aliases: {missing}"
 
 
 def test_format_provider_label_can_reach_normalize_provider_slug():

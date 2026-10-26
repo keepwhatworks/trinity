@@ -227,6 +227,9 @@ def test_secondary_action_button_returns_focus_to_itself_not_body(tmp_path, monk
                 )
                 el = handle.as_element()
                 assert el is not None, "Refresh memory button not found / not visible on /stats"
+                # Mark the element itself: its label changes with its state ("✓ Started — reload later"
+                # replaced "Updated"), so matching focus by label text drifted (browser shard, 2026-10-26).
+                el.evaluate("b => b.setAttribute('data-focus-trigger', '1')")
 
                 el.focus()
                 el.click()
@@ -265,7 +268,7 @@ def test_secondary_action_button_returns_focus_to_itself_not_body(tmp_path, monk
                     "returned to the trigger once it re-enabled (WCAG 2.4.3)"
                 )
                 is_trigger = page.evaluate(
-                    "() => /refresh memory|updated/i.test(document.activeElement.textContent || '')"
+                    "() => document.activeElement?.getAttribute('data-focus-trigger') === '1'"
                 )
                 assert is_trigger is True, (
                     "focus did not return to the Refresh memory trigger after it "

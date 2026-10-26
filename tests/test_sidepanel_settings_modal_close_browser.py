@@ -209,3 +209,39 @@ def test_settings_close_button_reachable_in_short_panel(tmp_path, monkeypatch):
             )
         finally:
             ctx.close()
+
+
+def test_a_long_missing_transcript_path_cannot_widen_the_modal(tmp_path, monkeypatch):
+    """A user without Claude Desktop sees "Transcript directory not found: <path>" in the settings modal. A path
+    has no break opportunity, so a long one set the card's minimum width past a 393px side panel and pushed the ×
+    off-screen. Seen 2026-10-26 in CI's environment, where no provider directory exists; this repo's own runs
+    never showed it, because Claude Desktop is installed here. A long HOME forces the case on any machine."""
+    pytest.importorskip("playwright.sync_api")
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        # Set after the driver has started (it found its browsers under the real HOME), before the payload is built.
+        long_home = tmp_path / ("u" * 120)
+        long_home.mkdir()
+        monkeypatch.setenv("HOME", str(long_home))
+        ctx, ext_id, page = _boot_panel(p, tmp_path, monkeypatch)
+        try:
+            page.frames[-1].locator("button[title='Settings']").first.click(timeout=5000)
+            page.wait_for_timeout(500)
+            geo = page.frames[-1].evaluate(
+                "()=>{const vw=document.documentElement.clientWidth;"
+                "const m=document.querySelector('.settings-modal');if(!m)return {modalPresent:false};"
+                "const card=m.querySelector('.card').getBoundingClientRect();"
+                "const cb=m.querySelector(\"button[aria-label='Close settings']\").getBoundingClientRect();"
+                "const cx=cb.left+cb.width/2;"
+                "return {modalPresent:true,vw,cardRight:card.right,closeInView:cx>=0&&cx<=vw,"
+                " pathShown:m.innerText.includes('Transcript directory not found')};}"
+            )
+            assert geo.get("modalPresent") is True, "settings modal did not open in the side panel"
+            assert geo.get("pathShown") is True, "precondition: the modal must show a missing transcript path"
+            assert geo["cardRight"] <= geo["vw"] + 1 and geo["closeInView"] is True, (
+                f"a long transcript path widened the settings card past the {geo['vw']}px panel "
+                f"(card right={geo['cardRight']}); the × is off-screen"
+            )
+        finally:
+            ctx.close()

@@ -354,6 +354,23 @@ def _amendment_rows() -> list[dict]:
     return rows
 
 
+def _amendments() -> list[dict]:
+    """One row per amendment: the latest row for each (id, council_id).
+
+    The ledger is append-only, so a prediction resolves by appending a full copy
+    of its row with the new resolution and `resolution_of`. Counting rows counted
+    a resolved amendment twice: once still pending, once held or failed. On
+    2026-10-22 that published 491 adopted amendments where the ledger held 456,
+    and 221 pending where 186 were open. The key includes the council because
+    amd_0168..0182 were each issued twice by different councils; keyed on id
+    alone, 15 real amendments would vanish from the count.
+    """
+    latest: dict[tuple, dict] = {}
+    for r in _amendment_rows():
+        latest[(r["id"], r.get("council_id"))] = r
+    return list(latest.values())
+
+
 def _adopted_rows() -> list[dict]:
     """Only ADOPTED amendments. The published sentence is "N of M adopted
     amendments held", so a DECLINED proposal belongs to neither side of it.
@@ -367,7 +384,7 @@ def _adopted_rows() -> list[dict]:
     have published as an adopted amendment that failed: denominator inflated AND
     failure count inflated, in marketing copy, growing with every decline.
     """
-    return [r for r in _amendment_rows() if r.get("adopted")]
+    return [r for r in _amendments() if r.get("adopted")]
 
 
 def _amendments_by(res: str) -> int:
@@ -389,7 +406,7 @@ def canonical_amendment_total() -> int:
 def canonical_amendment_declined() -> int:
     """Proposals considered and NOT adopted. Published separately so the hold
     rate keeps an honest denominator without a decline reading as a failure."""
-    return len(_amendment_rows()) - len(_adopted_rows())
+    return len(_amendments()) - len(_adopted_rows())
 
 
 def canonical_amendment_held() -> int:
@@ -543,24 +560,27 @@ def find_placeholders(path: Path) -> list[str]:
     return [m.group(1) for m in PLACEHOLDER_PATTERN.finditer(text)]
 
 
+_SKIP_DIRS = {".venv", "node_modules", "build", ".pytest_cache"}
+
+
+def _skipped(path: Path) -> bool:
+    """Skip by a directory INSIDE the repo, never by the repo's own location. The test was a
+    substring of the absolute path, so a checkout under any directory named `build` (a worktree
+    called build, 2026-10-18) skipped every doc, and `--check` passed having checked nothing."""
+    parts = path.relative_to(REPO).parts[:-1]
+    return any(p in _SKIP_DIRS or p.endswith(".egg-info") for p in parts)
+
+
 def docs_with_placeholders() -> list[Path]:
     """Scan the repo for any md/html file containing canonical-placeholders."""
     found: list[Path] = []
-    for path in REPO.rglob("*.md"):
-        if any(
-            skip in str(path)
-            for skip in (".venv", "node_modules", "build/", ".egg-info", ".pytest_cache")
-        ):
-            continue
-        text = path.read_text(encoding="utf-8", errors="ignore")
-        if "canonical:" in text:
-            found.append(path)
-    for path in REPO.rglob("*.html"):
-        if any(skip in str(path) for skip in (".venv", "node_modules", "build/")):
-            continue
-        text = path.read_text(encoding="utf-8", errors="ignore")
-        if "canonical:" in text:
-            found.append(path)
+    for pattern in ("*.md", "*.html"):
+        for path in REPO.rglob(pattern):
+            if _skipped(path):
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            if "canonical:" in text:
+                found.append(path)
     return found
 
 

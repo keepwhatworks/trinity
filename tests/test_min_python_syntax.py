@@ -156,3 +156,34 @@ def test_src_uses_no_stdlib_newer_than_declared_floor():
         + "\n  ".join(violations)
         + "\nUse a 3.10-compatible alternative or a version-guarded fallback."
     )
+
+
+def test_src_spells_out_a_trailing_Z_wherever_it_parses_iso():
+    """3.11's datetime.fromisoformat accepts `...Z`; 3.10's refuses it, and a parse wrapped in `except ValueError`
+    then reads every such time as missing: Gemini Takeout grouping split every cell into its own session on 3.10
+    (reproduced 2026-10-26). Each call spells the Z out on its own line; now_iso() never writes one."""
+    bad = []
+    for f in sorted(SRC.rglob("*.py")):
+        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            if "fromisoformat(" in line and 'replace("Z"' not in line and "fromisoformat(now_iso())" not in line:
+                bad.append(f"{f.relative_to(SRC)}:{i}")
+    assert not bad, ("fromisoformat without the Z spelled out (use s.replace(\"Z\", \"+00:00\")):\n  "
+                     + "\n  ".join(bad))
+
+
+_POST_310_MODULES = {"tomllib": "3.11"}
+
+
+def test_tests_import_no_stdlib_module_newer_than_declared_floor():
+    """CI runs the suite on 3.10 as well, and the scan above reads src/ only. A bare `import tomllib` in a test
+    file failed COLLECTION on the 3.10 job, which stopped the whole run (public CI, 2026-10-16). A test takes such
+    a module through pytest.importorskip, so the 3.10 job skips that test instead."""
+    bad = []
+    for f in sorted((SRC.parents[1] / "tests").rglob("*.py")):
+        for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+            names = ([a.name for a in node.names] if isinstance(node, ast.Import)
+                     else [node.module] if isinstance(node, ast.ImportFrom) and node.module else [])
+            for n in names:
+                if n.split(".")[0] in _POST_310_MODULES:
+                    bad.append(f"{f.name}:{node.lineno} imports {n} ({_POST_310_MODULES[n.split('.')[0]]}+)")
+    assert not bad, "tests import stdlib newer than the 3.10 floor; use pytest.importorskip:\n  " + "\n  ".join(bad)

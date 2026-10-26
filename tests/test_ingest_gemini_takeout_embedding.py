@@ -25,6 +25,7 @@ from trinity_local.embeddings import mlx_actually_loaded
 from trinity_local.ingest import (
     GEMINI_TAKEOUT_EMBED_MAX_WINDOW_SECONDS,
     GEMINI_TAKEOUT_EMBED_SIMILARITY,
+    _gemini_parse_takeout_timestamp,
     _group_cells_by_embedding,
     _group_cells_into_sessions,
     parse_gemini_takeout_html,
@@ -204,6 +205,44 @@ class TestMissingTimestamps:
         cells = self._build_cells()
         groups = _group_cells_into_sessions(cells)
         assert len(groups) >= 2
+
+
+class TestTheParsersOwnTimestamps:
+    """Real cells carry _gemini_parse_takeout_timestamp's `...Z` strings, not the naive isoformat() the tests above
+    build. Beside one undated cell both groupers raised TypeError on 3.11+ (an aware time sorted against a naive
+    datetime.max), and 3.10's fromisoformat refused every `Z`, so each cell became its own session
+    (both reproduced 2026-10-26)."""
+
+    def _cells(self) -> list[dict]:
+        a = _gemini_parse_takeout_timestamp("Apr 12, 2026, 3:34:31 PM EDT")
+        b = _gemini_parse_takeout_timestamp("Apr 12, 2026, 3:40:00 PM EDT")
+        assert a and a.endswith("Z") and b and b.endswith("Z")
+        raw = [(SAME_TOPIC_TURNS[0], a, "rust-a"), (SAME_TOPIC_TURNS[1], None, "rust-b"),
+               (SAME_TOPIC_TURNS[2], b, "rust-c")]
+        return [{"prompt": p, "response": r, "ts_iso": ts, "native_id": n} for (p, r), ts, n in raw]
+
+    def test_time_grouping_survives_an_undated_cell(self):
+        groups = _group_cells_into_sessions(self._cells())
+        assert [c["native_id"] for c in groups[0]] == ["rust-a", "rust-c"]   # six minutes apart: one session
+
+    def test_embedding_grouping_survives_an_undated_cell(self):
+        groups = _group_cells_by_embedding(self._cells())
+        assert sorted(c["native_id"] for g in groups for c in g) == ["rust-a", "rust-b", "rust-c"]
+
+    def test_a_trailing_Z_is_read_where_fromisoformat_refuses_it(self, monkeypatch):
+        """Stands in for 3.10's fromisoformat, which refuses `...Z`, on whatever interpreter runs the suite."""
+        from trinity_local import ingest
+
+        class Py310(datetime):
+            @classmethod
+            def fromisoformat(cls, s):
+                if s.endswith("Z"):
+                    raise ValueError(f"Invalid isoformat string: {s!r}")
+                return super().fromisoformat(s)
+
+        monkeypatch.setattr(ingest, "datetime", Py310)
+        a, _undated, b = self._cells()
+        assert [len(g) for g in ingest._group_cells_into_sessions([a, b])] == [2]
 
 
 # ---------------------------------------------------------------------------

@@ -11,9 +11,10 @@ Chosen by council_fcb48fe49b232639 (amd_0280) as the one thing to ship for
 people using all three CLIs. Two measured decisions shape it:
   * A newer model is reported, never switched to (amd_0282): a silent swap
     would merge two models' results in one trust-ledger cell.
-  * The proof step is a tests-only verify. hq_122 (res_151) found that the
-    cross-lab readers' flags did not pick out later-fixed commits (lift 1.07
-    on 103 agent-written commits), so the readers are a second read, not proof.
+  * The proof step is a tests-only verify. Whether the cross-lab readers' flags
+    catch real defects is unmeasured: hq_122's lift 1.07 was scored against a
+    later-fix label that does not track real regressions (res_190), so the
+    readers are a second read, not proof.
 """
 from __future__ import annotations
 
@@ -82,6 +83,46 @@ def is_registered(provider: str) -> bool | None:
         return "trinity-local" in servers
     except (OSError, ValueError, AttributeError):
         return None
+
+
+# Below this, a council run from Codex can be cut off (Codex's own default is 300 s).
+CODEX_TIMEOUT_FLOOR_S = 900
+
+
+def codex_tool_timeout() -> int | None:
+    """`tool_timeout_sec` from Trinity's Codex registration, or None when it is unset or unreadable."""
+    try:
+        text = mcp_config_path("codex").read_text(encoding="utf-8")
+        from .commands.install import _CODEX_MCP_BLOCK_RE
+        block = _CODEX_MCP_BLOCK_RE.search("\n" + text)
+        m = re.search(r"(?m)^\s*tool_timeout_sec\s*=\s*([0-9.]+)", block.group(0)) if block else None
+        return int(float(m.group(1))) if m else None
+    except (OSError, ValueError):
+        return None
+
+
+def codex_timeout_fix() -> str | None:
+    """The fix when Trinity's Codex registration would let Codex cut a council off, else None."""
+    t = codex_tool_timeout()
+    if t is not None and t >= CODEX_TIMEOUT_FLOOR_S:
+        return None
+    return "trinity-local install-mcp"
+
+
+def codex_features_listing() -> str | None:
+    """`codex features list`, or None when codex cannot answer. Read-only; one subprocess."""
+    import shutil
+    import subprocess
+
+    exe = shutil.which("codex")
+    if not exe:
+        return None
+    try:
+        r = subprocess.run([exe, "features", "list"], capture_output=True, text=True, timeout=20,
+                           stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.stdout if r.returncode == 0 and r.stdout.strip() else None
 
 
 def unreadable_config_fix(provider: str) -> str:
@@ -192,6 +233,19 @@ def check_member(provider: str, cli: str, label: str, *, adapter=None, config=No
         c.fixes.append("trinity-local install-mcp")
     elif registered is None:
         c.fixes.append(unreadable_config_fix(provider))
+    elif provider == "codex" and (fix := codex_timeout_fix()):
+        c.fixes.append(fix)
+        c.notes.append(f"Codex cuts off an MCP tool call after 300 s unless tool_timeout_sec is set "
+                       f"(now {codex_tool_timeout() or 'unset'}); a council often runs longer and the cut "
+                       "call loses its council_run_id. install-mcp sets it to 1800.")
+    if provider == "codex" and installed and (listing := codex_features_listing()):
+        from .providers import codex_feature_gaps
+
+        if gaps := codex_feature_gaps(listing):
+            c.notes.append(
+                f"this Codex no longer knows feature(s) {', '.join(gaps)}, which Trinity turns off on "
+                "every dispatch so a read-only member cannot act. A renamed feature stays on until "
+                "Trinity is updated for this Codex version.")
     if pconf is not None and not member_enabled:
         c.fixes.append(f"trinity-local config --set providers.{provider}.enabled=true")
         c.notes.append(f"the {provider} member is disabled in config.json, so councils skip it")

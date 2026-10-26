@@ -323,8 +323,8 @@ class TestTopicToPickCrossLink:
         # The margin is rendered via fmtMargin (the server-pre-formatted Python
         # 2dp string), NOT JS toFixed(2) — toFixed rounds half-UP and disagrees
         # with the CLI/launchpad banker's round on an exact dyadic tie (0.625 →
-        # "0.63" vs "0.62"). The rendered margin value is guarded across surfaces
-        # in test_launchpad_picks_margin_rounding_matches_python_browser.
+        # "0.63" vs "0.62"). The cross-surface browser guard was retired with the
+        # Python-rounding map and picks.json's other readers (d23fa116, 2026-08-11).
         assert "fmtMargin(pick.margin)" in html, (
             "winner margin (the confidence proxy) not shown inline in the detail"
         )

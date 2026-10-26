@@ -14,6 +14,7 @@ import json
 import shutil
 import zipfile
 from pathlib import Path
+from tests.conftest import private_only
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -57,6 +58,7 @@ class TestPackagerCanon:
 
 
 class TestCheckTree:
+    @private_only
     def test_private_tree_fails_only_on_the_slug(self):
         """The repo's own tree must fail the slug gate (it links the private
         repo from UI copy — by design, the export rewrites it) and NOTHING

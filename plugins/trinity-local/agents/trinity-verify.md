@@ -41,8 +41,8 @@ PROCEDURE
    READ: everything else, including a green test with unanimous approval -- there is no
    pass-through outcome. Name what is unverified (no test, a split, or agreement without a kernel), because
    on a weak agent's output three labs agreed on a fix that failed its own test one time in
-   three (hq_104). The test says what is safe; the panel is a second read, and its flags did not
-   pick out later-fixed commits (hq_122).
+   three (hq_104). The test says what is safe; the panel is a second read, and whether its flags
+   catch real defects is unmeasured (the later-fix label it was scored against failed, res_190).
 4. ESCALATE to `mcp__trinity-local__run_council` (members excluding `claude`) only for a
    DESIGN question with no test to run -- the chairman prosecutes a split; it does not
    verify code. Use `get_council_status` to poll if it runs async.

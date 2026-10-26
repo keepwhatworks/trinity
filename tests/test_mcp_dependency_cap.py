@@ -5,14 +5,18 @@ and status must refuse an installed 2.x even though it imports."""
 from __future__ import annotations
 
 import re
-import tomllib
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 
 
 def _spec() -> str:
+    # tomllib is 3.11+; at module level it failed collection on CI's 3.10 job, which stopped the whole run
+    # (public CI, 2026-10-16). The 3.11 and 3.12 jobs read the spec.
+    tomllib = pytest.importorskip("tomllib")
     deps = tomllib.loads((REPO / "pyproject.toml").read_text())["project"]["dependencies"]
     return next(d.split("#")[0].strip() for d in deps if re.match(r"mcp\b", d))
 

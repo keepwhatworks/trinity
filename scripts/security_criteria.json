@@ -1,0 +1,6 @@
+[
+ {"id": "sec_exec", "kind": "judgment", "statement": "Nothing this change does not control (model output, a user's or repo's files, archive members, network data) is executed, imported, applied as a patch, or passed to a shell outside an OS-enforced boundary such as a sandbox; and every step that touches such input runs inside that boundary."},
+ {"id": "sec_paths", "kind": "judgment", "statement": "No path built from such input can read or write outside the directory the change intends: symlinks (created, followed or written through), '..', absolute paths and archive members are all refused or confined."},
+ {"id": "sec_exfil", "kind": "judgment", "statement": "Code or data the change does not control gets no channel off the machine and no credentials: no network (localhost and unix sockets included), no credential files, no secret-bearing environment variables."},
+ {"id": "sec_inject", "kind": "judgment", "statement": "No shell command, SBPL/sandbox profile, SQL, HTML or URL is assembled by splicing such input without quoting that the target parser respects."}
+]

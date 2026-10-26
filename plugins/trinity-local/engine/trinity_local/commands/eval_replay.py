@@ -30,9 +30,31 @@ def register(subparsers):
 
 
 def handle_replay(args) -> int:
+    import subprocess
+    import sys
     from ..replay_tasks import export
+    repo = Path(args.repo).expanduser()
+    # Run outside a git repository (the default --repo is the current directory), git's "not a git
+    # repository" escaped as a traceback on every published wheel (crash sweep, 2026-10-16).
+    try:
+        inside = subprocess.run(["git", "-C", str(repo), "rev-parse", "--is-inside-work-tree"],
+                                capture_output=True, text=True)
+    except FileNotFoundError:
+        print("eval-replay: git is not installed or not on PATH.", file=sys.stderr)
+        return 2
+    if inside.returncode != 0 or inside.stdout.strip() != "true":
+        # git's own reason, not a guess: a Command Line Tools stub that is not installed also
+        # fails here, and is not "not a git repository" (the 1.7.408 reader sweep).
+        why = (inside.stderr.strip().splitlines() or ["not inside a git repository"])[0]
+        print(f"eval-replay: {repo.resolve()}: {why}. Pass --repo <path> of a git repository.",
+              file=sys.stderr)
+        return 2
     out = Path(args.out).expanduser() if args.out else trinity_home() / "evals" / "replay"
-    res = export(Path(args.repo), out, since=args.since, limit=args.max, paths=args.paths, python=args.python,
-                 agent_network=getattr(args, "agent_network", "allowlist"))
+    try:
+        res = export(repo, out, since=args.since, limit=args.max, paths=args.paths, python=args.python,
+                     agent_network=getattr(args, "agent_network", "allowlist"))
+    except RuntimeError as exc:      # git failed underneath, e.g. a repository with no commits yet
+        print(f"eval-replay: {exc}", file=sys.stderr)
+        return 1
     print(json.dumps(res, indent=2))
     return 0

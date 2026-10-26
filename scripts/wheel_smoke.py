@@ -24,11 +24,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import select
 import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -36,6 +38,20 @@ REPO = Path(__file__).resolve().parents[1]
 # Fixes that are local, quick and harmless in an isolated home: run them for real.
 RUNNABLE_FIXES = {"lens-health", "telemetry-disable", "telemetry-show", "install-extension",
                   "lens-prompt", "eval-prompt", "status", "install"}
+
+# The crash sweep (the escape analysis's Control, folded in by its KILL verdict, amd_0421): every
+# verb with no arguments and every MCP tool, resource and prompt with default arguments. Its input
+# set is ONLY that; running status's fixes or config fixtures is the journey gate the verdict
+# refused (amd_0425). Oracles: no traceback, no hang, a valid JSON-RPC reply that passes the
+# output schema, and no write outside TRINITY_HOME by a verb whose job is not to write one.
+SWEEP_TIMEOUT = 45
+LONG_RUNNING = {"serve"}                         # a server: running until stopped is its job
+WRITES_BY_DESIGN = {"install", "install-mcp", "install-extension", "install-launcher",
+                    "install-reflex", "install-skill", "install-agent", "export", "uninstall"}
+# Without a network sandbox these could download or reinstall; they are skipped and listed.
+NEEDS_NETWORK_SANDBOX = {"update", "download-embedder", "lens-setup"}
+SANDBOX_EXEC = shutil.which("sandbox-exec")
+NO_NETWORK = '(version 1)(allow default)(deny network-outbound (remote ip "*:*"))'
 
 
 def _base_python() -> str:
@@ -120,17 +136,69 @@ class Smoke:
         self.check("the data files installed code reads are in the wheel", ok,
                    "" if ok else (r.stderr or r.stdout)[-300:])
 
+    def _verbs(self) -> list[str]:
+        code = ("import argparse, json\nfrom trinity_local.main import build_parser\n"
+                "sub = [a for a in build_parser()._actions if isinstance(a, argparse._SubParsersAction)][0]\n"
+                "print(json.dumps(sorted(sub.choices)))\n")
+        r, _ = self.run([str(self.venv / "bin" / "python"), "-c", code])
+        return json.loads(r.stdout)
+
+    def _files_outside_trinity_home(self) -> dict[str, tuple[int, int]]:
+        """path -> (size, mtime): a new, changed or deleted file outside TRINITY_HOME all show."""
+        out = {}
+        for p in self.home.rglob("*"):
+            if p.is_file() and ".trinity" not in p.relative_to(self.home).parts:
+                st = p.stat()
+                out[str(p.relative_to(self.home))] = (st.st_size, st.st_mtime_ns)
+        return out
+
+    def crash_sweep(self) -> None:
+        skipped = []
+        for verb in self._verbs():
+            if verb in LONG_RUNNING or (verb in NEEDS_NETWORK_SANDBOX and not SANDBOX_EXEC):
+                skipped.append(verb)
+                continue
+            argv = [str(self.venv / "bin" / "trinity-local"), verb]
+            if SANDBOX_EXEC:
+                argv = [SANDBOX_EXEC, "-p", NO_NETWORK, *argv]
+            before = self._files_outside_trinity_home()
+            try:
+                r = subprocess.run(argv, cwd=self.home, env=self.env, capture_output=True, text=True,
+                                   timeout=SWEEP_TIMEOUT, stdin=subprocess.DEVNULL)
+                ok = "Traceback (most recent call last)" not in r.stderr
+                detail = "" if ok else r.stderr.strip()[-300:]
+            except subprocess.TimeoutExpired:
+                ok, detail = False, f"still running after {SWEEP_TIMEOUT} s"
+            if ok and verb not in WRITES_BY_DESIGN:
+                after = self._files_outside_trinity_home()
+                stray = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+                if stray:
+                    ok, detail = False, f"wrote, changed or removed outside TRINITY_HOME: {stray[:3]}"
+            self.check(f"sweep: `{verb}` with no arguments", ok, detail)
+        if skipped:
+            print(f"sweep skipped (no network sandbox or a server): {', '.join(skipped)}", file=sys.stderr)
+
     def mcp(self) -> None:
-        proc = subprocess.Popen([str(self.venv / "bin" / "trinity-local"), "--mcp"], cwd=self.home,
+        argv = [str(self.venv / "bin" / "trinity-local"), "--mcp"]
+        if SANDBOX_EXEC:          # the default-argument calls below must not reach a network or a provider
+            argv = [SANDBOX_EXEC, "-p", NO_NETWORK, *argv]
+        proc = subprocess.Popen(argv, cwd=self.home,
                                 env=self.env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                 stderr=subprocess.DEVNULL, text=True)
         assert proc.stdin is not None and proc.stdout is not None
         stdin, stdout = proc.stdin, proc.stdout
 
-        def call(msg):
+        def call(msg, timeout=60):
             stdin.write(json.dumps(msg) + "\n")
             stdin.flush()
+            end = time.monotonic() + timeout
             while True:
+                left = end - time.monotonic()
+                if left <= 0:
+                    return {"hung_after_seconds": timeout}       # oracle: a call that never answers
+                ready, _, _ = select.select([stdout], [], [], left)
+                if not ready:
+                    continue
                 line = stdout.readline()
                 if not line:
                     return None
@@ -160,6 +228,28 @@ class Smoke:
                          "params": {"uri": "trinity://memories/lens.md"}})
             text = ((lens or {}).get("result", {}).get("contents") or [{}])[0].get("text", "")
             self.check("mcp: an empty lens says what to run", "trinity-local lens" in text, text[:200])
+            listed = {"tools/call": [{"name": n, "arguments": {}} for n in names]}
+            res = call({"jsonrpc": "2.0", "id": 6, "method": "resources/list"})
+            listed["resources/read"] = [{"uri": r["uri"]} for r in (res or {}).get("result", {}).get("resources", [])]
+            listed["prompts/get"] = [{"name": n, "arguments": {}} for n in pnames]
+            i = 100
+            for method, params_list in listed.items():
+                for params in params_list:
+                    i += 1
+                    reply = call({"jsonrpc": "2.0", "id": i, "method": method, "params": params})
+                    body = json.dumps(reply or {})
+                    result = (reply or {}).get("result")
+                    shape = {"tools/call": "content", "resources/read": "contents", "prompts/get": "messages"}
+                    well_formed = bool(reply) and reply.get("jsonrpc") == "2.0" and (
+                        ("error" in reply and "result" not in reply)
+                        or (isinstance(result, dict) and isinstance(result.get(shape[method]), list)))
+                    # A handler that raised comes back as an isError result carrying code 500 (a
+                    # refusal is 400/404, a stale server 503); that is a crash, not an answer.
+                    crashed = bool(isinstance(result, dict) and result.get("isError")) and '\\"code\\": 500' in body
+                    ok = well_formed and not crashed and "validation errors for" not in body \
+                        and "validation error for" not in body and "Traceback (most recent call last)" not in body
+                    label = params.get("name") or params.get("uri")
+                    self.check(f"sweep: mcp {method} {label} with defaults", ok, "" if ok else body[:300])
         finally:
             proc.kill()
             proc.wait()
@@ -195,6 +285,7 @@ class Smoke:
                 self.cli(f"runs: {command}", shlex.split(command)[1:])
         self.packaged_data()
         self.mcp()
+        self.crash_sweep()
 
 
 def main() -> int:

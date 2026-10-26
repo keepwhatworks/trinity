@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 import pytest
+from tests.conftest import private_only
 
 REPO = Path(__file__).resolve().parent.parent
 CUTOFF = "2026-06-01T00:00:00+00:00"
@@ -190,6 +191,7 @@ def _tree(root: Path) -> dict[str, str]:
             for f in sorted(root.rglob("*")) if f.is_file()}
 
 
+@private_only
 class TestCutoffMutation:
     """amd_0313's registered test, through the real build in a fresh process."""
 
@@ -230,6 +232,7 @@ class TestCutoffMutation:
         assert early["prompts"] != base["prompts"]
 
 
+@private_only
 class TestMaterialize:
     def test_partitions_sessions_and_resets_later_fields(self, tmp_path):
         hq = _hq132()

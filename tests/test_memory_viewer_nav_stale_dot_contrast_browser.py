@@ -111,6 +111,9 @@ def test_nav_stale_dot_clears_nontext_contrast_floor(tmp_path, monkeypatch):
     # Make core.md STALE — older than the lens.md it distills — so
     # _memory_health() emits a core.md issue and the nav paints its dot.
     # (An organic state: `dream --only-distill` skipped / a bare `lens` run.)
+    # A stale core.md surfaces only when a replacement could be admitted; under the default length-confounded
+    # ruler it reads "frozen" and stays off the card (coherence review 2026-10-15), so arm that state here.
+    monkeypatch.setattr("trinity_local.core_gate.replacement_possible", lambda **_: True)
     core = home / "core.md"
     lens = home / "memories" / "lens.md"
     assert core.exists() and lens.exists(), "seeder must write core.md + lens.md"

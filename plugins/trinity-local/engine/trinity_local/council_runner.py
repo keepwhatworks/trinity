@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -141,43 +140,6 @@ class CouncilRunResult:
     review_path: Path
     launches: list[LaunchEvent]
     task_path: Path | None = None
-
-
-def _log_routing_label_event(
-    *,
-    bundle_id: str,
-    primary_provider: str,
-    primary_model: str | None,
-    success: bool,
-    error: str | None,
-    synthesis_error: bool,
-) -> None:
-    """Append a one-line event so we can track Chairman parse-success rate.
-
-    Phase 8.7 success criterion: ≥85%. If this drops, the Chairman prompt
-    needs revision or extraction needs to fall back to a smaller LLM.
-    """
-    try:
-        from .state_paths import analytics_dir
-        from .utils import now_iso
-
-        path = analytics_dir() / "routing_label_events.jsonl"
-        record = {
-            "ts": now_iso(),
-            "bundle_id": bundle_id,
-            "primary_provider": primary_provider,
-            "primary_model": primary_model,
-            "success": bool(success),
-            "synthesis_error": synthesis_error,
-        }
-        if error:
-            record["error"] = error
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(record, separators=(",", ":")) + "\n")
-    except Exception:
-        # Analytics never crash the council
-        pass
 
 
 def _provider_model(config, override: str | None) -> str | None:
@@ -954,15 +916,6 @@ def run_council(
             update_synthesis_progress(state_token, "done", output_text=synthesis_output, routing_label=routing_label.to_dict())
         except Exception:
             pass
-    _log_routing_label_event(
-        bundle_id=bundle.bundle_id,
-        primary_provider=primary_provider,
-        primary_model=primary_model,
-        success=routing_label is not None,
-        error=routing_label_error,
-        synthesis_error=bool(synthesis_error),
-    )
-
     # Trust the structured Routing JSON winner FIRST. Text-scanning the
     # narrative "Winner" section was matching losing providers mentioned in
     # passing — see _resolve_winner.

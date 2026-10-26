@@ -19,7 +19,7 @@ PROMPTS = ("lens-from-provider.md", "evals-from-provider.md")
 
 
 def _package_data_globs() -> list[str]:
-    import tomllib
+    tomllib = pytest.importorskip("tomllib")       # 3.11+; CI's 3.10 job skips, 3.11 and 3.12 read it
     cfg = tomllib.loads((REPO / "pyproject.toml").read_text())
     return cfg["tool"]["setuptools"]["package-data"]["trinity_local"]
 

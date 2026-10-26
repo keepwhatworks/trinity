@@ -645,6 +645,33 @@ def _claude_args_without_grants(args: list[str]) -> list[str]:
     return out
 
 
+_ZWSP = "\u200b"
+_FILE_MENTION = re.compile(r"(?<!\w)@(?=[^\s\u200b])")   # a defused @ is skipped, so it is idempotent
+
+
+def without_file_mentions(prompt: str) -> str:
+    """The prompt with every `@` that could start a file mention defused.
+
+    `claude -p` reads `@<path>` in the PROMPT TEXT as a file mention and attaches the file before the
+    model runs: no tool call, no permission check, so plan mode and `--disallowedTools "*"` do not stop
+    it. Measured 2026-10-20 (Claude Code 2.1.304, a canary file, reader and member flags alike):
+    `@/abs`, `@~/rel`, `@./rel`, `@rel` (against the cwd) and `@"quoted path"` attached, after a space
+    or a backtick; `x@path`, `(@path`, `"@path` and a missing path did not; `@` followed by U+200B did
+    not. A member's answer that quoted a curl command naming the Codex auth file after an at-sign sent
+    that file's tokens to the API inside the chairman's prompt (res_197). Every prompt Trinity sends carries text it did not write
+    (member answers, diffs, transcripts), so the defusing is unconditional: a zero-width space after
+    every `@` not preceded by a word character, wider than the measured rule so a CLI that widens its
+    rule stays covered. agy and codex did not attach on the same probe. When anything was defused a
+    closing note says so, so a reader does not report the inserted character as a defect in a diff.
+    """
+    out, n = _FILE_MENTION.subn("@" + _ZWSP, prompt)
+    return out + _DEFUSED_NOTE if n else out
+
+
+_DEFUSED_NOTE = ("\n\n(Trinity put an invisible U+200B after each at-sign above so the CLI does not "
+                 "attach files. It is not in the source.)")
+
+
 class CLIProvider(BaseProvider):
     clean_completion: bool = False
 
@@ -660,6 +687,10 @@ class CLIProvider(BaseProvider):
         # Other CLI-shaped providers (agy/Antigravity, etc.) don't go through
         # sampling — the host session is a Claude session, so it can't
         # promise to answer as a non-Claude model. Gate on the provider name.
+        # Every CLI dispatch, keyed on nothing: a provider configured under another name can still run
+        # `claude`, and the transform is harmless for a CLI that does not attach. Before both paths;
+        # the transcript holds this spelling, so the ingest guard records it.
+        prompt = without_file_mentions(prompt)
         if self.config.name == "claude":
             sampled = self._try_sampling(prompt)
             if sampled is not None:
@@ -825,7 +856,65 @@ def _has_model_flag(args: list[str]) -> bool:
     return False
 
 
-_CODEX_WRITE_FLAGS = {"--full-auto", "--dangerously-bypass-approvals-and-sandbox", "--yolo"}
+_CODEX_WRITE_FLAGS = {"--full-auto", "--dangerously-bypass-approvals-and-sandbox", "--yolo",
+                      "--dangerously-bypass-hook-trust", "--approve-for-me"}
+# Valued flags that would load or grant what the containment below removes: a profile layers a config
+# with its own MCP servers, --enable can switch a disabled feature back on, --add-dir widens the sandbox.
+_CODEX_GRANT_VALUED = {"--enable", "-p", "--profile", "--add-dir"}
+# The only `-c` overrides config.json may pass, spelled exactly; every other `-c` is dropped. This was a
+# denylist of pinned keys, and it lost to three spellings in a row (an attached `-cK=V`, a leading `=`,
+# then Unicode whitespace codex may trim and the scrub did not): an allowlist cannot lose to a spelling.
+# The shipped configs pass none of these; Trinity adds the effort itself.
+_CODEX_ALLOWED_OVERRIDE = re.compile(r"(model_reasoning_effort|model_reasoning_summary|model_verbosity)=[\w.-]+")
+
+
+def _codex_config_override(args: list[str], i: int) -> int:
+    """How many args starting at i form a `-c` override config.json may not pass (0: not one, or allowed).
+    `-c K=V`, `--config K=V`, `-cK=V` and `--config=K=V` are all overrides; a `-c` with no value is dropped
+    too, or it would swallow the flag after it."""
+    a = args[i]
+    if a in ("-c", "--config"):
+        if i + 1 >= len(args) or args[i + 1].startswith("-"):
+            return 1                       # dangling: drop only the -c, keep the flag after it
+        return 0 if _CODEX_ALLOWED_OVERRIDE.fullmatch(args[i + 1]) else 2
+    value = a[len("--config="):] if a.startswith("--config=") else a[2:] if a.startswith("-c") and len(a) > 2 else None
+    return 0 if value is None or _CODEX_ALLOWED_OVERRIDE.fullmatch(value) else 1
+
+# Everything a "read-only" codex dispatch could still act with, measured 2026-10-20 on codex-cli 0.155.1
+# (res_196, council_418bd4763624dcbf). `--sandbox read-only` governs the commands codex runs, nothing else:
+#   * the user's MCP servers from ~/.codex/config.toml (here 9, ~280 tools: a JS REPL with the user's
+#     permissions, GUI control, a browser, GitHub writes, a nested Trinity server) run outside the
+#     sandbox; with the shell off, codex still read a file outside its cwd through one of them.
+#     `-c mcp_servers={}` merges and strips nothing; --ignore-user-config drops them (auth stays).
+#   * execpolicy rules: the user's `curl -fL` allow rule wrote a file outside the cwd under
+#     --sandbox read-only; --ignore-rules blocked it.
+#   * cloud connectors (apps), plugins, web search, browser and computer use, hooks, image generation.
+# Features go off as `-c features.X=false`, not `--disable X`: an unknown name in --disable exits 1, so an
+# upstream rename would take the Codex seat down, while -c tolerates it. The price is a silent no-op after a
+# rename, which `codex_feature_gaps` reports in `install --check`. Sub-agents inherit all of it (probed).
+CODEX_OFF_FEATURES = (
+    "apps", "plugins", "remote_plugin", "plugin_sharing", "browser_use", "browser_use_external",
+    "browser_use_full_cdp_access", "in_app_browser", "computer_use", "in_app_local_automation",
+    "image_generation", "goals", "multi_agent", "hooks", "skill_mcp_dependency_install", "tool_suggest",
+    "mentions_v2", "code_mode_host",
+)
+# A reader answers from what is in its prompt: no shell (0 of 1,646 verify sessions on disk made a tool
+# call, council_418bd4763624dcbf), matching the tool-free Claude reader. apply_patch stays listed: under
+# --sandbox read-only it wrote nothing inside or outside the cwd (probed).
+CODEX_TOOL_FREE_FEATURES = ("shell_tool", "unified_exec", "view_image")
+
+
+def codex_containment_args(*, tool_free: bool) -> list[str]:
+    out = ["--ignore-user-config", "--ignore-rules"]
+    for f in CODEX_OFF_FEATURES + (CODEX_TOOL_FREE_FEATURES if tool_free else ()):
+        out += ["-c", f"features.{f}=false"]
+    return out + ["-c", 'web_search="disabled"', "-c", 'shell_environment_policy.inherit="core"']
+
+
+def codex_feature_gaps(listing: str) -> list[str]:
+    """Names Trinity turns off that this codex's `codex features list` no longer knows (a rename)."""
+    known = {line.split()[0] for line in listing.splitlines() if line.strip()}
+    return [f for f in CODEX_OFF_FEATURES + CODEX_TOOL_FREE_FEATURES if f not in known]
 
 
 def _codex_read_only_args(args: list[str]) -> list[str]:
@@ -836,19 +925,28 @@ def _codex_read_only_args(args: list[str]) -> list[str]:
     is scrubbed (`--sandbox X`, `-s X`, `--sandbox=X`, `-sX`), plus the flags
     that grant writes without naming the sandbox, because a scrub that missed
     one spelling would let the config's grant win (codex: later flag wins).
+    Also dropped: flags that would load or re-enable what `codex_containment_args`
+    removes (a profile, --enable, --add-dir), and every `-c` outside a short allowlist.
     """
     out: list[str] = []
     skip_next = False
-    for a in args:
+    for i, a in enumerate(args):
         if skip_next:
             skip_next = False
             continue
-        if a in ("--sandbox", "-s"):
+        if a in ("--sandbox", "-s") or a in _CODEX_GRANT_VALUED:
             skip_next = True
             continue
         if a.startswith("--sandbox=") or (a.startswith("-s") and len(a) > 2 and not a.startswith("--")):
             continue
-        if a in _CODEX_WRITE_FLAGS:
+        if any(a.startswith(f + "=") for f in _CODEX_GRANT_VALUED if f.startswith("--")):
+            continue
+        if a in _CODEX_WRITE_FLAGS or a in ("--ignore-user-config", "--ignore-rules", "--"):
+            continue                       # `--` would turn every flag after it into prompt text
+        if a.startswith("-p") and len(a) > 2 and not a.startswith("--"):
+            continue                       # -pPROFILE
+        if n := _codex_config_override(args, i):
+            skip_next = n == 2
             continue
         out.append(a)
     return ["--sandbox", "read-only", *out]
@@ -861,11 +959,12 @@ class CodexProvider(BaseProvider):
     # covered evals only. Councils kept the write sandbox ("they legitimately
     # read the project"), but reading needs no write grant: members and the
     # chairman ran with cwd in the user's repo while the host agent edited it.
-    # `clean_completion` stays for the callers that set it; for codex the
-    # read-only sandbox is now unconditional, so it changes nothing here.
+    # The read-only sandbox and `codex_containment_args` apply to every dispatch;
+    # `clean_completion` (verify readers, evals) also takes the shell away.
     clean_completion: bool = False
 
     def run(self, prompt: str, cwd: Path) -> ProviderResult:
+        prompt = without_file_mentions(prompt)   # codex did not attach on the probe; uniform anyway
         # Same corpus self-pollution guard as CLIProvider.run — codex exec
         # writes ~/.codex session transcripts the ingest pipeline scans.
         from .dispatch_ledger import record_dispatched_prompt
@@ -897,6 +996,7 @@ class CodexProvider(BaseProvider):
             )
             if not already_set:
                 args.extend(["-c", f"model_reasoning_effort={effort}"])
+        args.extend(codex_containment_args(tool_free=self.clean_completion))
         command.extend(args)
         command.append(prompt)
         return self._run_command(command, cwd)

@@ -220,6 +220,12 @@ def analytics_dir() -> Path:
     return path
 
 
+def concerns_path() -> Path:
+    """verify's local ledger of reader concerns (council_4d1588a7251a43c5). It holds diff text and the readers'
+    own words, so it sits beside council_outcomes/, never in analytics/ (counts only), and is never uploaded."""
+    return state_dir() / "verify_concerns.jsonl"
+
+
 def conversations_dir() -> Path:
     """Captured web-chat conversations under ``~/.trinity/conversations/``.
     The Chrome extension's Native Messaging host (``capture_host.py``)

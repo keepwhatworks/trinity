@@ -12,13 +12,13 @@ import json
 import sys
 from pathlib import Path
 
-from ..verify import DEFAULT_PANEL, verify
+from ..verify import DEFAULT_PANEL, GUARDS_FILE, allow_guards, verify
 
 
 def register(subparsers):
     p = subparsers.add_parser("verify", help="Before you call a change done: runs your tests, then the other labs read the diff blind. STOP (a test is red) or READ (a person still reads)")
-    p.add_argument("--diff", required=True, help="unified diff of the change")
-    p.add_argument("--criteria", required=True,
+    p.add_argument("--diff", help="unified diff of the change (required unless --allow-guards)")
+    p.add_argument("--criteria",
                    help="JSON file: a list of {id, kind: test|judgment, statement, command?, blocking}")
     p.add_argument("--context", help="file with the symptom / task the change addresses")
     p.add_argument("--cwd", default=".", help="workdir where test commands run (default: .)")
@@ -26,17 +26,29 @@ def register(subparsers):
     p.add_argument("--exclude-lab", help="never read from this lab (e.g. the lab that authored the change)")
     p.add_argument("--no-panel", action="store_true", help="kernel only")
     p.add_argument("--no-tests", action="store_true", help="panel only")
+    p.add_argument("--quality", action="store_true",
+                   help="add the advisory reuse / root-cause / dead-code questions (off by default "
+                        "since 2026-10-18; TRINITY_VERIFY_QUALITY=1 does the same)")
     p.add_argument("--no-quality", action="store_true",
                    help="skip the advisory reuse / root-cause / dead-code questions the panel also answers")
     p.add_argument("--no-differential", action="store_true",
                    help="skip rerunning green tests with the change reverted (relevance stays declared)")
     p.add_argument("--effort", help="raise the claude/codex readers' effort (low|medium|high|xhigh); never lowers each provider's configured level")
+    p.add_argument("--allow-guards", action="store_true",
+                   help="trust this repository's .trinity/guards.json as it is now: verify runs those "
+                        "guard tests on every call once trusted; any edit to the file needs a new --allow-guards. "
+                        "Trust covers the commands, not the code they run")
     p.add_argument("--json", action="store_true",
                    help="raw result object instead of the review card (for scripts)")
     p.set_defaults(handler=handle_verify)
 
 
 def handle_verify(args) -> int:
+    if getattr(args, "allow_guards", False):
+        return _allow_guards(Path(getattr(args, "cwd", ".") or "."))
+    if not args.diff or not args.criteria:
+        print("refused: --diff and --criteria are required (or --allow-guards alone)", file=sys.stderr)
+        return 2
     diff = Path(args.diff).read_text(encoding="utf-8", errors="replace")
     raw = json.loads(Path(args.criteria).read_text(encoding="utf-8"))
     if isinstance(raw, dict):
@@ -52,7 +64,7 @@ def handle_verify(args) -> int:
                      exclude_lab=args.exclude_lab, run_panel=not args.no_panel,
                      run_tests=not args.no_tests, effort=args.effort,
                      differential=False if getattr(args, "no_differential", False) else None,
-                     quality=False if getattr(args, "no_quality", False) else None)
+                     quality=False if getattr(args, "no_quality", False) else True if getattr(args, "quality", False) else None)
     except ValueError as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 1
@@ -65,6 +77,24 @@ def handle_verify(args) -> int:
     else:
         print(render_card(out))
     return 0 if out["triage"] != "STOP" else 2
+
+
+def _allow_guards(cwd: Path) -> int:
+    """Show the guard commands, then trust exactly this content of the guard file."""
+    try:
+        guards, sha = allow_guards(cwd)
+    except ValueError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 1
+    print(f"Trusted {GUARDS_FILE} (sha256 {sha[:12]}). verify now runs these on every call:")
+    for g in guards:
+        print(f"  {g['id']}: {g['command']}")
+    print(f"Any edit to {GUARDS_FILE} needs a new --allow-guards before it runs again.")
+    # Security review of the guard commit, 2026-10-25: trust pins these commands, never the test
+    # files they name, so the user reads that here rather than assuming more.
+    print("Trust covers these commands, not the code they run: the test files they name change "
+          "with the repository, as any test you run does.")
+    return 0
 
 
 def render_card(out: dict) -> str:

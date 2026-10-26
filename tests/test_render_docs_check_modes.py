@@ -305,3 +305,32 @@ class TestSlowShardSnapshotIsRefusedWithTheRealReason:
         )
         data = mod.load_run_snapshot(snap)
         assert data["exit_status"] == 0 and data["passed"] > 0
+
+
+def test_launch_check_renders_from_the_fresh_measurement_before_checking_docs():
+    """Step 1 writes a new measurement; steps 2 and 5 compare the docs with it. Without a render
+    in between, every release that added a test failed both (1.7.406 and 1.7.407). The render
+    must sit after step 1, before step 2, and only run when step 1 passed."""
+    from pathlib import Path
+    sh = (Path(__file__).resolve().parents[1] / "scripts" / "launch-check.sh").read_text(encoding="utf-8")
+    step1 = sh.index('run_step "Step 1/6')
+    step2 = sh.index('run_step "Step 2/6')
+    between = sh[step1:step2]
+    assert "scripts/render_docs.py |" in between, "no render between the suite and the doc checks"
+    assert "if [ ${#failed_steps[@]} -eq 0 ]; then" in between, "the render must wait for a green step 1"
+    assert "--allow-unmeasured" not in between, "a red measurement must never be rendered into docs"
+
+
+
+def test_a_checkout_under_a_build_directory_still_finds_its_docs(render_docs_module, tmp_path, monkeypatch):
+    """The skip list matched "build/" anywhere in the ABSOLUTE path, so a worktree named `build`
+    rendered nothing and `--check` passed over zero docs (2026-10-18). Skips are relative now."""
+    repo = tmp_path / "worktrees" / "build"
+    (repo / "docs").mkdir(parents=True)
+    (repo / "build" / "lib").mkdir(parents=True)
+    (repo / "AGENTS.md").write_text("<!-- canonical:x -->1<!-- /canonical -->")
+    (repo / "docs" / "page.html").write_text("<!-- canonical:x -->1<!-- /canonical -->")
+    (repo / "build" / "lib" / "copy.md").write_text("<!-- canonical:x -->1<!-- /canonical -->")
+    monkeypatch.setattr(render_docs_module, "REPO", repo)
+    found = {p.relative_to(repo).as_posix() for p in render_docs_module.docs_with_placeholders()}
+    assert found == {"AGENTS.md", "docs/page.html"}, found

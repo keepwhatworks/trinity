@@ -525,6 +525,12 @@ _CODEX_INLINE_TRINITY_RE = re.compile(
 )
 
 
+# Codex cuts off an MCP tool call after 300 s unless the server sets `tool_timeout_sec` (measured
+# 2026-10-20 on codex-cli 0.155.1: a 90 s tool returned, a 420 s tool failed with "timed out awaiting
+# tools/call after 300s"). A council often runs longer, and the cut call loses its council_run_id.
+CODEX_TOOL_TIMEOUT_S = 1800
+
+
 def _write_codex_toml_mcp_config(target: Path, command: str, mcp_args: list[str]) -> bool:
     """Add (or update) the Trinity MCP server in Codex CLI's TOML config.
 
@@ -550,6 +556,7 @@ def _write_codex_toml_mcp_config(target: Path, command: str, mcp_args: list[str]
         "\n[mcp_servers.trinity-local]\n"
         f"command = {_toml_str(command)}\n"
         f"args = {_json.dumps(mcp_args)}\n"
+        f"tool_timeout_sec = {CODEX_TOOL_TIMEOUT_S}\n"
     )
 
     existing = ""

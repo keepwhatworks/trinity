@@ -94,3 +94,39 @@ def test_network_policy_is_strict_by_default_and_relaxable_for_local_checks(repo
     assert 'network_mode = "allowlist"' in strict and 'network_mode = "no-network"' in strict
     loose = (rt.write_task(repo, t, tmp_path / "b", agent_network="public") / "task.toml").read_text()
     assert "allowlist" not in loose and loose.count('network_mode = "public"') == 2
+
+
+def test_outside_a_git_repository_it_says_so_instead_of_a_traceback(tmp_path, monkeypatch, capsys):
+    """The default --repo is the current directory; run anywhere else, git's "not a git repository"
+    escaped as a traceback on every published wheel 1.7.402-1.7.407 (crash sweep, 2026-10-16)."""
+    import argparse
+    from trinity_local.commands.eval_replay import handle_replay
+    monkeypatch.setenv("TRINITY_HOME", str(tmp_path / "home"))
+    args = argparse.Namespace(repo=str(tmp_path), since="90 days ago", max=20, out=None, paths=None,
+                              python=None, agent_network="allowlist")
+    assert handle_replay(args) == 2
+    assert "not a git repository" in capsys.readouterr().err
+
+
+def test_a_repository_without_commits_is_one_line_not_a_traceback(tmp_path, monkeypatch, capsys):
+    """rev-parse passes in a fresh `git init`; the git log underneath then failed with a
+    traceback (the 1.7.408 reader sweep)."""
+    import argparse
+    from trinity_local.commands.eval_replay import handle_replay
+    subprocess.run(["git", "init", "-q", str(tmp_path / "fresh")], check=True)
+    monkeypatch.setenv("TRINITY_HOME", str(tmp_path / "home"))
+    args = argparse.Namespace(repo=str(tmp_path / "fresh"), since="90 days ago", max=20, out=None,
+                              paths=None, python=None, agent_network="allowlist")
+    assert handle_replay(args) == 1
+    assert "eval-replay:" in capsys.readouterr().err
+
+
+def test_without_git_on_path_it_says_so(tmp_path, monkeypatch, capsys):
+    import argparse
+    from trinity_local.commands.eval_replay import handle_replay
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-bin"))
+    monkeypatch.setenv("TRINITY_HOME", str(tmp_path / "home"))
+    args = argparse.Namespace(repo=str(tmp_path), since="90 days ago", max=20, out=None, paths=None,
+                              python=None, agent_network="allowlist")
+    assert handle_replay(args) == 2
+    assert "git is not installed" in capsys.readouterr().err

@@ -25,12 +25,14 @@ from trinity_local.skill_constitution import (
     violates_constitution,
 )
 from trinity_local.skill_loop import Rule, check_grounding, run_loop
+from tests.conftest import private_only
 
 REPO = Path(__file__).resolve().parent.parent
 SKILLS = REPO / ".claude" / "skills"
 
 
 class TestConstitutionBlocksTheThingItExistsFor:
+    @private_only
     def test_stripping_founder_locks_is_blocked(self):
         """The named failure mode: an optimizer scoring throughput is CORRECT
         that a founder-lock costs throughput, and would remove it."""
@@ -40,12 +42,14 @@ class TestConstitutionBlocksTheThingItExistsFor:
         violates, reasons = violates_constitution(src, stripped)
         assert violates and reasons
 
+    @private_only
     def test_adding_a_section_is_allowed(self):
         """A partition that blocks improvement is a partition nobody will keep."""
         src = (SKILLS / "trinity-discipline" / "SKILL.md").read_text()
         violates, _ = violates_constitution(src, src + "\n\n## New technique\n\nSomething.\n")
         assert not violates
 
+    @private_only
     def test_reordering_is_allowed(self):
         """Content-matched, not position-matched: a loop that cannot reorder
         cannot improve much."""
@@ -68,6 +72,7 @@ class TestConstitutionBlocksTheThingItExistsFor:
         monkeypatch.setattr(sc, "CONSTITUTIONAL_MARKERS", ())
         assert not sc.violates_constitution(before, "")[0]
 
+    @private_only
     def test_the_repo_actually_has_a_constitution(self):
         """A partition over zero frozen lines protects nothing. If this ever
         reads zero, the markers stopped matching the file rather than the file
@@ -88,6 +93,7 @@ class TestGroundingGate:
         r = check_grounding(Rule("r", "w", "t", "h", "commit deadbee"), REPO)
         assert not r.grounded
 
+    @private_only
     def test_a_real_ledger_id_grounds_a_rule(self):
         r = check_grounding(Rule("r", "w", "t", "h", "see hq_061"), REPO)
         assert r.grounded, r.grounding_note
@@ -166,6 +172,7 @@ class TestGroundingGate:
 
 
 class TestLoopNeverWrites:
+    @private_only
     def test_skill_files_are_not_modified(self, tmp_path):
         """Gate 3. The loop proposes; a human accepts. This is the gate that
         covers the failure modes nobody has enumerated yet."""
@@ -175,6 +182,7 @@ class TestLoopNeverWrites:
                  target=target, repo=REPO, home=tmp_path)
         assert target.read_text() == before
 
+    @private_only
     def test_proposal_is_written_where_a_human_will_find_it(self, tmp_path):
         res = run_loop([Rule("r", "w", "t", "h", "see hq_061")],
                        target=SKILLS / "trinity-discipline" / "SKILL.md",
@@ -189,6 +197,7 @@ class TestLoopNeverWrites:
                        repo=REPO, home=tmp_path)
         assert not res.proposed and len(res.rejected) == 1
 
+    @private_only
     def test_a_constitutional_violation_rejects_the_WHOLE_batch(self, tmp_path):
         """Not just the offending rule. A batch that would strip a lock is not
         partially acceptable, and letting the rest through would reward
@@ -208,6 +217,7 @@ class TestLoopNeverWrites:
             sl.violates_constitution = monkey
 
 
+@private_only
 def test_frozen_regions_report_their_location():
     """A guard that says 'something is frozen' without saying where cannot be
     acted on."""

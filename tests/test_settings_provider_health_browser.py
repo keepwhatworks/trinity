@@ -445,9 +445,11 @@ def test_settings_sharing_toggle_label_tracks_state(tmp_path, monkeypatch):
 
 @pytest.mark.slow
 @pytest.mark.browser
-def test_settings_endpoint_hides_placeholder_shows_real(tmp_path, monkeypatch):
-    """displayedEndpoint renders 'Not configured' for a dev/placeholder endpoint and
-    'unassigned' for an empty id, but a REAL endpoint verbatim."""
+def test_settings_sent_to_shows_the_destination_or_not_configured(tmp_path, monkeypatch):
+    """The "Sent to" row renders the destination the CLI and MCP server send to, or 'Not configured'
+    when the build carries none; the Anonymous ID row renders 'unassigned' for an empty id. The user-set
+    endpoint and its placeholder filter were retired 2026-10-15 (`telemetry-endpoint`); this pinned the
+    old row label and settings key until the browser shard's first run since (2026-10-26)."""
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright
 
@@ -456,11 +458,12 @@ def test_settings_endpoint_hides_placeholder_shows_real(tmp_path, monkeypatch):
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
     monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
 
+    ga4 = "https://www.google-analytics.com/mp/collect"
     cases = [
-        # (endpoint, share_install_id) -> (expected endpoint text, expected id text)
-        ("https://example.invalid/events", "", ("Not configured", "unassigned")),
-        ("http://localhost:8080/v1", "share_x", ("Not configured", "share_x")),
-        ("https://t.keepwhatworks.com/v1/events", "share_real", ("https://t.keepwhatworks.com/v1/events", "share_real")),
+        # (destination, share_install_id) -> (expected "Sent to" text, expected id text)
+        ("", "", ("Not configured", "unassigned")),
+        ("", "share_x", ("Not configured", "share_x")),
+        (ga4, "share_real", (ga4, "share_real")),
     ]
 
     with sync_playwright() as p:
@@ -475,7 +478,7 @@ def test_settings_endpoint_hides_placeholder_shows_real(tmp_path, monkeypatch):
                     provider_health=None,
                     telemetry_settings={
                         "sharing_enabled": True,
-                        "endpoint": endpoint,
+                        "destination": endpoint,
                         "share_install_id": share_id,
                     },
                 )
@@ -489,17 +492,17 @@ def test_settings_endpoint_hides_placeholder_shows_real(tmp_path, monkeypatch):
                     shown = page.evaluate(
                         """() => {
                             const rows = [...document.querySelectorAll('.settings-modal .setting-row')];
-                            const ep = rows.find(r => /^Endpoint/.test(r.innerText));
+                            const ep = rows.find(r => /^Sent to/.test(r.innerText));
                             const id = rows.find(r => /^Anonymous/.test(r.innerText));
                             return {
-                                endpoint: ep ? ep.innerText.replace(/^Endpoint\\s*/, '').trim() : null,
+                                endpoint: ep ? ep.innerText.replace(/^Sent to\\s*/, '').trim() : null,
                                 anonId: id ? id.innerText.replace(/^Anonymous ID\\s*/, '').trim() : null,
                             };
                         }"""
                     )
                     assert shown["endpoint"] == exp_ep, (
-                        f"endpoint {endpoint!r} rendered {shown['endpoint']!r}, expected {exp_ep!r} "
-                        "(a dev/placeholder endpoint must read 'Not configured', a real URL must show)"
+                        f"destination {endpoint!r} rendered {shown['endpoint']!r}, expected {exp_ep!r} "
+                        "(no destination must read 'Not configured', a real one must show)"
                     )
                     assert shown["anonId"] == exp_id, (
                         f"anon id {share_id!r} rendered {shown['anonId']!r}, expected {exp_id!r}"
@@ -541,9 +544,7 @@ def test_settings_modal_with_long_endpoint_url_does_not_clip_off_screen(
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
     monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
 
-    # A real, non-dev collector endpoint that survives displayedEndpoint's
-    # placeholder filter (not example.invalid / localhost) and is long + has the
-    # query-string separators a GA4 measurement-protocol URL carries.
+    # A long destination with the query-string separators a GA4 measurement-protocol URL carries.
     long_endpoint = (
         "https://www.google-analytics.com/mp/collect"
         "?measurement_id=G-ABCDEF1234&api_secret=verylongsecrettoken_padmorepadmore"
@@ -553,7 +554,7 @@ def test_settings_modal_with_long_endpoint_url_does_not_clip_off_screen(
         provider_health=_MISSING_PROVIDER_HEALTH,
         telemetry_settings={
             "sharing_enabled": True,
-            "endpoint": long_endpoint,
+            "destination": long_endpoint,
             "share_install_id": "share_abcdef0123456789abcdef0123456789_padding_more",
         },
     )
@@ -575,7 +576,7 @@ def test_settings_modal_with_long_endpoint_url_does_not_clip_off_screen(
                 ep_text = page.evaluate(
                     """() => {
                         const rows = [...document.querySelectorAll('.settings-modal .setting-row')];
-                        const ep = rows.find(r => /^Endpoint/.test(r.innerText));
+                        const ep = rows.find(r => /^Sent to/.test(r.innerText));
                         return ep ? ep.innerText : '';
                     }"""
                 )

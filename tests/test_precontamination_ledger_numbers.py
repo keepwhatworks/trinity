@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from tests.conftest import private_only
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -109,6 +110,7 @@ def _scan_files() -> list[Path]:
     return sorted(seen)
 
 
+@private_only
 def test_scan_is_not_vacuous():
     """The guard below is a text scan; if its globs rot it matches nothing and
     passes forever. Pin both the breadth of the scan and the liveness of the
@@ -172,6 +174,7 @@ PALATE_SITES = (
 PALATE_CLAIM = re.compile(r"(\d{1,3}(?:\.\d)?)%\s+over\s+(\d+)\s+decided", re.IGNORECASE)
 
 
+@private_only
 def test_palate_claim_agrees_across_its_copies():
     """The prospective-palate figure is written in three places. When only one
     gets refreshed, the other two silently understate the instrument — which is

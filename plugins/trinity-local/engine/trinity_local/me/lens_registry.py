@@ -507,7 +507,7 @@ def _parse_iso(ts: str) -> datetime | None:
     if not ts:
         return None
     try:
-        dt = datetime.fromisoformat(ts)
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))    # 3.10's fromisoformat refuses a trailing Z
     except ValueError:
         return None
     if dt.tzinfo is None:

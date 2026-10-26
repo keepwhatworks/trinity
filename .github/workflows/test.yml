@@ -9,8 +9,11 @@ on:
 permissions:
   contents: read
 
+# Hosted runners serve the public repo. The private repo runs mac-ci.yml on the founder's Mac:
+# hosted jobs on that account are refused on a billing hold, and mac-ci is never exported.
 jobs:
   test:
+    if: ${{ !github.event.repository.private }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -56,6 +59,7 @@ jobs:
   # the topology XSS would pass green. This job installs chromium and runs only the
   # `browser`-marked tests so those surfaces are actually protected on every PR.
   browser:
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -87,6 +91,7 @@ jobs:
   # asserts the wrapper actually resolves python + PYTHONPATH + module and runs.
   # ubuntu + macOS only (the two supported OSes; Windows is WSL2-scoped per #272).
   install-smoke:
+    if: ${{ !github.event.repository.private }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

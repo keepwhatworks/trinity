@@ -212,6 +212,18 @@ class TestSnapshotIsWrittenAndCoherent:
             f"pytest -q` once and it will appear."
         )
 
+    def test_a_file_skipped_at_import_is_not_a_skipped_test(self):
+        """A module-level skip is never selected, so counting it as a skipped test made outcomes outnumber selected
+        in the public export, where two files skip that way (2026-10-26)."""
+        from types import SimpleNamespace
+
+        from _pytest.reports import CollectReport
+        from tests.conftest import _test_skips
+
+        assert CollectReport.when == "collect"          # the attribute the count keys on
+        reports = [SimpleNamespace(when="collect"), SimpleNamespace(when="setup"), SimpleNamespace(when="call")]
+        assert _test_skips(reports) == 2
+
     def test_snapshot_counts_add_up(self):
         from tests.conftest import RUN_SNAPSHOT_PATH
 

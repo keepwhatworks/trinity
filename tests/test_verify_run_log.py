@@ -42,6 +42,11 @@ def test_one_line_per_run_with_counts_and_no_text(tmp_path, monkeypatch):
     assert row["tests"] == 1 and row["tests_red"] == 0 and row["judgments"] == 0
     assert row["differential"] == {"vacuous": 1} and row["kernel_relevant"] is False
     assert row["triage"] == "READ" and row["relevance_basis"] == "measured"
+    # The join key (council_0d0d398d463f5f7b): git hashes that tie the run to what lands, no text.
+    pid = subprocess.run(["git", "patch-id", "--stable"], input=diff, capture_output=True, text=True).stdout.split()[0]
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=r, capture_output=True, text=True).stdout.strip()
+    assert row["patch_id"] == pid and row["base"] == head
+    assert row["diff_chars"] == len(diff) and row["reader_cut"] is False
 
 
 def test_logging_never_fails_a_verify(tmp_path, monkeypatch):

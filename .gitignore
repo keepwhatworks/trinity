@@ -81,6 +81,8 @@ src/trinity_local/_ga4_bundled.py
 internal/agent_exchange/
 
 # hq_113/114 packets and judge reads carry raw conversation text: local only
+# The concern ledger and its labels hold reviewed diffs, reader output and test messages: local only
+internal/experiments/concern_*.local.jsonl
 internal/experiments/hq113_packets*.jsonl
 internal/experiments/hq114_reads.jsonl
 internal/experiments/hq116_reads.jsonl

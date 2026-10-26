@@ -1813,6 +1813,25 @@ def _parse_gemini_takeout_cells(raw: str) -> list[dict]:
     return cells
 
 
+_TAKEOUT_LAST = datetime.max.replace(tzinfo=timezone.utc)   # a cell with no time sorts after every dated one
+
+
+def _parse_cell_ts(value: str | None) -> datetime | None:
+    """A Takeout cell's time as an aware UTC datetime, or None when it has none.
+
+    _gemini_parse_takeout_timestamp writes `...Z`, which 3.10's fromisoformat refuses (requires-python is
+    >=3.10): on 3.10 every cell read as undated and became its own session. And on 3.11+ an aware time sorted
+    against the naive datetime.max an undated cell stood in for raised TypeError, so one undated cell crashed
+    the grouping (both reproduced 2026-10-26). A naive value is read as UTC so every time compares."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 def _group_cells_into_sessions(cells: list[dict]) -> list[list[dict]]:
     """Group time-adjacent cells into sessions.
 
@@ -1821,18 +1840,8 @@ def _group_cells_into_sessions(cells: list[dict]) -> list[list[dict]]:
     previous cell exceeds GEMINI_TAKEOUT_SESSION_GAP_SECONDS or whenever
     a timestamp is missing.
     """
-    from datetime import datetime
-
-    def parse_ts(value: str | None) -> datetime | None:
-        if not value:
-            return None
-        try:
-            return datetime.fromisoformat(value)
-        except ValueError:
-            return None
-
-    timed = [(parse_ts(c["ts_iso"]), c) for c in cells]
-    timed.sort(key=lambda pair: pair[0] or datetime.max)
+    timed = [(_parse_cell_ts(c["ts_iso"]), c) for c in cells]
+    timed.sort(key=lambda pair: pair[0] or _TAKEOUT_LAST)
 
     groups: list[list[dict]] = []
     current: list[dict] = []
@@ -1905,7 +1914,7 @@ def _group_cells_by_embedding(cells: list[dict]) -> list[list[dict]]:
     Cells with missing timestamps are filled with last_seen + 1 second so
     they ride along with adjacent cells instead of fragmenting.
     """
-    from datetime import datetime, timedelta
+    from datetime import timedelta
 
     if not cells:
         return []
@@ -1914,18 +1923,10 @@ def _group_cells_by_embedding(cells: list[dict]) -> list[list[dict]]:
     # Sort by parsed timestamp first (None goes to the end), then walk and
     # fill None with last_seen + 1s. This keeps the time order stable while
     # ensuring missing-timestamp cells join the most-recent group.
-    def parse_ts(value: str | None) -> datetime | None:
-        if not value:
-            return None
-        try:
-            return datetime.fromisoformat(value)
-        except ValueError:
-            return None
-
-    timed = [(parse_ts(c["ts_iso"]), c) for c in cells]
+    timed = [(_parse_cell_ts(c["ts_iso"]), c) for c in cells]
     # Sort ascending; None timestamps push to the end of the corpus, but we
     # patch them inline below so they join their physical neighbors instead.
-    timed.sort(key=lambda pair: pair[0] or datetime.max)
+    timed.sort(key=lambda pair: pair[0] or _TAKEOUT_LAST)
 
     last_seen: datetime | None = None
     filled: list[tuple[datetime, dict]] = []
@@ -1934,7 +1935,7 @@ def _group_cells_by_embedding(cells: list[dict]) -> list[list[dict]]:
             # No timestamp on this cell — anchor it to last_seen + 1s so
             # it joins the previous cluster's time window. If last_seen is
             # also None (first cell missing ts), use epoch as the anchor.
-            ts = (last_seen + timedelta(seconds=1)) if last_seen else datetime(1970, 1, 1)
+            ts = (last_seen + timedelta(seconds=1)) if last_seen else datetime(1970, 1, 1, tzinfo=timezone.utc)
         filled.append((ts, cell))
         last_seen = ts
 
@@ -1986,10 +1987,10 @@ def _group_cells_by_embedding(cells: list[dict]) -> list[list[dict]]:
     # 4) Emit groups in time order (sort by first-cell timestamp).
     def first_ts(group: list[dict]) -> datetime:
         for cell in group:
-            ts = parse_ts(cell["ts_iso"])
+            ts = _parse_cell_ts(cell["ts_iso"])
             if ts is not None:
                 return ts
-        return datetime.max
+        return _TAKEOUT_LAST
     groups.sort(key=first_ts)
     return groups
 

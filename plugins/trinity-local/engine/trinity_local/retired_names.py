@@ -65,6 +65,18 @@ class RetirementRecord:
 # date (most recent first) for ease of audit.
 RETIRED: dict[str, RetirementRecord] = {
     # ── 2026-10-16 coherence review, batch H' (council_850cff5fe89c1d81; founder amd_0409) ──
+    "analytics/routing_label_events.jsonl": RetirementRecord(
+        name="analytics/routing_label_events.jsonl",
+        retired_at="2026-10-16",
+        commit="sweep-408",
+        replacement="metadata.routing_label_error on each council outcome",
+        reason=(
+            "Every council appended a parse-success line to it and nothing read it; the same fact "
+            "is on each saved outcome. Found by the 1.7.408 reader sweep (lens L4)"
+        ),
+        kind="file",
+        artifact_persists=True,
+    ),
     "install-hooks": RetirementRecord(
         name="install-hooks",
         retired_at="2026-10-16",

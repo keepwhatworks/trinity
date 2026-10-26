@@ -123,6 +123,10 @@ def test_home_value_proof_and_stats_council_counts_name_their_grain(tmp_path, mo
     from trinity_local.vendor import publish_vendor_files
 
     monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (_records(), True))
+    # personal_routing binds its own name for the scanner (from .council_analytics import ...), so
+    # patching council_analytics alone left the routing table reading an empty home (browser shard,
+    # 2026-10-26).
+    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (_records(), True))
     pr.invalidate_cache()
 
     # Source sanity — the two surfaces genuinely diverge on this seed, or the

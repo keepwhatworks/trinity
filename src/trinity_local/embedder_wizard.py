@@ -99,7 +99,7 @@ def _days_since(iso: str) -> float:
     from datetime import datetime, timezone
 
     try:
-        then = datetime.fromisoformat(iso).replace(tzinfo=timezone.utc)
+        then = datetime.fromisoformat(iso.replace("Z", "+00:00")).replace(tzinfo=timezone.utc)
         now = datetime.fromisoformat(now_iso()).replace(tzinfo=timezone.utc)
         return (now - then).total_seconds() / 86400.0
     except (ValueError, TypeError):

@@ -1326,7 +1326,9 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
       </p>
 
       <section class="settings-modal" v-if="settingsOpen" @click.self="closeSettings()" role="dialog" aria-modal="true" aria-label="Settings" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 24px 12px; z-index: 1000;">
-        <div class="card" style="max-width: 460px; margin: 20px; position: relative;">
+        <!-- overflow-wrap: anywhere lets an unbreakable token (a missing provider's transcript path) wrap, so it
+             cannot set the card's minimum width past a 393px side panel and push the × off-screen (2026-10-26). -->
+        <div class="card" style="max-width: 460px; margin: 20px; position: relative; overflow-wrap: anywhere;">
           <!-- The × close button is the modal's PRIMARY dismiss affordance on a
                touch surface (the side panel + phones, where backdrop-click is
                far less discoverable). It shipped as a bare 26×30px glyph (no
@@ -3500,7 +3502,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
         }},
         get routingCheatSheetMap() {{
           // The cheat-sheet shows ONE routing pattern per task_type — but a
-          // task_type with a SINGLE council (n_personal < 2) is one data point,
+          // task_type with a SINGLE council (councilsFor < 2) is one data point,
           // not a pattern, and the real corpus has hundreds of them (the n=1
           // long tail: 352 of 430 on the founder's data). Rendering them all
           // turned this table into a ~36k-px scroll-monster that buried the rest
@@ -3513,8 +3515,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           // object so petite-vue's `(scores, taskType) in map` keeps the sort.
           const t = this.personalRoutingTable;
           if (!t?.by_task_type) return {{}};
-          const cold = t.cold_start || {{}};
-          const nOf = (tt) => (cold[tt]?.n_personal) || 0;
+          const nOf = (tt) => this.councilsFor(tt);
           const out = {{}};
           Object.keys(t.by_task_type)
             .filter((tt) => nOf(tt) >= 2)
@@ -3538,12 +3539,19 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           // surfaced in the note below so the suppression is never silent.
           const t = this.personalRoutingTable;
           if (!t?.by_task_type) return 0;
-          const cold = t.cold_start || {{}};
           let hidden = 0;
           for (const tt in t.by_task_type) {{
-            if (((cold[tt]?.n_personal) || 0) < 2) hidden += 1;
+            if (this.councilsFor(tt) < 2) hidden += 1;
           }}
           return hidden;
+        }},
+        councilsFor(taskType) {{
+          // The councils behind a task_type's row: the chairman wins recorded for it. These rows used to
+          // read cold_start[tt].n_personal, and that block went with the Personalization column
+          // (2026-10-15), so every row read as 0 and fell under the n>=2 floor: the cheat-sheet never
+          // painted a row again. The browser shard caught it on its first run since (2026-10-26).
+          const wins = this.personalRoutingTable?.wins_per_task_type?.[taskType] || {{}};
+          return Object.values(wins).reduce((a, b) => a + b, 0);
         }},
         winsFor(taskType) {{
           // Chairman wins per task_type. Returns {{wins, total}} for the

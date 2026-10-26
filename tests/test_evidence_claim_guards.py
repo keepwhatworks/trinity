@@ -35,6 +35,7 @@ import re
 from pathlib import Path
 
 import pytest
+from tests.conftest import private_only
 
 _ROOT = Path(__file__).resolve().parent.parent
 _FIXTURE = _ROOT / "tests" / "fixtures" / "disagreement_ledger_summary.sample.json"
@@ -502,6 +503,7 @@ class TestDocRegistryWiring:
             "so they will never be re-rendered:\n  " + "\n  ".join(unregistered)
         )
 
+    @private_only
     def test_core_claims_are_still_wrapped_in_claude_md(self):
         names = {name for name, _ in _doc_placeholders(_CLAUDE_MD)}
         missing = [n for n in _MUST_BE_WRAPPED_IN_CLAUDE_MD if n not in names]

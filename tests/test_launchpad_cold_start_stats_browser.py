@@ -50,6 +50,10 @@ def _serve(directory: Path):
     return httpd, httpd.server_address[1]
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "Open product call since 2026-08-18 (res_056): a cold /stats shows no `trinity-local lens` "
+    "next step; the lens card is a home card. Strict, so the day the page shows it this XPASSes "
+    "and the marker has to come off."))
 def test_cold_start_stats_renders_honest_and_error_free(tmp_path, monkeypatch):
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright

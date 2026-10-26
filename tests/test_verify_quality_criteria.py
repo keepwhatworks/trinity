@@ -14,15 +14,23 @@ T = {"id": "t", "kind": "test", "statement": "tests pass", "command": "true", "b
 
 
 def test_added_only_when_a_panel_would_run():
-    assert [d["id"] for d in V.with_quality([T, J])] == ["t", "j", "q_reuse", "q_root", "q_dead"]
-    assert V.with_quality([T]) == [T], "a test-only block must not start a panel (extra dispatch)"
+    assert [d["id"] for d in V.with_quality([T, J], quality=True)] == ["t", "j", "q_reuse", "q_root", "q_dead"]
+    assert V.with_quality([T], quality=True) == [T], "a test-only block must not start a panel (extra dispatch)"
     assert V.with_quality([T, J], quality=False) == [T, J]
+
+
+def test_off_by_default_and_on_by_env(monkeypatch):
+    """council_0d0d398d463f5f7b: the advisory angles default OFF until they earn an exclusive catch."""
+    monkeypatch.delenv(V.QUALITY_FLAG, raising=False)
+    assert V.with_quality([T, J]) == [T, J], "advisory criteria must be opt-in"
+    monkeypatch.setenv(V.QUALITY_FLAG, "1")
+    assert [d["id"] for d in V.with_quality([J])] == ["j", "q_reuse", "q_root", "q_dead"]
 
 
 def test_env_switch_and_caller_ids_win(monkeypatch):
     monkeypatch.setenv(V.QUALITY_FLAG, "0")
     assert V.with_quality([J]) == [J]
-    monkeypatch.delenv(V.QUALITY_FLAG)
+    monkeypatch.setenv(V.QUALITY_FLAG, "1")
     own = {"id": "q_root", "kind": "judgment", "statement": "mine", "blocking": True}
     block = V.with_quality([J, own])
     assert [d["id"] for d in block] == ["j", "q_root", "q_reuse", "q_dead"]
@@ -47,7 +55,7 @@ def panel(monkeypatch, tmp_path):
 def test_a_quality_fail_never_changes_the_vote_or_the_unverified_list(panel):
     """MUTATION: make QUALITY_CRITERIA blocking and the readers' `passed` turns False."""
     cwd, cfg = panel
-    out = V.verify([J], "diff", "ctx", cwd, run_tests=False, config=cfg, exclude_lab="anthropic")
+    out = V.verify([J], "diff", "ctx", cwd, run_tests=False, config=cfg, exclude_lab="anthropic", quality=True)
     reads = out["panel"]["reads"]
     assert reads and all(r["passed"] for r in reads)
     assert all(r["votes"]["q_reuse"] is False for r in reads)
@@ -57,7 +65,7 @@ def test_a_quality_fail_never_changes_the_vote_or_the_unverified_list(panel):
 def test_the_card_marks_quality_concerns_advisory(panel):
     from trinity_local.commands.verify import render_card
     cwd, cfg = panel
-    card = render_card(V.verify([J], "diff", "ctx", cwd, run_tests=False, config=cfg, exclude_lab="anthropic"))
+    card = render_card(V.verify([J], "diff", "ctx", cwd, run_tests=False, config=cfg, exclude_lab="anthropic", quality=True))
     assert "[q_reuse]" in card and "(advisory: does not change the verdict)" in card
     assert "[j]" not in card.split("drew a concern")[-1]
 

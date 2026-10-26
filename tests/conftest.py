@@ -1,6 +1,7 @@
 """Shared test fixtures for trinity-local."""
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 from datetime import datetime, timezone
@@ -8,6 +9,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
+# A runner with no real embedder runs the suite on the TF-IDF stub, through the test/CI escape hatch the product
+# reserves for exactly this (embeddings.require_real_embedder). Public CI installs `.[test]`, which has neither
+# backend, and never set it: 16 lens and ledger tests refused there, as the product should outside tests
+# (measured on 3.10, 3.11 and 3.12, 2026-10-26). Where a real backend is installed nothing changes. Set before any
+# test imports trinity_local.embeddings, which picks its backend at import.
+if not any(importlib.util.find_spec(m) for m in ("mlx_embeddings", "sentence_transformers")):
+    os.environ.setdefault("TRINITY_DISABLE_MLX", "1")
 
 
 def pytest_collection_modifyitems(config, items):
@@ -60,6 +69,13 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _TESTS_DIR = _REPO_ROOT / "tests"
 RUN_SNAPSHOT_PATH = _REPO_ROOT / "test-run-snapshot.json"
 
+# The public export (internal/export_public_repo.py) drops internal/, CLAUDE.md and .claude/. A test that reads
+# them is marked private_only; a file of nothing else goes on the export's EXCLUDE_TESTS instead. Public CI sat
+# red from 2026-10-16 on 20 files that read them unguarded (2026-10-26).
+PRIVATE_TREE = (_REPO_ROOT / "internal").is_dir()
+private_only = pytest.mark.skipif(not PRIVATE_TREE, reason="reads the private tree (internal/, CLAUDE.md, .claude/), "
+                                                           "which the public export drops")
+
 
 def _is_whole_suite_run(config) -> bool:
     """True only when this invocation selects the DEFAULT whole suite.
@@ -98,6 +114,14 @@ def _is_whole_suite_run(config) -> bool:
     return True
 
 
+def _test_skips(reports) -> int:
+    """Skipped TESTS. A file skipped while it is imported (pytest.skip(allow_module_level=True), a module-level
+    importorskip) leaves a collect-time report under "skipped" but is never selected, so counting it made the
+    snapshot's outcomes outnumber its selected tests. In the public export two files skip that way, and every
+    whole-suite run there wrote a snapshot the next run's coherence check refused (2026-10-26)."""
+    return sum(1 for r in reports if getattr(r, "when", None) != "collect")
+
+
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Record the OBSERVED outcome of a whole-suite run to disk.
 
@@ -130,7 +154,7 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
         "passed": _n("passed"),
         "failed": _n("failed"),
         "errors": _n("error"),
-        "skipped": _n("skipped"),
+        "skipped": _test_skips(stats.get("skipped", [])),
         "xfailed": _n("xfailed"),
         "xpassed": _n("xpassed"),
         "measured_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),

@@ -185,7 +185,7 @@ def test_memory_health_headline_counts_match_the_issue_list(tmp_path, monkeypatc
     rows — while every existing memory-health test stays green.
 
     This drives the REAL petite-vue render with a seeded state that produces a
-    DISCRIMINATING headline (2 issues, ok_count=5, total_count=7 — all three
+    DISCRIMINATING headline (2 issues, ok_count=4, total_count=6 — all three
     distinct, so an issues↔ok↔total swap can't pass vacuously), and asserts the
     painted headline numbers against the FIXTURE CONSTANTS read render-INDEPENDENTLY
     from page_data. Mutation-provable: bind the needs-attention count to
@@ -203,9 +203,12 @@ def test_memory_health_headline_counts_match_the_issue_list(tmp_path, monkeypatc
     monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
 
     # Discriminating seed → EXACTLY two file-backed issues (core.md stale +
-    # topics.json pre-thread-aware), so ok_count=5, total_count=7 (all 3 distinct).
+    # topics.json pre-thread-aware), so ok_count=4, total_count=6 (all 3 distinct).
     # vocab.md is written NEWEST of the three thinking memories so the vocabulary
     # staleness signal stays silent (keeps the issue count deterministic at 2).
+    # A stale core.md surfaces only when a replacement could be admitted; under the default length-confounded
+    # ruler it reads "frozen" and stays off the card (coherence review 2026-10-15), so arm that state here.
+    monkeypatch.setattr("trinity_local.core_gate.replacement_possible", lambda **_: True)
     core = home / "core.md"
     core.write_text("old distillation", encoding="utf-8")
     now = time.time()
@@ -234,8 +237,8 @@ def test_memory_health_headline_counts_match_the_issue_list(tmp_path, monkeypatc
     total_count = mh.get("total_count")
     # BITE precondition: the seed actually produced the discriminating shape, so
     # the headline assertion below can't pass vacuously on equal numbers.
-    assert issues_n == 2 and ok_count == 5 and total_count == 7, (
-        "fixture drifted — expected exactly 2 issues / ok_count=5 / total_count=7 "
+    assert issues_n == 2 and ok_count == 4 and total_count == 6, (
+        "fixture drifted — expected exactly 2 issues / ok_count=4 / total_count=6 "
         f"(all distinct so a count-swap is detectable), got "
         f"issues={issues_n} ok_count={ok_count} total_count={total_count} "
         f"names={[i.get('name') for i in (mh.get('issues') or [])]}"

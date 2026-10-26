@@ -1133,7 +1133,7 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
         },
         get routingCheatSheetMap() {
           // The cheat-sheet shows ONE routing pattern per task_type — but a
-          // task_type with a SINGLE council (n_personal < 2) is one data point,
+          // task_type with a SINGLE council (councilsFor < 2) is one data point,
           // not a pattern, and the real corpus has hundreds of them (the n=1
           // long tail: 352 of 430 on the founder's data). Rendering them all
           // turned this table into a ~36k-px scroll-monster that buried the rest
@@ -1146,8 +1146,7 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
           // object so petite-vue's `(scores, taskType) in map` keeps the sort.
           const t = this.personalRoutingTable;
           if (!t?.by_task_type) return {};
-          const cold = t.cold_start || {};
-          const nOf = (tt) => (cold[tt]?.n_personal) || 0;
+          const nOf = (tt) => this.councilsFor(tt);
           const out = {};
           Object.keys(t.by_task_type)
             .filter((tt) => nOf(tt) >= 2)
@@ -1171,12 +1170,19 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
           // surfaced in the note below so the suppression is never silent.
           const t = this.personalRoutingTable;
           if (!t?.by_task_type) return 0;
-          const cold = t.cold_start || {};
           let hidden = 0;
           for (const tt in t.by_task_type) {
-            if (((cold[tt]?.n_personal) || 0) < 2) hidden += 1;
+            if (this.councilsFor(tt) < 2) hidden += 1;
           }
           return hidden;
+        },
+        councilsFor(taskType) {
+          // The councils behind a task_type's row: the chairman wins recorded for it. These rows used to
+          // read cold_start[tt].n_personal, and that block went with the Personalization column
+          // (2026-10-15), so every row read as 0 and fell under the n>=2 floor: the cheat-sheet never
+          // painted a row again. The browser shard caught it on its first run since (2026-10-26).
+          const wins = this.personalRoutingTable?.wins_per_task_type?.[taskType] || {};
+          return Object.values(wins).reduce((a, b) => a + b, 0);
         },
         winsFor(taskType) {
           // Chairman wins per task_type. Returns {wins, total} for the

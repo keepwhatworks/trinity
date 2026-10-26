@@ -116,6 +116,8 @@ def test_wedge_and_cheatsheet_name_their_grain_so_they_dont_collide(tmp_path, mo
     from trinity_local.vendor import publish_vendor_files
 
     monkeypatch.setattr(_ca, "_scan_outcomes", lambda: (_records(), True))
+    # personal_routing binds its own name for the scanner, so patch it there too (browser shard, 2026-10-26).
+    monkeypatch.setattr(pr, "_scan_outcomes", lambda: (_records(), True))
     pr.invalidate_cache()  # the routing table caches on the (empty) disk signature
 
     # Source sanity — the two grains genuinely diverge on this seed, or the

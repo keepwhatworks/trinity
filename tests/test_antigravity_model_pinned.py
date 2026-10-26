@@ -37,6 +37,9 @@ def _argv_for(config, monkeypatch, prompt="PROMPT"):
         return R()
 
     monkeypatch.setattr(subprocess, "run", spy)
+    # The argv is what is under test, not whether agy is installed: without this the test passed only where agy
+    # is on the PATH, and a CI runner has none (2026-10-26).
+    monkeypatch.setattr(P, "which_on_runtime_path", lambda name: f"/usr/local/bin/{name}")
     P.CLIProvider(config).run(prompt, "/tmp")
     return seen["argv"]
 

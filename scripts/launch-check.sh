@@ -65,6 +65,16 @@ run_step() {
 run_step "Step 1/6: pytest (full suite, ~2 min)" \
     $PYTEST -q
 
+# A green step 1 wrote a fresh measurement (test-run-snapshot.json). Render the docs that quote it
+# now, so steps 2 and 5 check the docs the release will carry. Before this, every release that
+# added a test failed both steps until someone re-rendered by hand (1.7.406 and 1.7.407, coherence
+# review 2026-10-16). After a red step 1 nothing is rendered: render_docs refuses an unmeasured
+# run, and step 5 reports it. The re-rendered docs belong in the release commit.
+if [ ${#failed_steps[@]} -eq 0 ]; then
+    .venv/bin/python scripts/render_docs.py | grep -E "^Rendered [0-9]+ doc" \
+        | sed 's/$/ (from the fresh measurement; commit them with the release)/' || true
+fi
+
 # Step 2: doc-consistency guards (the launch-credibility checks)
 run_step "Step 2/6: doc-consistency guards (launch-credibility checks)" \
     $PYTEST tests/test_doc_count_consistency.py -q

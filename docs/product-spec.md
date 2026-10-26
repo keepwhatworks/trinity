@@ -166,7 +166,7 @@ Deleted on 2026-10-15 with founder approval, after being off the tool list since
 ├── memories/
 │   └── lens.md                     # Built by `lens-build` via chairman call
 ├── analytics/
-│   └── routing_label_events.jsonl  # Chairman parse-success rate
+│   └── verb_uses.jsonl, verify_runs.jsonl, stage0_runs.jsonl  # counts only
 └── outcomes.jsonl                  # Per-session outcome records (drift)
 ```
 

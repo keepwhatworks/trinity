@@ -212,8 +212,14 @@ def test_topics_rep_thread_expand_and_replay_chip_dont_toggle_parent():
         ), f"a second click did NOT collapse the thread back: {expand['afterCollapse']}"
 
         # --- (2) Replay chip copies WITHOUT toggling the parent (stopPropagation) ---
+        # The chip's label swaps only once the copy settles (it says "Copy failed" when the copy did not
+        # work, coherence review 2026-10-15), so read it after the promise, not in the same tick; the
+        # clipboard is stubbed to succeed, since this test is about the chip, not the browser's
+        # clipboard permission (browser shard, 2026-10-26).
         replay = page.evaluate(
-            """() => {
+            """async () => {
+                Object.defineProperty(navigator, 'clipboard', {
+                    value: { writeText: () => Promise.resolve() }, configurable: true });
                 const li = [...document.querySelectorAll('.topics-rep-thread')]
                     .find(l => l.classList.contains('expandable'));
                 // ensure collapsed first so a toggle would be observable
@@ -223,6 +229,8 @@ def test_topics_rep_thread_expand_and_replay_chip_dont_toggle_parent():
                 const chip = li.querySelector('.topics-rep-replay');
                 const labelBefore = chip.textContent;
                 chip.dispatchEvent(new MouseEvent('click', {bubbles: true, view: window}));
+                for (let i = 0; i < 50 && chip.textContent === labelBefore; i++)
+                    await new Promise(r => setTimeout(r, 20));
                 return {
                   openBefore,
                   openAfter: li.classList.contains('open'),
