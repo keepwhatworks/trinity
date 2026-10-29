@@ -165,7 +165,6 @@ READERS = {"iter_prompt_nodes", "iter_prompt_nodes_no_embedding", "_iter_nodes"}
 # Reads that are not lens content, each with its reason. Anything else must wrap in lens_only().
 ALLOW = {
     ("me/authorship.py", "build_authorship_map"): "classifies the whole store",
-    ("me/authorship.py", "iter_lens_nodes"): "is the gate",
     ("me/chapters.py", "corpus_month_span"): "store health: is the time field intact",
     ("me_builder.py", "_corpus_fingerprint"): "detects corpus change, must see everything",
     ("me_builder.py", "build_me_via_lens_pipeline"): "the arcs id -> position lookup",
@@ -207,7 +206,7 @@ def test_every_lens_read_goes_through_the_gate():
 
 
 GATE_CALLS = {"lens_only", "lens_view", "is_lens_node_id"}
-FILE_READ_ALLOW = {("me/exposures.py", "_node_providers"): "an id -> provider lookup"}
+FILE_READ_ALLOW: dict[tuple[str, str], str] = {}  # (file, function) -> why reading the file directly is safe
 
 
 def test_direct_store_file_readers_use_the_gate_too():

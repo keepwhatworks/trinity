@@ -256,7 +256,7 @@ def _sanitize_id(value: str, label: str) -> str:
 
 
 # Standing constraint #43102d25 — every `error` string this host hands back to
-# the extension is painted VERBATIM into a user-facing surface: the popup
+# the extension is painted VERBATIM into a user-facing surface: the side panel
 # ("Failed: <error>"), the launchpad dispatch ribbon (launchError = error), and
 # the side-panel. The dispatch path historically surfaced the *last line of the
 # CLI's stderr* (capture_host._run_action) and the query/capture paths
@@ -264,7 +264,7 @@ def _sanitize_id(value: str, label: str) -> str:
 # with an uncaught exception that last line is the bare traceback exception line
 # — e.g. `FileNotFoundError: [Errno 2] No such file or directory:
 # '/Users/<name>/.trinity/memories/topics.json'` — leaking a Python type name,
-# an `[Errno N]`, and an ABSOLUTE filesystem path straight into the popup. That
+# an `[Errno N]`, and an ABSOLUTE filesystem path straight into the side panel. That
 # is dishonest UX (the user can't act on a traceback frame) and an internals
 # leak. `_safe_error` delegates to the shared `utils.safe_error_message` choke
 # point (the SAME redaction the council member-failure path uses) so the two
@@ -339,7 +339,7 @@ def _write_capture(provider: str, conv_id: str, conversation: dict[str, Any]) ->
 # The caller is expected to poll via `get-council-status` using the
 # status_token it generated.
 #
-# Without this, council-launch blocks the popup for the full council
+# Without this, council-launch blocks the side panel for the full council
 # duration (30-90s) and times out at 120s with "Failed: unknown error".
 #
 # (`council-iterate` was detached here for the same reason until 2026-07-24,
@@ -353,9 +353,10 @@ def _write_capture(provider: str, conv_id: str, conversation: dict[str, Any]) ->
 # 2026-10-15).
 _DETACHED_ACTIONS = {"launch-council", "lens-build", "dream", "extension-repair-auto"}
 
-# Action kinds handled in-process (no subprocess). The popup uses
-# `get-council-status` to poll a council's status JSON without the
-# ~150ms-per-call subprocess startup cost — capture_host has direct
+# Action kinds handled in-process (no subprocess), by the fast paths at the
+# top of _run_action: get-council-status, open-council-page and open-launchpad.
+# The side panel uses `get-council-status` to poll a council's status JSON
+# without the ~150ms-per-call subprocess startup cost — capture_host has direct
 # filesystem access so it just reads the JSON.
 #
 # `open-launchpad` is in-process when launchpad.html already exists —
@@ -364,7 +365,6 @@ _DETACHED_ACTIONS = {"launch-council", "lens-build", "dream", "extension-repair-
 # The static file is kept fresh by council/ingest callbacks, so a
 # bare-open is correct in the steady state. Falls through to the
 # subprocess regen path only when the file is missing (first install).
-_INPROCESS_ACTIONS = {"get-council-status", "open-launchpad", "open-council-page"}
 
 ACTION_ALLOWLIST: dict[str, tuple | None] = {
     "launch-council": (
@@ -376,7 +376,7 @@ ACTION_ALLOWLIST: dict[str, tuple | None] = {
             # status-token threads through to the council runner so the
             # status JSON at ~/.trinity/portal_pages/status/<token>.json
             # is written under a token the caller chose, not the bundle_id.
-            # The popup uses this for its incremental status display.
+            # The side panel uses this for its incremental status display.
             ("status-token", "status_token", False),
         ],
     ),
@@ -394,7 +394,7 @@ ACTION_ALLOWLIST: dict[str, tuple | None] = {
     # #242(a) — the 'Building your lens' card's Stop / Restart buttons.
     # lens-stop is a no-arg cancel (drops the flag the build checks between
     # stages). lens-build re-kicks `lens --force` detached (a multi-minute
-    # build mustn't block the popup — same reason as launch-council).
+    # build mustn't block the side panel — same reason as launch-council).
     "lens-stop": (
         "lens-stop",
         [],
@@ -442,7 +442,7 @@ ACTION_ALLOWLIST: dict[str, tuple | None] = {
                      # --open via notifications.open_path (cross-platform).
     ),
     # open-launchpad regenerates ~/.trinity/portal_pages/launchpad.html
-    # and opens it in the user's default browser. The extension popup
+    # and opens it in the user's default browser. The extension's side panel
     # uses this as the single "Open Trinity launchpad" entry point —
     # the extension's own launchpad.html duplicate was removed in
     # favor of one canonical file:// surface.
@@ -529,7 +529,7 @@ def _open_council_page(payload: dict[str, Any]) -> dict[str, Any]:
     liveCouncilUrl computed property: live_council.html with
     status_token + task + members as query params.
 
-    The popup uses this both for the "Open council page" button and
+    The side panel uses this both for the "Open council page" button and
     for the auto-open-on-completion handoff (so the user lands on
     the specific council that just finished, not the launchpad).
     """
@@ -554,7 +554,7 @@ def _open_council_page(payload: dict[str, Any]) -> dict[str, Any]:
     # macOS strips the query string (AND fragment) from file:// URLs opened via
     # `open`/`open location` — which is what webbrowser.open uses. So the
     # `?status_token=…` below survives ONLY over http://localhost (served), NOT
-    # the file:// path the popup actually opens → the page loads bare and renders
+    # the file:// path the extension actually opens → the page loads bare and renders
     # nothing (founder report 2026-06-12, Image #10; verified: Chrome receives
     # `file:///…/live_council.html` with no query). Write a sidecar pointer the
     # page reads when it has no URL params — the file://-safe channel, same shape
@@ -645,7 +645,7 @@ def _read_council_status(payload: dict[str, Any]) -> dict[str, Any]:
 
     Reads ~/.trinity/portal_pages/status/<token>.json directly rather
     than shelling out — saves ~150ms per poll, which matters when the
-    popup polls every 1.5s.
+    live council page polls every 1.5s.
     """
     token = payload.get("status_token") or payload.get("status-token")
     if not isinstance(token, str) or not _SAFE_ID_RX.match(token):
@@ -662,7 +662,7 @@ def _read_council_status(payload: dict[str, Any]) -> dict[str, Any]:
         }
     # status is None until the runner writes the first record. That's
     # the normal early-poll case — return ok:true with status:null so
-    # the popup can keep rotating its loading copy without flashing
+    # the live council page can keep rotating its loading copy without flashing
     # an error.
     return {"ok": True, "status": status, "status_token": token}
 
@@ -672,12 +672,13 @@ def _run_action(payload: dict[str, Any]) -> dict[str, Any]:
 
     Three paths:
 
-    * In-process (``_INPROCESS_ACTIONS``) — handled by a dedicated
-      function. Used for tight-loop polling like `get-council-status`
-      where a 150ms subprocess startup per call is wasteful.
+    * In-process (`get-council-status`, `open-council-page`,
+      `open-launchpad`) — handled by a dedicated function. Used for
+      tight-loop polling like `get-council-status` where a 150ms
+      subprocess startup per call is wasteful.
     * Detached (``_DETACHED_ACTIONS``) — subprocess.Popen with stdio
       redirected and a new session, returns immediately. Used for
-      `launch-council` so the popup doesn't block 30-90s on a council.
+      `launch-council` so the side panel doesn't block 30-90s on a council.
     * Default — ``subprocess.run`` with capture_output, blocks until
       the CLI exits, returns stdout/stderr/returncode.
     """
@@ -756,7 +757,7 @@ def _run_action(payload: dict[str, Any]) -> dict[str, Any]:
     # Pass build_runtime_env() so the child can find provider binaries
     # (claude, codex, agy) — Chrome's spawn env strips ~/.local/bin
     # and Homebrew dirs, which is where those CLIs live. Without this,
-    # every council launched from the popup fails with "Provider
+    # every council launched from the extension fails with "Provider
     # binary not found: claude" within ~10s.
     from .runtime_env import build_runtime_env
     if kind in _DETACHED_ACTIONS:
@@ -781,7 +782,7 @@ def _run_action(payload: dict[str, Any]) -> dict[str, Any]:
             "detached": True,
             "pid": child.pid,
         }
-        # Echo the status_token back so the popup doesn't have to remember
+        # Echo the status_token back so the caller doesn't have to remember
         # what it sent (and so a misroute is visible). Tolerate either spelling
         # for the same reason the arg loop above does.
         token = payload.get("status_token") or payload.get("status-token")
@@ -816,9 +817,9 @@ def _run_action(payload: dict[str, Any]) -> dict[str, Any]:
                      "(no PyPI package), then ensure ~/.local/bin is on PATH",
         }
     # Real error message when the CLI exited non-zero. Previously the
-    # popup got `ok: false` with no `error` field and rendered "Failed:
+    # extension got `ok: false` with no `error` field and rendered "Failed:
     # unknown error". Surface returncode + the last useful line of stderr
-    # so the popup can show something diagnosable.
+    # so the extension can show something diagnosable.
     ok = result.returncode == 0
     response = {
         "ok": ok,
@@ -830,7 +831,7 @@ def _run_action(payload: dict[str, Any]) -> dict[str, Any]:
     if not ok:
         last_stderr = (result.stderr or "").strip().splitlines()
         raw = last_stderr[-1] if last_stderr else f"exit code {result.returncode}"
-        # Sanitize before it leaves the host: the popup paints this verbatim as
+        # Sanitize before it leaves the host: the side panel paints this verbatim as
         # "Failed: <error>", so a crashed CLI's last traceback line would
         # otherwise leak an absolute path / [Errno N] / a Python type name
         # (#43102d25). Keep it actionable — point at the recovery verb.

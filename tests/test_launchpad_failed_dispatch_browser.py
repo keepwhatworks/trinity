@@ -26,23 +26,14 @@ Slow + browser; skips without Playwright/chromium.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
 REPO = Path(__file__).resolve().parents[1]
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def test_failed_dispatch_rolls_back_without_console_errors(tmp_path, monkeypatch):
@@ -61,7 +52,7 @@ def test_failed_dispatch_rolls_back_without_console_errors(tmp_path, monkeypatch
     pp.mkdir(parents=True)
     (pp / "launchpad.html").write_text(render_launchpad_html(), encoding="utf-8")
     publish_vendor_files(pp)
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
     try:
         with sync_playwright() as p:
             try:
@@ -150,7 +141,7 @@ def test_failed_dispatch_long_error_does_not_overflow(tmp_path, monkeypatch):
     pp.mkdir(parents=True)
     (pp / "launchpad.html").write_text(render_launchpad_html(), encoding="utf-8")
     publish_vendor_files(pp)
-    httpd, port = _serve(tmp_path / "serve2")
+    httpd, port = serve_directory(tmp_path / "serve2")
     try:
         with sync_playwright() as p:
             try:

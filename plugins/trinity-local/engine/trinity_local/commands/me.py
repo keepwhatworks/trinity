@@ -368,8 +368,8 @@ def handle_me_build(args):
     # years of history answered "no prompts". The same deadline-bounded pass the usage gate
     # runs, under its lock; off for tests and CI (TRINITY_AUTOSCAN_DISABLED).
     if not getattr(args, "dry_run", False):
-        from ..stale_pass import _disabled
-        if not _disabled():
+        from ..utils import autoscan_disabled
+        if not autoscan_disabled():
             _read_new_transcripts()
 
     if getattr(args, "legacy", False):

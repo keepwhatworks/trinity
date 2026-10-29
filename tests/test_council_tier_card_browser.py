@@ -31,14 +31,12 @@ tier-3 view never exercises this template, so it had zero render coverage.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
 from pathlib import Path
 
 import pytest
 
 from trinity_local.launchpad_data import _TIER_INSTALL_HELP
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -68,13 +66,6 @@ def _render_at_tier(monkeypatch, tmp_home: Path, *, only_claude: bool) -> str:
     """Back-compat wrapper for the tier-1/tier-3 tests below."""
     on_path = {"claude"} if only_claude else {"claude", "codex", "agy"}
     return _render_with_binaries(monkeypatch, tmp_home, on_path=on_path)
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 _TIER_PROBE = """() => {
@@ -115,7 +106,7 @@ def test_tier1_card_renders_with_resolved_bindings(tmp_path, monkeypatch):
     html = _render_at_tier(monkeypatch, tmp_path / "home", only_claude=True)
     serve_root = tmp_path / "serve"
     rel = _write_prod_layout(html, serve_root)
-    httpd, port = _serve(serve_root)
+    httpd, port = serve_directory(serve_root)
     try:
         with sync_playwright() as p:
             try:
@@ -182,7 +173,7 @@ def test_tier3_hides_the_card(tmp_path, monkeypatch):
     html = _render_at_tier(monkeypatch, tmp_path / "home", only_claude=False)
     serve_root = tmp_path / "serve"
     rel = _write_prod_layout(html, serve_root)
-    httpd, port = _serve(serve_root)
+    httpd, port = serve_directory(serve_root)
     try:
         with sync_playwright() as p:
             try:
@@ -233,7 +224,7 @@ def _drive_and_probe(tmp_path, html: str, viewport_w: int = 1100):
 
     serve_root = tmp_path / "serve"
     rel = _write_prod_layout(html, serve_root)
-    httpd, port = _serve(serve_root)
+    httpd, port = serve_directory(serve_root)
     try:
         with sync_playwright() as p:
             try:
@@ -364,7 +355,7 @@ def test_tier_card_icon_action_clears_44px_tap_target(tmp_path, monkeypatch):
     html = _render_at_tier(monkeypatch, tmp_path / "home", only_claude=True)
     serve_root = tmp_path / "serve"
     rel = _write_prod_layout(html, serve_root)
-    httpd, port = _serve(serve_root)
+    httpd, port = serve_directory(serve_root)
     try:
         with sync_playwright() as p:
             try:

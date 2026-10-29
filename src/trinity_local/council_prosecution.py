@@ -24,8 +24,9 @@ better" — is the pre-registered bar). See
 internal/experiments/prosecution_round_forward_eval.py.
 
 This module is PURE decomposition + prompt rendering — no dispatch, no LLM calls,
-fully unit-testable. The dispatch + re-synthesis wiring lives in council_runner
-behind the flag and reuses the existing second-round scaffolding.
+fully unit-testable. Nothing calls it yet: the dispatch + re-synthesis wiring is not
+built, so setting the flag changes nothing, and the forward eval has not produced a
+verdict.
 """
 from __future__ import annotations
 

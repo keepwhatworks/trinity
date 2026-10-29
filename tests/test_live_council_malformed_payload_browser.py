@@ -38,21 +38,12 @@ Slow-marked; skips without Playwright/chromium.
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import json
-import threading
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
-
-
-def _serve(directory) -> tuple[http.server.HTTPServer, int]:
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _setup_home():
@@ -119,7 +110,7 @@ def test_outcome_malformed_payload_does_not_throw_or_strand(tmp_path, monkeypatc
 
     from playwright.sync_api import sync_playwright
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     failures = {}
     try:
         with sync_playwright() as p:
@@ -201,7 +192,7 @@ def test_status_malformed_payload_reaches_honest_give_up_not_forever_spinner(tmp
 
     from playwright.sync_api import sync_playwright
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:

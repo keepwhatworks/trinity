@@ -23,12 +23,10 @@ reds (verified by reverting the template edit → red → restore).
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -50,13 +48,6 @@ def test_repair_chip_lives_in_browser_capture_template():
         "who sees capture is broken is again sent to chrome://extensions by hand "
         "instead of one-click self-healing (#147 buried on the memory-health card)"
     )
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 @pytest.mark.slow
@@ -102,7 +93,7 @@ def test_stale_capture_card_offers_in_card_repair(tmp_path, monkeypatch):
     pp.mkdir(parents=True)
     (pp / "launchpad.html").write_text(html, encoding="utf-8")
     publish_vendor_files(pp)
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
     try:
         with sync_playwright() as p:
             try:
@@ -224,7 +215,7 @@ def test_repair_cta_shows_progress_and_result_feedback(tmp_path, monkeypatch):
     pp.mkdir(parents=True)
     (pp / "launchpad.html").write_text(html, encoding="utf-8")
     publish_vendor_files(pp)
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
 
     # Read the repair button's RENDERED state inside the stale capture card.
     read_repair = (

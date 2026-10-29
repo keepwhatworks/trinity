@@ -167,6 +167,36 @@ class TestTheBackupNeverShips:
         patterns = set(root.joinpath(".gitignore").read_text().split())
         assert "config.json.bak" in patterns
         assert "config.json.bak-*" in patterns
+        # `config --init` sets an unloadable config aside under these names.
+        assert "config.json.broken" in patterns
+        assert "config.json.broken.*" in patterns
+
+
+class TestHandEditedSwitches:
+    """bool("false") is True: a provider switched off as the string "false" kept
+    receiving the user's prompts. Switches read the words `config --set` accepts."""
+
+    @pytest.mark.parametrize("value, expected", [
+        ('"false"', False), ('"off"', False), ('"no"', False), ("0", False), ("null", False),
+        ('"maybe"', False), ('"true"', True), ('"on"', True), ("1", True), ("true", True), ("false", False)])
+    def test_a_provider_switch_reads_as_written(self, home, value, expected):
+        cfg = _init(home)
+        raw = json.loads(cfg.read_text(encoding="utf-8"))
+        raw["providers"]["codex"]["enabled"] = json.loads(value)
+        raw["notifications"] = json.loads(value)
+        cfg.write_text(json.dumps(raw), encoding="utf-8")
+        loaded = load_config()
+        assert loaded.providers["codex"].enabled is expected, value
+        assert loaded.notifications is expected, value
+
+    def test_an_absent_switch_keeps_its_default(self, home):
+        cfg = _init(home)
+        raw = json.loads(cfg.read_text(encoding="utf-8"))
+        raw["providers"]["codex"].pop("enabled", None)
+        raw.pop("notifications", None)
+        cfg.write_text(json.dumps(raw), encoding="utf-8")
+        assert load_config().providers["codex"].enabled is True
+        assert load_config().notifications is True
 
     def test_no_backup_is_tracked(self):
         import subprocess

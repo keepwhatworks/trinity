@@ -24,11 +24,8 @@ Playwright/chromium — and runs in the CI `browser` job, unlike browser_smoke.p
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
-
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -123,13 +120,6 @@ def _seed_painkiller() -> None:
     write_live_council_page()
 
 
-def _serve(tmp_path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(tmp_path))
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 def test_live_council_renders_painkiller_and_no_thread_404(tmp_path, monkeypatch):
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright
@@ -138,7 +128,7 @@ def test_live_council_renders_painkiller_and_no_thread_404(tmp_path, monkeypatch
     monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
     _seed_painkiller()
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:
@@ -225,7 +215,7 @@ def test_live_council_renders_task_title_from_metadata(tmp_path, monkeypatch):
     monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
     _seed_painkiller()  # metadata.task_text = "Cache in-process or per-call?", NO bundle written
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:
@@ -316,7 +306,7 @@ def test_live_council_active_state_streams_in_progress(tmp_path, monkeypatch):
     monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
     _seed_active_council()
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:
@@ -438,7 +428,7 @@ def test_live_council_code_heavy_no_horizontal_overflow_at_mobile(tmp_path, monk
     monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
     _seed_code_heavy()
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:
@@ -544,7 +534,7 @@ def test_live_council_claims_long_token_no_horizontal_overflow_at_mobile(tmp_pat
     monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
     _seed_claims_council()
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:
@@ -665,7 +655,7 @@ def test_live_council_winner_brand_and_agreed_count_are_correct(tmp_path, monkey
     )
     _seed_brand_count()
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:

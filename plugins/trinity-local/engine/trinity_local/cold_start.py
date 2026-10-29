@@ -23,16 +23,17 @@ from __future__ import annotations
 
 import contextvars
 import json
-import os
 import threading
 import time
 from pathlib import Path
 
+from .registry import CLI_INGEST_SOURCES as COLD_START_SOURCES
 from .state_paths import state_dir
+# Imported under the private name the module's callers (and tests) patch.
+from .utils import autoscan_disabled as _autoscan_disabled
 from .utils import now_iso
 
 
-COLD_START_SOURCES = ("claude", "codex", "gemini", "cowork")
 DEFAULT_SCAN_DEADLINE_S = 300.0
 HINT_FRESH_WINDOW_S = 600.0  # surface "scan complete" for 10 min after finish
 # An in_progress scan older than this is DEAD — the process was killed (SIGKILL /
@@ -44,10 +45,6 @@ _SCAN_STALE_S = DEFAULT_SCAN_DEADLINE_S * 2
 
 def cold_start_state_path() -> Path:
     return state_dir() / "cold_start_scan.json"
-
-
-def _autoscan_disabled() -> bool:
-    return os.environ.get("TRINITY_AUTOSCAN_DISABLED", "").strip() not in ("", "0", "false", "False")
 
 
 def detect_available_sources() -> list[str]:

@@ -32,7 +32,7 @@ verdict it can't support. No LLM calls (embeddings only).
 NOTE on the split: acts carry no timestamp, so the train/validation split is a deterministic
 id-hash (stable, data-isolated, but not temporal). A temporal split (older fits, newer
 measures — the honest "does the past lens predict the future") is the upgrade once acts carry
-time, the same deferred wiring as `holdout_scorer.build_holdout_items`.
+time.
 """
 from __future__ import annotations
 

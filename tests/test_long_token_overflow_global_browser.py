@@ -21,7 +21,8 @@ WHAT IT CAUGHT on its first run (2026-06-22, this iter):
   • `.pick-basin-name` in the memory viewer picks.json view — the human-readable
     basin name (topology label / top-terms, free corpus text) had no break rule
     while the sibling `.pick-basin` id already broke; a long basin label blew the
-    picks view to 869px at 320px. Fixed in memory_viewer.py.
+    picks view to 869px at 320px. Fixed in memory_viewer.py (the picks view itself
+    was retired 2026-10-26).
 
 THE SURFACES (the reachability-gated render_*_html / render_*_page entrypoints,
 excluding the dead render_unified_council_page #311):
@@ -56,16 +57,15 @@ Slow + browser marked; skips when Playwright/chromium are absent.
 """
 from __future__ import annotations
 
-import functools
 import http.server
 import json
 import os
 import sys
 import tempfile
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -126,15 +126,6 @@ def _browser():
         sp.stop()
         pytest.skip(f"no launchable chromium for the global overflow guard: {exc}")
     return sp, browser
-
-
-def _serve(directory) -> tuple[http.server.HTTPServer, int]:
-    handler = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=str(directory)
-    )
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 # The DOM probe: document-level scrollWidth vs clientWidth (the canonical broken
@@ -225,7 +216,7 @@ def _build_launchpad(home: Path, *, view: str) -> tuple[str, http.server.HTTPSer
 
     write_portal_html()
     vendor.publish_vendor_files(home / "portal_pages")
-    httpd, port = _serve(home)
+    httpd, port = serve_directory(home)
     page = "stats.html" if view == "stats" else "launchpad.html"
     return f"http://127.0.0.1:{port}/portal_pages/{page}", httpd
 
@@ -313,7 +304,7 @@ def _build_live_council(home: Path, *, state: str) -> tuple[str, http.server.HTT
         f"window.__TRINITY_COUNCIL_STATUS__[{json.dumps(token)}] = {json.dumps(status)};\n"
     )
     (status_dir / f"council_status_{token}.js").write_text(sidecar, encoding="utf-8")
-    httpd, port = _serve(home)
+    httpd, port = serve_directory(home)
     url = (
         f"http://127.0.0.1:{port}/review_pages/live_council.html"
         f"?status_token={token}&members=claude,codex,antigravity"
@@ -361,7 +352,7 @@ def _build_memory_viewer(home: Path, *, mfile: str) -> tuple[str, http.server.HT
 
     write_memory_viewer()
     vendor.publish_vendor_files(home / "portal_pages")
-    httpd, port = _serve(home)
+    httpd, port = serve_directory(home)
     return f"http://127.0.0.1:{port}/portal_pages/memory.html?file={mfile}", httpd
 
 
@@ -379,7 +370,6 @@ _SURFACES = [
     ("mv-topics", lambda h: _build_memory_viewer(h, mfile="topics.json"), 1300),
     ("mv-vocab", lambda h: _build_memory_viewer(h, mfile="vocabulary.md"), 1000),
     ("mv-generators", lambda h: _build_memory_viewer(h, mfile="generators.md"), 1000),
-    ("mv-picks", lambda h: _build_memory_viewer(h, mfile="picks.json"), 1000),
     ("mv-routing", lambda h: _build_memory_viewer(h, mfile="routing.json"), 1000),
 ]
 
@@ -390,7 +380,7 @@ _SURFACES = [
 # require hasLong there.
 _REQUIRE_LONG_PAINTED = {
     "launchpad-home", "live-running", "live-failed", "live-completed",
-    "mv-core", "mv-lens", "mv-vocab", "mv-generators", "mv-picks",
+    "mv-core", "mv-lens", "mv-vocab", "mv-generators",
 }
 
 

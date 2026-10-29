@@ -33,9 +33,6 @@ def test_scan_outcomes_records_distinct_voices_from_disk(monkeypatch, tmp_path):
     from trinity_local.council_runtime import save_council_outcome
 
     monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-    # state_paths caches trinity_home(); clear any memoization defensively.
-    if hasattr(sp, "_HOME_CACHE"):
-        monkeypatch.setattr(sp, "_HOME_CACHE", None, raising=False)
 
     body = "x" * 250  # comfortably substantive
     same_family = CouncilOutcome(

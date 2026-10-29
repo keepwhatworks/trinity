@@ -31,24 +31,15 @@ ingest against the un-probed folder B) with the founder symptom; restore + REBUI
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import json
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
 REPO = Path(__file__).resolve().parents[1]
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _detected_banner_text(page):
@@ -81,7 +72,7 @@ def test_editing_path_invalidates_stale_probe_and_blocks_unprobed_import(tmp_pat
     pp.mkdir(parents=True)
     (pp / "stats.html").write_text(html, encoding="utf-8")
     publish_vendor_files(pp)
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
 
     # A dispatcher that RECORDS every dispatch (so we can prove what path Import paid
     # for) and answers the dry-run probe with 3 detected sources for ANY path.

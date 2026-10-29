@@ -29,14 +29,12 @@ reader walks. Synthetic data only; no PII; dispatch stubbed (no council fired).
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import tempfile
-import threading
 import urllib.parse
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -74,15 +72,6 @@ _OUTLINE_JS = """
 _TASK = "Should we pick Rust or Go for the parser"
 
 
-def _serve(directory: Path) -> tuple[http.server.HTTPServer, int]:
-    handler = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=str(directory)
-    )
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 def test_live_council_page_has_one_h1_and_clean_outline():
     """The live council page must present a single, navigable heading outline:
 
@@ -109,7 +98,7 @@ def test_live_council_page_has_one_h1_and_clean_outline():
     page_path = root / "review_pages" / "live_council.html"
     page_path.write_text(render_live_council_page(), encoding="utf-8")
 
-    httpd, port = _serve(root)
+    httpd, port = serve_directory(root)
     try:
         with sync_playwright() as p:
             try:

@@ -111,37 +111,6 @@ def test_build_page_data_survives_corrupt_state(tmp_path, monkeypatch, label, kw
 
 
 
-@pytest.mark.parametrize("label,kwargs", _CORRUPTIONS, ids=[c[0] for c in _CORRUPTIONS])
-def test_consolidate_survives_corrupt_state(tmp_path, monkeypatch, label, kwargs):
-    """`consolidate_via_lens_basins` (the `trinity-local consolidate` engine) must
-    not crash on any corrupt state file. The build_page_data sweep above CAN'T
-    cover this: build_page_data reads the ALREADY-consolidated picks.json — it
-    never RUNS consolidate, which reads topics.json basins + council outcomes and
-    iterates them (`b.get(...)` per basin, per council). The #304 sibling
-    (2026-06-06) was exactly here: a corrupt topics.json crashed consolidate, but
-    only with a REAL-CONTEST council present to drive the basin iteration — which
-    the harness's default `winner_provider`-only council does NOT. So seed one
-    with the real fields (winner / task_text / substantive_members / created_at),
-    then run consolidate against each corruption. (Catches corrupt-topics AND
-    corrupt-outcome crashes the build_page_data path can't reach.)"""
-    _populate(tmp_path, **kwargs)
-    # A real-contest council so compute_basin_routing actually iterates the basins.
-    (tmp_path / "council_outcomes" / "council_real.json").write_text(
-        json.dumps({
-            "council_run_id": "council_real", "winner": "claude",
-            "task_text": "refactor the auth module", "substantive_members": 2,
-            "created_at": "2026-06-01T00:00:00+00:00",
-            "metadata": {"task_text": "refactor the auth module"},
-        }),
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-    monkeypatch.setenv("TRINITY_DISABLE_MLX", "1")
-    from trinity_local.lens_routing import consolidate_via_lens_basins
-    routing = consolidate_via_lens_basins()  # raises if a corrupt file crashes it
-    assert isinstance(routing, dict), f"consolidate degraded wrong for {label}"
-    # Strict-serializable so a wrong-shape value can't poison picks.json downstream.
-    json.dumps(routing, allow_nan=False)
 
 
 def test_load_recent_councils_skips_wrong_type(tmp_path, monkeypatch):
@@ -265,41 +234,6 @@ def test_render_launchpad_html_survives_wrong_type_round_number(tmp_path, monkey
     assert "[object Object]" not in html
 
 
-@pytest.mark.parametrize(
-    "bad_count",
-    ['"lots"', "null", '"3"', "[1]", '{"n":2}'],
-    ids=["str", "null", "numstr", "list", "dict"],
-)
-def test_check_drift_survives_wrong_type_error_count(tmp_path, monkeypatch, bad_count):
-    """Iter 258 SECOND jackpot (the same class on the drift ledger): a hand-edited
-    outcomes.jsonl line whose `error_count` is a non-int. `_load_outcomes` passed
-    it straight through (`raw.get("error_count", 0)`); `_score_outcome` then did
-    `error_count > 2` — and `"lots" > 2` raises TypeError that bubbled out of
-    check_drift and CRASHED `trinity-local status` (exit 1). Coerce error_count to
-    a clean int at the load boundary. check_drift must return a list, not raise."""
-    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-    (tmp_path).mkdir(parents=True, exist_ok=True)
-    # A completed outcome whose error_count is the wrong type — reaches the
-    # `error_count > 2` compare in _score_outcome (the timestamp is valid so the
-    # record isn't skipped by the `ts <= 0` gate).
-    (tmp_path / "outcomes.jsonl").write_text(
-        '{"provider":"claude","task_type":"code","completed":true,'
-        '"error_count":' + bad_count + ',"timestamp":"2026-06-01T00:00:00+00:00"}\n',
-        encoding="utf-8",
-    )
-    # Render-INDEPENDENT precondition: the on-disk record genuinely carries a
-    # non-int error_count, so the bite is the `>` compare, not a parse failure.
-    rec = json.loads((tmp_path / "outcomes.jsonl").read_text().strip())
-    assert not isinstance(rec["error_count"], int) or isinstance(rec["error_count"], bool), (
-        "fixture is not the discriminating non-int error_count state"
-    )
-    from trinity_local.drift import check_drift
-    alerts = check_drift()  # raises TypeError pre-fix → status exit 1
-    assert isinstance(alerts, list)
-
-
-
-
 def test_write_portal_html_survives_corrupt_state(tmp_path, monkeypatch):
     """`portal-html` calls write_portal_html, which since v1.7.242 ALSO runs
     freeze_routing_to_disk() (re-reads council_outcomes/ at render time) before
@@ -341,13 +275,6 @@ def test_write_portal_html_survives_corrupt_state(tmp_path, monkeypatch):
     # from the one good outcome, skipping the three corrupt ones).
     frozen = json.loads((tmp_path / "scoreboard" / "routing.json").read_text())
     assert isinstance(frozen, dict) and "t" in frozen.get("by_task_type", {})
-
-
-def test_cortex_load_routing_patterns_wrong_type(tmp_path, monkeypatch):
-    monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-    _populate(tmp_path, picks="[1,2,3]")
-    from trinity_local import cortex
-    assert cortex.load_routing_patterns() == {}  # wrong-type → no patterns, no crash
 
 
 def test_telemetry_iter_council_payloads_skips_non_dict(tmp_path, monkeypatch):

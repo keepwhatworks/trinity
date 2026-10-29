@@ -21,7 +21,8 @@ def test_helpers_unit_and_mean():
     assert cl._unit([0.0, 0.0]) == [0.0, 0.0]  # zero vector → no div-by-zero
 
 
-def test_signature_shape_and_significance():
+@pytest.mark.real_corpus
+def test_signature_shape_and_significance(real_corpus_home):
     sig = cl.correction_signature()
     if not sig.get("ready"):
         pytest.skip(f"signature not ready: {sig}")
@@ -43,7 +44,8 @@ def test_signature_thin_ledger(monkeypatch):
     assert sig.get("ready") is False
 
 
-def test_drift_shape_when_ready():
+@pytest.mark.real_corpus
+def test_drift_shape_when_ready(real_corpus_home):
     """#257 diachronic drift: split early/recent, per-axis early/recent/delta +
     a biggest_mover. Skips when the embedder/ledger isn't available."""
     import trinity_local.me.correction_lens as cl
@@ -110,7 +112,7 @@ def test_semantic_flow_abstains_without_real_embeddings(fn_name, monkeypatch):
         lambda: _acts_with_basin(2 * cl._MIN_CORRECTIONS + 4),
     )
     monkeypatch.setattr(
-        "trinity_local.embeddings.mlx_actually_loaded", lambda: False, raising=False
+        "trinity_local.embeddings.mlx_actually_loaded", lambda: False
     )
     result = getattr(cl, fn_name)()
     assert result.get("ready") is False, (
@@ -145,7 +147,7 @@ def test_lens_acts_output_ships_no_embedding_insight_without_mlx(monkeypatch, ca
         lambda: list(_acts_with_basin(2 * cl._MIN_CORRECTIONS + 4)),
     )
     monkeypatch.setattr(
-        "trinity_local.embeddings.mlx_actually_loaded", lambda: False, raising=False
+        "trinity_local.embeddings.mlx_actually_loaded", lambda: False
     )
 
     handle_lens_acts(Namespace())
@@ -158,7 +160,8 @@ def test_lens_acts_output_ships_no_embedding_insight_without_mlx(monkeypatch, ca
         )
 
 
-def test_by_basin_shape_when_ready():
+@pytest.mark.real_corpus
+def test_by_basin_shape_when_ready(real_corpus_home):
     """#257 per-domain signature: per-basin axis loadings + top_axis, sorted by
     correction count. Skips when embedder/ledger unavailable."""
     import trinity_local.me.correction_lens as cl
@@ -200,7 +203,7 @@ def test_taste_signature_shape(monkeypatch):
              "give me the exact command to run")
         for _ in range(cl._MIN_CORRECTIONS + 3)
     ]
-    monkeypatch.setattr(cl, "iter_preference_acts", lambda: acts, raising=False)
+    # correction_lens imports iter_preference_acts inside the function; patch its source.
     import trinity_local.me.preference_acts as pa
     monkeypatch.setattr(pa, "iter_preference_acts", lambda: acts)
 

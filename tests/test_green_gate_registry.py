@@ -68,18 +68,15 @@ def test_every_decision_directive_green_is_registered():
 
 
 def test_registered_data_directive_floors_exist():
-    """The pre-registered floors the registry names for the one data-directive
-    (flip_recommended) must actually exist and be sane — a registry that points at
-    a deleted floor is itself a green-over-degenerate."""
-    from trinity_local.me.holdout_scorer import (
-        COVERAGE_FLOOR,
-        MIN_DISCORDANT_PAIRS,
-        N_C_FLOOR,
-    )
+    """The pre-registered floors the registry names for a live data-directive (the trust
+    ledger's evidence_status and silver_tally gates) must exist and be sane: a registry
+    that points at a deleted floor is itself a green-over-degenerate. (The first subject
+    of this test, the holdout scorer's flip_recommended, was retired 2026-10-28.)"""
+    from trinity_local.disagreement_ledger import K4_MIN_RESOLVED, MIN_TALLY_N, SILVER_MIN_N
 
-    assert 0 < COVERAGE_FLOOR <= 1
-    assert N_C_FLOOR >= 1
-    assert MIN_DISCORDANT_PAIRS >= 1
+    assert MIN_TALLY_N >= 1 and K4_MIN_RESOLVED >= 1
+    # the checklist says silver's floor is deliberately higher than gold's
+    assert SILVER_MIN_N > MIN_TALLY_N
     # and they're named in the checklist so the registry stays truthful
     registry = _CHECKLIST.read_text(encoding="utf-8")
-    assert "COVERAGE_FLOOR" in registry and "N_C_FLOOR" in registry
+    assert all(name in registry for name in ("MIN_TALLY_N", "K4_MIN_RESOLVED", "SILVER_MIN_N"))

@@ -16,7 +16,7 @@
       "source": "./plugins/trinity-local",
       "displayName": "Trinity Local",
       "description": "Ask all three. Keep what works. Put plans in front of Claude, Codex and Gemini before you commit, and check changes with your own tests before you call them done. Local-first: your transcripts stay on your machine, on the subscriptions you already pay for. Adds /trinity-local:council, :verify and :setup.",
-      "version": "1.7.389",
+      "version": "1.7.407",
       "author": {
         "name": "Vishi Gondi",
         "url": "https://keepwhatworks.com"

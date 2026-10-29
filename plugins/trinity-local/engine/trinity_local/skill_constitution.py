@@ -69,10 +69,6 @@ CONSTITUTIONAL_MARKERS = (
     "lens learns from transcripts only",
 )
 
-# A skill file with none of these is not necessarily safe -- it may simply be a
-# file that carries no constitution. That is reported, never assumed.
-MIN_EXPECTED_IN_DISCIPLINE = 3
-
 
 @dataclass
 class FrozenRegion:

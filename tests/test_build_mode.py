@@ -342,3 +342,19 @@ def test_the_apply_step_runs_inside_the_sandbox(tmp_path, monkeypatch):
     p.write_text(_diff("a + b"))
     assert build_mode._apply_any(p, tmp_path, tmp_path) is True
     assert seen and seen[0][0] == "/usr/bin/sandbox-exec" and "git" in seen[0]
+
+
+def test_the_apply_advice_survives_a_home_a_shell_would_act_on(repo, tmp_path, monkeypatch):
+    """`next` is pasted into a shell, and the patch it names lives under TRINITY_HOME: a home
+    path with a space, $(...) or backticks must reach git apply as one path and run nothing."""
+    import re
+
+    home = tmp_path / "h $(touch PWNED) `touch PWNED2` x"
+    home.mkdir()
+    monkeypatch.setenv("TRINITY_HOME", str(home))
+    out = _build(repo, {"claude": RIGHT})
+    assert out["picked"] == "claude", out
+    advice = re.search(r"with `(git apply .*)`, run the", out["next"]).group(1)
+    subprocess.run(["sh", "-c", advice], cwd=repo, check=True, capture_output=True)
+    assert "a + b" in (repo / "calc.py").read_text()
+    assert not (repo / "PWNED").exists() and not (repo / "PWNED2").exists(), "the advice ran a command"

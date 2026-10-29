@@ -124,10 +124,6 @@ def council_status_js_path(status_token: str) -> Path:
     return council_status_dir() / f"council_status_{status_token}.js"
 
 
-def outcomes_log_path() -> Path:
-    return state_dir() / "outcomes.jsonl"
-
-
 def research_dir() -> Path:
     path = state_dir() / "research"
     path.mkdir(parents=True, exist_ok=True)
@@ -385,9 +381,11 @@ def _migrate_legacy_scoreboard_paths(scoreboard: Path) -> None:
 
 
 def picks_path() -> Path:
-    """`picks.json` — extracted model-selection rules per task_type.
-    Operational scoreboard, not a cognitive memory. Written by
-    `consolidate`; read by `ask` + the chairman picker."""
+    """`picks.json` — per-basin chairman-winner tallies. Operational scoreboard,
+    not a cognitive memory. Its writer, the `consolidate` verb, was retired
+    2026-08-11 (and `ask` with it), so the file is historical. No MCP resource
+    serves it, and the memory viewer stopped showing it 2026-10-26 (amd_0612):
+    basin ids are redrawn on every lens build, so its frozen keys name other topics."""
     return scoreboard_dir() / "picks.json"
 
 
@@ -426,26 +424,6 @@ def core_path() -> Path:
     return state_dir() / "core.md"
 
 
-def dispatch_outcomes_path() -> Path:
-    """JSONL log of `ask` dispatch outcomes — one line per call. Tracks the
-    rate-limit-saves metric named in docs/launch-package.md as the day-1
-    case-study number. Each line: {ts, query_excerpt, primary, succeeded_on,
-    retries, classified_kind}.
-    """
-    path = analytics_dir() / "dispatch_outcomes.jsonl"
-    return path
-
-
-def cortex_routing_patterns_path() -> Path:
-    """Back-compat alias: returns the new picks.json path (now in
-    ``~/.trinity/scoreboard/``). Existing callers that import this function
-    keep working; new code should call ``picks_path()`` directly. Data
-    lineage was ``cortex/routing_patterns.json`` → ``memories/picks.json``
-    → ``scoreboard/picks.json``; both migration steps run automatically
-    on first call to ``memories_dir()`` and ``scoreboard_dir()``."""
-    return picks_path()
-
-
 def prompt_nodes_path() -> Path:
     return prompts_dir() / "prompt_nodes.jsonl"
 
@@ -456,7 +434,6 @@ def turn_windows_path() -> Path:
 
 def ingest_cursors_path() -> Path:
     return prompts_dir() / "cursors.json"
-
 
 
 PUBLIC_REPO = "keepwhatworks/trinity"
@@ -474,7 +451,8 @@ def embedder_install_command() -> str:
     No absolute path appears: these strings reach user-facing surfaces that must not show a
     user's filesystem layout (tests/test_backend_error_no_path_leak.py).
     `pip install 'trinity-local[mlx]'` is never right: the package is not on PyPI. The old
-    answer here assumed an install layout (~/.trinity/code + venv) no installer creates."""
+    answer here assumed the ~/.trinity/code + ~/.trinity/venv layout, which only the
+    source-checkout installer (scripts/install.sh) creates."""
     import sys
 
     from .config import project_root

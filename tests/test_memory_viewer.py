@@ -228,201 +228,71 @@ class TestRepReplayChip:
         )
 
 
-class TestTopicToPickCrossLink:
-    """Tick #30 — topology → picks cross-link. POST-COLLAPSE (#298) picks.json is
-    keyed by the lens basin id (b00..), the SAME id space topics.json uses, so the
-    bridge is a plain identity match (a basin links to the pick of the same id).
-    Closes the forward-arc cross-memory navigation gap 'see a basin, jump to its
-    pick'."""
+class TestPicksViewsRetired:
+    """picks.json left the viewer 2026-10-26 (council_9b8da321624a8f0f, amd_0612/0613).
+    Its per-basin tally froze when its writer was retired 2026-08-11, and basin ids are
+    positional and redrawn on every lens build (23 of 24 frozen keys collided with
+    current ids on the machine it was checked on), so the picks reader, the topology
+    detail's "Routes to <model>" line, its announcement and the node ring all attached
+    old winners to unrelated topics, using a JS mirror of a router that no longer runs.
 
-    def test_pick_xlink_class_defined(self, isolated_home):
+    Seeded with the worst case: a pick that cleared the old gate, on a basin id that
+    topics.json shares. Restoring any of those surfaces turns this red."""
+
+    _REMOVED = (
+        "renderPicksReader", "Routes to ", "routes to ", "pickRoutes", "WINNER_MARGIN_FLOOR",
+        "MIN_EFFECTIVE_N", "Routing rule:", "topics-pick-xlink", "pick-basin",
+        "loadCrossMemoryMaps", "matchBasinsToPicks", "basinIdToPick", "falls back to kNN",
+        "ask routes",
+    )
+
+    @staticmethod
+    def _seed(home):
+        import json
+        (home / "scoreboard").mkdir(parents=True, exist_ok=True)
+        (home / "scoreboard" / "picks.json").write_text(json.dumps({
+            "b00": {"winner": "claude", "count": 9, "margin": 0.8, "effective_n": 9.0},
+        }), encoding="utf-8")
+        (home / "memories" / "topics.json").write_text(json.dumps({
+            "basins": [{"id": "b00", "size": 4, "top_terms": ["alpha", "beta"],
+                        "centroid": [0.1, 0.2], "prompt_ids": ["p1"]}],
+        }), encoding="utf-8")
+
+    def test_picks_json_is_not_a_viewer_file(self, isolated_home):
+        from trinity_local import memory_viewer as mv
+        self._seed(isolated_home)
+        assert "picks.json" not in {f["name"] for f in mv.ALLOWED_FILES}
+        assert "picks.json" not in mv._FILE_PATH_RESOLVERS
         html = _render()
-        assert ".topics-pick-xlink" in html, ".topics-pick-xlink CSS missing"
-        assert '"topics-pick-xlink"' in html, (
-            "showDetail doesn't construct a .topics-pick-xlink anchor"
-        )
+        assert '"picks.json":' not in html, "picks.json is still inlined into the page"
+        assert 'data-file="picks.json"' not in html, "picks.json is still in the nav"
 
-    def test_reverse_map_uses_identity_basin_id(self, isolated_home):
-        """POST-COLLAPSE (#298): the picks→topology bridge is a plain identity
-        match — picks are keyed by the lens basin id (b00..), the SAME id space
-        topics.json uses, so a pick links to the topology basin of the same id.
-        (Pre-collapse the bridge was a centroid cosine because picks were keyed by
-        a task_type label and carried a separate basin_centroid; that centroid is
-        gone.)"""
+    def test_no_routing_claim_or_gate_mirror_renders(self, isolated_home):
+        self._seed(isolated_home)
         html = _render()
-        assert "basinToPickTask" in html, "basin→pick map missing"
-        # The bridge must gate on a live pick (carries a winner), not a stale
-        # centroid; and key on the basin id directly.
-        assert "topologyIds.has(basinId)" in html, (
-            "reverse map no longer does the identity (basin-id) match — the "
-            "post-collapse picks key by lens basin id, so the bridge is identity"
-        )
-        assert "pick.winner" in html, (
-            "bridge no longer gates on a live pick (pick.winner) — a legacy "
-            "RoutingPattern entry must NOT bridge"
-        )
-        # The dead centroid path must be gone — a stale pick.basin_centroid read
-        # would silently orphan every pick (the new picks carry no centroid).
-        assert "pick.basin_centroid" not in html, (
-            "matchBasinsToPicks still reads the deleted pick.basin_centroid"
-        )
+        back = [s for s in self._REMOVED if s in html]
+        assert not back, f"removed picks/routing surfaces are back: {back}"
 
-    def test_no_residual_centroid_threshold_in_bridge(self, isolated_home):
-        """The cosine SIM_THRESHOLD gate was part of the deleted centroid bridge;
-        the identity match needs no threshold. Guard that no stale threshold magic
-        number lingers in the matchBasinsToPicks bridge."""
+    def test_the_guard_reads_a_page_that_has_the_topology_view(self, isolated_home):
+        # Not vacuous: the page still carries the topology reader and its deep link.
+        self._seed(isolated_home)
         html = _render()
-        # The bridge function body is between its declaration and the next blank
-        # function — assert it does NOT reference a similarity threshold.
-        assert "const SIM_THRESHOLD =" not in html, (
-            "a residual SIM_THRESHOLD assignment lingers — the identity bridge "
-            "applies no cosine threshold"
-        )
-
-    def test_xlink_targets_picks_reader_with_task_param(self, isolated_home):
-        html = _render()
-        # Link must go to picks.json viewer with the ?task= deep-link
-        # so the picks Reader scrolls to + highlights the right card.
-        assert 'memory.html?file=picks.json&task=" + encodeURIComponent(pickTask)' in html, (
-            "topic→pick xlink doesn't target the picks Reader's ?task= deep-link"
-        )
-
-    def test_detail_shows_routing_winner_inline(self, isolated_home):
-        """Post-#298 a topology basin IS a routing unit, so the basin detail
-        surfaces the basin's chairman-WINNER (+ margin) inline — not just a bare
-        'Routing rule: <id> →' link — saving a click into the picks Reader.
-        Uses providerBrand (#275, Iter 79: brands codex→GPT / antigravity→Gemini
-        so the display matches the picks Reader's 'Use <brand>' AND the launchpad
-        cheat-sheet). The rendered-DOM brand is guarded in
-        test_topology_node_click_routing_winner_browser; this is the cheap
-        source-presence sibling."""
-        html = _render()
-        # matchBasinsToPicks must expose winner+margin per basin.
-        assert "basinIdToPick" in html, (
-            "matchBasinsToPicks no longer exposes basinIdToPick — the topology "
-            "detail can't show the routing winner inline"
-        )
-        # Refactor-robust: pin the two LOAD-BEARING substrings independently
-        # rather than one contiguous concatenation. Iter 257's providerBrand
-        # non-string coercion split the expression into a `pickBrand` intermediate
-        # ("Routes to " + pickBrand, where pickBrand = providerBrand(pick.winner)),
-        # so the old contiguous match drifted while the feature stayed intact. The
-        # rendered-DOM brand is guarded in
-        # test_topology_node_click_routing_winner_browser; this cheap source sibling
-        # just pins (a) the inline "Routes to " label vs a regression to the opaque
-        # "Routing rule: <id> →", and (b) the #275 providerBrand mapping on
-        # pick.winner vs a raw slug.
-        assert '"Routes to "' in html, (
-            "topology basin detail no longer shows the routing winner inline "
-            "(regressed to the opaque 'Routing rule: <basin_id> →' label)"
-        )
-        assert "providerBrand(pick.winner)" in html, (
-            "topology basin detail lost the #275 brand mapping on the routing "
-            "winner (raw slug instead of providerBrand(pick.winner))"
-        )
-        # The margin is rendered via fmtMargin (the server-pre-formatted Python
-        # 2dp string), NOT JS toFixed(2) — toFixed rounds half-UP and disagrees
-        # with the CLI/launchpad banker's round on an exact dyadic tie (0.625 →
-        # "0.63" vs "0.62"). The cross-surface browser guard was retired with the
-        # Python-rounding map and picks.json's other readers (d23fa116, 2026-08-11).
-        assert "fmtMargin(pick.margin)" in html, (
-            "winner margin (the confidence proxy) not shown inline in the detail"
-        )
-        assert "pick.margin.toFixed(2)" not in html, (
-            "topology basin detail re-rounds the margin with JS toFixed(2) "
-            "(round-half-up) — must use fmtMargin so it matches the CLI/launchpad "
-            "(Python banker's) on an exact-tie margin like 0.625"
-        )
-
-    def test_malformed_picks_doesnt_crash_topology(self, isolated_home):
-        # The try/except around JSON.parse is load-bearing — without it,
-        # a corrupt picks.json would take down the topology view entirely.
-        # Logic now lives in loadCrossMemoryMaps (shared by both Readers).
-        html = _render()
-        assert "function loadCrossMemoryMaps" in html, "shared cross-memory loader missing"
-        assert 'JSON.parse(raw)' in html, "picks parse step missing in shared loader"
-        assert "catch (_)" in html, "missing graceful-degradation try/catch around picks parse"
+        assert "function renderTopicsReader" in html
+        assert 'params.get("basin")' in html
 
 
-class TestPickBasinNodeStyling:
-    """Tick #31 — visual marker on topology basin nodes that have
-    crystallized into routing rules. Complements the in-panel chip
-    from tick #30 so the user sees the routing-rule basins at a
-    glance without having to click each node."""
-
-    def test_pick_basin_class_defined(self, isolated_home):
-        html = _render()
-        # CSS rule with both .node.pick-basin and a hover variant — the
-        # styling must layer on top of the existing .node base so the
-        # circle fill (hsl gradient) still reads.
-        assert ".topics-graph-svg .node.pick-basin" in html, (
-            "pick-basin CSS rule missing — pick-bearing nodes won't visually differ"
-        )
-        assert ".topics-graph-svg .node.pick-basin:hover" in html, (
-            "pick-basin :hover variant missing — hover state will fall back to base"
-        )
-
-    def test_node_class_keyed_on_pick_map(self, isolated_home):
-        html = _render()
-        # The node-class lookup must read from basinToPickTask (the
-        # centroid-matched map built tick #30) — if it reads from
-        # any other source (e.g. matching basin.id to pick-key
-        # directly) the visual encoding will silently mis-mark nodes.
-        assert "basinToPickTask.has(d.id)" in html, (
-            "node class lookup doesn't query basinToPickTask — visual marker "
-            "will drift from the in-panel chip"
-        )
-
-    def test_tooltip_surfaces_routing_rule(self, isolated_home):
-        html = _render()
-        # The native SVG <title> tooltip should surface the routing rule
-        # on hover for pick-bearing basins — passive discovery without
-        # having to click the node.
-        assert "basinToPickTask.get(d.id)" in html, "tooltip doesn't read the pick map"
-        assert "Routing rule:" in html, "tooltip text drift — missing routing-rule label"
-
-
-class TestPicksToTopologyCrossLink:
-    """Tick #32 — picks → topology cross-link. Completes the
-    bidirectional bridge tick #30 opened. Each pick card now renders
-    'View in topology →' targeting topics.html?basin=<id>, and the
-    topology view auto-opens the matching basin via the ?basin=
-    deep-link param."""
-
-    def test_shared_centroid_match_helper_extracted(self, isolated_home):
-        # The centroid match logic was duplicated potential — extracted
-        # into matchBasinsToPicks so both Reader directions can't drift.
-        html = _render()
-        assert "function matchBasinsToPicks" in html, (
-            "shared centroid-match helper missing — picks Reader + topology view "
-            "will compute the match independently and drift"
-        )
-        # Returns BOTH directions so each Reader can grab the one it needs.
-        assert "basinIdToTask" in html, "shared helper doesn't expose basinIdToTask"
-        assert "taskToBasinId" in html, "shared helper doesn't expose taskToBasinId"
-
-    def test_picks_reader_renders_topology_xlink(self, isolated_home):
-        html = _render()
-        # The xlink template targets topics.json with ?basin=<id>. If
-        # the URL contract changes, the deep-link handler in topology
-        # view stops opening the right basin.
-        assert "View in topology" in html, "topology xlink label missing"
-        assert 'memory.html?file=topics.json&basin=" + encodeURIComponent(topologyBasinId)' in html, (
-            "topology xlink template drifted from ?basin= deep-link contract"
-        )
+class TestTopologyBasinDeepLink:
+    """The ?basin=<id> deep link opens the matching basin's detail panel (the launchpad
+    and the stale-basin banner link here)."""
 
     def test_topology_view_handles_basin_deep_link(self, isolated_home):
         html = _render()
-        # The handler must read ?basin from URL and call showDetail on
-        # the matching node. Without it, the picks Reader's xlink lands
-        # on a graph with no panel open — confusing UX.
         assert 'params.get("basin")' in html, "topology view doesn't read ?basin= from URL"
         assert "nodes.find(n => n.id === focusBasin)" in html, (
             "topology view's basin deep-link doesn't lookup the matching node"
         )
-        # The handler should also call highlightNeighborhood so the
-        # selected basin's local neighborhood pops out — same UX as a
-        # manual click on the node.
+        # highlightNeighborhood makes the selected basin's neighborhood pop out, the
+        # same as a manual click on the node.
         assert "highlightNeighborhood(match.id)" in html, (
             "?basin= deep-link doesn't highlight neighborhood — selected "
             "basin will be visually indistinguishable from siblings"
@@ -539,80 +409,21 @@ class TestStaleBasinBanner:
         )
 
 
-class TestBasinHoverTitleHelper:
-    """Tick #39 — JS-side basinHoverTitle helper mirrors the Python
-    _topology_basin_labels + Vue basinHoverLabel. Renders 'Basin
-    <id> — <terms>' when topics.json carries top_terms, otherwise
-    falls back to 'Open basin <id> in the topology graph'. Used by
-    the picks→topology xlink (tick #32) and routing→topology chip
-    (tick #33) so all four launchpad/viewer chips agree on hover."""
-
-    def test_helper_function_defined(self, isolated_home):
-        html = _render()
-        assert "function basinHoverTitle" in html, (
-            "basinHoverTitle helper missing — viewer chips will fall back "
-            "to opaque 'Open basin <id>' tooltips"
-        )
-
-    def test_basinLabels_attached_to_cross_memory_maps(self, isolated_home):
-        html = _render()
-        # loadCrossMemoryMaps must expose basinLabels alongside the
-        # task↔basin maps so both Reader views get a consistent
-        # source of truth.
-        assert "maps.basinLabels = basinLabels" in html, (
-            "loadCrossMemoryMaps doesn't attach basinLabels — viewer "
-            "chips can't access the basin → top-terms map"
-        )
-
-    def test_picks_xlink_uses_basinHoverTitle(self, isolated_home):
-        html = _render()
-        assert "basinHoverTitle(topologyBasinId, basinLabels)" in html, (
-            "picks card 'View in topology →' xlink no longer threads "
-            "basinHoverTitle — hover text reverts to opaque"
-        )
+class TestRoutingReaderHasNoBasinBridge:
+    """routing.json keys by task_type and topics.json by basin id, so there is no
+    task_type -> basin bridge; the old routing -> picks link and routing -> topology
+    chip resolved to dead banners. Guard the phantom stays gone."""
 
     def test_routing_reader_has_no_phantom_basin_bridge(self, isolated_home):
-        """Post-#298 the routing reader's task_type→basin bridge is a PHANTOM:
-        loadCrossMemoryMaps keys taskToBasinId by basin_id (b00..), so
-        `.get(<task_type>)` always misses — the old routing→picks task link and
-        routing→topology chip resolved to dead 'No pick' banners. Guard the
-        phantom is gone (so it can't be re-added and silently dead-link again).
-        The valid bridges are picks↔topology + topics↔picks (all basin-keyed)."""
         html = _render()
         assert "routingTaskToBasinId" not in html, (
-            "routing reader re-introduced the phantom task_type→basin map "
-            "(keyed by basin_id → can't match a task_type → dead cross-links)"
+            "routing reader re-introduced the phantom task_type->basin map "
+            "(keyed by basin_id, so it can never match a task_type)"
         )
         assert 'el("a", "routing-task-link"' not in html, (
-            "routing row re-added a task→picks anchor — picks.json keys by "
-            "basin_id now, so a raw task_type link lands on a dead banner"
+            "routing row re-added a task->picks anchor, a dead link since picks.json "
+            "keyed by basin_id and has now left the viewer"
         )
-
-
-class TestPicksReaderCrossLinks:
-    """Picks Reader cross-links post-#298. The picks→routing link was REMOVED:
-    picks.json keys by basin_id (b00..), a basin spans many task_types, so a
-    `routing.json&task=<basin_id>` link landed every card on a dead 'No routing
-    data' banner. The valid cross-ref is the basin-keyed topology link."""
-
-    def test_no_dead_picks_to_routing_xlink(self, isolated_home):
-        html = _render()
-        # The dead picks→routing cross-link must stay gone (regression guard).
-        assert "View routing scores" not in html, (
-            "picks card re-added the dead picks→routing link (basin_id used "
-            "as a routing task_type → dead 'No routing data' banner)"
-        )
-        assert "memory.html?file=routing.json&task=" not in html, (
-            "picks card re-added a routing.json&task=<basin_id> link — dead "
-            "post-#298 (routing.json keys by task_type, not basin_id)"
-        )
-        # The valid, basin-keyed topology cross-link stays.
-        assert "View in topology" in html, "picks card lost its topology link"
-        assert "memory.html?file=topics.json&basin=" in html
-
-    def test_pick_xlink_class_styled(self, isolated_home):
-        html = _render()
-        assert ".pick-xlink" in html, "pick-xlink CSS missing"
 
 
 class TestMarkdownSanitizer:

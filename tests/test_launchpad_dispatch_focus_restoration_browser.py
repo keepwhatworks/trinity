@@ -28,23 +28,14 @@ call and the secondary assertion reds.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 REPO = Path(__file__).resolve().parents[1]
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 # A dispatcher stub that ALWAYS resolves onResult with success — mirrors a real
@@ -112,7 +103,7 @@ def _setup(tmp_path, monkeypatch):
     (pp / "launchpad.html").write_text(_render("home"), encoding="utf-8")
     (pp / "stats.html").write_text(_render("stats"), encoding="utf-8")
     publish_vendor_files(pp)
-    return _serve(tmp_path / "serve")
+    return serve_directory(tmp_path / "serve")
 
 
 def test_launch_council_moves_focus_to_the_status_actions_not_body(tmp_path, monkeypatch):

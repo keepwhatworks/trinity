@@ -131,7 +131,7 @@ command = "PYTHON"
 args = ["-m", "trinity_local.main", "--mcp"]
 ```
 
-Requirements: at least one of the `claude` / `codex` / `agy` CLIs signed in (the installer's uv supplies Python 3.10+). Trinity works with one (chairman synthesis + your lens), gets real disagreement with two, and the full council with three. **Ollama / MLX models you've pulled locally are auto-discovered** and join councils as free members (`ollama:<model>` / `mlx:<model>`).
+Requirements: at least one of the `claude` / `codex` / `agy` CLIs signed in (the installer's uv supplies Python 3.10+). Trinity works with one (chairman synthesis + your lens), gets real disagreement with two, and the full council with three. Local models are not auto-discovered; an Ollama or MLX model can be configured as a provider in `~/.trinity/config.json`, and it does not join the default council.
 
 ## How it works
 
@@ -282,7 +282,7 @@ That's the payoff: agreed claims you can lean on and disagreed claims with the *
 
 Chairman synthesizes member outputs into a structured JSON verdict. Members run in
 parallel. Lens-discovery is a 5-stage
-pipeline (Stage 0 turn-pair rejections + Stages 1-4 basins→decisions→pair-mining→post-filter) ratifying tensions across ≥3 topical basins.
+pipeline (Stage 0 turn-pair rejections + Stages 1-4 basins→decisions→pair-mining→post-filter) ratifying tensions that span at least two topical basins.
 
 **Want the full picture?** [`docs/how-trinity-works.md`](docs/how-trinity-works.md) walks the pipeline end-to-end: transcripts → embeddings → lens → runtime. Wire diagram + design rationale in [`docs/architecture.md`](docs/architecture.md).
 

@@ -30,12 +30,10 @@ this codifies that invariant.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -81,13 +79,6 @@ _PROBE = """() => {
 }"""
 
 
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 def _write_prod_layout(html: str, serve_root: Path) -> str:
     from trinity_local.vendor import publish_vendor_files
 
@@ -105,7 +96,7 @@ def test_cheatsheet_headers_and_chart_legend_render_branded(tmp_path):
 
     html = render_launchpad_html(page_data=_PAGE_DATA, view="stats")
     rel = _write_prod_layout(html, tmp_path)
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:

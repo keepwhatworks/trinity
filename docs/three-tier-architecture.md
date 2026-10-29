@@ -35,10 +35,11 @@ exists.
 
 ## Tier 2 — Engine
 
-The Python engine MCP tools call. Lives in
-`~/.claude/skills/trinity/src/trinity_local/` after the curl-bash
-installer clones it. The `trinity-local` shell wrapper at
-`~/.local/bin/trinity-local` resolves to this engine via PYTHONPATH.
+The Python engine MCP tools call: the `trinity_local` package. The
+one-line installer (`docs/install.sh`) installs it with `uv tool install`,
+which puts the `trinity-local` command in `~/.local/bin`. The git-clone
+installer (`scripts/install.sh`) keeps a checkout at `~/.trinity/code` with
+its own venv and writes `~/.local/bin` wrappers that run it.
 
 The engine contains both the CLI ergonomics (`trinity-local status`,
 `lens`, `update`, …) AND the heavy ops (embeddings, k-means,

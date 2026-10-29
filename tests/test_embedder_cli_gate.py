@@ -168,7 +168,7 @@ class TestCLIHandlersUseGate:
         src = path.read_text()
         assert "require_real_embedder" in src, (
             "vocabulary distillation must call require_real_embedder — "
-            "uses synonym embeddings to cluster anchor terms."
+            "the homonym scan clusters each token's context embeddings."
         )
 
 

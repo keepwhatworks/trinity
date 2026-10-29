@@ -34,12 +34,10 @@ Slow-marked; skips without Playwright/chromium.
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import json
-import threading
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -273,13 +271,6 @@ def _all_failed_completed_status(token: str) -> dict:
     }
 
 
-def _serve(directory) -> tuple[http.server.HTTPServer, int]:
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 def _drive(tmp_path, port, token):
     from playwright.sync_api import sync_playwright
 
@@ -336,7 +327,7 @@ def test_solo_council_suppresses_winner_overclaim(tmp_path, monkeypatch):
     pytest.importorskip("playwright.sync_api")
     token = "tok_solo_overclaim"
     _seed(tmp_path, monkeypatch, _solo_status(token))
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         verdict, body, rows = _drive(tmp_path, port, token)
     finally:
@@ -376,7 +367,7 @@ def test_two_member_council_still_shows_winner_verdict(tmp_path, monkeypatch):
     pytest.importorskip("playwright.sync_api")
     token = "tok_duo_control"
     _seed(tmp_path, monkeypatch, _duo_status(token))
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         verdict, body, rows = _drive(tmp_path, port, token)
     finally:
@@ -417,7 +408,7 @@ def test_no_winner_multi_provider_council_states_the_verdict(tmp_path, monkeypat
     pytest.importorskip("playwright.sync_api")
     token = "tok_nowinner_duo"
     _seed(tmp_path, monkeypatch, _no_winner_duo_status(token))
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         verdict, body, rows = _drive(tmp_path, port, token)
     finally:
@@ -473,7 +464,7 @@ def test_same_provider_council_suppresses_winner_overclaim(tmp_path, monkeypatch
     pytest.importorskip("playwright.sync_api")
     token = "tok_sameprov_overclaim"
     _seed(tmp_path, monkeypatch, _same_provider_status(token))
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         verdict, body, rows = _drive(tmp_path, port, token)
     finally:
@@ -633,7 +624,7 @@ def test_same_provider_OUTCOME_path_suppresses_winner_overclaim(tmp_path, monkey
     on a council with no contest. With provider-keying restored this stays green."""
     pytest.importorskip("playwright.sync_api")
     cid = _seed_outcome(tmp_path, monkeypatch, _same_provider_outcome())
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         verdict, body, rows = _drive_outcome(port, cid)
     finally:
@@ -782,7 +773,7 @@ def test_solo_council_suppresses_lens_pick_badge(tmp_path, monkeypatch):
     pytest.importorskip("playwright.sync_api")
     token = "tok_solo_badge"
     _seed(tmp_path, monkeypatch, _solo_status(token))
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         s = _drive_badge(port, token)
     finally:
@@ -833,7 +824,7 @@ def test_two_member_council_still_shows_lens_pick_badge(tmp_path, monkeypatch):
     pytest.importorskip("playwright.sync_api")
     token = "tok_duo_badge"
     _seed(tmp_path, monkeypatch, _duo_status(token))
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         s = _drive_badge(port, token)
     finally:
@@ -871,7 +862,7 @@ def test_all_failed_completed_council_does_not_claim_one_model_answered(tmp_path
     token = "tok_all_failed"
     status = _all_failed_completed_status(token)
     _seed(tmp_path, monkeypatch, status)
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         verdict, body, rows = _drive(tmp_path, port, token)
     finally:

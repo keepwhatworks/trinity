@@ -472,7 +472,7 @@ def _maybe_fire_lens_kicks() -> None:
     """On a tool call: fire the keep-current kicks (lens refresh + stale ingest)
     the first time AND every _RECURRING_KICK_INTERVAL_S after, so a long-lived
     server stays current without a restart; fire the genuinely-once kicks (embedder
-    offer, roots discovery) only on the first call. Best-effort: never let an
+    offer) only on the first call. Best-effort: never let an
     auto-kick failure break a tool call."""
     global _lens_kicks_fired, _recurring_kicks_last
     import time as _time
@@ -702,10 +702,10 @@ def _resource_catalog() -> list[tuple[str, str, str, str, Any]]:
     Each tuple: (uri, name, description, mime_type, path_func).
 
     The four cognitive memories (core / lens / topics / vocabulary)
-    map to the lens hierarchy chairman reads top-down. The two
-    scoreboards (picks / routing) are read-only operational data
-    surfaced for agents that want to see "what Trinity routes to
-    today" without firing the route() tool.
+    map to the lens hierarchy chairman reads top-down. The routing
+    scoreboard is read-only operational data: each model's track
+    record per task type, from council outcomes. (A picks.json
+    scoreboard was served here until its writer was retired.)
 
     AGENTS.md was originally on this catalog but dropped 2026-05-26
     after user pushback: AGENTS.md is project-scoped by convention
@@ -835,11 +835,11 @@ def _canonicalize_resource_routing_slugs(obj: Any) -> Any:
     """Fold web-era capture slugs (chatgpt/claude_ai/gemini) in a scoreboard
     resource's ROUTING-DECISION fields to the dispatchable CLI slug.
 
-    The `get_picks` / `ask` TOOLS canonicalize on read (cortex.load_routing_patterns,
-    v1.7.166), but the `trinity://scoreboard/picks.json` RESOURCE reads the raw file
-    — which keeps the historical web-era slugs until the next `consolidate`. Without
-    this, the resource hands an agent `primary: "chatgpt"` (not a provider it can
-    dispatch to) while the tool returns `"codex"` — inconsistent and unactionable.
+    Written for the `trinity://scoreboard/picks.json` resource, which read the raw
+    file and so carried web-era slugs (`primary: "chatgpt"`, not a provider an agent
+    can dispatch to) while the since-retired `get_picks` / `ask` tools folded them.
+    That resource was retired with picks.json's writer; routing.json is the
+    scoreboard this still serves.
     The routing_rule decision fields, the provider-KEYED scoreboard dicts
     (winner_distribution / successful_prompts / failure_modes), AND
     routing.json's by_task_type provider keys are folded — both
@@ -962,7 +962,7 @@ async def handle_read_resource(uri: AnyUrl) -> list[ReadResourceContents]:
 
     Returns ReadResourceContents carrying the resource's DECLARED mimeType
     (from the same catalog list_resources advertises) — a JSON resource
-    (picks.json / routing.json / topics.json) reads back as
+    (routing.json / topics.json) reads back as
     `application/json`, markdown as `text/markdown`. Returning a bare `str`
     would let the SDK default every read to `text/plain`, so a JSON resource
     advertised as application/json would read as text/plain — a list/read
@@ -1330,12 +1330,9 @@ def _load_trust_summary() -> dict:
     """The built disagreement ledger's aggregate (per-model tally + the K3/K4
     trustworthiness gate). Broad-guarded: a missing/corrupt summary yields {}
     rather than crashing the tool."""
-    from .disagreement_ledger import BEHAVIOURAL_TIER_CAVEAT, _ledger_dir, agent_view
-    try:
-        d = json.loads((_ledger_dir() / "summary.json").read_text(encoding="utf-8"))
-        if not isinstance(d, dict):
-            return {}
-    except Exception:  # noqa: BLE001 — absent/corrupt ledger → no tally, not a crash
+    from .disagreement_ledger import BEHAVIOURAL_TIER_CAVEAT, agent_view, load_summary
+    d = load_summary()
+    if not d:
         return {}
     # Fails CLOSED. The caveat rides aggregate_tally(), but this reads the
     # PERSISTED file, and any summary written before that wiring has no such key

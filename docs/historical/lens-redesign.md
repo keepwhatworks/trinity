@@ -1,5 +1,5 @@
 ---
-class: aspirational
+class: historical
 ---
 
 # Lens redesign: robust lenses that stand the test of time

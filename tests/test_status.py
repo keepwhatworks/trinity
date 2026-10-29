@@ -47,19 +47,15 @@ class TestStatusCommand:
                     # (count_actions_by_status mock retired with the action
                     # store, #332 — nullcontext preserves the nesting depth.)
                     with contextlib.nullcontext():
-                        with patch(
-                            "trinity_local.commands.status.check_drift"
-                        ) as mock_drift:
-                            mock_drift.return_value = []
+                        args = Args(as_json=True)
+                        handle_status(args)
 
-                            args = Args(as_json=True)
-                            handle_status(args)
-
-                            captured = capsys.readouterr()
-                            output = json.loads(captured.out)
-                            assert "trinity_home" in output
-                            assert "adapters" in output
-                            assert "drift_alerts" in output
+                        captured = capsys.readouterr()
+                        output = json.loads(captured.out)
+                        assert "trinity_home" in output
+                        assert "adapters" in output
+                        # drift retired 2026-10-27: outcomes.jsonl had no writer since 2026-05-18
+                        assert "drift_alerts" not in output
 
     def test_status_human_output(self, tmp_path, monkeypatch, capsys):
         """Test status with human-readable output."""
@@ -90,125 +86,13 @@ class TestStatusCommand:
                     # (count_actions_by_status mock retired with the action
                     # store, #332 — nullcontext preserves the nesting depth.)
                     with contextlib.nullcontext():
-                        with patch(
-                            "trinity_local.commands.status.check_drift"
-                        ) as mock_drift:
-                            mock_drift.return_value = []
+                        args = Args(as_json=False)
+                        handle_status(args)
 
-                            args = Args(as_json=False)
-                            handle_status(args)
-
-                            captured = capsys.readouterr()
-                            assert "Trinity Local — Status" in captured.out
-                            assert "Adapters:" in captured.out
-
-
-class TestStatusDriftMessageRender:
-    """SURFACE-BINDING guard for the drift alert COPY that `status` paints.
-
-    The drift figure + its window-phrase copy (the 3c8cb24f data-correctness
-    class — "in the last week vs the prior week", DERIVED from the real window
-    params, never the old hardcoded "prior 2 weeks") is exhaustively guarded at
-    the PRIMITIVE (test_drift.py). But every test that drives `handle_status`
-    mocks `check_drift` to `[]`, so the human-render binding at status.py L422-425
-    — the ONLY surface that ever paints `alert.message` to a user (the JSON path
-    emits only `len(drift_alerts)`, a bare count) — is exercised with a REAL alert
-    by NOTHING. A reformat that dropped `.message`, printed a count-only line, or
-    re-hardcoded the window phrase would ship a wrong/empty drift line while the
-    whole suite stayed green: the recurring "value tested at the primitive, not at
-    the surface binding that ships it" shape (loop_data_correctness_bug_shape).
-
-    This drives the REAL `check_drift` (NOT mocked) inside `handle_status` over a
-    discriminating seed and asserts the PAINTED line carries the right value,
-    direction, and window phrase end-to-end (seed -> primitive -> printed pixels).
-    """
-
-    def _seed_discriminating_drop(self, home):
-        """Seed outcomes.jsonl so check_drift emits exactly one -100% DROP for
-        claude/coding: baseline (7,14] = 6 CLEAN completions (avg 1.0), current
-        (<7d) = 4 FAILED (avg 0.0) -> delta_pct = (0-1)/1*100 = -100.0. Decoys
-        aged 15-20d sit OUTSIDE the 14d baseline cutoff (proving the baseline is
-        the SINGLE prior week, not two). Returns the expected window-phrase facts.
-        """
-        import json as _json
-        from datetime import datetime, timezone, timedelta
-        now = datetime.now(timezone.utc)
-        records = []
-        for d in range(8, 14):  # baseline (7,14]: 6 clean
-            records.append({"provider": "claude", "model_id": "claude-sonnet-4",
-                            "task_type": "coding", "completed": True, "error_count": 0,
-                            "timestamp": (now - timedelta(days=d)).isoformat()})
-        for d in range(15, 21):  # decoys: OUTSIDE the 14d baseline cutoff
-            records.append({"provider": "claude", "model_id": "claude-sonnet-4",
-                            "task_type": "coding", "completed": True, "error_count": 0,
-                            "timestamp": (now - timedelta(days=d)).isoformat()})
-        for i in range(4):  # current (<7d): 4 failing -> 100% drop
-            records.append({"provider": "claude", "model_id": "claude-sonnet-4",
-                            "task_type": "coding", "completed": False, "error_count": 0,
-                            "timestamp": (now - timedelta(days=3) + timedelta(hours=i)).isoformat()})
-        (home / "outcomes.jsonl").write_text(
-            "\n".join(_json.dumps(r) for r in records) + "\n", encoding="utf-8")
-
-    def test_status_paints_real_drift_message_with_correct_value_and_window(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
-        self._seed_discriminating_drop(tmp_path)
-
-        # PRECONDITION-B (render-INDEPENDENT): the seed really IS the discriminating
-        # drift state — one -100% DROP over the single prior week, decoys excluded.
-        # Computed from the fixture via the primitive, NOT from the painted output,
-        # so this test can't pass on a render that prints the wrong thing.
-        from trinity_local.drift import check_drift
-        alerts = check_drift()
-        assert len(alerts) == 1, "fixture must produce exactly one drift alert"
-        a = alerts[0]
-        assert a.delta_pct == -100.0 and a.current_score == 0.0 and a.baseline_score == 1.0, (
-            f"fixture is not the seeded 100% drop: {a.to_dict()}")
-        assert a.baseline_sessions == 6 and a.current_sessions == 4, (
-            f"decoys (15-20d) leaked into the baseline: {a.to_dict()}")
-
-        # Drive the REAL render path: check_drift is NOT patched here — the binding
-        # at status.py L86 (compute) -> L422-425 (paint) runs end-to-end. Stub only
-        # the heavy/irrelevant siblings so the test stays fast + isolated.
-        from trinity_local.adapters import AdapterStatus
-        with patch("trinity_local.commands.status.state_dir", return_value=tmp_path), \
-             patch("trinity_local.commands.status.tasks_dir", return_value=tmp_path), \
-             patch("trinity_local.commands.status.check_all_adapters",
-                   return_value=[AdapterStatus(provider="claude", cli_name="claude",
-                                               installed=True, version="1.0",
-                                               transcript_root=None)]):
-            handle_status(Args(as_json=False))
-        out = capsys.readouterr().out
-
-        # Isolate the painted drift line (the "    · ..." row under the ⚠ header).
-        # Key on a VERB-INDEPENDENT substring ("claude's coding quality") so a verb
-        # flip (dropped->rose) still finds the line and reds the DIRECTION assertion
-        # below rather than vanishing as "no line painted".
-        drift_lines = [ln for ln in out.splitlines() if "claude's coding quality" in ln]
-        assert len(drift_lines) == 1, (
-            "status did not paint the drift alert message — the human render binding "
-            "(status.py L422-425) dropped `alert.message`; the drift figure no longer "
-            f"reaches the user.\nFull output:\n{out}")
-        line = drift_lines[0]
-
-        # VALUE: the seeded -100% drop must paint as "dropped 100%".
-        assert "100%" in line, (
-            f"painted drift % is wrong vs the seed (expected a 100% change): {line!r}")
-        # DIRECTION: a DROP, not a rise. The seed is current_avg(0.0) < baseline(1.0),
-        # so the painted verb must be "dropped" — an inverted sign would say "rose".
-        assert "dropped" in line and "rose" not in line and "improved" not in line, (
-            f"painted drift direction is wrong vs the seed (a drop, not a rise): {line!r}")
-        # WINDOW PHRASE (the 3c8cb24f class): current=7d -> "last week"; baseline
-        # span 14-7=7d -> "the prior week". NEVER the old hardcoded "prior 2 weeks".
-        assert "in the last week vs the prior week" in line, (
-            f"painted window phrase drifted from the real params: {line!r}")
-        assert "2 weeks" not in line, (
-            "status painted 'prior 2 weeks' while the figure compares against the SINGLE "
-            f"prior week (the 3c8cb24f over-statement, now at the surface): {line!r}")
-        # WHAT CHANGED: names the right provider + task.
-        assert "claude's coding quality" in line, (
-            f"painted drift line names the wrong provider/task vs the seed: {line!r}")
+                        captured = capsys.readouterr()
+                        assert "Trinity Local — Status" in captured.out
+                        assert "Adapters:" in captured.out
+                        assert "Drift:" not in captured.out
 
 
 class TestActionableSignals:
@@ -545,8 +429,7 @@ class TestSoftDegradedSurfacing:
         with patch.object(status_mod, "run_doctor", lambda: DoctorReport(checks=checks)), \
              patch.object(status_mod, "state_dir", lambda: tmp_path), \
              patch.object(status_mod, "tasks_dir", lambda: tmp_path / "t"), \
-             patch.object(status_mod, "check_all_adapters", lambda: []), \
-             patch.object(status_mod, "check_drift", lambda: []):
+             patch.object(status_mod, "check_all_adapters", lambda: []):
             (tmp_path / "t").mkdir(exist_ok=True)
             handle_status(Args(as_json=False))
         return capsys.readouterr().out
@@ -672,7 +555,6 @@ class TestStatusLensFreshnessRender:
             st.enter_context(patch("trinity_local.commands.status.check_all_adapters")).return_value = [
                 AdapterStatus(provider="claude", cli_name="claude", installed=True, version="1.0", transcript_root=None)
             ]
-            st.enter_context(patch("trinity_local.commands.status.check_drift")).return_value = []
 
             class _Args:
                 as_json = False
@@ -707,7 +589,6 @@ class TestStatusCorpusFreshnessRender:
             st.enter_context(patch("trinity_local.commands.status.check_all_adapters")).return_value = [
                 AdapterStatus(provider="claude", cli_name="claude", installed=True, version="1.0", transcript_root=None)
             ]
-            st.enter_context(patch("trinity_local.commands.status.check_drift")).return_value = []
 
             class _Args:
                 as_json = False

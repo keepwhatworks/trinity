@@ -36,7 +36,7 @@ the TF-IDF fallback is available. The runtime footprint is two dependencies
 (council-ratified demotion of measured-dormant machinery, 2026-07-10).
 
 The verification surface holds a comprehensive passing test suite,
-<!-- canonical:doc_consistency_guards -->115<!-- /canonical --> doc-consistency
+<!-- canonical:doc_consistency_guards -->114<!-- /canonical --> doc-consistency
 guards, and a <!-- canonical:smoke_surface_count -->34<!-- /canonical -->-surface
 browser smoke gate. The public repo and the v1.7 release shipped 2026-07-02.
 The remaining launch risks are not core council mechanics: Chrome Web Store

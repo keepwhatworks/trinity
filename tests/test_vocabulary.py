@@ -1,9 +1,9 @@
 """Tests for Phase 2.5 vocabulary distillation.
 
 Pure-geometric (+ pure-regex for anchors) scan of the user's prompt
-corpus that surfaces three views of distinctive terminology: anchors
-(proper-noun recurrence across threads), homonyms (one word, multiple
-meanings), synonyms (multiple words, one meaning). Output is markdown at
+corpus that surfaces two views of distinctive terminology: anchors
+(proper-noun recurrence across threads) and homonyms (one word, multiple
+meanings). The synonyms view was cut (TestSynonymSectionCut). Output is markdown at
 ~/.trinity/memories/vocabulary.md. Read by the chairman as one of the
 three thinking core memories.
 """
@@ -118,7 +118,7 @@ class TestHomonymDetection:
         # isolate the bimodality primitive — the realistic min_distinct/
         # thread floors would (correctly) filter it on real data.
         report = distill_vocabulary(
-            min_freq=5, top_homonyms=10, synonym_threshold=0.99,
+            min_freq=5, top_homonyms=10,
             min_distinct=0, homonym_min_threads=0,
         )
         assert report["ok"] is True
@@ -460,7 +460,7 @@ class TestVocabScanLineHonesty:
     def test_names_both_counts_when_they_differ(self):
         from trinity_local.vocabulary import render_vocabulary_md
         md = render_vocabulary_md(
-            homonyms=[], synonyms=[], anchors=[],
+            homonyms=[], anchors=[],
             corpus_size=18270, total_corpus=27225,
         )
         assert "27225 prompts for anchors" in md
@@ -469,7 +469,7 @@ class TestVocabScanLineHonesty:
     def test_single_count_when_equal_or_unset(self):
         from trinity_local.vocabulary import render_vocabulary_md
         md = render_vocabulary_md(
-            homonyms=[], synonyms=[], anchors=[], corpus_size=500,
+            homonyms=[], anchors=[], corpus_size=500,
         )
         assert "Scanned 500 prompts." in md
 
@@ -477,7 +477,7 @@ class TestVocabScanLineHonesty:
 class TestTemplateConcentrationGuard:
     """#250: tokens from a repeated template (one agent loop emitting the same
     JSON shape) collapse to few effectively-distinct contexts and must be
-    dropped from homonyms/synonyms even at high raw frequency."""
+    dropped from homonyms even at high raw frequency."""
 
     def test_effective_distinct_collapses_near_duplicates(self):
         import numpy as np

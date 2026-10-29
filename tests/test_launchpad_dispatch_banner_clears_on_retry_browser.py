@@ -39,12 +39,10 @@ without Playwright/chromium.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -65,13 +63,6 @@ _STUB = (
     "  if(o&&o.onResult)setTimeout(function(){{o.onResult(res);}},15);"
     "}}}};"
 )
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _seed(tmp_path, monkeypatch) -> Path:
@@ -122,7 +113,7 @@ def test_dispatch_banner_does_not_leak_across_operations(tmp_path, monkeypatch):
     from playwright.sync_api import sync_playwright
 
     serve_root = _seed(tmp_path, monkeypatch)
-    httpd, port = _serve(serve_root)
+    httpd, port = serve_directory(serve_root)
     try:
         with sync_playwright() as p:
             try:

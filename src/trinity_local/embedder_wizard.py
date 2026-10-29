@@ -38,7 +38,7 @@ import threading
 from pathlib import Path
 
 from .state_paths import telemetry_settings_dir
-from .utils import now_iso
+from .utils import autoscan_disabled, now_iso
 
 # The engine deps, mirrored EXACTLY from pyproject.toml's `[mlx]` extras (incl.
 # the environment markers, so pip installs only what matches the platform —
@@ -84,13 +84,6 @@ def _save_state(state: dict) -> None:
         pass
 
 
-def _autoscan_disabled() -> bool:
-    # Honour the same kill-switch as the lens kicks: the MCP-stdio safe recipe
-    # and the whole test/CI suite set TRINITY_AUTOSCAN_DISABLED=1, so the wizard
-    # (heavy background work) stays silent there.
-    return os.environ.get("TRINITY_AUTOSCAN_DISABLED") == "1"
-
-
 def _days_since(iso: str) -> float:
     """Whole days between `iso` and now, computed from now_iso() strings without
     importing datetime arithmetic helpers Trinity bans (Date.now-style). Returns
@@ -111,7 +104,7 @@ def should_offer_embedder() -> tuple[bool, str]:
     to offer. No model load, no network — the heaviest probe is
     ``mlx_actually_loaded`` which returns False instantly when the backend module
     never imported (the exact plugin-only case)."""
-    if _autoscan_disabled():
+    if autoscan_disabled():
         return False, "autoscan disabled"
     try:
         from .embeddings import mlx_actually_loaded

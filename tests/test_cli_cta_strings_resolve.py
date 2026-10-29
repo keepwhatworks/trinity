@@ -194,6 +194,30 @@ def test_every_doc_cta_resolves_to_a_real_subcommand():
     )
 
 
+def test_no_engine_string_names_a_retired_verb_backticked_or_not():
+    """The scans above need backticks, so an unquoted "then trinity-local consolidate"
+    in the memory viewer's routing view told users to run a retired verb for two
+    months. A registered retired CLI name after `trinity-local ` is dead advice in
+    any form; matching only registered names keeps prose like "trinity-local from"
+    out of it."""
+    from trinity_local.retired_names import all_names, get
+
+    retired = {n.removeprefix("trinity-local ") for n in all_names() if get(n).kind == "cli"}
+    assert "consolidate" in retired and "doctor" in retired, sorted(retired)
+    pattern = re.compile(r"trinity-local[ \t]+(" + "|".join(map(re.escape, sorted(retired))) + r")\b(?!-)")
+    hits = []
+    for path in SRC.rglob("*.py"):
+        if path.name == "retired_names.py":
+            continue
+        tree = ast.parse(path.read_text())
+        docs = _docstring_constant_ids(tree)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs:
+                for m in pattern.finditer(_JS_COMMENT.sub("", node.value)):
+                    hits.append(f"`trinity-local {m.group(1)}` at {path.relative_to(REPO)}:{node.lineno}")
+    assert not hits, "engine strings tell users to run a retired verb:\n  " + "\n  ".join(sorted(hits))
+
+
 def test_every_cli_cta_string_resolves_to_a_real_subcommand():
     """Every backtick-wrapped `trinity-local <verb>` a user is told to run,
     anywhere in the live engine, must be a verb the parser accepts.

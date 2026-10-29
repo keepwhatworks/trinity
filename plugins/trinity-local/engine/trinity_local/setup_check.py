@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -110,11 +111,15 @@ def codex_timeout_fix() -> str | None:
 
 
 def codex_features_listing() -> str | None:
-    """`codex features list`, or None when codex cannot answer. Read-only; one subprocess."""
-    import shutil
+    """`codex features list`, or None when codex cannot answer. Read-only; one subprocess.
+
+    Resolves codex on the same enriched PATH the adapter's version probe uses, so a
+    codex counted as installed is also one this can ask."""
     import subprocess
 
-    exe = shutil.which("codex")
+    from .runtime_env import which_on_runtime_path
+
+    exe = which_on_runtime_path("codex")
     if not exe:
         return None
     try:
@@ -132,7 +137,7 @@ def unreadable_config_fix(provider: str) -> str:
     if provider == "codex":
         show = "codex mcp list"            # codex reports its own config.toml parse error
     else:
-        show = f"python3 -m json.tool {path} > /dev/null"
+        show = f"python3 -m json.tool {shlex.quote(str(path))} > /dev/null"
     return f"{show}   # prints the parse error; repair it, then: trinity-local install-mcp"
 
 

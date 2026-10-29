@@ -12,11 +12,12 @@ import sys
 from pathlib import Path
 
 
-# Map provider name (as used in trinity config.json) -> the slug used by
-# artificialanalysis.ai. Update when bumping config models.
+# Map provider slug (as used in trinity config.json and the shipped reference_evals.json)
+# -> the slug used by artificialanalysis.ai. Update when bumping config models. The Google
+# row is "antigravity": keyed "gemini", a re-run dropped it from the launchpad table.
 PROVIDER_TO_SLUG = {
     "claude": "claude-opus-4-8",            # Adaptive Reasoning, Max Effort
-    "gemini": "gemini-3-1-pro-preview",     # AA's slug; CLI accepts "gemini-3.1-pro-preview"
+    "antigravity": "gemini-3-1-pro-preview",  # AA's slug; CLI accepts "gemini-3.1-pro-preview"
     "codex": "gpt-5-5",                      # GPT-5.5 (xhigh) — top OpenAI on AA
 }
 

@@ -204,3 +204,37 @@ class TestUpdateOnUvInstall:
         monkeypatch.setattr(subprocess, "run", lambda a, **k: ran.append(a) or SimpleNamespace(returncode=0))
         assert upd.handle_update(SimpleNamespace(deps=False, check=False, json=False, skill_dir=None)) == 0
         assert ran == [["sh", "-c", INSTALL_COMMAND]]
+
+
+def test_the_unreadable_config_fix_survives_a_home_a_shell_would_act_on(tmp_path, monkeypatch):
+    """The fix is pasted into a shell: a home path with a space, $(...) or backticks must
+    reach json.tool as one path (so the parse error is found) and run nothing else."""
+    import shlex
+    import subprocess
+
+    home = tmp_path / "h $(touch PWNED) `touch PWNED2` x"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", lambda: home)
+    (home / ".claude.json").write_text("{not json")
+    cmd = sc.unreadable_config_fix("claude").split("   #")[0].replace("python3", shlex.quote(sys.executable), 1)
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    r = subprocess.run(["sh", "-c", cmd], cwd=cwd, capture_output=True, text=True)
+    assert r.returncode != 0 and "line 1" in (r.stderr + r.stdout), r.stderr
+    assert sorted(p.name for p in cwd.iterdir()) == [], "the advice ran a command"
+
+
+def test_codex_features_listing_finds_codex_on_the_runtime_path(tmp_path, monkeypatch):
+    """`installed` comes from the version probe, which runs on the enriched runtime PATH
+    (adapters._run_version). The features listing used a bare shutil.which, so under a
+    stripped PATH (a GUI-launched MCP host) codex counted as installed while its
+    feature-gap note was silently skipped."""
+    import trinity_local.runtime_env as runtime_env
+
+    fake = tmp_path / "codex"
+    fake.write_text("#!/bin/sh\necho 'apps  stable  true'\n", encoding="utf-8")
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path / "nowhere"))  # a bare shutil.which finds nothing
+    monkeypatch.setattr(runtime_env, "which_on_runtime_path",
+                        lambda binary, **kw: str(fake) if binary == "codex" else None)
+    assert sc.codex_features_listing() == "apps  stable  true\n"

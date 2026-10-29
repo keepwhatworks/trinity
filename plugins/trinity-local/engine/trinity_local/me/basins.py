@@ -803,8 +803,3 @@ def load_topics_basins() -> list[dict]:
     _TOPICS_BASINS_CACHE = (str(path), mtime, basins)
     return basins
 
-def live_basin_ids() -> set[str]:
-    """The id set of the CURRENT lens topology. Empty when topics.json is
-    missing/unreadable/wrong-shape — callers must treat empty as "unknown",
-    never as "no basins exist"."""
-    return {str(b.get("id")) for b in load_topics_basins() if b.get("id")}

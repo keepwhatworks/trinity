@@ -67,6 +67,22 @@ VENDORED_FILES: tuple[str, ...] = (
     "JetBrainsMono-OFL.txt",
 )
 
+# What the extension's sandbox pages (side-panel launchpad, live council) load. The
+# d3 graph libraries and marked serve the file:// memory viewer, which the extension
+# does not ship, and the pages load petite-vue's IIFE build, not the ES one.
+EXTENSION_VENDOR_FILES: tuple[str, ...] = (
+    "petite-vue.iife.js",
+    "chart.umd.min.js",
+    "HankenGrotesk-400.woff2",
+    "HankenGrotesk-500.woff2",
+    "HankenGrotesk-600.woff2",
+    "HankenGrotesk-700.woff2",
+    "JetBrainsMono-400.woff2",
+    "JetBrainsMono-500.woff2",
+    "HankenGrotesk-OFL.txt",
+    "JetBrainsMono-OFL.txt",
+)
+
 
 def _read_vendored(name: str) -> bytes | None:
     """Load one vendored file via the package resources API. Returns
@@ -123,9 +139,10 @@ def _wrap_petite_vue_as_iife(es_source: bytes) -> bytes:
     return f"(function(){{\n{body}\n{expose}\n}})();\n".encode("utf-8")
 
 
-def publish_vendor_files(target_dir: Path) -> list[Path]:
-    """Copy all vendored assets (JS libraries + woff2 webfonts + OFL licenses)
-    into ``target_dir/vendor/``. Idempotent
+def publish_vendor_files(target_dir: Path, names: tuple[str, ...] | None = None) -> list[Path]:
+    """Copy the vendored assets (JS libraries + woff2 webfonts + OFL licenses)
+    into ``target_dir/vendor/``: all of them, or only ``names`` when given (the
+    extension passes EXTENSION_VENDOR_FILES). Idempotent
     via byte-by-byte content compare: re-runs are no-ops when nothing
     changed. Skips missing files silently (graceful degradation for
     source layouts that don't bundle the data — pages will still try
@@ -143,6 +160,8 @@ def publish_vendor_files(target_dir: Path) -> list[Path]:
     vendor_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for name in VENDORED_FILES:
+        if names is not None and name not in names:
+            continue
         payload = _read_vendored(name)
         if payload is None:
             continue
@@ -168,7 +187,7 @@ def publish_vendor_files(target_dir: Path) -> list[Path]:
     # Derive IIFE shim for petite-vue from the ES source. Same idempotency
     # rule — only write when content actually changed.
     es_source = _read_vendored("petite-vue.es.js")
-    if es_source is not None:
+    if es_source is not None and (names is None or "petite-vue.iife.js" in names):
         iife_payload = _wrap_petite_vue_as_iife(es_source)
         iife_target = vendor_dir / "petite-vue.iife.js"
         needs_write = True

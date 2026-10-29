@@ -87,16 +87,6 @@ def ledger_summary_path(home: str | Path | None = None) -> Path:
     return base / "disagreement_ledger" / "summary.json"
 
 
-def load_ledger_summary(home: str | Path | None = None) -> dict[str, Any] | None:
-    """Parse the ledger summary, or ``None`` when it is missing/unreadable/
-    wrong-shape. ``None`` means "no usable summary", never "empty but fine".
-
-    Callers that need the three states must NOT infer them from this return
-    value — ``None`` conflates "no file" with "corrupt file", and those map to
-    different states (see ``read_ledger_summary``)."""
-    return read_ledger_summary(home)[1]
-
-
 def read_ledger_summary(
     home: str | Path | None = None,
 ) -> tuple[bool, dict[str, Any] | None]:

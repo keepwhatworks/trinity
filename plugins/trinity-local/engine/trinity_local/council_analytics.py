@@ -18,7 +18,7 @@ removal untouched -- which is the property that made the split safe.
 """
 from __future__ import annotations
 
-from typing import Any, Iterable
+from typing import Any
 from .council_runtime import load_council_outcome
 from .state_paths import council_outcomes_dir
 
@@ -136,15 +136,6 @@ def _scan_outcomes() -> tuple[list[dict[str, Any]], bool]:
         })
     return records, all_clean
 
-def _iter_rated_councils() -> Iterable[dict[str, Any]]:
-    """Yield {task_type, routing_label} dicts for every council outcome on disk
-    that carries a routing_label, so the personal routing table reflects ALL
-    council evidence the user has accumulated. The chairman's `provider_scores`
-    and pick are the signal — no manual rating step gates an outcome out.
-    """
-    records, _ = _scan_outcomes()
-    yield from records
-
 def _is_substantive_output(text: str) -> bool:
     """True when a council member's output is a real, complete answer — not
     empty/echoed and not a truncated opener (#249)."""
@@ -176,9 +167,8 @@ def _is_real_contest(record: dict[str, Any]) -> bool:
     canonicalized member-result providers; when absent (legacy records), default
     to 2 so it doesn't retro-disqualify the existing ledger.
 
-    Single source of truth for this gate — lens_routing.compute_basin_routing
-    (picks.json) calls this same predicate so the routing rules and the value-proof
-    headline can't drift on the threshold. `int(... or 0)` coerces None/str/0 to a
+    Single source of truth for this gate (the retired per-basin tally, now frozen
+    in internal/experiments/frozen_basin_routing.py, calls the same predicate). `int(... or 0)` coerces None/str/0 to a
     real number (None/0 → not a contest) without crashing on a malformed record."""
     if int(record.get("substantive_members", 2) or 0) < 2:
         return False

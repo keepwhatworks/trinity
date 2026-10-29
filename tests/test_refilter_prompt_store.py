@@ -20,6 +20,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[1]
 SCRIPT = REPO / "scripts" / "refilter_prompt_store.py"
 
@@ -154,7 +156,8 @@ def test_store_writers_never_emit_raw_line_separators():
         )
 
 
-def test_live_store_has_no_phantom_line_breaks():
+@pytest.mark.real_corpus
+def test_live_store_has_no_phantom_line_breaks(real_corpus_home):
     """The store on disk must have splitlines() == physical newline count.
 
     A degenerate-data guard on real state: if these disagree, some writer re-introduced

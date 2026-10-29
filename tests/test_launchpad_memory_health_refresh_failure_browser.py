@@ -29,21 +29,11 @@ co-located message vanishes → this guard reds with the exact symptom.
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import os
-import threading
 import time
-from pathlib import Path
 
 import pytest
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
+from tests.browser_harness import serve_directory
 
 
 @pytest.mark.slow
@@ -87,7 +77,7 @@ def test_refresh_memory_failure_stays_co_located_not_council_ribbon(tmp_path, mo
     pp.mkdir(parents=True)
     (pp / "launchpad.html").write_text(html, encoding="utf-8")
     publish_vendor_files(pp)
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
     try:
         with sync_playwright() as p:
             try:

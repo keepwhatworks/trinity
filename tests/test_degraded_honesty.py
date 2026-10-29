@@ -170,13 +170,13 @@ class TestEmbeddingBackendHonesty:
 
         monkeypatch.setattr(hc, "_check_embedding_backend", hc._check_embedding_backend)
         monkeypatch.setattr(
-            "trinity_local.embeddings.get_backend", lambda: "tfidf", raising=False
+            "trinity_local.embeddings.get_backend", lambda: "tfidf"
         )
         monkeypatch.setattr(
-            "trinity_local.embeddings.is_available", lambda: False, raising=False
+            "trinity_local.embeddings.is_available", lambda: False
         )
         monkeypatch.setattr(
-            "trinity_local.embeddings.mlx_actually_loaded", lambda: False, raising=False
+            "trinity_local.embeddings.mlx_actually_loaded", lambda: False
         )
 
         result = hc._check_embedding_backend()
@@ -191,13 +191,13 @@ class TestEmbeddingBackendHonesty:
         import trinity_local.health_checks as hc
 
         monkeypatch.setattr(
-            "trinity_local.embeddings.get_backend", lambda: "mlx", raising=False
+            "trinity_local.embeddings.get_backend", lambda: "mlx"
         )
         monkeypatch.setattr(
-            "trinity_local.embeddings.is_available", lambda: True, raising=False
+            "trinity_local.embeddings.is_available", lambda: True
         )
         monkeypatch.setattr(
-            "trinity_local.embeddings.mlx_actually_loaded", lambda: False, raising=False
+            "trinity_local.embeddings.mlx_actually_loaded", lambda: False
         )
         # The [mlx] extras ARE installed (a dep imports) but the model isn't
         # downloaded — find_spec must SEE a dep so the check picks "download the
@@ -232,13 +232,13 @@ class TestEmbeddingBackendHonesty:
         import trinity_local.health_checks as hc
 
         monkeypatch.setattr(
-            "trinity_local.embeddings.get_backend", lambda: "mlx", raising=False
+            "trinity_local.embeddings.get_backend", lambda: "mlx"
         )
         monkeypatch.setattr(
-            "trinity_local.embeddings.is_available", lambda: True, raising=False
+            "trinity_local.embeddings.is_available", lambda: True
         )
         monkeypatch.setattr(
-            "trinity_local.embeddings.mlx_actually_loaded", lambda: False, raising=False
+            "trinity_local.embeddings.mlx_actually_loaded", lambda: False
         )
         # NO embedder deps installed → find_spec returns None for them.
         monkeypatch.setattr(importlib.util, "find_spec", lambda name, *a, **k: None)
@@ -255,13 +255,13 @@ class TestEmbeddingBackendHonesty:
         import trinity_local.health_checks as hc
 
         monkeypatch.setattr(
-            "trinity_local.embeddings.get_backend", lambda: "mlx", raising=False
+            "trinity_local.embeddings.get_backend", lambda: "mlx"
         )
         monkeypatch.setattr(
-            "trinity_local.embeddings.is_available", lambda: True, raising=False
+            "trinity_local.embeddings.is_available", lambda: True
         )
         monkeypatch.setattr(
-            "trinity_local.embeddings.mlx_actually_loaded", lambda: True, raising=False
+            "trinity_local.embeddings.mlx_actually_loaded", lambda: True
         )
 
         result = hc._check_embedding_backend()

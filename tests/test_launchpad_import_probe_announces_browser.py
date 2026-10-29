@@ -31,24 +31,15 @@ REBUILD → green (byte-identical bundle).
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import json
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
 REPO = Path(__file__).resolve().parents[1]
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _live_region_text(page):
@@ -81,7 +72,7 @@ def test_import_probe_and_import_announce_to_screen_reader(tmp_path, monkeypatch
     pp.mkdir(parents=True)
     (pp / "stats.html").write_text(html, encoding="utf-8")
     publish_vendor_files(pp)
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
 
     # A dispatcher that answers BOTH the dry-run probe (2 detected sources) and the
     # full import (ok) so we can drive Probe → Import end-to-end.

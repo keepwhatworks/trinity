@@ -30,13 +30,11 @@ Slow + browser; skips without Playwright/chromium.
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import json
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 REPO = Path(__file__).resolve().parents[1]
 TOKEN = "launch_terminalmember"
@@ -63,13 +61,6 @@ def test_terminal_member_normalization_is_wired():
 
 
 pytestmark_browser = [pytest.mark.slow, pytest.mark.browser]
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _write_sidecar(status_dir: Path, payload: dict) -> None:
@@ -143,7 +134,7 @@ def test_terminal_council_has_no_stale_running_member(
     }
     _write_sidecar(status_dir, base_status)
 
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
     try:
         with sync_playwright() as p:
             try:

@@ -5,7 +5,7 @@ The memory viewer is the retention surface — how a user explores their lens. I
 content pane starts as `<div class="empty">Loading…</div>` and the inline JS
 replaces it based on `?file=<name>`, dispatching to a different renderer per file
 KIND: markdown (core/lens/vocabulary), the d3 topology graph (topics.json), and
-the picks/routing Reader tables. A regression in any one renderer (the topology
+the routing Reader table. A regression in any one renderer (the topology
 build throwing, a markdown view never replacing the placeholder, the routing table
 not building rows) strands the user on "Loading…" or a blank pane — and the
 EXISTING memory-viewer browser tests miss it: test_memory_viewer_xss_browser
@@ -16,9 +16,10 @@ home.
 
 This drives all six over the file:// substrate on a PII-free seeded home (the
 36-surface gate's synthetic seeder) and asserts the content KIND per file:
-markdown text for core/lens/vocabulary, an SVG node graph for topics.json, table
-rows for routing.json, and a non-empty Reader for picks.json — every view free of
-"Loading…" and console errors.
+markdown text for core/lens/vocabulary, an SVG node graph for topics.json and table
+rows for routing.json — every view free of "Loading…" and console errors — and that
+a seeded picks.json opens as an unknown memory, not a Reader (it left the viewer
+2026-10-26).
 
 Mutation-proven: break a renderer (e.g. make the topology builder a no-op, or a
 markdown view never clear the placeholder) → that view's distinctive-content
@@ -54,8 +55,10 @@ _VIEWS = [
     ("lens.md", "markdown"),
     ("topics.json", "topology"),
     ("vocabulary.md", "markdown"),
-    ("picks.json", "reader"),
     ("routing.json", "table"),
+    # picks.json left the viewer 2026-10-26 (amd_0612): a direct link is an unknown
+    # memory, never a Reader of the frozen tally. Re-adding the view reds here.
+    ("picks.json", "retired"),
 ]
 
 
@@ -97,6 +100,7 @@ def test_every_memory_file_view_renders_its_content(tmp_path, monkeypatch):
                 # false pass; caught by mutation during authoring).
                 svg_nodes = len(page.query_selector_all("#content svg circle"))
                 table_rows = len(page.query_selector_all("#content table tr"))
+                reader_toggle = len(page.query_selector_all("#content .view-toggle"))
                 page.close()
 
                 # Universal: never stranded on the placeholder, never a JS error.
@@ -117,9 +121,9 @@ def test_every_memory_file_view_renders_its_content(tmp_path, monkeypatch):
                 elif kind == "table":
                     if table_rows == 0:
                         failures.append(f"{fname}: routing Reader rendered NO table rows")
-                elif kind == "reader":
-                    if len(ctext) < 60:
-                        failures.append(f"{fname}: picks Reader rendered no content ({len(ctext)} chars)")
+                elif kind == "retired":
+                    if "Unknown memory" not in ctext or reader_toggle:
+                        failures.append(f"{fname}: still renders as a memory view, not an unknown file: {ctext[:120]!r}")
         finally:
             browser.close()
 

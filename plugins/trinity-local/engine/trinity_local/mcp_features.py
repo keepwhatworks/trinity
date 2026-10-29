@@ -1,5 +1,5 @@
 """MCP protocol features beyond tools/resources/sampling: structured
-**logging**, **progress** notifications, **roots** discovery, and
+**logging**, **progress** notifications and
 **elicitation** — all host-side, all best-effort, all safe to call from a
 worker thread.
 
@@ -89,7 +89,7 @@ def _run_on_loop(coro, loop, timeout: float = 5.0):
     """Schedule a coroutine onto the captured loop, swallow every failure. From a worker
     thread: wait up to `timeout` for the result. On the loop's own thread: schedule it and
     return None, since waiting there blocks the very loop that must run it. That wait cost
-    5.0 s per log, progress and roots call, measured (coherence review 2026-10-15)."""
+    5.0 s per log and progress call, measured (coherence review 2026-10-15)."""
     if loop is None:
         coro.close()
         return None
@@ -158,29 +158,6 @@ def mcp_progress(
     )
     _run_on_loop(coro, loop)
     return True
-
-
-# ─── Roots (roots/list) ─────────────────────────────────────────────
-
-
-def discover_roots() -> list[str]:
-    """Ask the client for its filesystem roots (roots/list). Returns a list of
-    local paths (file:// URIs resolved to paths), or [] when the client didn't
-    advertise roots or none are exposed. Safe from worker threads."""
-    session, loop = _session_and_loop()
-    if session is None:
-        return []
-    result = _run_on_loop(session.list_roots(), loop)
-    if result is None:
-        return []
-    paths: list[str] = []
-    for root in getattr(result, "roots", []) or []:
-        uri = str(getattr(root, "uri", "") or "")
-        if uri.startswith("file://"):
-            paths.append(uri[len("file://"):])
-        elif uri:
-            paths.append(uri)
-    return paths
 
 
 # ─── Elicitation (elicitation/create) ───────────────────────────────

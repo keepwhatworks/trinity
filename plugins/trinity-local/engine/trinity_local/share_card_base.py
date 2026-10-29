@@ -25,11 +25,12 @@ def require_pil() -> bool:
         import PIL  # noqa: F401
         return True
     except ImportError:
-        print("share cards need the [share] extra:  pip install 'trinity-local[share]'")
+        print("share cards need the [share] extra:  pip install 'trinity-local[share]'", file=sys.stderr)
         return False
 
 
 import re
+import sys
 
 
 # OG card shape — 1200×630 renders cleanly on Twitter / LinkedIn / Discord
@@ -44,8 +45,6 @@ COLOR_BG = (234, 236, 239)        # cool mist  (#eaecef)
 COLOR_INK = (47, 54, 60)          # cool charcoal for headlines (#2f363c)
 COLOR_MUTED = (91, 100, 107)      # muted ink for body (#5b646b)
 COLOR_ACCENT = (79, 144, 149)     # muted teal for accents (#4f9095)
-COLOR_SURFACE = (250, 251, 252)   # near-white card surface (#fafbfc)
-COLOR_BORDER = (221, 225, 230)    # soft hairline (#dde1e6)
 
 # Public landing URL + footer tagline for share artifacts. The domain
 # constant lives in facts.py (#131) so doc surfaces and Python code
@@ -429,27 +428,6 @@ def draw_wordmark(draw, *, font=None, margin: int = 60) -> None:
     die_y = text_y + (height - die) // 2  # vertically center the die on the text
     draw_die_mark(draw, text_x - die - 9, die_y, die)
     draw.text((text_x, text_y), FOOTER_TAGLINE, font=font, fill=COLOR_MUTED)
-
-
-def draw_footer(draw, *, cta_block_top: int, margin: int = 60) -> None:
-    """Render the shared install CTA + landing URL + footer tagline.
-
-    Layout (anchored to cta_block_top):
-        cta_block_top:        "Install"
-        cta_block_top + 28:   LANDING_URL  (sage)
-        bottom-32:            FOOTER_TAGLINE  (right-aligned, muted)
-
-    Each card's body owns where `cta_block_top` lands; everything below
-    that is shared brand contract.
-    """
-    cta_label = load_font("regular", 14)
-    cta_url = load_font("bold", 22)
-
-    draw.text((margin, cta_block_top), "Install", font=cta_label, fill=COLOR_MUTED)
-    draw.text((margin, cta_block_top + 28), LANDING_URL,
-              font=cta_url, fill=COLOR_ACCENT)
-
-    draw_wordmark(draw, margin=margin)
 
 
 def save_png(img) -> bytes:

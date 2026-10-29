@@ -39,7 +39,6 @@ from .basins import Basin, basin_for_prompt, me_dir
 
 
 VALID_VALENCES = {"satisfaction", "regret", "unresolved", "correction", "cost"}
-VALID_HORIZONS = {"tactical", "strategic", "philosophical"}
 
 
 @dataclass

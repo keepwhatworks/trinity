@@ -46,6 +46,17 @@ def test_plugin_manifest_declares_commands_and_mcp_server():
     )
 
 
+def test_plugin_version_is_the_release_version():
+    """The plugin sat at 1.7.389 while pyproject moved to 1.7.407: the two manifests only
+    had to agree with each other. scripts/render_docs.py now writes pyproject's version
+    into both, and its --check fails on drift."""
+    import re
+
+    release = re.search(r'^version = "([^"]+)"', (REPO / "pyproject.toml").read_text(), re.M).group(1)
+    assert _json(PLUGIN / ".claude-plugin" / "plugin.json")["version"] == release, (
+        "plugin.json is not the release version; run scripts/render_docs.py")
+
+
 def test_mcp_server_points_at_the_bundled_launcher():
     mcp = _json(PLUGIN / ".mcp.json")
     server = mcp["mcpServers"]["trinity-local"]

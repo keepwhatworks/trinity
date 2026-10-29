@@ -104,7 +104,7 @@ def test_install_extension_persists_id_for_launchpad(isolated_home, monkeypatch,
     from trinity_local.commands.install import handle_install_extension
 
     monkeypatch.setattr(
-        "shutil.which", lambda name: f"/usr/local/bin/{name}"
+        "trinity_local.runtime_env.which_on_runtime_path", lambda name, **kw: f"/usr/local/bin/{name}"
     )
     # Avoid touching the real Native Messaging directories on macOS/Linux.
     monkeypatch.setattr(
@@ -150,11 +150,12 @@ def test_launchpad_runtime_js_emits_dispatch_contract():
     assert "native-host-unavailable" in js
     # Tier-2 shortcut branch is GONE — Chrome extension is the only
     # live dispatch path. Regression guard against accidental re-add.
-    # buildShortcutUrl() survives as a `return ''` no-op (callsites in
-    # launchpad_template + council_review still reference the function
-    # name; they pass '' into dispatch which ignores it).
+    # The buildShortcutUrl() no-op it left went 2026-10-27, with the
+    # template's triggerShortcut() else-branches that clicked its '' URL
+    # (an <a href=""> click reloads the page).
     assert "'shortcut'" not in js
     assert "shortcuts://run-shortcut" not in js
+    assert "buildShortcutUrl" not in js
     # Orphan `canUseShortcut()` getter must NOT be reintroduced — it
     # used to call a function that was deleted with the macOS Shortcut
     # tier, throwing ReferenceError every time anything read
@@ -236,13 +237,13 @@ def test_launch_council_dispatch_forwards_status_token():
         "providerNames": {}, "providerLabels": {},
     }
     html = render_launchpad_html(page_data=page_data)
-    # Find the launchCouncil() method body specifically — extensionAction
-    # appears in several methods (stop-council, render-me-card, etc.).
-    # The launchCouncil block can be located by the 'kind: \'launch-council\''
-    # marker plus the surrounding extensionAction.
+    # Find the launchCouncil() action specifically — dispatchAction() is
+    # called from several methods (stop-council, render-me-card, etc.).
+    # The launchCouncil action can be located by the 'kind: \'launch-council\''
+    # marker inside the object passed to dispatchAction.
     import re
     block_match = re.search(
-        r"extensionAction:\s*\{[^}]*kind:\s*'launch-council'[^}]*\}",
+        r"dispatchAction\(\{[^}]*kind:\s*'launch-council'[^}]*\}",
         html, re.DOTALL,
     )
     assert block_match, "launchCouncil's extensionAction payload not found"

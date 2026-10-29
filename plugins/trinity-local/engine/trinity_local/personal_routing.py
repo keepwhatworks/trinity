@@ -152,8 +152,7 @@ def aggregate_routing_table(councils: Iterable[dict[str, Any]]) -> dict[str, Any
         # the ENTIRE routing cheat-sheet card (every other healthy council lost),
         # exactly like the `overall`-coercion sibling below. Coerce both to a
         # clean str at the read boundary (the same `isinstance(...) else ...`
-        # guard lens_routing.compute_basin_routing already applies to its
-        # winner/task_text, so the two readers share one shape contract). A
+        # guard the retired per-basin tally applied to its winner/task_text). A
         # non-str task_type degrades to "general"; a non-str winner degrades to
         # "" (treated as no-winner, falsy).
         _raw_task_type = label.get("task_type") or c.get("task_type") or "general"

@@ -23,12 +23,10 @@ Slow + browser; skips without Playwright/chromium.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -42,19 +40,12 @@ def test_lens_build_failure_is_co_located_canary():
     assert "'restart-failed'" in src, "restartLensBuild no longer routes to a co-located failed state"
     # The failure path must NOT hand a failed lens-build result to the generic
     # dispatch handler (that surfaces in the council composer ribbon, not the card).
-    assert "onResult: (r) => this._resolveLensBuildAction(r, 'stop-failed')" in src, (
+    assert "this.dispatchAction({{ kind: 'lens-stop' }}, (r) => this._resolveLensBuildAction(r, 'stop-failed'))" in src, (
         "stopLensBuild failure no longer co-located — would route to the council ribbon"
     )
-    assert "onResult: (r) => this._resolveLensBuildAction(r, 'restart-failed')" in src, (
+    assert "this.dispatchAction({{ kind: 'lens-build' }}, (r) => this._resolveLensBuildAction(r, 'restart-failed'))" in src, (
         "restartLensBuild failure no longer co-located — would route to the council ribbon"
     )
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _render(tmp_path, building: bool):
@@ -73,7 +64,7 @@ def _render(tmp_path, building: bool):
     pp.mkdir(parents=True)
     (pp / "launchpad.html").write_text(render_launchpad_html(page_data=pd), encoding="utf-8")
     publish_vendor_files(pp)
-    return _serve(pp.parent)
+    return serve_directory(pp.parent)
 
 
 def _drive_failure(page, port, click_text):
@@ -181,7 +172,7 @@ def _render_complete_empty(tmp_path):
     pp.mkdir(parents=True)
     (pp / "launchpad.html").write_text(render_launchpad_html(page_data=pd), encoding="utf-8")
     publish_vendor_files(pp)
-    return _serve(pp.parent)
+    return serve_directory(pp.parent)
 
 
 @pytest.mark.slow
@@ -286,7 +277,7 @@ def _render_failed_progress(tmp_path, exc):
     pp.mkdir(parents=True)
     (pp / "launchpad.html").write_text(render_launchpad_html(page_data=pd), encoding="utf-8")
     publish_vendor_files(pp)
-    return _serve(pp.parent)
+    return serve_directory(pp.parent)
 
 
 @pytest.mark.slow

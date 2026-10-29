@@ -906,16 +906,6 @@ def parse_cowork_session(meta_path: Path) -> SessionRecord | None:
     )
 
 
-def iter_cowork_sessions(root: Path | None = None) -> Iterator[SessionRecord]:
-    root = root or (Path.home() / "Library" / "Application Support" / "Claude" / "local-agent-mode-sessions")
-    if not root.exists():
-        return
-    for meta_path in sorted(root.rglob("local_*.json")):
-        session = _safe_parse(parse_cowork_session, meta_path)
-        if session is not None:
-            yield session
-
-
 # Provider names appearing as a SPEAKER label — the tell that the founder pasted one
 # model's answer in to compare across providers / get feedback (the cross-provider
 # workflow). Distinguished from a genuine QUESTION about a model by the speaker-form

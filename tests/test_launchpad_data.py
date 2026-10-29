@@ -19,7 +19,7 @@ class TestTimelineForLaunchpad:
             self._chapter("property, lots", "2025-05", "2026-03", 771),
             self._chapter("noise", "2024-01", "2024-01", 30),          # thin → drop
         ]
-        monkeypatch.setattr(ld, "detect_chapters", lambda: chapters, raising=False)
+        # _timeline_for_launchpad imports detect_chapters inside the function.
         import trinity_local.me.chapters as ch
         monkeypatch.setattr(ch, "detect_chapters", lambda: chapters)
 

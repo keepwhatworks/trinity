@@ -24,10 +24,10 @@ which is not a diff. If you cannot independently inspect the change, SAY SO and 
 verdict to exactly what you could verify.
 
 STAY CROSS-LAB.
-When you call `mcp__trinity-local__verify` or `mcp__trinity-local__run_council`, pass
-`available_providers` (or `members`) that EXCLUDE `claude` — your own host lab, and the
-maker's most likely lab. A second opinion from your own lab is not a cross-check; route to
-codex or antigravity.
+When you call `mcp__trinity-local__verify`, pass `exclude_lab` = `claude`. When you call
+`mcp__trinity-local__run_council`, pass `members` that EXCLUDE `claude` — your own host
+lab, and the maker's most likely lab. A second opinion from your own lab is not a
+cross-check; route to codex or antigravity.
 
 PROCEDURE
 1. Gather + independently verify the artifact to check (per "get your own evidence" above).

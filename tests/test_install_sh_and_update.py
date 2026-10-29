@@ -261,6 +261,7 @@ def test_update_skill_dir_prefers_canonical_when_present(tmp_path, monkeypatch):
 
     # Patch Path.home to point at tmp_path.
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    monkeypatch.delenv("TRINITY_SKILL_DIR", raising=False)  # it outranks both locations
     # Seed both the canonical location and the legacy location,
     # with .git/ markers so the canonical-preferred check fires.
     canonical = tmp_path / ".trinity" / "code"
@@ -284,6 +285,7 @@ def test_update_skill_dir_falls_back_to_legacy(tmp_path, monkeypatch):
     from trinity_local.commands.update import _skill_dir
 
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    monkeypatch.delenv("TRINITY_SKILL_DIR", raising=False)
     # NO ~/.trinity/code/.git — only legacy.
     legacy = tmp_path / ".claude" / "skills" / "trinity"
     legacy.mkdir(parents=True)
@@ -291,6 +293,22 @@ def test_update_skill_dir_falls_back_to_legacy(tmp_path, monkeypatch):
 
     resolved = _skill_dir(None)
     assert resolved == legacy
+
+
+def test_skill_dir_env_is_where_update_pulls_and_status_looks(tmp_path, monkeypatch):
+    """install.sh clones to $TRINITY_SKILL_DIR. update used to ignore it while
+    status's skill_freshness read it, so the two looked at different checkouts."""
+    from trinity_local.commands.update import _skill_dir
+    from trinity_local.health_checks import _check_skill_freshness
+
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    canonical = tmp_path / ".trinity" / "code"
+    (canonical / ".git").mkdir(parents=True)
+    custom = tmp_path / "elsewhere" / "trinity"
+    custom.mkdir(parents=True)
+    monkeypatch.setenv("TRINITY_SKILL_DIR", str(custom))
+    assert _skill_dir(None) == custom
+    assert str(custom) in _check_skill_freshness().detail
 
 
 class TestUpdateDepsFlag:
@@ -624,3 +642,58 @@ def test_install_sh_uses_a_venv_for_deps_before_pip_install():
         "the venv repoint must precede wrapper writing so the wrappers bake the venv "
         "interpreter (which has the deps), not a bare system python."
     )
+
+
+class TestSkillAliasAdvice:
+    """install.sh's skill-alias block prints shell advice when it cannot symlink the
+    legacy ~/.claude/skills/trinity path. The Windows Git Bash copy fallback said
+    "re-run 'update' to refresh" it, but update pulls only the canonical checkout and a
+    re-run leaves a real directory alone, so nothing refreshed the copy; and both advice
+    lines printed bare paths. This runs the script's own block under bash with a home
+    path a shell would act on, then pastes the advice it printed."""
+
+    HOSTILE = "p $(touch PWNED) `touch PWNED2` q"
+
+    def _run_block(self, tmp_path, preamble=""):
+        text = INSTALL_SH.read_text(encoding="utf-8")
+        start = text.index("# ─── 2b. Skill back-compat symlink")
+        end = text.index("# ─── 3. Install CLI wrappers")
+        script = ("set -u\nok() { printf '  ok %s\\n' \"$1\"; }\n"
+                  "warn() { printf '  warn %s\\n' \"$1\" >&2; }\n" + preamble + text[start:end])
+        home = tmp_path / self.HOSTILE
+        canonical, legacy = home / ".trinity" / "code", home / ".claude" / "skills" / "trinity"
+        canonical.mkdir(parents=True)
+        (canonical / "SKILL.md").write_text("v1")
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        env = {"PATH": "/usr/bin:/bin", "TRINITY_SKILL_DIR": str(canonical),
+               "TRINITY_SKILL_LEGACY": str(legacy)}
+        return script, env, cwd, canonical, legacy
+
+    @staticmethod
+    def _advice(stderr: str, after: str) -> str:
+        lines = [l.split("warn", 1)[1].strip() for l in stderr.splitlines() if "warn" in l]
+        return lines[[i for i, l in enumerate(lines) if after in l][0] + 1]
+
+    def test_the_copy_fallback_names_a_command_that_refreshes_the_copy(self, tmp_path):
+        script, env, cwd, canonical, legacy = self._run_block(tmp_path, preamble="ln() { return 1; }\n")
+        r = subprocess.run(["bash", "-c", script], cwd=cwd, env=env, capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        assert (legacy / "SKILL.md").read_text() == "v1" and not legacy.is_symlink()
+        assert "re-run 'update'" not in r.stderr
+        advice = self._advice(r.stderr, "does not follow updates")
+        (canonical / "SKILL.md").write_text("v2")   # an update lands in the canonical checkout
+        subprocess.run(["bash", "-c", advice], cwd=cwd, env=env, check=True)
+        assert (legacy / "SKILL.md").read_text() == "v2"
+        assert sorted(p.name for p in cwd.iterdir()) == [], "the pasted advice ran a command"
+
+    def test_the_kept_directory_advice_links_it(self, tmp_path):
+        script, env, cwd, canonical, legacy = self._run_block(tmp_path)
+        legacy.mkdir(parents=True)
+        (legacy / "SKILL.md").write_text("old")
+        r = subprocess.run(["bash", "-c", script], cwd=cwd, env=env, capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        advice = self._advice(r.stderr, "Migrate manually")
+        subprocess.run(["bash", "-c", advice], cwd=cwd, env=env, check=True)
+        assert legacy.is_symlink() and legacy.resolve() == canonical.resolve()
+        assert sorted(p.name for p in cwd.iterdir()) == [], "the pasted advice ran a command"

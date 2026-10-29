@@ -79,7 +79,6 @@ class TestKicksFireOnFirstToolCall:
         monkeypatch.setattr("trinity_local.cold_start.maybe_kick_lens_refresh", lambda: refresh.append(1))
         monkeypatch.setattr("trinity_local.stale_pass.maybe_kick_stale_pass", lambda **k: stale.append(1))
         monkeypatch.setattr("trinity_local.embedder_wizard.maybe_offer_embedder_download", lambda: embedder.append(1))
-        monkeypatch.setattr("trinity_local.mcp_features.discover_roots", lambda: [])
 
         monkeypatch.setattr(mcp_server, "_lens_kicks_fired", False)
         monkeypatch.setattr(mcp_server, "_recurring_kicks_last", 0.0)
@@ -163,7 +162,10 @@ class TestBuildThreadInheritsSamplingSession:
         )
         try:
             getattr(cold_start, kick_name)()
-            assert done.wait(timeout=5.0), "build thread never ran"
+            # wait() returns the moment the thread runs, so a generous bound costs nothing
+            # when the code works. 5 s failed once while a full suite loaded the machine
+            # (2026-10-27): the thread's imports alone took longer.
+            assert done.wait(timeout=60.0), "build thread never ran"
         finally:
             mcp_sampling._active.reset(token)
         return seen.get("sampling")

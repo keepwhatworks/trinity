@@ -1861,13 +1861,6 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
         </template>
       </section>
 
-      <!-- VALUE TIER 2 — "Your model cheat-sheet". The routing patterns
-           reframed from a dense 6-column table into a glanceable list that
-           answers "which model should I use for what". The underlying
-           <table class="cortex-rules-table"> + first-cell picks.json link +
-           .cortex-topology-chip are preserved (smoke Surface 3 / 26 read
-           them); the dense Trust/Health/Why columns collapse into one
-           compact cell + tooltips so each row reads as a cheat-sheet line. -->
       <!-- The "model cheat-sheet" card lived here: one row per basin with the
            model Trinity recommended, its margin, and a routes/advisory gate.
            Removed 2026-08-11 with the router that produced it
@@ -2552,8 +2545,8 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
       </section>
 
       <!-- Phase 4 dispatch banner — DEMOTED to the operational tier. Single
-           global banner that opens when a click hits tier 3 (no extension +
-           no Shortcut) or when the extension is present but install-extension
+           global banner that opens when a click finds no reachable extension
+           or when the extension is present but install-extension
            wasn't run. Dismissible; a failed click reopens it. -->
       <section
         class="card"
@@ -2657,7 +2650,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           <a class="memory-chip" href="../portal_pages/memory.html?file=vocabulary.md"
              style="display: block; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; text-decoration: none; color: inherit;">
             <code style="color: var(--accent-deep, #34666b); font-size: 13px;">vocabulary.md</code>
-            <span class="meta" style="display: block; font-size: 11px; margin-top: 2px;">linguistic · anchors / homonyms / synonyms</span>
+            <span class="meta" style="display: block; font-size: 11px; margin-top: 2px;">linguistic · anchors / homonyms</span>
           </a>
         </div>
       </section>
@@ -3284,7 +3277,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
         inExtensionPanel: !!window.__TRINITY_HOST_FETCH__,
         launchError: '',
         // Phase 4 — single global banner that opens when dispatch hits
-        // tier 3 (no extension + no Shortcut) or when the extension is
+        // no reachable extension or when the extension is
         // present but install-extension wasn't run (`native-host-unavailable`).
         // Per codex's verdict: ONE inline banner, not per-button replacement.
         // Buttons stay clickable; failed click reopens the banner if dismissed.
@@ -3413,7 +3406,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
         // Resolved server-side from topics.json (tick #38). Empty
         // when no consolidation; chips fall back to "Open basin <id>".
         topologyBasinLabels: pageData.topologyBasinLabels || {{}},
-        // Used by .lens-basin-chip + .cortex-topology-chip tooltips.
+        // Used by .lens-basin-chip tooltips.
         basinHoverLabel(bid) {{
           if (!bid) return '';
           const terms = this.topologyBasinLabels[bid];
@@ -4141,40 +4134,23 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           if (!issue || !issue.command) return;
           this.copyText(issue.command, 'health-' + issue.name + issue.status);
         }},
-        formatScore(score, unit) {{
-          if (score === null || score === undefined) {{
-            return '—';
+        dispatchAction(extensionAction, onResult) {{
+          // The runtime injects __TRINITY_DISPATCH__ on every page. If it is ever
+          // missing, give the caller's own result handler the same no-dispatcher
+          // failure the runtime reports, so the control that was clicked shows
+          // the failure instead of reloading the page or claiming success.
+          const dispatcher = window.__TRINITY_DISPATCH__;
+          if (dispatcher) {{
+            dispatcher.dispatch({{ extensionAction, onResult }});
+          }} else {{
+            onResult({{ tier: 'install-prompt', ok: false, reason: 'no-dispatcher' }});
           }}
-          if (unit.includes('score')) {{
-            return score.toFixed(1);
-          }}
-          if (unit.includes('%')) {{
-            return score.toFixed(1);
-          }}
-          return score.toFixed(1);
-        }},
-        thinkingLevel(provider) {{
-          // Surface the variant tag the reference-eval source attaches to a
-          // model name, e.g. "Adaptive Reasoning, Max Effort" or "xhigh" —
-          // the bit in parens after the display name. Empty if no variant.
-          const meta = this.referenceEvalsMeta && this.referenceEvalsMeta.providers;
-          if (!meta || !meta[provider] || !meta[provider].name) return '';
-          const m = String(meta[provider].name).match(/\\(([^)]+)\\)\\s*$/);
-          return m ? m[1] : '';
-        }},
-        triggerShortcut(url) {{
-          const link = document.createElement('a');
-          link.href = url;
-          link.rel = 'noreferrer';
-          document.body.appendChild(link);
-          link.click();
-          link.remove();
         }},
         handleDispatchResult(result) {{
           // Phase 4: surface dispatch-tier failures inline. The dispatcher
-          // returns {{tier: 'extension'|'shortcut'|'install-prompt', ok, response, reason}}.
+          // returns {{tier: 'extension'|'install-prompt', ok, response, reason}}.
           // We act on three cases:
-          //   - tier === 'install-prompt': show the banner (neither path works)
+          //   - tier === 'install-prompt': show the banner (no reachable extension)
           //   - tier === 'extension' && reason === 'native-host-unavailable':
           //       extension found but `install-extension` wasn't run — show
           //       the install-extension hint specifically, not the generic
@@ -4253,8 +4229,8 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           }}, delay);
         }},
         triggerSettingsAction(entry) {{
-          // Settings actions ship as {{shortcutUrl, extensionKind, cliCommand}}
-          // and apply through the Chrome extension's Native Messaging. But these
+          // Settings actions ship as {{extensionKind, cliCommand}} and apply
+          // through the Chrome extension's Native Messaging. But these
           // are PRIVACY toggles the modal promises you can "toggle off anytime",
           // and the dispatcher is ALWAYS present (launchpad_runtime.py injects it
           // whether or not the extension is installed) — so when the extension
@@ -4263,31 +4239,19 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           // extension" banner. For a privacy opt-out, "install our browser
           // extension to turn telemetry OFF" is backwards. Hand the user the
           // equivalent CLI command instead (copied) — see fallbackToSettingsCli.
-          const dispatcher = window.__TRINITY_DISPATCH__;
-          if (dispatcher && entry?.extensionKind) {{
-            dispatcher.dispatch({{
-              extensionAction: {{ kind: entry.extensionKind }},
-              onResult: (r) => {{
-                if (r && r.ok) {{
-                  // The extension applied it — reflect the new server state.
-                  this.settingsOpen = false;
-                  this.scheduleLaunchpadReload();
-                }} else if (entry.cliCommand) {{
-                  // No reachable extension — offer the CLI command, don't
-                  // dead-end a privacy toggle on the install-extension banner.
-                  this.fallbackToSettingsCli(entry);
-                }} else {{
-                  this.handleDispatchResult(r);
-                }}
-              }},
-            }});
-            return;
-          }}
-          // No dispatcher object at all (defensive) — same CLI fallback.
-          if (entry?.cliCommand) {{ this.fallbackToSettingsCli(entry); return; }}
-          this.settingsOpen = false;
-          this.triggerShortcut(entry?.shortcutUrl || entry);
-          this.scheduleLaunchpadReload();
+          this.dispatchAction({{ kind: entry.extensionKind }}, (r) => {{
+            if (r && r.ok) {{
+              // The extension applied it — reflect the new server state.
+              this.settingsOpen = false;
+              this.scheduleLaunchpadReload();
+            }} else if (entry.cliCommand) {{
+              // No reachable extension — offer the CLI command, don't
+              // dead-end a privacy toggle on the install-extension banner.
+              this.fallbackToSettingsCli(entry);
+            }} else {{
+              this.handleDispatchResult(r);
+            }}
+          }});
         }},
         fallbackToSettingsCli(entry) {{
           // Keep the settings modal open + copy the CLI command so the ✓
@@ -4326,41 +4290,19 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           // Immediate ACK — the poller finalizes to 'canceled' once the host
           // writes it, but until then the button must show the click landed.
           this.stopRequested = true;
-          const payload = {{
-            name: 'stop_council',
-            args: {{
-              status_token: this.operation.statusToken,
-            }},
-            metadata: {{
-              kind: 'stop_council',
-              source: 'launchpad',
-            }},
-          }};
-          // Phase 4b (council_bf1ab3f4dd70f75e residual-drift fix): route
-          // through the dispatcher so Stop works cross-platform. Extension
-          // tier fires `stop-council --status-token <X>`; macOS Shortcut
-          // tier keeps the run_command payload as the legacy fallback.
-          const dispatcher = window.__TRINITY_DISPATCH__;
-          if (dispatcher) {{
-            dispatcher.dispatch({{
-              extensionAction: {{
-                kind: 'stop-council',
-                status_token: this.operation.statusToken,
-              }},
-              shortcutUrl: buildShortcutUrl(payload),
-              // A STOP failure must NOT route through handleDispatchResult: that
-              // method's rollback (clearOperation) is the LAUNCH semantics — it
-              // drops the optimistic operation that never really started. On a
-              // failed STOP the council is REAL and STILL RUNNING, so clearing it
-              // makes the spinner + "Open/Stop council" vanish and silently reads
-              // as "stopped" — the council keeps running on the backend with the
-              // UI claiming nothing's there (founder: "clicked Stop, the whole
-              // council display disappeared, but it never actually stopped").
-              onResult: (r) => this.handleStopResult(r),
-            }});
-          }} else {{
-            this.triggerShortcut(buildShortcutUrl(payload));
-          }}
+          // The extension fires `stop-council --status-token <X>`.
+          // A STOP failure must NOT route through handleDispatchResult: that
+          // method's rollback (clearOperation) is the LAUNCH semantics — it
+          // drops the optimistic operation that never really started. On a
+          // failed STOP the council is REAL and STILL RUNNING, so clearing it
+          // makes the spinner + "Open/Stop council" vanish and silently reads
+          // as "stopped" — the council keeps running on the backend with the
+          // UI claiming nothing's there (founder: "clicked Stop, the whole
+          // council display disappeared, but it never actually stopped").
+          this.dispatchAction(
+            {{ kind: 'stop-council', status_token: this.operation.statusToken }},
+            (r) => this.handleStopResult(r),
+          );
         }},
         handleStopResult(result) {{
           // The STOP-specific result handler (NOT handleDispatchResult — that
@@ -4536,23 +4478,6 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           // dispatch failure (stuck-launch rollback, 2026-05-26).
           this.pendingPrompt = prompt;
           this.prompt = '';
-          const payload = {{
-            name: 'launch_council',
-            args: {{
-              task: prompt,
-              goal: pageData.defaultGoal,
-              members: pageData.defaultMembers,
-              primary_provider: pageData.defaultPrimaryProvider,
-              cwd: '.',
-              status_token: statusToken,
-              notify: true,
-              open_browser: false,
-            }},
-            metadata: {{
-              kind: 'launch_council',
-              source: 'launchpad',
-            }},
-          }};
           this.beginOperation({{
             kind: 'council',
             statusToken,
@@ -4564,52 +4489,31 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           // focus onto the freshly-rendered "Open council page" / "Stop council"
           // controls instead (WCAG 2.4.3).
           this._focusOperationActions();
-          // Phase 4: route through window.__TRINITY_DISPATCH__ which tries
-          // the Chrome extension first, falls back to the macOS Shortcut,
-          // and surfaces the install banner if neither is available. The
-          // `extensionAction` shape matches capture_host's ACTION_ALLOWLIST
-          // (kind=launch-council, task=…); `shortcutUrl` is the existing
-          // path so macOS users keep working unchanged.
-          const dispatcher = window.__TRINITY_DISPATCH__;
-          if (dispatcher) {{
-            dispatcher.dispatch({{
-              extensionAction: {{
-                kind: 'launch-council',
-                task: prompt,
-                goal: pageData.defaultGoal,
-                primary_provider: pageData.defaultPrimaryProvider,
-                // Forward the launchpad-generated status_token so the
-                // CLI writes its status file to the SAME path the
-                // launchpad is already polling. Without this, the CLI
-                // generates its own bundle_<id> and the launchpad's
-                // poll for launch_<token> 404s forever — Council card
-                // sticks on "QUEUED" even though the council finished.
-                // The capture-host allowlist + CLI flag already exist;
-                // this just wires the launchpad side. Bug found 2026-05-26
-                // via real-Chrome dogfood from claude-in-chrome MCP.
-                status_token: statusToken,
-              }},
-              shortcutUrl: buildShortcutUrl(payload),
-              onResult: (r) => this.handleDispatchResult(r),
-            }});
-          }} else {{
-            this.triggerShortcut(buildShortcutUrl(payload));
-          }}
+          // Route through the Chrome extension; the install banner shows when
+          // it is not reachable. The action shape matches capture_host's
+          // ACTION_ALLOWLIST (kind=launch-council, task=…).
+          this.dispatchAction({{
+            kind: 'launch-council',
+            task: prompt,
+            goal: pageData.defaultGoal,
+            primary_provider: pageData.defaultPrimaryProvider,
+            // Forward the launchpad-generated status_token so the
+            // CLI writes its status file to the SAME path the
+            // launchpad is already polling. Without this, the CLI
+            // generates its own bundle_<id> and the launchpad's
+            // poll for launch_<token> 404s forever — Council card
+            // sticks on "QUEUED" even though the council finished.
+            // The capture-host allowlist + CLI flag already exist;
+            // this just wires the launchpad side. Bug found 2026-05-26
+            // via real-Chrome dogfood from claude-in-chrome MCP.
+            status_token: statusToken,
+          }}, (r) => this.handleDispatchResult(r));
         }},
         renderMeCard() {{
           if (this.busy || this.meCardStatus === 'rendering') return;
           // Render the strongest lens as a PNG + open it. Card is the
-          // spec-v1 "social object". Phase 4b closes the last residual-
-          // drift gap: extension tier fires `me-card --open` (the CLI
-          // grew an --open flag so the host can't shell-chain); macOS
-          // Shortcut tier keeps the run_command payload as fallback.
-          const out = '~/.trinity/share/me_card.png';
-          const command = `trinity-local me-card --out ${{out}} && open ${{out}}`;
-          const payload = {{
-            name: 'run_command',
-            args: {{ command }},
-            metadata: {{ kind: 'launchpad_me_card', source: 'launchpad' }},
-          }};
+          // spec-v1 "social object". The extension fires `me-card --open`
+          // (the CLI grew an --open flag so the host can't shell-chain).
           // HONEST feedback: a PNG render is a deferred, fail-able op. Show a
           // PENDING "Rendering…" cue (NOT an optimistic "✓ Rendered — opening",
           // which lied when the render failed) and resolve to done/error via a
@@ -4617,21 +4521,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           // the unrelated council-launch ribbon that handleDispatchResult uses.
           this.meCardStatus = 'rendering';
           this.meCardError = '';
-          const dispatcher = window.__TRINITY_DISPATCH__;
-          if (dispatcher) {{
-            dispatcher.dispatch({{
-              extensionAction: {{ kind: 'render-me-card' }},
-              shortcutUrl: buildShortcutUrl(payload),
-              onResult: (r) => this.handleMeCardResult(r),
-            }});
-          }} else {{
-            // No dispatcher (file:// without the extension): the Shortcut tier
-            // can't report back, so optimistically mark done — the macOS
-            // Shortcut opens the PNG itself.
-            this.triggerShortcut(buildShortcutUrl(payload));
-            this.meCardStatus = 'done';
-            setTimeout(() => {{ if (this.meCardStatus === 'done') this.meCardStatus = 'idle'; }}, 2400);
-          }}
+          this.dispatchAction({{ kind: 'render-me-card' }}, (r) => this.handleMeCardResult(r));
         }},
         handleMeCardResult(r) {{
           // render-me-card is a discrete, fail-able op with its OWN co-located
@@ -4661,17 +4551,6 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           // ingest-recent — the same passive cursor-based path MCP `ask`
           // hits. status-token guard removed since ingest-recent doesn't
           // write to ~/.trinity/portal_pages/status/.
-          const command = `trinity-local ingest-recent`;
-          const payload = {{
-            name: 'run_command',
-            args: {{
-              command,
-            }},
-            metadata: {{
-              kind: 'launchpad_ingest_once',
-              source: 'launchpad',
-            }},
-          }};
           this.beginOperation({{
             kind: 'ingest',
             statusToken,
@@ -4682,21 +4561,9 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           // otherwise fall to <body>. Land the keyboard user on the ingest
           // status region's action (WCAG 2.4.3, same as launchCouncil).
           this._focusOperationActions();
-          // Phase 4: Same routing as launchCouncil — extension first,
-          // then Shortcut, then install prompt. The `ingest-recent`
-          // allowlist entry replaces the run_command/watch-once payload
-          // (the extension surface is intentionally narrower than the
-          // Shortcut bridge — the host doesn't run arbitrary commands).
-          const dispatcher = window.__TRINITY_DISPATCH__;
-          if (dispatcher) {{
-            dispatcher.dispatch({{
-              extensionAction: {{ kind: 'ingest-recent' }},
-              shortcutUrl: buildShortcutUrl(payload),
-              onResult: (r) => this.handleIngestResult(r),
-            }});
-          }} else {{
-            this.triggerShortcut(buildShortcutUrl(payload));
-          }}
+          // Same routing as launchCouncil. The host runs only allowlisted
+          // actions (`ingest-recent`), never an arbitrary command.
+          this.dispatchAction({{ kind: 'ingest-recent' }}, (r) => this.handleIngestResult(r));
         }},
         handleIngestResult(r) {{
           // ingest-recent is FIRE-AND-FORGET: the host runs the bare command and
@@ -4777,30 +4644,14 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           if (this.lensBuildAction !== 'idle' && this.lensBuildAction !== 'stop-failed' && this.lensBuildAction !== 'restart-failed') return;
           this.lensBuildAction = 'stopping';
           this.lensBuildError = '';
-          const dispatcher = window.__TRINITY_DISPATCH__;
-          const payload = {{ name: 'run_command', args: {{ command: 'trinity-local lens-stop' }} }};
-          if (dispatcher) {{
-            dispatcher.dispatch({{
-              extensionAction: {{ kind: 'lens-stop' }},
-              shortcutUrl: buildShortcutUrl(payload),
-              onResult: (r) => this._resolveLensBuildAction(r, 'stop-failed'),
-            }});
-          }} else {{ this.triggerShortcut(buildShortcutUrl(payload)); this._resolveLensBuildAction(null, 'stop-failed'); }}
+          this.dispatchAction({{ kind: 'lens-stop' }}, (r) => this._resolveLensBuildAction(r, 'stop-failed'));
         }},
         restartLensBuild() {{
           // #242(a) — re-kick the build (detached, like council-launch).
           if (this.lensBuildAction !== 'idle' && this.lensBuildAction !== 'stop-failed' && this.lensBuildAction !== 'restart-failed') return;
           this.lensBuildAction = 'restarting';
           this.lensBuildError = '';
-          const dispatcher = window.__TRINITY_DISPATCH__;
-          const payload = {{ name: 'run_command', args: {{ command: 'trinity-local lens --force' }} }};
-          if (dispatcher) {{
-            dispatcher.dispatch({{
-              extensionAction: {{ kind: 'lens-build' }},
-              shortcutUrl: buildShortcutUrl(payload),
-              onResult: (r) => this._resolveLensBuildAction(r, 'restart-failed'),
-            }});
-          }} else {{ this.triggerShortcut(buildShortcutUrl(payload)); this._resolveLensBuildAction(null, 'restart-failed'); }}
+          this.dispatchAction({{ kind: 'lens-build' }}, (r) => this._resolveLensBuildAction(r, 'restart-failed'));
         }},
         refreshMemory() {{
           // Council_1f9cbecd7104f90f priority #3 — "Refresh memory" button.
@@ -4816,12 +4667,6 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           // (WCAG 2.4.3, the launchCouncil class).
           const trigger = document.activeElement;
           this.refreshMemoryStatus = 'running';
-          const dispatcher = window.__TRINITY_DISPATCH__;
-          const payload = {{
-            name: 'run_command',
-            args: {{ command: 'trinity-local dream' }},
-            metadata: {{ kind: 'launchpad_refresh_memory', source: 'launchpad' }},
-          }};
           const finish = (r) => {{
             const ok = !r || r.ok !== false;
             this.refreshMemoryStatus = ok ? 'done' : 'failed';
@@ -4840,25 +4685,14 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
               }}
             }}, ok ? 3000 : 5000);
           }};
-          if (dispatcher) {{
-            dispatcher.dispatch({{
-              extensionAction: {{ kind: 'dream' }},
-              shortcutUrl: buildShortcutUrl(payload),
-              onResult: (r) => {{
-                // Dream returns asynchronously from the host — the dispatch
-                // result only confirms the subprocess was launched, not
-                // that it completed. Reporting 'Updated' on launch is the
-                // honest signal; the user re-renders the launchpad later
-                // to see the issues clear. This matches how ingest-recent
-                // behaves on this page. The failure detail stays on THIS card
-                // (refreshMemoryError) instead of leaking to the council ribbon.
-                finish(r);
-              }},
-            }});
-          }} else {{
-            this.triggerShortcut(buildShortcutUrl(payload));
-            finish(null);
-          }}
+          // Dream returns asynchronously from the host — the dispatch
+          // result only confirms the subprocess was launched, not
+          // that it completed. Reporting 'Updated' on launch is the
+          // honest signal; the user re-renders the launchpad later
+          // to see the issues clear. This matches how ingest-recent
+          // behaves on this page. The failure detail stays on THIS card
+          // (refreshMemoryError) instead of leaking to the council ribbon.
+          this.dispatchAction({{ kind: 'dream' }}, finish);
         }},
         repairExtension() {{
           // #147 self-healing UI: dispatches extension-repair-auto. The
@@ -4874,12 +4708,6 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           // launchCouncil class — :disabled while 'running' drops focus to body).
           const trigger = document.activeElement;
           this.repairExtensionStatus = 'running';
-          const dispatcher = window.__TRINITY_DISPATCH__;
-          const payload = {{
-            name: 'run_command',
-            args: {{ command: 'trinity-local extension repair --auto --json' }},
-            metadata: {{ kind: 'launchpad_repair_extension', source: 'launchpad' }},
-          }};
           const finish = (r) => {{
             const ok = !r || r.ok !== false;
             this.repairExtensionStatus = ok ? 'done' : 'failed';
@@ -4896,18 +4724,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
               }}
             }}, ok ? 3000 : 5000);
           }};
-          if (dispatcher) {{
-            dispatcher.dispatch({{
-              extensionAction: {{ kind: 'extension-repair-auto' }},
-              shortcutUrl: buildShortcutUrl(payload),
-              onResult: (r) => {{
-                finish(r);
-              }},
-            }});
-          }} else {{
-            this.triggerShortcut(buildShortcutUrl(payload));
-            finish(null);
-          }}
+          this.dispatchAction({{ kind: 'extension-repair-auto' }}, finish);
         }},
         onImportPathInput() {{
           // The "✓ Detected N exports" banner (and its Import button) describe the
@@ -4949,7 +4766,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
           const dispatcher = window.__TRINITY_DISPATCH__;
           if (!dispatcher) {{
             this.importProbeResult = {{
-              error: 'No Chrome extension or Shortcut dispatcher available.',
+              error: 'The Trinity browser extension is not reachable.',
               hint: 'Install the Trinity browser extension (see browser-extension/README.md) or run `trinity-local import-export --path <PATH> --dry-run` directly from the terminal.',
             }};
             this.importStatus = 'idle';
@@ -5041,7 +4858,7 @@ def render_launchpad_html(*, page_data: dict, recent_sidebar: str = "", title: s
             // ingest), co-located on this card.
             this.importStatus = 'idle';
             this.importProbeResult = {{
-              error: 'No Chrome extension or Shortcut dispatcher available.',
+              error: 'The Trinity browser extension is not reachable.',
               hint: 'Install the Trinity browser extension (see browser-extension/README.md) or run `trinity-local import-export --path ' + this.importPath + '` directly from the terminal.',
             }};
             this.announceImportResult();

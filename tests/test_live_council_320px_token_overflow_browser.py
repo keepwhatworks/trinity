@@ -33,11 +33,8 @@ guard). Synthetic data only; no PII. Slow + browser marked.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
-
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -49,15 +46,6 @@ _LONG_TOKEN = (
     "supercalifragilisticexpialidociousREALLYlongUNBREAKABLEtoken"
     "1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZnoSpacesNoBreakpoints"
 )
-
-
-def _serve(directory) -> tuple[http.server.HTTPServer, int]:
-    handler = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=str(directory)
-    )
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _seed_token_council() -> None:
@@ -131,7 +119,7 @@ def test_live_council_no_horizontal_overflow_at_320px(tmp_path, monkeypatch, bp)
     monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
     _seed_token_council()
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     errors: list[str] = []
     try:
         with sync_playwright() as p:
@@ -246,7 +234,7 @@ def test_live_council_failed_long_error_does_not_overflow_at_320px(tmp_path, mon
     token = "chain_failtest_browser205"
     _seed_failed_status(token)
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     errors: list[str] = []
     try:
         with sync_playwright() as p:
@@ -370,7 +358,7 @@ def test_live_council_long_pasted_task_details_no_overflow_at_320px(tmp_path, mo
     write_portal_html()  # vendor assets the page references
     write_live_council_page()
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     errors: list[str] = []
     try:
         with sync_playwright() as p:

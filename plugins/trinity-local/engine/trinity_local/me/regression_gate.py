@@ -34,6 +34,7 @@ set" rather than an explicit date join (PreferenceAct carries no timestamp).
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
 from typing import Callable, Iterable
 
@@ -143,12 +144,14 @@ def commit_through_gate(
             rejected += 1
             print(
                 f"  Regression gate: REJECT '{pair.pole_a} ↔ {pair.pole_b}' — {v.reason}",
-                flush=True,
+                file=sys.stderr, flush=True,
             )
             continue
         if v.verdict == "flag":
-            print(f"  Regression gate: FLAG '{pair.pole_a} ↔ {pair.pole_b}' — {v.reason}", flush=True)
+            print(f"  Regression gate: FLAG '{pair.pole_a} ↔ {pair.pole_b}' — {v.reason}", file=sys.stderr,
+                  flush=True)
         kept.append(pair)
     if rejected:
-        print(f"  Regression gate: dropped {rejected}/{len(accepted)} candidate(s) as flips", flush=True)
+        print(f"  Regression gate: dropped {rejected}/{len(accepted)} candidate(s) as flips", file=sys.stderr,
+              flush=True)
     return reconcile_fn(kept)

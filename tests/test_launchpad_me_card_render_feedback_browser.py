@@ -25,12 +25,10 @@ onResult back through handleDispatchResult) and the in-card assertions red.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -62,13 +60,6 @@ def test_render_me_card_uses_dedicated_lifecycle_not_optimistic_flash():
         "handleMeCardResult does not set an error state on a failed render — the "
         "failure gives no feedback"
     )
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _render_and_serve(tmp_path, view="home"):
@@ -103,7 +94,7 @@ def _render_and_serve(tmp_path, view="home"):
     pp.mkdir(parents=True)
     (pp / "launchpad.html").write_text(html, encoding="utf-8")
     publish_vendor_files(pp)
-    return _serve(tmp_path / "serve")
+    return serve_directory(tmp_path / "serve")
 
 
 @pytest.mark.slow

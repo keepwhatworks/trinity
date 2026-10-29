@@ -45,7 +45,7 @@ def _order(monkeypatch, tmp_path, cursors, sources=None):
         return iter(())
 
     import trinity_local.watch_runtime as W
-    monkeypatch.setattr(W, "_iter_recent_paths", fake_iter, raising=False)
+    monkeypatch.setattr(W, "_iter_recent_paths", fake_iter)
     II.ingest_recent(sources=list(sources) if sources else None, deadline_s=30.0)
     return seen
 

@@ -146,32 +146,8 @@ def test_corrupt_nonstring_winner_renders_no_object_object_token():
             errs: list[str] = []
             page.on("pageerror", lambda e: errs.append(str(e)[:160]))
 
-            # ---- picks Reader ----
-            page.goto(f"file://{pages / 'memory.html'}?file=picks.json", wait_until="load")
-            page.wait_for_timeout(900)
-            cards = page.eval_on_selector_all(
-                ".pick-card",
-                "els => els.map(c => (c.innerText || '').replace(/\\s+/g, ' ').trim())",
-            )
-            # (A) the surface PAINTS — the clean control b05 renders "Use Claude", so a
-            # blank page can't pass the no-token assertion vacuously.
-            if not any("Use Claude" in c for c in cards):
-                failures.append(
-                    "picks Reader did not paint the clean control (b05 'Use Claude') — "
-                    f"can't trust the no-garbage assertion. cards={cards!r}"
-                )
-            # The corrupt winners must NOT have painted a "Use X" recommendation.
-            for c in cards:
-                if "Use 42" in c or "Use [object Object]" in c or "Lean 42" in c:
-                    failures.append(f"picks Reader painted a corrupt winner recommendation: {c!r}")
-            picks_text = page.evaluate("() => document.body.innerText")
-            for tok in _BAD_TOKENS:
-                if tok in picks_text:
-                    failures.append(
-                        f"picks Reader leaked the corrupt-string token {tok!r} from a "
-                        f"non-string winner (42 / {{primary:…}} -> 'Use [object Object]'). "
-                        f"cards={cards!r}"
-                    )
+            # (The picks Reader half was removed with picks.json's viewer surfaces on
+            # 2026-10-26; the corrupt picks.json stays seeded for the server-render check.)
 
             # ---- routing.json Reader ----
             page.goto(f"file://{pages / 'memory.html'}?file=routing.json", wait_until="load")

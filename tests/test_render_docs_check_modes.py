@@ -334,3 +334,25 @@ def test_a_checkout_under_a_build_directory_still_finds_its_docs(render_docs_mod
     monkeypatch.setattr(render_docs_module, "REPO", repo)
     found = {p.relative_to(repo).as_posix() for p in render_docs_module.docs_with_placeholders()}
     assert found == {"AGENTS.md", "docs/page.html"}, found
+
+
+def test_plugin_versions_follow_the_release_version(render_docs_module, tmp_path, monkeypatch):
+    """JSON manifests cannot hold a canonical placeholder, so render_docs writes the
+    version into them: --check reports drift without writing, a render fixes it, and the
+    marketplace's own version is left alone."""
+    plugin = tmp_path / "plugin.json"
+    market = tmp_path / "marketplace.json"
+    plugin.write_text(json.dumps({"name": "trinity-local", "version": "1.0.1"}, indent=2) + "\n")
+    market.write_text(json.dumps({"version": "1.0.0", "plugins": [
+        {"name": "trinity-local", "version": "1.0.1"}, {"name": "other", "version": "3"}]}, indent=2) + "\n")
+    monkeypatch.setattr(render_docs_module, "PLUGIN_JSON", plugin)
+    monkeypatch.setattr(render_docs_module, "MARKETPLACE_JSON", market)
+    before = (plugin.read_text(), market.read_text())
+
+    assert render_docs_module.render_plugin_versions("2.0.0", write=False) == [plugin, market]
+    assert (plugin.read_text(), market.read_text()) == before
+    assert render_docs_module.render_plugin_versions("2.0.0", write=True) == [plugin, market]
+    m = json.loads(market.read_text())
+    assert json.loads(plugin.read_text())["version"] == "2.0.0"
+    assert m["version"] == "1.0.0" and [e["version"] for e in m["plugins"]] == ["2.0.0", "3"]
+    assert render_docs_module.render_plugin_versions("2.0.0", write=False) == []

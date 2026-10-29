@@ -40,11 +40,8 @@ council. Slow-marked; skips without Playwright/chromium.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
-
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -98,15 +95,6 @@ window.__TRINITY_DISPATCH__ = (function(){
 _PHANTOM = "Could not start next round"
 
 
-def _serve(directory) -> tuple[http.server.HTTPServer, int]:
-    handler = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=str(directory)
-    )
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 def _seed_completed_council(tmp_path, monkeypatch):
     """Seed a schema-correct completed council via the real writers, render the
     live page + portal. Returns (home_dir, council_id)."""
@@ -146,7 +134,7 @@ def test_proactive_stale_warning_does_not_claim_a_round_failed(tmp_path, monkeyp
     from playwright.sync_api import sync_playwright
 
     home, cid = _seed_completed_council(tmp_path, monkeypatch)
-    httpd, port = _serve(home)
+    httpd, port = serve_directory(home)
     try:
         with sync_playwright() as p:
             try:
@@ -220,7 +208,7 @@ def test_proactive_stale_warning_clears_after_the_extension_recovers(tmp_path, m
     from playwright.sync_api import sync_playwright
 
     home, cid = _seed_completed_council(tmp_path, monkeypatch)
-    httpd, port = _serve(home)
+    httpd, port = serve_directory(home)
     try:
         with sync_playwright() as p:
             try:
@@ -300,7 +288,7 @@ def test_dismiss_link_clears_the_proactive_stale_warning(tmp_path, monkeypatch):
     from playwright.sync_api import sync_playwright
 
     home, cid = _seed_completed_council(tmp_path, monkeypatch)
-    httpd, port = _serve(home)
+    httpd, port = serve_directory(home)
     try:
         with sync_playwright() as p:
             try:

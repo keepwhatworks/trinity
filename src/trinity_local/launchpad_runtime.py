@@ -51,15 +51,6 @@ window.addEventListener('pageshow', (event) => {
   }
 });
 
-// buildShortcutUrl: retired no-op as of 2026-05-18 (W — Pass B JS).
-// The macOS Shortcut dispatcher was killed in Pass A (commit 53db635);
-// Tier-2 branch in __TRINITY_DISPATCH__.dispatch is gone (Chrome
-// extension is the only live dispatch path). buildShortcutUrl()
-// survives as a no-op that returns '' so that callsites in
-// launchpad_template.py and council_review.py keep parsing — they
-// pass the empty string into dispatch() which now ignores it.
-function buildShortcutUrl(payload) { return ''; }
-
 // --- Side-panel navigation broker -------------------------------------------
 // A sandboxed extension page (manifest sandbox.pages) has an OPAQUE origin and
 // CANNOT navigate ITSELF to another chrome-extension page — Chrome blocks both a
@@ -258,7 +249,7 @@ function navigateToReviewPath(path, councilId) {
   // ./live_council.html lands TOKEN-LESS, with no status_token AND no council_id.
   // The live page's init() then has nothing to load: it falls to the
   // loadActiveCouncilScript fallback, which reads _active_council.js — a sidecar
-  // ONLY written by the popup's `open-council-page` dispatch. On the
+  // ONLY written by the extension's `open-council-page` dispatch. On the
   // stay-on-the-launchpad auto-poll completion path (the user Launches, never
   // clicks "Open council page"), that sidecar was never written, so the host's
   // active_council query returns null and the live page renders BLANK — the
@@ -366,7 +357,7 @@ function loadOutcomeScript(councilId, onComplete) {
 // Reads review_pages/_active_council.js — the file://-safe pointer the capture
 // host writes on `open-council-page`. macOS strips the URL query from file://
 // opens (open/open location), so the council page can't get its status_token
-// from `?status_token=…` when launched from the popup; it reads this sidecar
+// from `?status_token=…` when launched from the extension; it reads this sidecar
 // instead. Same <script src> injection as loadStatusScript (file:// blocks
 // fetch). The sidecar sets window.__TRINITY_ACTIVE_COUNCIL__; we read it on load.
 function loadActiveCouncilScript(onComplete) {
@@ -388,16 +379,15 @@ function loadActiveCouncilScript(onComplete) {
 }
 
 // ─── Phase 4 dispatch runtime ─────────────────────────────────────
-// Routes button clicks across three tiers in priority order:
-//   1. Chrome extension present  → chrome.runtime.sendMessage(id, …)
-//   2. macOS Shortcut installed  → shortcuts:// URL (existing path)
-//   3. Neither                   → install banner
+// Routes button clicks to the Chrome extension
+// (chrome.runtime.sendMessage(id, …)); with no reachable extension the
+// result is the install banner.
 //
 // Verdict: council_fb374b01311885cc (codex won). The detection cannot
 // be synchronous from file:// JS, so we warm-probe on page load and
 // cache in sessionStorage. Native-host-unavailable surfaces the
-// install-extension hint inline rather than silently falling through
-// to Shortcuts — silent fallback masks the setup bug.
+// install-extension hint inline rather than a generic failure, which
+// would mask the setup bug.
 window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
   // 1500ms was too short: an MV3 service worker that's gone dormant (after
   // ~30s idle) regularly takes >1.5s to wake on the first message, so the warm
@@ -475,8 +465,7 @@ window.__TRINITY_DISPATCH__ = window.__TRINITY_DISPATCH__ || (function() {
   }
 
   async function dispatch({ extensionAction, onResult }) {
-    // Tier 1 — Chrome extension Native Messaging. Tier-2 macOS Shortcut
-    // was retired pre-launch (commit 53db635 + this commit's JS cleanup).
+    // Chrome extension Native Messaging, the only dispatch path.
     //
     // The user CLICKED this — do NOT gate on the cached probe `state`. A stale
     // 'absent' (a warm-probe that timed out while the MV3 service worker was

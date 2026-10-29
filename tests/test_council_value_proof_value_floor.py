@@ -27,12 +27,10 @@ from __future__ import annotations
 
 import trinity_local.council_analytics as _ca
 
-import functools
-import http.server
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -115,13 +113,6 @@ def test_clears_both_floors_reports_ready(monkeypatch):
 # ── Real-browser proof: the HOME hero card self-hides at a 0% rate ─────────
 
 
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 @pytest.mark.slow
 @pytest.mark.browser
 def test_home_council_value_card_self_hides_at_zero_changed_rate(tmp_path, monkeypatch):
@@ -159,7 +150,7 @@ def test_home_council_value_card_self_hides_at_zero_changed_rate(tmp_path, monke
     pp.mkdir(parents=True)
     (pp / "launchpad.html").write_text(html, encoding="utf-8")
     publish_vendor_files(pp)
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
     try:
         with sync_playwright() as p:
             try:

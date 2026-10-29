@@ -43,7 +43,7 @@ import threading
 import time
 
 from .state_paths import prompts_dir
-from .utils import atomic_write_text, now_iso
+from .utils import atomic_write_text, autoscan_disabled, now_iso
 
 DEFAULT_STALE_HOURS = 24.0
 # A pass that has held the lock this long is presumed crashed; the next
@@ -63,10 +63,6 @@ def marker_path():
 
 def lock_path():
     return prompts_dir() / "stale_pass.lock"
-
-
-def _disabled() -> bool:
-    return os.environ.get("TRINITY_AUTOSCAN_DISABLED", "").strip() not in ("", "0", "false", "False")
 
 
 def _stale_hours() -> float:
@@ -288,7 +284,7 @@ def maybe_kick_stale_pass(trigger: str) -> bool:
         from .lens_addon import lens_enabled
         if not lens_enabled():
             return False  # lens is an opt-in add-on; core fusion does no ingest/embed
-        if _disabled():
+        if autoscan_disabled():
             return False
         due, _reason = stale_pass_is_due()
         if not due:

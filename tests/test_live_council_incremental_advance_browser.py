@@ -46,12 +46,10 @@ advancement + completion assertions while the single-frame
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import os
-import threading
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -84,15 +82,6 @@ def _seed_running(token: str) -> int:
     write_live_council_page(force=True)
     vendor.publish_vendor_files(state_paths.portal_pages_dir())
     return pid
-
-
-def _serve(directory):
-    handler = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=str(directory)
-    )
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 _PROBE = r"""() => {
@@ -145,7 +134,7 @@ def test_live_council_advances_monotonically_across_status_frames(tmp_path, monk
             p["runner_pid"] = pid
             _write_status(_TOKEN, p)
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     history: list[dict] = []  # per-slug status rank seen across frames (monotonicity)
     seen_done_at: dict[str, int] = {}
     try:

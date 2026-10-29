@@ -188,6 +188,9 @@ fi
 # directory (existing pre-pivot install), leave it alone — overwriting
 # would silently lose the user's own git checkout.
 if [[ "$TRINITY_SKILL_DIR" != "$TRINITY_SKILL_LEGACY" ]]; then
+  # %q: the advice below is pasted into a shell, and a home path can hold spaces or $(...).
+  Q_SKILL_DIR="$(printf '%q' "$TRINITY_SKILL_DIR")"
+  Q_SKILL_LEGACY="$(printf '%q' "$TRINITY_SKILL_LEGACY")"
   if [[ -L "$TRINITY_SKILL_LEGACY" ]] || [[ ! -e "$TRINITY_SKILL_LEGACY" ]]; then
     mkdir -p "$(dirname "$TRINITY_SKILL_LEGACY")"
     rm -f "$TRINITY_SKILL_LEGACY"
@@ -197,14 +200,17 @@ if [[ "$TRINITY_SKILL_DIR" != "$TRINITY_SKILL_LEGACY" ]]; then
     if ln -s "$TRINITY_SKILL_DIR" "$TRINITY_SKILL_LEGACY" 2>/dev/null; then
       ok "Symlinked $TRINITY_SKILL_LEGACY → $TRINITY_SKILL_DIR (Claude Code /trinity alias)"
     elif cp -R "$TRINITY_SKILL_DIR" "$TRINITY_SKILL_LEGACY" 2>/dev/null; then
-      warn "Symlink unsupported here — copied to $TRINITY_SKILL_LEGACY instead (re-run 'update' to refresh)."
+      # Neither `update` (it pulls $TRINITY_SKILL_DIR) nor a re-run (it leaves a real
+      # directory alone) refreshes this copy, so say what does.
+      warn "Symlink unsupported here — copied to $TRINITY_SKILL_LEGACY instead. The copy does not follow updates; refresh it with:"
+      warn "  rm -rf $Q_SKILL_LEGACY && cp -R $Q_SKILL_DIR $Q_SKILL_LEGACY"
     else
       warn "Could not link or copy the /trinity alias — Claude Code's /trinity may be unavailable (MCP still works)."
     fi
   else
     warn "$TRINITY_SKILL_LEGACY exists as a real directory — leaving it alone."
     warn "Migrate manually if you want a single canonical install:"
-    warn "  rm -rf $TRINITY_SKILL_LEGACY && ln -s $TRINITY_SKILL_DIR $TRINITY_SKILL_LEGACY"
+    warn "  rm -rf $Q_SKILL_LEGACY && ln -s $Q_SKILL_DIR $Q_SKILL_LEGACY"
   fi
 fi
 

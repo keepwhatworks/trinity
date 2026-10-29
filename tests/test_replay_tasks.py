@@ -64,7 +64,7 @@ def test_the_task_is_red_without_the_fix_and_green_with_it(repo, tmp_path):
     app = tmp_path / "app"
     app.mkdir()
     with tarfile.open(d / "environment" / "repo.tar.gz") as tf:
-        tf.extractall(app, filter="data")
+        rt._extract_data(tf, app)   # filter= does not exist before Python 3.10.12 (public CI's macOS 3.10)
     assert not (app / ".git").exists()
     assert rt._pytest(sys.executable, app, t.test_files, 60)[0] == "failed"
     assert subprocess.run(["git", "apply", str(d / "solution" / "fix.patch")], cwd=app).returncode == 0
@@ -171,3 +171,42 @@ def test_without_the_data_filter_a_repo_snapshot_still_extracts(tmp_path, monkey
     rt._extract_data(_tar(("pkg/a.py", "file", "x = 1\n"), ("pkg/b.py", "sym", "a.py")), dest)
     assert (dest / "pkg" / "a.py").read_text() == "x = 1\n"
     assert (dest / "pkg" / "b.py").is_symlink() and (dest / "pkg" / "b.py").read_text() == "x = 1\n"
+
+
+def test_the_grading_script_quotes_test_paths_from_history(tmp_path):
+    """A test path comes from the repository's history, so test.sh must treat it as a
+    name: a space must not split it and $(...) must not run. Runs the real script with
+    its container roots pointed at tmp_path."""
+    import shlex
+
+    name = "tests/a b/test_$(touch${IFS}PWNED).py"
+    t = rt.ReplayTask(name="replay-x", fix="f", parent="p", date="d", test_files=[name],
+                      failing=[], failure_tail="", command="")
+    files, app, logs, cwd = (tmp_path / d for d in ("files", "app", "logs", "cwd"))
+    for d in (files, app, cwd):
+        d.mkdir()
+    (files / name).parent.mkdir(parents=True)
+    (files / name).write_text("def test_ok():\n    assert True\n")
+    script = (rt._test_sh(t).replace("/tests/files/", f"{files}/").replace("/logs/", f"{logs}/")
+              .replace("/app", str(app)).replace("python -m pytest", f"{shlex.quote(sys.executable)} -m pytest"))
+    subprocess.run(["bash", "-c", script], cwd=cwd, check=True, capture_output=True)
+    assert not (cwd / "PWNED").exists() and not (app / "PWNED").exists(), "a test path ran as a command"
+    assert (app / name).exists()
+    assert (logs / "verifier" / "reward.txt").read_text().strip() == "1"
+
+
+def test_the_instruction_command_keeps_a_test_path_whole(tmp_path):
+    """The instruction shows the agent a pytest command to run. A test path with a
+    space or $(...) must come through it as one argument, unexpanded."""
+    import shlex
+
+    name = "tests/a b/test_$(touch${IFS}PWNED).py"
+    root = tmp_path / "proj"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True, env=ENV)
+    _commit(root, {"src/pkg/__init__.py": "", "src/pkg/mod.py": "def add(a, b):\n    return a - b\n"}, "initial")
+    _commit(root, {"src/pkg/mod.py": "def add(a, b):\n    return a + b\n",
+                   name: "from pkg.mod import add\n\ndef test_add():\n    assert add(1, 2) == 3\n"}, "fix add")
+    [t] = rt.find_tasks(root, since="2000-01-01", python=sys.executable)
+    assert t.test_files == [name]
+    assert shlex.split(t.command) == ["python", "-m", "pytest", "-q", name]

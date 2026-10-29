@@ -33,12 +33,10 @@ Slow + browser; skips without Playwright/chromium.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -67,13 +65,6 @@ def test_ingest_failure_is_co_located_canary():
     )
 
 
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 def _render(tmp_path):
     from trinity_local.launchpad_page import build_launchpad_payload
     from trinity_local.launchpad_template import render_launchpad_html
@@ -84,7 +75,7 @@ def _render(tmp_path):
     pp.mkdir(parents=True)
     (pp / "launchpad.html").write_text(render_launchpad_html(page_data=pd), encoding="utf-8")
     publish_vendor_files(pp)
-    return _serve(pp.parent)
+    return serve_directory(pp.parent)
 
 
 @pytest.mark.slow

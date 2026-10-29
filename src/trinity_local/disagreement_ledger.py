@@ -745,6 +745,17 @@ def _ledger_dir(home: str | None = None) -> Path:
     return Path(home or trinity_home()) / "disagreement_ledger"
 
 
+def load_summary(home: str | None = None) -> dict:
+    """The persisted summary.json with the label gate applied on read (a summary built
+    before the gate existed still says trustworthy). {} when it is absent, unreadable or
+    not a JSON object: a missing or corrupt ledger means no tally, never a crash."""
+    try:
+        d = json.loads((_ledger_dir(home) / "summary.json").read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 — absent/corrupt ledger → no tally, not a crash
+        return {}
+    return gate_summary(d) if isinstance(d, dict) else {}
+
+
 def _prior_resolutions(home: str | None = None) -> dict[str, tuple[str, str]]:
     """{claim_id: (resolution, quote)} already on disk. Empty when none built."""
     out: dict[str, tuple[str, str]] = {}

@@ -49,9 +49,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from .scratch import _copy_entry, _git_visible, _rebase, classify, run_shell, scratch_copy, tree_spellings
+from .scratch import (_copy_entry, _git_visible, _rebase, classify, link_env_dirs, run_shell,
+                      scratch_copy, tree_spellings)
 
-_ENV_DIRS = (".venv", "venv", "node_modules")
 _FAILURE_TAIL = 2500
 _INLINE_PATCH = 40_000
 _DIFF_FENCE = re.compile(r"```(?:diff|patch)[^\n]*\n(.*?)```", re.S)
@@ -178,9 +178,7 @@ def _grade(cwd: Path, command: str, hidden: dict[str, bytes], patch: str | None,
     with tempfile.TemporaryDirectory(prefix="trinity-build-grade-") as tmp:
         work = Path(tmp) / "tree"
         scratch_copy(cwd, work)
-        for name in _ENV_DIRS:
-            if (cwd / name).exists() and not (work / name).exists():
-                (work / name).symlink_to((cwd / name).resolve())
+        link_env_dirs(cwd, work)
         for rel in hidden:
             (work / rel).unlink(missing_ok=True)
         if patch:
@@ -391,7 +389,7 @@ def run_build(task: str, acceptance_command: str, hidden_tests: list[str], cwd: 
         result["patch_path"] = picked["patch_path"]
         if len(text) <= _INLINE_PATCH:
             result["patch"] = text
-        result["next"] = (f"Apply it in your tree with `git apply {picked['patch_path']}`, run the "
+        result["next"] = (f"Apply it in your tree with `git apply {shlex.quote(str(picked['patch_path']))}`, run the "
                           "acceptance command, then review and commit as usual.")
     else:
         result["next"] = "No candidate passed. Implement the task yourself; this run is recorded."

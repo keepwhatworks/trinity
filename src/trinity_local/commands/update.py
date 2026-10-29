@@ -30,6 +30,8 @@ The user runs `trinity-local update` when they're ready to apply.
 from __future__ import annotations
 
 import json
+import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -48,8 +50,8 @@ def register(subparsers) -> None:
     parser.add_argument(
         "--skill-dir", default=None,
         help=(
-            "Override skill directory. Default lookup: ~/.trinity/code/ "
-            "(post-2026-05-19 canonical), then ~/.claude/skills/trinity/ "
+            "Override skill directory. Default lookup: $TRINITY_SKILL_DIR, then "
+            "~/.trinity/code/ (post-2026-05-19 canonical), then ~/.claude/skills/trinity/ "
             "(pre-pivot legacy). The actual resolution lives in _skill_dir() "
             "below."
         ),
@@ -75,8 +77,15 @@ def _skill_dir(override: str | None) -> Path:
 
     Lookup order:
       1. Explicit override (--skill-dir) — for tests and custom installs.
-      2. ~/.trinity/code/ — the post-2026-05-19-pivot canonical location.
-      3. ~/.claude/skills/trinity/ — pre-pivot legacy.
+      2. $TRINITY_SKILL_DIR — where scripts/install.sh was told to clone.
+      3. ~/.trinity/code/ — the post-2026-05-19-pivot canonical location.
+      4. ~/.claude/skills/trinity/ — pre-pivot legacy.
+
+    `status`'s skill_freshness check reads this same directory, so the
+    `trinity-local update` it advises pulls the checkout it warned about.
+    They used to differ: the check read $TRINITY_SKILL_DIR or the legacy path,
+    so a pre-pivot clone kept beside ~/.trinity/code was warned about forever
+    and a canonical-only install was never checked (2026-10-26).
 
     Chrome Web Store extension installs are intentionally NOT probed here
     — Chrome auto-updates the extension dir on its own ~5h cadence; the
@@ -86,6 +95,8 @@ def _skill_dir(override: str | None) -> Path:
     """
     if override:
         return Path(override).expanduser().resolve()
+    if os.environ.get("TRINITY_SKILL_DIR"):
+        return Path(os.environ["TRINITY_SKILL_DIR"]).expanduser()
     canonical = Path.home() / ".trinity" / "code"
     if (canonical / ".git").exists():
         return canonical
@@ -282,7 +293,7 @@ def handle_update(args: SimpleNamespace) -> int:
         # divergence rather than auto-rebasing.
         msg = (f"{skill_dir} has {ahead} local commit(s) not on origin; "
                f"refusing to fast-forward over them. Resolve manually "
-               f"with `cd {skill_dir} && git status`.")
+               f"with `cd {shlex.quote(str(skill_dir))} && git status`.")
         return _emit_error(msg, json_mode)
 
     # Pull (fast-forward only).

@@ -68,10 +68,14 @@ def test_skips_when_embedder_already_live(monkeypatch):
     assert not ok and reason == "embedder already live"
 
 
-def test_skips_when_autoscan_disabled(monkeypatch):
-    monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
-    ok, _ = ew.should_offer_embedder()
-    assert not ok
+@pytest.mark.parametrize("value", ["1", "true"])
+def test_skips_when_autoscan_disabled(monkeypatch, value):
+    # "true" too: the wizard reads the same parser as the cold-start scan and
+    # the stale pass (it used to honour only "1").
+    monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", value)
+    # The reason, not just `not ok`: with the embedder present the gate also
+    # declines ("embedder already live"), which hid the old "1"-only parser.
+    assert ew.should_offer_embedder() == (False, "autoscan disabled")
 
 
 def test_opt_out_is_permanent():

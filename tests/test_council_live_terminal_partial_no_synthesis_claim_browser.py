@@ -33,11 +33,8 @@ again) REDS this guard with the founder symptom.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
-
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -81,15 +78,6 @@ def _seed_canceled_partial(token: str) -> None:
     vendor.publish_vendor_files(state_paths.portal_pages_dir())
 
 
-def _serve(tmp_path):
-    handler = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=str(tmp_path)
-    )
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 def test_canceled_partial_council_makes_no_synthesis_claim(tmp_path, monkeypatch):
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright
@@ -99,7 +87,7 @@ def test_canceled_partial_council_makes_no_synthesis_claim(tmp_path, monkeypatch
     token = "cancel_partial_tok01"
     _seed_canceled_partial(token)
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:

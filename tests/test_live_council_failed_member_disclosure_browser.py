@@ -33,13 +33,11 @@ without Playwright/chromium.
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import json
 import re
-import threading
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -155,13 +153,6 @@ def _total_failure_status(token: str) -> dict:
     }
 
 
-def _serve(directory) -> tuple[http.server.HTTPServer, int]:
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 def _drive(port, token):
     from playwright.sync_api import sync_playwright
 
@@ -215,7 +206,7 @@ def test_partial_council_poll_path_fires_failure_disclosure(tmp_path, monkeypatc
     pytest.importorskip("playwright.sync_api")
     token = "tok_partial_poll"
     _seed(tmp_path, monkeypatch, _partial_2of3_poll_status(token))
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         body, badges = _drive(port, token)
     finally:
@@ -260,7 +251,7 @@ def test_total_failure_does_not_claim_synthesis_over_zero(tmp_path, monkeypatch)
     pytest.importorskip("playwright.sync_api")
     token = "tok_total_fail"
     _seed(tmp_path, monkeypatch, _total_failure_status(token))
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         body, badges = _drive(port, token)
     finally:
@@ -290,7 +281,7 @@ def test_clean_council_does_not_fire_failure_disclosure(tmp_path, monkeypatch):
     pytest.importorskip("playwright.sync_api")
     token = "tok_clean_poll"
     _seed(tmp_path, monkeypatch, _clean_2of2_status(token))
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         body, badges = _drive(port, token)
     finally:

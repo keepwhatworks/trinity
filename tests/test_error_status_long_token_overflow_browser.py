@@ -47,13 +47,11 @@ element leaves the other two green.
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import json
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -70,15 +68,6 @@ HOST_ERROR_TOKEN = (
     "ExtensionHostReturnedHTTP402PaymentRequiredVisitBillingConsole"
     "ToReactivateYourSubscriptionImmediatelyWithNoSeparatorsAtAll"
 )
-
-
-def _serve(directory: Path) -> tuple[http.server.ThreadingHTTPServer, int]:
-    handler = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=str(directory)
-    )
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _doc_geom(page) -> tuple[int, int]:
@@ -110,7 +99,7 @@ def test_launchpad_import_error_long_path_does_not_overflow_at_320px(tmp_path, m
     pp.mkdir(parents=True)
     (pp / "stats.html").write_text(html, encoding="utf-8")
     publish_vendor_files(pp)
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
 
     user_path = "/Users/me/Downloads/" + HASH_PATH_SEGMENT
     cli_err = json.dumps({"ok": False, "error": "path not found: " + user_path})
@@ -182,7 +171,7 @@ def test_sidepanel_download_failed_long_token_does_not_overflow_at_320px():
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright
 
-    httpd, port = _serve(EXT)
+    httpd, port = serve_directory(EXT)
     set_status = (
         "() => { document.getElementById('loading').hidden = true;"
         " document.getElementById('standalone').hidden = false;"
@@ -268,7 +257,7 @@ def test_live_council_chain_error_long_token_does_not_overflow_at_320px(tmp_path
     )
     write_portal_html()
     write_live_council_page()
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
 
     stub = (
         "window.__TRINITY_DISPATCH__ = { dispatch: ({extensionAction, onResult}) => {"

@@ -39,6 +39,7 @@ import time
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import contrast_ratio
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -119,18 +120,6 @@ def _boot_panel(p, tmp_path, monkeypatch, width=393, height=852):
     return ctx, ext_id, page
 
 
-def _luminance(rgb):
-    lin = [c / 255 for c in rgb]
-    lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in lin]
-    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
-
-
-def _contrast(fg, bg):
-    a, b = _luminance(fg), _luminance(bg)
-    hi, lo = max(a, b), min(a, b)
-    return (hi + 0.05) / (lo + 0.05)
-
-
 def _parse_rgba(s):
     nums = re.findall(r"[\d.]+", s or "")
     return [float(x) for x in nums] if nums else None
@@ -176,7 +165,7 @@ def _placeholders_below_aa(frame):
         op = d["opacity"] if d["opacity"] == d["opacity"] else 1.0
         eff = list(fg[:3]) + [(fg[3] if len(fg) > 3 else 1.0) * op]
         fgc = _over(eff, bg)
-        r = _contrast(fgc, bg)
+        r = contrast_ratio(fgc, bg)
         if r < 4.5:
             key = d["txt"]
             if key in seen:

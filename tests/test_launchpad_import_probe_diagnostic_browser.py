@@ -23,13 +23,11 @@ test reds (the banner reads "exit code 1" instead of "no exports detected").
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import json
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -52,13 +50,6 @@ def test_probe_error_branch_reads_structured_stdout():
         "from r.stdout — a 'no exports detected' result regresses to a useless "
         "'exit code 1' banner, discarding the CLI's actionable hint"
     )
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 @pytest.mark.slow
@@ -93,7 +84,7 @@ def test_import_probe_surfaces_cli_diagnostic_not_exit_code(tmp_path, monkeypatc
     pp.mkdir(parents=True)
     (pp / "launchpad.html").write_text(html, encoding="utf-8")
     publish_vendor_files(pp)
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
 
     # The EXACT capture-host result shape for a valid path with no exports:
     # host ok=False (non-zero exit), error filled from EMPTY stderr → "exit code 1",
@@ -191,8 +182,8 @@ def test_import_confirm_no_dispatcher_gives_honest_feedback(tmp_path, monkeypatc
     card's `confirmImport` no-dispatcher branch silently rolled `importStatus` back
     to idle and returned — the button flipped back to "Import N source(s)" with ZERO
     feedback, while its DIRECT SIBLING `probeImportPath` (same card, same
-    no-dispatcher path) surfaces "No Chrome extension or Shortcut dispatcher
-    available." + a terminal-command hint. The dispatcher CAN vanish between a
+    no-dispatcher path) surfaces "The Trinity browser extension is not
+    reachable." + a terminal-command hint. The dispatcher CAN vanish between a
     successful Probe and this Import (the extension disabled/reloaded), and a dead
     silent button reads as broken (the brief's exact NO-FEEDBACK class).
 
@@ -225,7 +216,7 @@ def test_import_confirm_no_dispatcher_gives_honest_feedback(tmp_path, monkeypatc
     pp.mkdir(parents=True)
     (pp / "stats.html").write_text(html, encoding="utf-8")
     publish_vendor_files(pp)
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
 
     probe_path = "/Users/you/Downloads/exports"
     probe_ok = json.dumps(
@@ -294,7 +285,7 @@ def test_import_confirm_no_dispatcher_gives_honest_feedback(tmp_path, monkeypatc
                     timeout=4000,
                 )
                 text = banner.json_value()
-                assert "No Chrome extension or Shortcut dispatcher available" in text, (
+                assert "The Trinity browser extension is not reachable" in text, (
                     "the Import step gave NO feedback on the no-dispatcher path — a dead "
                     "silent no-op while its Probe sibling shows an honest error. The "
                     f"⚠ banner was: {text!r}"
@@ -370,7 +361,7 @@ def test_import_card_probe_button_no_child_escape_at_320(tmp_path, monkeypatch):
     pp.mkdir(parents=True)
     (pp / "stats.html").write_text(html, encoding="utf-8")
     publish_vendor_files(pp)
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
 
     try:
         with sync_playwright() as p:
@@ -514,7 +505,7 @@ def test_import_path_input_has_accessible_name(tmp_path, monkeypatch):
     pp.mkdir(parents=True)
     (pp / "stats.html").write_text(html, encoding="utf-8")
     publish_vendor_files(pp)
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
 
     SELECTOR = "section.import-export-card input[type=text]"
     PLACEHOLDER = "/Users/you/Downloads/Takeout"

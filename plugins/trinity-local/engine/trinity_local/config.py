@@ -215,7 +215,8 @@ def load_config(explicit: str | None = None, *, required: bool = True) -> AppCon
                 return _empty_config()
             raise FileNotFoundError(
                 f"Missing config file at {path} and no bundled fallback found. "
-                "Run `trinity-local install-mcp` to recreate config.json."
+                "This install lacks its bundled default config; reinstall with "
+                "`curl -LsSf https://keepwhatworks.com/install.sh | sh`."
             )
 
     raw = json.loads(raw_text)
@@ -248,7 +249,7 @@ def load_config(explicit: str | None = None, *, required: bool = True) -> AppCon
         providers[name] = ProviderConfig(
             name=name,
             type=provider["type"],
-            enabled=provider.get("enabled", True),
+            enabled=_switch(provider, "enabled", True),
             label=provider.get("label", name),
             command=command,
             args=args,
@@ -259,7 +260,7 @@ def load_config(explicit: str | None = None, *, required: bool = True) -> AppCon
 
     return AppConfig(
         max_turns=int(raw.get("max_turns", 4)),
-        notifications=bool(raw.get("notifications", True)),
+        notifications=_switch(raw, "notifications", True),
         providers=providers,
         task_preferences={
             key: list(value) for key, value in raw.get("task_preferences", {}).items()
@@ -269,6 +270,19 @@ def load_config(explicit: str | None = None, *, required: bool = True) -> AppCon
             if raw.get("default_primary_provider") else None
         ),
     )
+
+
+def _switch(raw: dict, key: str, default: bool) -> bool:
+    """A hand-edited on/off value. bool("false") is True, so a provider switched off
+    as the string "false" kept receiving the user's prompts. Read the words
+    `config --set` accepts; anything else reads as off, since an unreadable switch
+    must not send work to a provider."""
+    if key not in raw:
+        return default
+    value = raw[key]
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"true", "1", "yes", "on"}
 
 
 def _empty_config() -> AppConfig:

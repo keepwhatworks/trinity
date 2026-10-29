@@ -12,7 +12,6 @@ import asyncio
 
 from trinity_local.registry import (
     CANONICAL_COUNCIL_PROVIDERS,
-    CANONICAL_LAB_PROVIDERS,
     CAPTURE_PROVIDERS,
     MCP_TOOL_NAMES,
 )
@@ -22,10 +21,6 @@ class TestProviderGroupings:
     def test_council_providers_are_three(self):
         assert len(CANONICAL_COUNCIL_PROVIDERS) == 3
         assert set(CANONICAL_COUNCIL_PROVIDERS) == {"claude", "codex", "antigravity"}
-
-    def test_lab_providers_are_council_plus_gemini(self):
-        assert len(CANONICAL_LAB_PROVIDERS) == 4
-        assert set(CANONICAL_LAB_PROVIDERS) == set(CANONICAL_COUNCIL_PROVIDERS) | {"gemini"}
 
     def test_capture_providers_are_web_chat_surfaces(self):
         """The browser-extension capture set is intentionally distinct
@@ -37,8 +32,8 @@ class TestProviderGroupings:
         """Codified the distinction: chatgpt is the consumer-app slug,
         codex is the CLI sibling. They are siblings, not aliases."""
         assert "chatgpt" in CAPTURE_PROVIDERS
-        assert "chatgpt" not in CANONICAL_LAB_PROVIDERS
-        assert "codex" in CANONICAL_LAB_PROVIDERS
+        assert "chatgpt" not in CANONICAL_COUNCIL_PROVIDERS
+        assert "codex" in CANONICAL_COUNCIL_PROVIDERS
         assert "codex" not in CAPTURE_PROVIDERS
 
 
@@ -91,13 +86,6 @@ class TestRegistryAdoption:
     """Smoke-check: callers we updated in this slice actually import
     from registry (not from a local literal). Catches regressions
     where someone re-inlines the duplicated set."""
-
-    # test_cortex_imports_canonical_lab_providers removed 2026-06-06 with the
-    # cortex collapse (#298): cortex.py no longer does any provider-name canon
-    # (the `_pattern_from_dict` / `_canon_provider_keyed` web-era folding lived in
-    # the deleted RoutingPattern engine), so it no longer imports
-    # CANONICAL_LAB_PROVIDERS. The winner-slug web-era guard now lives in
-    # degeneracy._check_cortex_picks (test_degeneracy_sweep.py).
 
     def test_capture_host_imports_capture_providers(self):
         import trinity_local.capture_host as capture_host_mod

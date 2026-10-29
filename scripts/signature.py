@@ -3,22 +3,21 @@
 
 Phase 2 of the three-tier architecture (council_ff3da1fa84906791).
 
-The vocabulary signature is what makes a term YOUR term:
-  - **Homonyms**: words you use with multiple distinct in-corpus
-    senses (two-means split on context embeddings)
-  - **Synonyms**: distinct phrases you use interchangeably (centroid-
-    proximate)
+The vocabulary signature is what makes a term YOUR term: homonyms, words you use with
+multiple distinct in-corpus senses (two-means split on context embeddings). (A synonyms
+operation wrapped vocabulary.find_synonyms, which was deleted 2026-05-30; it raised ImportError
+until it was removed 2026-10-28.)
 
-Wraps trinity_local.vocabulary.find_homonyms / find_synonyms for v1.0;
+Wraps trinity_local.vocabulary.find_homonyms for v1.0;
 v1.1 inverts so this script owns the canonical implementation.
 
 Dual interface:
   - Shebang: `python3 scripts/signature.py < input.json`
-  - Importable: `from scripts.signature import find_homonyms, find_synonyms`
+  - Importable: `from scripts.signature import find_homonyms`
 
 CLI Input:
   {"token_contexts": {"<token>": [{"text": "...", "vector": [...]}, ...]},
-   "min_freq": 5, "top_n": 50, "operation": "homonyms"|"synonyms"}
+   "min_freq": 5, "top_n": 50, "operation": "homonyms"}
 
 CLI Output (homonyms):
   {"homonyms": [{"token": "...", "bimodality": float, "n_contexts": int}, ...]}
@@ -75,36 +74,12 @@ def find_homonyms(token_contexts: dict, *, min_freq: int = 5, top_n: int = 50) -
     ]
 
 
-def find_synonyms(
-    anchors: list[str],
-    phrase_vectors: dict[str, list[float]],
-    *,
-    top_n: int = 50,
-    similarity_threshold: float = 0.85,
-) -> list[dict]:
-    """Find phrase pairs that cluster tightly in embedding space —
-    the user's interchangeable synonyms.
-
-    Returns: [{"primary": str, "synonyms": [str, ...]}, ...]
-    """
-    from trinity_local.vocabulary import find_synonyms as _impl
-    raw = _impl(
-        anchors=anchors,
-        phrase_vectors=phrase_vectors,
-        top_n=top_n,
-        similarity_threshold=similarity_threshold,
-    )
-    # Pip tier returns list of (primary, [synonym, ...]) — convert.
-    return [{"primary": p, "synonyms": list(syns)} for p, syns in raw]
-
-
 def _cli_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="scripts/signature.py",
         description=(
-            "Distill the user's vocabulary signature — homonyms (one "
-            "token, multiple senses) or synonyms (multiple phrases, "
-            "one referent)."
+            "Distill the user's vocabulary signature: homonyms (one "
+            "token, multiple senses)."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
@@ -133,15 +108,6 @@ def _cli_main(argv: list[str] | None = None) -> int:
             min_freq = int(payload.get("min_freq", 5))
             homonyms = find_homonyms(token_contexts, min_freq=min_freq, top_n=top_n)
             result = {"homonyms": homonyms, "operation": "homonyms"}
-        elif operation == "synonyms":
-            anchors = payload.get("anchors", [])
-            phrase_vectors = payload.get("phrase_vectors", {})
-            threshold = float(payload.get("similarity_threshold", 0.85))
-            synonyms = find_synonyms(
-                anchors, phrase_vectors,
-                top_n=top_n, similarity_threshold=threshold,
-            )
-            result = {"synonyms": synonyms, "operation": "synonyms"}
         else:
             print(f"error: unknown operation {operation!r}", file=sys.stderr)
             audit_log(script=SCRIPT_NAME, operation="signature",

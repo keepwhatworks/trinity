@@ -357,98 +357,6 @@ def test_topology_node_click_detail_panel_is_xss_safe():
     )
 
 
-def _topics_for_routing_detail() -> dict:
-    basins = []
-    for i in range(3):
-        basins.append({
-            "id": f"b{i}",
-            "centroid": _vec(i, i),
-            "size": 30 - i * 5,
-            "label": f"Basin {i}",
-            "top_terms": [f"term{i}", "topic"],
-            "representatives": [{"id": f"rep{i}", "snippet": f"a representative prompt {i}"}],
-        })
-    return {"basins": basins}
-
-
-def _scoreboard_picks() -> dict:
-    # Flat post-#298 picks keyed by the SAME basin ids as the topics above, so the
-    # topology basin → routing pick map resolves on click.
-    return {
-        "b0": {"winner": "claude", "count": 9, "margin": 0.42, "n_episodes": 9, "evidence": ["c1"]},
-        "b1": {"winner": "codex", "count": 6, "margin": 0.21, "n_episodes": 6, "evidence": ["c2"]},
-        "b2": {"winner": "antigravity", "count": 4, "margin": 0.31, "n_episodes": 4, "evidence": ["c3"]},
-    }
-
-
-def test_topology_node_click_shows_routing_winner_inline():
-    """#301: clicking a basin in the topology graph must surface that basin's
-    routing PICK inline ("Routes to <provider> · margin <x>") — the "which model
-    for this domain" answer right where the user is looking.
-
-    The fit + XSS topology browser tests seed topics.json but NEVER picks.json,
-    so the routing-winner render path was real-browser-UNtested; the
-    string-presence guard (test_detail_shows_routing_winner_inline) only proves
-    the CODE exists, not that it RENDERS with picks data. A break in the
-    picks→basin keying (the #300 key-space class) would silently drop the routing
-    line while the string test stays green. Verified rendering 2026-06-06."""
-    pytest.importorskip("playwright.sync_api")
-    from playwright.sync_api import sync_playwright
-
-    home = Path(tempfile.mkdtemp()) / "trinity"
-    (home / "memories").mkdir(parents=True)
-    (home / "memories" / "topics.json").write_text(
-        json.dumps(_topics_for_routing_detail()), encoding="utf-8")
-    (home / "scoreboard").mkdir(parents=True)
-    (home / "scoreboard" / "picks.json").write_text(
-        json.dumps(_scoreboard_picks()), encoding="utf-8")
-    env = dict(os.environ)
-    env["TRINITY_HOME"] = str(home)
-    env["TRINITY_AUTOSCAN_DISABLED"] = "1"
-    env["PYTHONPATH"] = str(REPO / "src") + os.pathsep + env.get("PYTHONPATH", "")
-    result = subprocess.run(
-        [sys.executable, "-m", "trinity_local.main", "portal-html"],
-        env=env, capture_output=True, text=True, timeout=180)
-    assert result.returncode == 0, f"portal-html failed: {result.stderr[-400:]}"
-    pages = home / "portal_pages"
-
-    with sync_playwright() as p:
-        try:
-            browser = p.chromium.launch()
-        except Exception as exc:
-            pytest.skip(f"no launchable chromium: {exc}")
-        try:
-            page = browser.new_page()
-            errors: list[str] = []
-            page.on("pageerror", lambda e: errors.append(str(e)[:160]))
-            page.goto(f"file://{pages / 'memory.html'}?file=topics.json", wait_until="load")
-            page.wait_for_timeout(2500)  # d3-force settle
-            assert page.locator("svg circle").count() >= 1, "no topology nodes rendered"
-            page.locator("svg circle").first.click(force=True)
-            page.wait_for_timeout(400)
-            detail = page.evaluate(
-                """() => {
-                  const d = document.querySelector('.topics-basin-detail, [class*=detail]');
-                  const t = d ? (d.innerText || '') : '';
-                  return {
-                    text: t.slice(0, 240),
-                    routesTo: /routes to\\s+(claude|codex|gpt|antigravity|gemini)/i.test(t),
-                    hasMargin: /margin\\s+0?\\.\\d/i.test(t),
-                  };
-                }""")
-        finally:
-            browser.close()
-
-    assert not errors, f"JS errors on the routing-detail render: {errors[:3]}"
-    assert detail["routesTo"], (
-        "clicking a basin did not surface its routing winner inline (#301) — the "
-        f"detail lacks 'Routes to <provider>': {detail['text']!r}"
-    )
-    assert detail["hasMargin"], (
-        f"the routing margin did not render in the basin detail: {detail['text']!r}"
-    )
-
-
 def _topics_two_clusters() -> dict:
     """Two tight, mutually-orthogonal clusters (5 'alpha' basins dominant in dim 0,
     5 'beta' basins dominant in dim 1). The within-cluster pairs (high cosine)
@@ -519,8 +427,8 @@ def test_topology_node_click_highlights_neighborhood_and_background_click_clears
     background click must restore everything.
 
     Every existing topology browser guard covers the load-time FIT (all nodes
-    on-screen), the node-click DETAIL panel (XSS-safe text + the inline routing
-    winner), and the picks→topology deep-link — but NOTHING asserts the
+    on-screen), the node-click DETAIL panel (XSS-safe text), and the basin
+    deep-link — but NOTHING asserts the
     `highlightNeighborhood` / `clearHighlight` VISUAL. If that opacity binding
     regressed (an off-by-one in `neighborsOf`, a broken `.style("opacity")`), the
     cluster-reveal — the reason the graph is a force layout at all — would silently

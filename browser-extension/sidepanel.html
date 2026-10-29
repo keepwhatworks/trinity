@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Trinity</title>
   <style>
-    /* Calm/Muted-Teal palette — mirrors src/trinity_local/design_system.py + popup.html. */
+    /* Calm/Muted-Teal palette — mirrors src/trinity_local/design_system.py. */
     :root {
       --bg: #eaecef; --surface: #fafbfc; --border: #dde1e6;
       --text: #2f363c; --text2: #5b646b; --muted: #5e666f;
@@ -72,16 +72,14 @@
        "Download failed: " + chrome.runtime.lastError.message — a writer-supplied error
        that can carry a separator-free token (a quota/billing host, a blob URL, a native
        host error id). With pre-wrap but no break rule that token streamed off the panel
-       (documentElement.scrollWidth ~639px on a 320px panel). The popup's .status twin
-       already breaks this exact case (popup.html); this sidepanel .status was the
-       asymmetric miss (UX sweep 2026-06-23). */
+       (documentElement.scrollWidth ~639px on a 320px panel). UX sweep 2026-06-23. */
     .status { font-size: 12.5px; color: var(--muted); margin-top: 8px; min-height: 0; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
     /* --action-hover (deep teal #34666b, 5.4:1 on --bg), NOT the FILL --success
        (#4f9095 → only 3.08:1 as 12.5px text on --bg): the "Saved N conversation(s)"
        download-success line is small readable status text and must clear AA 4.5:1.
        --success is the FILL token (dots/bars/borders), unreadable as body text on
-       the light panel bg. Mirrors popup.html's .status.ok, which is already
-       --action-hover. UX sweep 2026-06-22 (357 sibling: FILL token used as text). */
+       the light panel bg. UX sweep 2026-06-22 (357 sibling: FILL token used as
+       text). */
     .status.ok { color: var(--action-hover); }
     .tip {
       position: relative; background: #eef1f4; border-left: 3px solid var(--action);
@@ -141,7 +139,7 @@
          keyboard focus has left the now-disabled button (drops to <body>), so a
          screen-reader user otherwise hears NOTHING about whether the download
          succeeded, failed, or had nothing to bundle. role=status + aria-live=polite
-         (mirroring the popup's #status and the launchpad .launch-status) makes the
+         (mirroring the launchpad .launch-status) makes the
          persistent element itself the live region so every transition announces with
          no JS change and no drift between the visible and announced text. -->
     <div class="status" id="dl-status" role="status" aria-live="polite" aria-atomic="true"></div>

@@ -15,8 +15,9 @@ class TestPilDemotedToExtra:
         monkeypatch.setattr(builtins, "__import__", fake)
         from trinity_local.share_card_base import require_pil
         assert require_pil() is False
-        out = capsys.readouterr().out
-        assert "trinity-local[share]" in out
+        # A diagnostic: it goes to stderr and stdout stays the command's own (AGENTS.md, 2026-10-26).
+        captured = capsys.readouterr()
+        assert "trinity-local[share]" in captured.err and captured.out == ""
 
     def test_require_pil_true_when_present(self):
         from trinity_local.share_card_base import require_pil

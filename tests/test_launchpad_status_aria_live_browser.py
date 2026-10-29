@@ -41,20 +41,10 @@ without Playwright/chromium.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
-
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
-
-
-def _serve(directory) -> tuple[http.server.HTTPServer, int]:
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _seed(tmp_path, monkeypatch):
@@ -148,7 +138,7 @@ def test_failed_dispatch_banner_is_announced(tmp_path, monkeypatch):
     """A stubbed FAILED dispatch (the founder's no-route Launch) must be announced to
     AT: the banner sits in a live region AND the persistent mirror states the failure."""
     pages_dir = _seed(tmp_path, monkeypatch)
-    httpd, port = _serve(pages_dir)
+    httpd, port = serve_directory(pages_dir)
     try:
         banner, mirror, _ = _drive(
             port, dispatch_result={"tier": "install-prompt"}, prompt="Should we ship the cache rewrite?"
@@ -178,7 +168,7 @@ def test_running_launch_is_announced(tmp_path, monkeypatch):
     """A launched council (stub resolves ok) must announce 'running' via the mirror and
     carry role=status on the visible .launch-status card."""
     pages_dir = _seed(tmp_path, monkeypatch)
-    httpd, port = _serve(pages_dir)
+    httpd, port = serve_directory(pages_dir)
     try:
         _, mirror, launch_status_role = _drive(
             port, dispatch_result={"tier": "extension", "ok": True}, prompt="Compare three caching strategies"
@@ -260,7 +250,7 @@ def test_copy_command_button_announces_to_screen_reader(tmp_path, monkeypatch):
     copyAnnouncement that liveAnnouncement surfaces at lowest precedence.
     """
     pages_dir = _seed(tmp_path, monkeypatch)
-    httpd, port = _serve(pages_dir)
+    httpd, port = serve_directory(pages_dir)
     try:
         label, at_rest, after = _drive_copy_click(port)
     finally:

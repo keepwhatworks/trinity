@@ -333,8 +333,8 @@ def _load_all_edits() -> list[LensEdit]:
 
 
 def load_recent_edits(limit: int = 50) -> list[LensEdit]:
-    """Read back recent edits — used by the launchpad surfacing
-    ("N edits since last dream"). Returns most-recent-first."""
+    """Read back recent edits, most-recent-first. Written for a launchpad line
+    ("N edits since last dream") that never shipped; only tests call it."""
     edits = _load_all_edits()
     edits.reverse()
     return edits[:limit]

@@ -118,6 +118,7 @@ def _check_trinity_home() -> CheckResult:
         # Read the env var directly for the user-facing error so they know
         # which path they need to fix.
         import os
+        import shlex
         target = os.environ.get("TRINITY_HOME") or str(Path.home() / ".trinity")
         return CheckResult(
             name="trinity_home_writeable",
@@ -126,7 +127,7 @@ def _check_trinity_home() -> CheckResult:
             # OSError str can carry a second errno/path; the fix already names
             # the path to chmod, so the raw payload adds no actionable value.
             detail=f"{target} not writeable ({type(exc).__name__})",
-            fix=f"chmod u+w {target} OR set TRINITY_HOME=/path/to/writeable/dir",
+            fix=f"chmod u+w {shlex.quote(target)}   # or set TRINITY_HOME to a writeable directory",
         )
 
 
@@ -190,20 +191,15 @@ def _check_config() -> CheckResult:
     try:
         from .config import load_config
         cfg = load_config(required=False)
-        if cfg is None:
-            return CheckResult(
-                name="config_loadable",
-                ok=False,
-                detail="config.json not found and no defaults available",
-                fix="trinity-local install-mcp   # creates a default config",
-            )
         enabled = [n for n, p in cfg.providers.items() if p.enabled and p.type in ("cli", "codex")]
         if not enabled:
+            off = sorted(n for n, p in cfg.providers.items() if p.type in ("cli", "codex"))
             return CheckResult(
                 name="config_loadable",
                 ok=False,
                 detail="config.json has no enabled CLI providers",
-                fix="edit config.json — enable at least one of {claude, antigravity, codex}",
+                fix=(f"trinity-local config --set providers.{off[0]}.enabled=true" if off
+                     else "edit config.json — enable at least one of {claude, antigravity, codex}"),
             )
         return CheckResult(
             name="config_loadable",
@@ -215,7 +211,7 @@ def _check_config() -> CheckResult:
             name="config_loadable",
             ok=False,
             detail=f"config load failed ({type(exc).__name__})",
-            fix="trinity-local install-mcp   # rewrites a default config",
+            fix="trinity-local config --init   # keeps the broken file as config.json.broken, writes defaults",
         )
 
 
@@ -269,13 +265,20 @@ def _check_skill_freshness() -> CheckResult:
     Trust positioning: this surfaces "you're behind" — never auto-
     pulls. The user runs `trinity-local update` to apply.
     """
-    import os
     import subprocess
-    from pathlib import Path
 
-    skill_dir = Path(os.environ.get(
-        "TRINITY_SKILL_DIR", Path.home() / ".claude" / "skills" / "trinity"
-    ))
+    from .commands.update import _skill_dir, _uv_managed
+    if _uv_managed():
+        # A uv tool install runs from its own environment and `update` re-runs the installer
+        # instead of pulling, so a clone left by an earlier git install is not what runs and
+        # no fix this check could name would move it (2026-10-26).
+        return CheckResult(
+            name="skill_freshness", ok=True,
+            detail="installed with uv; `trinity-local update` re-runs the installer "
+                   "(no checkout to compare)",
+        )
+    # The directory `trinity-local update` pulls, so the fix below clears this check.
+    skill_dir = _skill_dir(None)
     if not (skill_dir / ".git").exists():
         # Not a git checkout (or skill not installed via install.sh) —
         # nothing to compare against. This is fine (some users may run
@@ -357,7 +360,10 @@ def _check_dispatch_ready() -> CheckResult:
         ok=True,
         detail=("optional: the Chrome extension is not connected, so the launchpad cannot start "
                 "councils (" + (readiness["recommended_action"] or "no dispatch path wired") + ")"),
-        fix="trinity-local install-extension",
+        # install-extension cannot install the capture host it registers.
+        fix=("curl -LsSf https://keepwhatworks.com/install.sh | sh"
+             if readiness.get("extension_configured") and not readiness.get("host_on_path")
+             else "trinity-local install-extension"),
     )
 
 
@@ -400,7 +406,7 @@ def _check_prompts_seeded() -> CheckResult:
     return CheckResult(
         name="prompts_seeded",
         ok=True,
-        detail=f"{total} prompt nodes indexed at ~/.trinity/prompts/",
+        detail=f"{total} prompt node{'' if total == 1 else 's'} indexed at ~/.trinity/prompts/",
     )
 
 
@@ -478,7 +484,7 @@ def _check_lens_built() -> CheckResult:
             name="lens_built",
             ok=True,  # not blocking
             detail="lens not built yet",
-            fix="trinity-local lens   # builds your taste lenses (after running a few councils)",
+            fix="trinity-local lens   # builds your lens from your transcripts",
         )
     size = lens.stat().st_size
     return CheckResult(
@@ -1169,8 +1175,13 @@ def _check_retired_dirs_reclaimable() -> CheckResult:
             n /= 1024
         return f"{n:.1f}TB"
 
+    import shlex
+
     parts = [f"{label} {count} files {_fmt(size)} ({reason})" for label, count, size, reason, _ in reclaimable]
-    cmd_list = " ".join(f'"{path}"' for *_, path in reclaimable)
+    # shlex.quote, not "double quotes": inside double quotes a shell still runs $(...) and
+    # backticks, so a TRINITY_HOME carrying them ran a command when the advice was pasted,
+    # and the rewritten path left the rm pointing somewhere else (2026-10-26).
+    cmd_list = " ".join(shlex.quote(str(path)) for *_, path in reclaimable)
     return CheckResult(
         name="retired_dirs_reclaimable",
         ok=True,  # soft — not blocking, just informational

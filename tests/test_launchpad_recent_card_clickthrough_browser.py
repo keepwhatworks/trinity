@@ -32,12 +32,8 @@ Slow + browser marked; skips when Playwright/chromium are absent.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
-from pathlib import Path
-
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -93,15 +89,6 @@ def _seed_one_council() -> None:
     write_live_council_page()
 
 
-def _serve(home: Path):
-    handler = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=str(home)
-    )
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 def test_recent_council_card_clicks_through_to_its_live_page(tmp_path, monkeypatch):
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright
@@ -110,7 +97,7 @@ def test_recent_council_card_clicks_through_to_its_live_page(tmp_path, monkeypat
     monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
     _seed_one_council()
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:
@@ -241,7 +228,7 @@ def test_rail_multi_round_chain_shows_round_badge_single_does_not(tmp_path, monk
     monkeypatch.setenv("TRINITY_DISABLE_MLX", "1")
     _seed_chain_and_single()
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:

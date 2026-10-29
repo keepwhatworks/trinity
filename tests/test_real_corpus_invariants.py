@@ -40,9 +40,13 @@ import pytest
 
 
 def _real_topics_path() -> Path:
-    """Default real install path. Tests skip if it doesn't exist —
-    keeps CI green on fresh checkouts."""
-    return Path.home() / ".trinity" / "memories" / "topics.json"
+    """The copy named by TRINITY_REAL_CORPUS when set, else the real install, read
+    only. Tests skip if it doesn't exist — keeps CI green on fresh checkouts."""
+    import os
+
+    base = os.environ.get("TRINITY_REAL_CORPUS")
+    root = Path(base).expanduser() if base else Path.home() / ".trinity"
+    return root / "memories" / "topics.json"
 
 
 @pytest.fixture
@@ -192,6 +196,7 @@ class TestNoJunkDrawerForWhoIAm:
 
 
 @pytest.mark.real_corpus
+@pytest.mark.usefixtures("real_corpus_home")
 class TestVocabularyDistillationOnRealCorpus:
     """Direct-agents-like-me invariants on the vocabulary pipeline.
 
@@ -284,6 +289,7 @@ class TestVocabularyDistillationOnRealCorpus:
 
 
 @pytest.mark.real_corpus
+@pytest.mark.usefixtures("real_corpus_home")
 class TestPromptCorpusPurity:
     """#245: the indexed prompt corpus must be overwhelmingly user-authored.
 
@@ -339,6 +345,7 @@ class TestPromptCorpusPurity:
 
 
 @pytest.mark.real_corpus
+@pytest.mark.usefixtures("real_corpus_home")
 class TestBasinScaffoldingConcentration:
     """#248: corpus-wide scaffolding can pass the 5% floor (#245) yet
     CONCENTRATE into a few near-pure scaffolding basins that then surface on

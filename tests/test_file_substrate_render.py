@@ -212,7 +212,7 @@ def test_cold_memory_viewer_renders_clean_on_empty_home():
     pp = home / "portal_pages"
     assert (pp / "memory.html").exists(), "portal-html did not write the memory viewer"
 
-    tabs = ("core.md", "lens.md", "topics.json", "vocabulary.md", "picks.json", "routing.json")
+    tabs = ("core.md", "lens.md", "topics.json", "vocabulary.md", "routing.json")
     with sync_playwright() as p:
         try:
             browser = p.chromium.launch()

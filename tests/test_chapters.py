@@ -106,6 +106,7 @@ def test_basin_label_keeps_ambiguous_words():
 
 
 @pytest.mark.real_corpus
+@pytest.mark.usefixtures("real_corpus_home")
 class TestCorpusTimeSpread:
     """The corpus carries 38 months of real `timestamp`s. If a time field
     regresses to `created_at` (ingest day), every month collapses into one and

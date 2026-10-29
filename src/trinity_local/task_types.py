@@ -50,9 +50,6 @@ def guess_task_type(text: str, provider: str | None = None) -> str:
     return "general"
 
 
-VALID_HORIZONS = ("tactical", "strategic", "philosophical")
-
-
 # Horizon classification — used by council_runtime to hint chairman which
 # lens-card resolution to weight (per #139). Heuristic v1: keyword/regex
 # over query text. The plan named "LLM-tagged v2 if v1 is too noisy" as

@@ -59,8 +59,9 @@ def capture_argv(monkeypatch):
     # _run_action does a local `import subprocess` → same module object, so patching
     # the stdlib attribute intercepts the dispatch without spawning anything.
     monkeypatch.setattr(subprocess, "Popen", _FakePopen)
-    # Don't let runtime-env construction influence the test.
-    monkeypatch.setattr(capture_host, "build_runtime_env", lambda: {}, raising=False)
+    # Don't let runtime-env construction influence the test. _run_action imports
+    # build_runtime_env from runtime_env at call time, so patch it there.
+    monkeypatch.setattr("trinity_local.runtime_env.build_runtime_env", lambda: {})
     return _FakePopen
 
 

@@ -65,11 +65,6 @@ def test_end_to_end_install_extension_to_doctor_signal(
     ))
     assert rc in (None, 0)
 
-    # Force shortcut applicable=False so the test is platform-independent.
-    monkeypatch.setattr(
-        "trinity_local.launchpad_data._shortcut_status",
-        lambda: {"ok": True, "applicable": False},
-    )
     from trinity_local.health_checks import _check_dispatch_ready
     result = _check_dispatch_ready()
     assert result.ok is True, (
@@ -194,13 +189,8 @@ def test_dispatch_readiness_doctor_launchpad_agree(
       - dispatch_readiness() returns ready=False
       - doctor's _check_dispatch_ready returns ok=False
       - pageData.browserExtension.configured is False
-      - pageData.shortcutStatus.applicable controls Shortcut tier
     """
     monkeypatch.setattr("shutil.which", lambda name, **kw: None)
-    monkeypatch.setattr(
-        "trinity_local.launchpad_data._shortcut_status",
-        lambda: {"ok": True, "applicable": False},
-    )
     from trinity_local.launchpad_data import (
         dispatch_readiness, build_page_data
     )

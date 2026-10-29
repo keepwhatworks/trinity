@@ -133,14 +133,10 @@ The shipped v1 bridge and the next launch target are:
 
 ## Action taxonomy
 
-Current dispatch actions (`src/trinity_local/dispatch_registry.py`):
-
-- `launch_council`: primary path. User picks members + task.
-- `stop_council`: cancel an in-flight council
-- `open_review`: open the unified council page
-- `start_council`: alternative entry from a prepared bundle
-- `council_iterate`: canonical iteration action (replaces continue/refine/auto-chain). Args: `{rounds: int, prompt: str|None}`. Legacy aliases (`council_continue`, `council_refine`, `council_auto_chain`) are still accepted as input. They map to `council_iterate` via the dispatch shim, so old launchpad URLs and saved Shortcuts keep working.
-- `open_path`, `open_url`, `run_applescript`, `run_command` are generic dispatch helpers
+The actions the Chrome extension's Native Messaging host accepts are
+`capture_host.ACTION_ALLOWLIST` (`src/trinity_local/capture_host.py`). The older
+underscored registry this section listed (`dispatch_registry.py`) was never
+enforced by the host and was retired 2026-10-27.
 
 (The `rate_council` dispatch action was retired 2026-05-21/22 alongside the
 rest of the rating UX. Chairman pick is the auto-recorded supervision signal

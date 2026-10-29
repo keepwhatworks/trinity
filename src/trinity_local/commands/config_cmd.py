@@ -65,6 +65,16 @@ def _bundled_default() -> str | None:
         return None
 
 
+def _free_aside_name(path):
+    """config.json.broken, then .broken.2, ... — never overwrites an earlier one."""
+    aside = path.with_name(path.name + ".broken")
+    n = 2
+    while aside.exists():
+        aside = path.with_name(f"{path.name}.broken.{n}")
+        n += 1
+    return aside
+
+
 def _coerce(value: str, kind):
     if kind is bool:
         low = value.strip().lower()
@@ -146,14 +156,27 @@ def handle_config(args) -> int:
         return 0
 
     if getattr(args, "init", False):
+        # A config that exists but cannot load (a hand-edit that broke the JSON)
+        # is not a config, and this is the repair the config_loadable check
+        # names; refusing it as "already exists" left that warning with no fix.
+        broken = None
         if path.exists():
-            print(f"config already exists at {path} — nothing written")
-            return 0
+            try:
+                load_config(explicit)
+            except Exception as exc:
+                broken = type(exc).__name__
+            if broken is None:
+                print(f"config already exists at {path} — nothing written")
+                return 0
         default = _bundled_default()
         if default is None:
             print("no bundled default config to copy from")
             return 1
         target = trinity_home() / "config.json" if explicit is None else path
+        if broken and target.exists():
+            aside = _free_aside_name(target)
+            target.rename(aside)
+            print(f"{target.name} could not be loaded ({broken}); kept it as {aside.name}")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(default, encoding="utf-8")
         print(f"wrote {target}")

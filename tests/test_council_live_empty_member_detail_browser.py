@@ -35,11 +35,8 @@ empty member's card and REDS this guard.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
-
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -93,13 +90,6 @@ def _seed_council_with_empty_member(cid: str) -> None:
     write_live_council_page()
 
 
-def _serve(tmp_path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(tmp_path))
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 _READ_ROWS = """() => {
   const rows = [...document.querySelectorAll('.provider-status-row')];
   return rows.map(r => ({
@@ -120,7 +110,7 @@ def test_done_but_empty_member_reads_empty_response_not_queued(tmp_path, monkeyp
     cid = "council_emptymember01"
     _seed_council_with_empty_member(cid)
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:

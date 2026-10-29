@@ -40,7 +40,6 @@ Run: python scripts/find_orphans.py [--verbose]
 from __future__ import annotations
 import argparse
 import ast
-import sys
 from collections import deque
 from pathlib import Path
 
@@ -49,15 +48,6 @@ REPO = Path(__file__).resolve().parent.parent
 ROOT = REPO / "src" / "trinity_local"
 PACKAGE = "trinity_local"
 WHITELIST = REPO / "scripts" / "known_orphans.txt"
-
-
-def module_name_of(path: Path) -> str:
-    """Return the dotted module path for a .py file."""
-    rel = path.relative_to(ROOT.parent)
-    parts = list(rel.with_suffix("").parts)
-    if parts[-1] == "__init__":
-        parts = parts[:-1]
-    return ".".join(parts)
 
 
 def imports_from(path: Path) -> set[str]:

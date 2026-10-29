@@ -39,12 +39,10 @@ marked; skips without Playwright/chromium.
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import json
-import threading
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -74,13 +72,6 @@ def _running_status(token: str) -> dict:
         },
         "synthesis": {"status": "pending"},
     }
-
-
-def _serve(directory) -> tuple[http.server.HTTPServer, int]:
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _seed(tmp_path, monkeypatch, status):
@@ -179,7 +170,7 @@ def test_running_member_long_detail_token_does_not_overflow_live_page(
     )
 
     _seed(tmp_path, monkeypatch, status)
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         geo, errs = _drive(port, token, viewport_width)
     finally:

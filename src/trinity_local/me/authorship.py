@@ -13,7 +13,7 @@ pasted back in. On the founder's corpus about 39% of ingested prompts were one o
 `build_authorship_map()` classifies every prompt node at lens-build time and writes
 `me/authorship_map.json` (versioned; it is corpus-relative, since "earliest copy" changes as the
 corpus grows, so it is rebuilt on every build rather than stamped once at ingest).
-`iter_lens_nodes()` is the ONE gate lens-side readers use: dropped classes are skipped, a paste
+`lens_only()` is the ONE gate lens-side readers wrap the store's iterators in: dropped classes are skipped, a paste
 contributes only the user's own lines, everything else passes. Retrieval, search and the trust
 ledger read the store directly and are not filtered.
 
@@ -355,7 +355,3 @@ def lens_only(nodes) -> Iterator:
         yield n if text == getattr(n, "text", "") else replace(n, text=text)
 
 
-def iter_lens_nodes(limit: object = None, *, embeddings: bool = True) -> Iterator:
-    """The prompt store through the gate."""
-    from ..memory.store import iter_prompt_nodes, iter_prompt_nodes_no_embedding
-    yield from lens_only(iter_prompt_nodes(limit=limit) if embeddings else iter_prompt_nodes_no_embedding(limit=limit))

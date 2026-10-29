@@ -27,24 +27,13 @@ Slow + browser marked; skips when Playwright/chromium are absent.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
-
-
-def _serve(directory: Path):
-    handler = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=str(directory)
-    )
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 # A realistic life-chapter set: two substantive non-dev arcs that survive the
@@ -98,7 +87,7 @@ def test_timeline_card_view_gated_and_honest(tmp_path, monkeypatch):
     _render("home", tmp_path, monkeypatch)
     _render("stats", tmp_path, monkeypatch)
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:
@@ -362,7 +351,7 @@ def test_timeline_card_no_horizontal_overflow_at_320(tmp_path, monkeypatch):
     )
     publish_vendor_files(pp)
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     width = 320
     try:
         with sync_playwright() as p:

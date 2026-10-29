@@ -520,3 +520,16 @@ def test_project_scope_writes_the_user_skill_only_where_claude_code_is(patch_tri
     monkeypatch.chdir(tmp_path)
     _run_install(monkeypatch, patch_trinity_home, scope="project")
     assert not (patch_trinity_home / ".claude").exists()
+
+
+def test_the_pip_uninstall_hint_keeps_the_interpreter_path_whole(monkeypatch):
+    """The hint is pasted into a shell: an interpreter under a folder with a space or $(...)
+    must come through as one word, unexpanded."""
+    import shlex
+    import sys
+
+    from trinity_local.commands.install import _program_uninstall_command
+    python = "/Users/A B/$(touch PWNED)/bin/python3"
+    monkeypatch.setattr(sys, "prefix", "/opt/venvs/trinity")
+    monkeypatch.setattr(sys, "executable", python)
+    assert shlex.split(_program_uninstall_command()) == [python, "-m", "pip", "uninstall", "trinity-local"]

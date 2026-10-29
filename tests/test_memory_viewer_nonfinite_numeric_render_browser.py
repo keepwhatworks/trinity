@@ -125,28 +125,8 @@ def test_nonfinite_picks_and_routing_render_no_infinity_token():
             errs: list[str] = []
             page.on("pageerror", lambda e: errs.append(str(e)[:160]))
 
-            # ---- picks Reader ----
-            page.goto(f"file://{pages / 'memory.html'}?file=picks.json", wait_until="load")
-            page.wait_for_timeout(900)
-            # (A) the surface PAINTS — the clean basin b02 (margin 0.42) renders, so a
-            # blank page can't pass the no-token assertion vacuously.
-            cards = page.eval_on_selector_all(
-                ".pick-card",
-                "els => els.map(c => (c.innerText || '').replace(/\\s+/g, ' ').trim())",
-            )
-            if not any("margin 0.42" in c for c in cards):
-                failures.append(
-                    "picks Reader did not paint the clean basin (margin 0.42) — "
-                    f"can't trust the no-Infinity assertion. cards={cards!r}"
-                )
-            picks_text = page.evaluate("() => document.body.innerText")
-            for tok in _BAD_TOKENS:
-                if tok in picks_text:
-                    failures.append(
-                        f"picks Reader leaked the non-finite token {tok!r} from a "
-                        f"corrupt picks.json (1e400 margin/count -> 'margin Infinity · "
-                        f"n=Infinity'). cards={cards!r}"
-                    )
+            # (The picks Reader half was removed with picks.json's viewer surfaces on
+            # 2026-10-26; the corrupt picks.json stays seeded for the server render.)
 
             # ---- routing.json Reader ----
             page.goto(f"file://{pages / 'memory.html'}?file=routing.json", wait_until="load")

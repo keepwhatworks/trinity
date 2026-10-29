@@ -30,13 +30,11 @@ Guards:
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import json
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -101,15 +99,6 @@ def test_orderings_only_share_text_is_not_empty(tmp_path, monkeypatch):
     )
 
 
-def _serve(directory: Path):
-    handler = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=str(directory)
-    )
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 @pytest.mark.slow
 @pytest.mark.browser
 def test_copy_as_text_button_gives_feedback_in_orderings_only_state(tmp_path, monkeypatch):
@@ -133,7 +122,7 @@ def test_copy_as_text_button_gives_feedback_in_orderings_only_state(tmp_path, mo
     (pp / "launchpad.html").write_text(html, encoding="utf-8")
     publish_vendor_files(pp)
 
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
     try:
         with sync_playwright() as p:
             try:

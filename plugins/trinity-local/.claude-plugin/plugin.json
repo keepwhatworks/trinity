@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "trinity-local",
   "displayName": "Trinity Local",
-  "version": "1.7.389",
+  "version": "1.7.407",
   "description": "Ask all three. Keep what works. Put plans in front of Claude, Codex and Gemini before you commit, and check changes with your own tests before you call them done. Local-first: your transcripts stay on your machine, on the subscriptions you already pay for.",
   "author": {
     "name": "Vishi Gondi",

@@ -41,10 +41,9 @@ import tempfile
 import time
 from pathlib import Path
 
-from .scratch import _TEST_PATH, _apply, _rebase, _run, scratch_copy, tree_spellings
+from .scratch import _TEST_PATH, _apply, _rebase, _run, link_env_dirs, scratch_copy, tree_spellings
 
 FLAG = "TRINITY_VERIFY_DIFFERENTIAL"       # "0" turns it off; on by default
-_ENV_DIRS = (".venv", "venv", "node_modules")
 _STATUS = {"green": "vacuous", "failed": "detects", "invalid": "no_load", "timeout": "timeout"}
 
 
@@ -98,10 +97,7 @@ def measure(tests: list[tuple[str, str]], diff: str, cwd: Path, env: dict | None
     with tempfile.TemporaryDirectory(prefix="trinity-differential-") as tmp:
         work = Path(tmp) / "tree"
         scratch_copy(cwd, work)
-        # The copy leaves out environments; a command such as `.venv/bin/python` needs them.
-        for name in _ENV_DIRS:
-            if (cwd / name).exists() and not (work / name).exists():
-                (work / name).symlink_to((cwd / name).resolve())
+        link_env_dirs(cwd, work)
 
         def rebase(value: str) -> str:
             for sp in spellings:

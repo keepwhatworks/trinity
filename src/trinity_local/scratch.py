@@ -28,8 +28,10 @@ import stat
 import subprocess
 from pathlib import Path
 
+# Environments the copy leaves out; link_env_dirs links them back.
+_ENV_DIRS = (".venv", "venv", "node_modules")
 # Not code under test: caches and environments, when the tree is not a git checkout.
-_IGNORE = shutil.ignore_patterns(".git", ".venv", "venv", "node_modules", "__pycache__",
+_IGNORE = shutil.ignore_patterns(".git", *_ENV_DIRS, "__pycache__",
                                  ".pytest_cache", ".mypy_cache", ".ruff_cache")
 # Test files are where the evidence lives, not what is being checked.
 _TEST_PATH = re.compile(r"(^|/)(tests?|__tests__|spec)/|(^|/)test_[^/]*$|_test\.[^/]+$|\.(spec|test)\.[^/]+$")
@@ -170,6 +172,15 @@ def _throwaway_repo(work: Path, borrow: Path | None = None, tracked: list[str] |
                        input="\0".join(present), capture_output=True, text=True)
     subprocess.run(git + ["commit", "-q", "--no-verify", "-m", "scratch snapshot"], cwd=work,
                    capture_output=True, text=True)
+
+
+def link_env_dirs(src: Path, work: Path) -> None:
+    """Symlink into `work` the environments a scratch copy of `src` left out, so a
+    command such as `.venv/bin/python` still runs in the copy. One already in `work`
+    is kept."""
+    for name in _ENV_DIRS:
+        if (src / name).exists() and not (work / name).exists():
+            (work / name).symlink_to((src / name).resolve())
 
 
 def scratch_copy(cwd: Path, dest: Path) -> Path:

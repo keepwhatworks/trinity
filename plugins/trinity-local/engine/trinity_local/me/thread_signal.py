@@ -87,7 +87,3 @@ def compute_thread_signals() -> dict[str, float]:
     return {tid: score_thread(texts) for tid, texts in by_thread.items()}
 
 
-def rank_threads(top_k: int = 20) -> list[tuple[str, float]]:
-    """Highest-signal threads first — for the eval-nomination path + a surface."""
-    scores = compute_thread_signals()
-    return sorted(scores.items(), key=lambda kv: -kv[1])[:top_k]

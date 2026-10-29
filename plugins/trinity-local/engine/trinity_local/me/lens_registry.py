@@ -3,7 +3,7 @@
 Turns the lens from *stateless* (every rebuild replaces the surface
 tensions) into *accumulating* (a durable registry of tensions; each
 rebuild reinforces or extends rather than overwrites). See
-``docs/lens-redesign.md`` build-sequence step 1.
+``docs/historical/lens-redesign.md`` build-sequence step 1.
 
 Identity is by **embedding cosine** on a tension's probe text — not a
 string match on its poles — because the chairman rephrases the same
@@ -58,7 +58,7 @@ from .basins import me_dir
 from .pair_mining import LensPair, _tension_probe_text
 
 # Cosine threshold for "these two probe texts are the same tension".
-# Start at 0.80 per docs/lens-redesign.md risk #2; tune on real rebuild
+# Start at 0.80 per docs/historical/lens-redesign.md risk #2; tune on real rebuild
 # cadence. Too high → the same tension splits into duplicates each
 # rebuild (no accretion); too low → distinct tensions merge (lost
 # resolution). Under the TF-IDF fallback the same threshold is coarser

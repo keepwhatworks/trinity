@@ -185,7 +185,6 @@ class TestBuildMeEmptyChairmanPreservesLens:
             me_builder,
             "_sample_diverse_with_embeddings",
             lambda **k: ["one sample prompt"],
-            raising=False,
         )
 
         prov = ProviderConfig(

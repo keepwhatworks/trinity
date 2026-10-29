@@ -30,12 +30,10 @@ Slow + browser marked; skips cleanly when Playwright/chromium are absent.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -65,15 +63,6 @@ def _write_prod_layout(html: str, serve_root: Path, name: str) -> str:
     (pp / name).write_text(html, encoding="utf-8")
     publish_vendor_files(pp)
     return f"portal_pages/{name}"
-
-
-def _serve(directory: Path):
-    handler = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=str(directory)
-    )
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 # Probe run after petite-vue mounts. `_visible` mirrors Playwright's is_hidden()
@@ -116,7 +105,7 @@ def _probe_view(monkeypatch, tmp_path: Path, view: str) -> dict:
     html = render_launchpad_html(page_data=page_data, view=view)
     serve_root = tmp_path / "serve"
     rel = _write_prod_layout(html, serve_root, f"{view}.html")
-    httpd, port = _serve(serve_root)
+    httpd, port = serve_directory(serve_root)
     try:
         with sync_playwright() as p:
             try:
@@ -243,7 +232,7 @@ def test_sidepanel_action_first_layout(tmp_path, monkeypatch):
     html = render_launchpad_html(page_data=page_data, view="home")
     serve_root = tmp_path / "serve"
     rel = _write_prod_layout(html, serve_root, "home.html")
-    httpd, port = _serve(serve_root)
+    httpd, port = serve_directory(serve_root)
     try:
         with sync_playwright() as p:
             try:

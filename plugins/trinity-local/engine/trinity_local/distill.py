@@ -234,7 +234,7 @@ def distill_via_chairman(*, provider: str = "claude", force: bool = False) -> di
         return {
             "ok": False,
             "skipped": True,
-            "reason": "no core memories present yet — run lens-build + consolidate first",
+            "reason": "no core memories present yet — run `trinity-local lens` first",
         }
     if not force and core_freshness().get("state") == "frozen":
         return {"ok": True, "skipped": True, "frozen": True, "reason": FROZEN_REASON,

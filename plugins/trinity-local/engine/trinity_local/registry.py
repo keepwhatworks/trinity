@@ -14,16 +14,11 @@ is the set used by a specific Trinity subsystem:
 
 - ``CANONICAL_COUNCIL_PROVIDERS`` — the 3 frontier-lab CLIs that play
   council member roles. Re-exported from ``config`` for back-compat.
-- ``CANONICAL_LAB_PROVIDERS`` — 4 entries: council trio + ``gemini``
-  (the consumer Gemini app via takeout/capture, distinct from the
-  ``antigravity`` CLI). Used by cortex frontmatter filters that need
-  to know "did this field name a provider we know about?"
 - ``CAPTURE_PROVIDERS`` — the 3 web-chat surfaces with browser-
   extension capture adapters (``claude``, ``chatgpt``, ``gemini``).
-  Different from CANONICAL_LAB_PROVIDERS — ``chatgpt`` here maps to
-  the OpenAI consumer app; ``codex`` is the CLI sibling and lives in
-  the CANONICAL_LAB_PROVIDERS set.
-- ``MCP_TOOL_NAMES`` — the 9 tools registered in ``mcp_server.py``.
+  Different from the council set — ``chatgpt`` here maps to the
+  OpenAI consumer app; ``codex`` is the CLI sibling and a council member.
+- ``MCP_TOOL_NAMES`` — the tools registered in ``mcp_server.py``.
   Tested for drift against the actual ``handle_list_tools()`` output.
 """
 from __future__ import annotations
@@ -32,20 +27,11 @@ from .config import CANONICAL_COUNCIL_PROVIDERS
 
 __all__ = [
     "CANONICAL_COUNCIL_PROVIDERS",
-    "CANONICAL_LAB_PROVIDERS",
     "CAPTURE_PROVIDERS",
     "MCP_TOOL_NAMES",
+    "INGEST_SOURCES",
+    "CLI_INGEST_SOURCES",
 ]
-
-
-# All four frontier-lab provider slugs Trinity recognizes in code +
-# config + transcript metadata. Cortex frontmatter parsers use this
-# set to separate "known provider field" from arbitrary other
-# metadata. The order here matches the order CANONICAL_COUNCIL_PROVIDERS
-# plus gemini at the end (consumer Gemini, not the antigravity CLI).
-CANONICAL_LAB_PROVIDERS: tuple[str, ...] = tuple(
-    list(CANONICAL_COUNCIL_PROVIDERS) + ["gemini"]
-)
 
 
 # Web-chat surfaces the browser extension captures from. NOT the same
@@ -54,6 +40,21 @@ CANONICAL_LAB_PROVIDERS: tuple[str, ...] = tuple(
 # native-messaging adapters live at browser-extension/adapters/<slug>.js
 # for each of these.
 CAPTURE_PROVIDERS: tuple[str, ...] = ("claude", "chatgpt", "gemini")
+
+
+# Every transcript source incremental ingest reads, in the order it reads them: the local
+# CLIs first, the browser-extension captures last (incremental_ingest explains why the order
+# matters under a shared deadline).
+INGEST_SOURCES: tuple[str, ...] = (
+    "claude", "codex", "gemini", "antigravity", "cowork",
+    "browser_claude", "browser_chatgpt", "browser_gemini",
+)
+
+# The sources a first-run scan reads: every ingest source except the browser captures, which
+# exist only once the extension has run. Derived rather than listed: a hand-kept copy left out
+# antigravity from its ingest support (2026-05-30) until 2026-10-27, so an agy-only user got no
+# first-run scan.
+CLI_INGEST_SOURCES: tuple[str, ...] = tuple(s for s in INGEST_SOURCES if not s.startswith("browser_"))
 
 
 # The canonical Chrome extension ID — the SINGLE source of truth.
@@ -105,7 +106,7 @@ def extension_origin_ids() -> tuple[str, ...]:
 CHROME_WEB_STORE_URL: str = ""
 
 
-# The 6 MCP tools registered in mcp_server.py's handle_list_tools().
+# The MCP tools registered in mcp_server.py's handle_list_tools().
 # Order matches the registration order. Tested for drift against the
 # live tool list in tests/test_registry.py — adding/removing/renaming
 # a tool MUST keep both surfaces in sync.
@@ -123,5 +124,4 @@ MCP_TOOL_NAMES: tuple[str, ...] = (
     # `get_picks` removed 2026-08-11 with the lens-basin router it
     # introspected (council_8817ca0c57a2e4ff, amd_0165-67): a tool that
     # reads a routing table cannot outlive the routing table.
-    # Surface = 6 tools.
 )

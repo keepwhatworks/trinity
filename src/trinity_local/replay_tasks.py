@@ -31,7 +31,9 @@ from __future__ import annotations
 
 import io
 import json
+import posixpath
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -172,7 +174,7 @@ def find_tasks(repo: Path, since: str, python: str | None = None, limit: int = 2
         remotes = [r.strip() for r in _git(repo, "branch", "-r", "--contains", sha, check=False).splitlines() if r.strip()]
         tasks.append(ReplayTask(name=f"replay-{sha[:10]}", fix=sha, parent=parent, date=date, test_files=tests,
                                 failing=_failing_ids(out), failure_tail=out[-2500:], remotes=remotes,
-                                command="python -m pytest -q " + " ".join(tests)))
+                                command=shlex.join(["python", "-m", "pytest", "-q", *tests])))
     return tasks
 
 
@@ -241,14 +243,20 @@ memory_mb = 4096
 
 
 def _test_sh(t: ReplayTask) -> str:
-    restore = "\n".join(f'mkdir -p "/app/$(dirname {f})" && cp "/tests/files/{f}" "/app/{f}"' for f in t.test_files)
+    # Test paths come from a repository's history: quote each one, and take the dirname
+    # here rather than in the script, so a name with a space or $() neither breaks the
+    # restore nor runs (2026-10-26).
+    q = shlex.quote
+    restore = "\n".join(
+        f"mkdir -p {q('/app/' + posixpath.dirname(f))} && cp {q('/tests/files/' + f)} {q('/app/' + f)}"
+        for f in t.test_files)
     return f"""#!/bin/bash
 # Restore the original test files (an agent may not change what grades it), then run them.
 set -u
 mkdir -p /logs/verifier
 {restore}
 cd /app
-if python -m pytest -q -p no:cacheprovider {' '.join(t.test_files)}; then
+if python -m pytest -q -p no:cacheprovider {' '.join(q(f) for f in t.test_files)}; then
   echo 1 > /logs/verifier/reward.txt
 else
   echo 0 > /logs/verifier/reward.txt

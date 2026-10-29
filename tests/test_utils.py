@@ -4,7 +4,25 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from trinity_local.utils import atomic_write_text, now_iso, stable_id
+import pytest
+
+from trinity_local.utils import atomic_write_text, autoscan_disabled, now_iso, stable_id
+
+
+@pytest.mark.parametrize(
+    "value, disabled",
+    [(None, False), ("", False), ("0", False), ("false", False), ("False", False),
+     ("1", True), ("true", True), ("yes", True)],
+)
+def test_autoscan_disabled_parses_the_kill_switch(monkeypatch, value, disabled):
+    """One parser for TRINITY_AUTOSCAN_DISABLED. The embedder wizard used its own
+    and honoured only "1", so `=true` silenced the cold-start scan and the stale
+    pass but not the wizard."""
+    if value is None:
+        monkeypatch.delenv("TRINITY_AUTOSCAN_DISABLED", raising=False)
+    else:
+        monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", value)
+    assert autoscan_disabled() is disabled
 
 
 class TestNowIso:

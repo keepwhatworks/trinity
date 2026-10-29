@@ -24,8 +24,6 @@ with ``lens-from-provider.md`` if either side changes.
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 
 from ..me.pair_mining import (
     LensPair,
@@ -34,25 +32,7 @@ from ..me.pair_mining import (
     load_orderings,
     save_lenses,
 )
-from .provider_import import read_provider_import
-
-
-# Resolved at runtime because the docs/ tree sits at the project root
-# in dev, but the same file may live under the installed package dir
-# once we ship as a wheel. Resolve once at module import.
-def _prompt_doc_path() -> Path | None:
-    """The packaged lens-from-provider.md, or $TRINITY_LENS_PROMPT_DOC when set.
-
-    It lived under the repo's docs/, which no wheel ships, so `lens-prompt` exited 1 on every
-    install and the launchpad's `lens-prompt | pbcopy` button copied nothing (coherence review
-    2026-10-15); it is package data now."""
-    import os
-    override = os.environ.get("TRINITY_LENS_PROMPT_DOC")
-    if override:
-        p = Path(override).expanduser()
-        return p if p.exists() else None
-    from .provider_import import packaged_prompt
-    return packaged_prompt("lens-from-provider.md")
+from .provider_import import print_provider_prompt, read_provider_import
 
 
 def register(subparsers):
@@ -124,41 +104,10 @@ def register(subparsers):
 # lens-prompt
 # ---------------------------------------------------------------------
 
-_PROMPT_BODY_MARKER = "## The prompt — copy below this line"
-
-
 def handle_lens_prompt(args) -> int:
-    doc = _prompt_doc_path()
-    if doc is None:
-        print(
-            "error: couldn't find lens-from-provider.md. Set "
-            "TRINITY_LENS_PROMPT_DOC to its absolute path if you're "
-            "running from a non-checkout install.",
-            file=sys.stderr,
-        )
-        return 1
-    text = doc.read_text(encoding="utf-8")
-    if args.with_instructions:
-        sys.stdout.write(text)
-        return 0
-    # Default: just the prompt body so `lens-prompt | pbcopy` is paste-ready.
-    idx = text.find(_PROMPT_BODY_MARKER)
-    if idx < 0:
-        # Doc lost its anchor marker — fall back to full content so we
-        # don't silently print nothing. Surface a warning.
-        print(
-            "warning: prompt-body marker not found in doc; emitting "
-            "full file. Update lens-from-provider.md to restore "
-            f"the '{_PROMPT_BODY_MARKER}' anchor.",
-            file=sys.stderr,
-        )
-        sys.stdout.write(text)
-        return 0
-    # Skip past the marker line itself + the blank line after it.
-    after = text[idx:].split("\n", 2)
-    body = after[-1] if len(after) == 3 else text[idx:]
-    sys.stdout.write(body)
-    return 0
+    return print_provider_prompt(
+        "lens-from-provider.md", "TRINITY_LENS_PROMPT_DOC", with_instructions=args.with_instructions
+    )
 
 
 # ---------------------------------------------------------------------

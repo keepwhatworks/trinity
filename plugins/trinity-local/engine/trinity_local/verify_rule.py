@@ -63,6 +63,9 @@ class Panel:
     # Non-empty when the readers saw only part of the diff (verify.reader_diff says what was
     # left out). A vote over part of a change is not agreement about the change.
     partial: str = ""
+    # False when no judgment item was blocking. A read passes only over blocking judgments,
+    # so every vote is then False whatever the readers said: not passing, and not an objection.
+    gated: bool = True
 
     @classmethod
     def not_run(cls) -> "Panel":
@@ -124,6 +127,9 @@ class Triage:
 SKIP_SHIPS = False
 
 
+_UNGATED = "no judgment item is blocking, so no reader's vote can pass it; mark one blocking"
+
+
 def triage(kernel: Kernel, panel: Panel) -> Triage:
     t = _triage(kernel, panel)
     if panel.ran and panel.partial and t.outcome != "STOP":
@@ -160,6 +166,10 @@ def _triage(kernel: Kernel, panel: Panel) -> Triage:
             why = " (panel split)"
         elif not panel.ran:
             why = " (panel not run)"
+        elif not panel.gated:
+            # 2026-10-26: two readers voted PASS on every item and this line said "all 2
+            # reviewing labs objected", because none of the items was blocking.
+            why = f" ({_UNGATED})"
         elif panel.votes and not any(panel.votes.values()):
             # Unanimous OBJECTION is not agreement to pass. The three-cause fix
             # of 2026-09-27 read every non-split, ran panel as "agreed", so three
@@ -180,4 +190,6 @@ def _triage(kernel: Kernel, panel: Panel) -> Triage:
         return Triage("READ", "a test ran but it does not exercise the changed files")
     return Triage("READ", "no relevant test; "
                   + ("panel split" if panel.split()
+                     else _UNGATED if not panel.gated
+                     else "every reviewing lab objected" if not any(panel.votes.values())
                      else "panel agreed, but consensus without a kernel is not a skip"))

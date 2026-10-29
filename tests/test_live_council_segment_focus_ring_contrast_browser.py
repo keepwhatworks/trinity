@@ -32,14 +32,12 @@ Slow-marked; skips without Playwright/chromium.
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import json
 import re
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -70,13 +68,6 @@ def _outcome(cid: str, round_no: int) -> dict:
             },
         },
     }
-
-
-def _serve(directory) -> tuple[http.server.HTTPServer, int]:
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _seed_two_round_chain(tmp_path, monkeypatch) -> tuple[Path, str]:
@@ -163,7 +154,7 @@ def test_segment_divider_focus_ring_clears_non_text_contrast(tmp_path, monkeypat
     from playwright.sync_api import sync_playwright
 
     rp, thread_id = _seed_two_round_chain(tmp_path, monkeypatch)
-    httpd, port = _serve(rp.parent)
+    httpd, port = serve_directory(rp.parent)
     try:
         with sync_playwright() as p:
             try:

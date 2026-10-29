@@ -21,10 +21,11 @@ cut, now fixed in the rendered instructions:
     biased relay, not a checker. The body now mandates obtaining PRIMARY evidence (read
     the changed files / run git diff yourself) and being skeptical of the handed artifact,
     and to state its verdict as limited when it can't independently inspect.
-  * MAKER-LAB COLLISION — `ask`/`run_council` could route the check back to the maker's
+  * MAKER-LAB COLLISION — `verify`/`run_council` could route the check back to the maker's
     own lab, so "different lab" wouldn't be different at all. The body now tells the shim
-    to pass `available_providers` EXCLUDING its own host lab, so the second opinion is
-    guaranteed cross-lab.
+    to pass `exclude_lab` (verify) or `members` (run_council) leaving out its own host lab,
+    so the second opinion is guaranteed cross-lab. (It named `available_providers`, which
+    neither tool accepts, until 2026-10-27.)
 
 The body also carries a WHAT-TO-INTERROGATE checklist distilled from the Fable-5 hardening
 arc: measured-not-assumed, abstain-over-wrong-output,
@@ -42,6 +43,7 @@ Deterministic + LLM-free: the definitions are static templates. No quota, no cha
 """
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
 
 from .state_paths import trinity_home
@@ -73,10 +75,10 @@ which is not a diff. If you cannot independently inspect the change, SAY SO and 
 verdict to exactly what you could verify.
 
 STAY CROSS-LAB.
-When you call `mcp__trinity-local__verify` or `mcp__trinity-local__run_council`, pass
-`available_providers` (or `members`) that EXCLUDE `{host_lab}` — your own host lab, and the
-maker's most likely lab. A second opinion from your own lab is not a cross-check; route to
-{others}.
+When you call `mcp__trinity-local__verify`, pass `exclude_lab` = `{host_lab}`. When you call
+`mcp__trinity-local__run_council`, pass `members` that EXCLUDE `{host_lab}` — your own host
+lab, and the maker's most likely lab. A second opinion from your own lab is not a
+cross-check; route to {others}.
 
 PROCEDURE
 1. Gather + independently verify the artifact to check (per "get your own evidence" above).
@@ -251,10 +253,13 @@ def write_verifier_agents(home: Path | None = None, *, install: bool = False,
             atomic_write_text(dst, src_text)
             result["installed"].append(str(dst))
     else:
+        def q(p: Path) -> str:  # a path with a space or $() must survive the paste
+            return shlex.quote(str(p))
+
         result["install_hints"] = [
-            f"mkdir -p {claude_dst.parent} && cp {claude_src} {claude_dst}"
+            f"mkdir -p {q(claude_dst.parent)} && cp {q(claude_src)} {q(claude_dst)}"
             "   # Claude Code: then spawn @trinity-verify as your loop's checker",
-            f"mkdir -p {codex_dst.parent} && cp {codex_src} {codex_dst}"
+            f"mkdir -p {q(codex_dst.parent)} && cp {q(codex_src)} {q(codex_dst)}"
             "   # Codex: same verifier, spawned by description match",
         ]
     return result

@@ -32,10 +32,6 @@ def runtime_bin_paths(python_executable: str | None = None) -> list[str]:
     return unique
 
 
-def runtime_path_prefix(python_executable: str | None = None) -> str:
-    return ":".join(runtime_bin_paths(python_executable))
-
-
 def build_runtime_env(
     env: dict[str, str] | None = None,
     *,

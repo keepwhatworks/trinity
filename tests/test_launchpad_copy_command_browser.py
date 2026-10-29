@@ -19,12 +19,10 @@ Slow + browser marked; skips when Playwright/chromium are absent.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -35,13 +33,6 @@ pytestmark = [pytest.mark.slow, pytest.mark.browser]
 _PAGE_DATA: dict = {}
 
 _COUNCIL_CMD = 'trinity-local council --task "<your question>"'
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _write_prod_layout(html: str, serve_root: Path) -> str:
@@ -61,7 +52,7 @@ def test_primary_command_blocks_are_one_tap_copyable(tmp_path):
 
     html = render_launchpad_html(page_data=_PAGE_DATA, view="stats")
     rel = _write_prod_layout(html, tmp_path)
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:

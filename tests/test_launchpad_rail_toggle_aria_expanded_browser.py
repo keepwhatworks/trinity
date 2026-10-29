@@ -28,22 +28,13 @@ precondition passes first). Restoring → green.
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import sys
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 REPO = Path(__file__).resolve().parents[1]
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _boot(tmp_path, monkeypatch):
@@ -70,7 +61,7 @@ def _boot(tmp_path, monkeypatch):
     pp.mkdir(parents=True)
     (pp / "launchpad.html").write_text(html, encoding="utf-8")
     publish_vendor_files(pp)
-    return _serve(tmp_path / "serve")
+    return serve_directory(tmp_path / "serve")
 
 
 def _open_page(browser, port, width):

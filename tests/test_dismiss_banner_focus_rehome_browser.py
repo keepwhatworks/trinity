@@ -44,28 +44,17 @@ the bite is the focus re-home, not a vacuous probe.
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import sys
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
 REPO = Path(__file__).resolve().parents[1]
 
 _CID = "dismiss_focus_browsertest"
-
-
-def _serve(directory: Path):
-    handler = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=str(directory)
-    )
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _seed_completed_two_member_council() -> None:
@@ -126,7 +115,7 @@ def test_live_council_dismiss_chainerror_does_not_strand_focus(tmp_path, monkeyp
     monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
     _seed_completed_two_member_council()
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:
@@ -250,7 +239,7 @@ def test_launchpad_dismiss_portal_notice_does_not_strand_focus(tmp_path, monkeyp
     )
     publish_vendor_files(pp)
 
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
     try:
         with sync_playwright() as p:
             try:
@@ -357,7 +346,7 @@ def test_launchpad_dismiss_operation_does_not_strand_focus(tmp_path, monkeypatch
     )
     publish_vendor_files(pp)
 
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
     try:
         with sync_playwright() as p:
             try:

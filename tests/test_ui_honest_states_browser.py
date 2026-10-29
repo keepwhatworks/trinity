@@ -9,24 +9,13 @@
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
-from pathlib import Path
-
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
 _STUB_DISPATCH = ("window.__TRINITY_DISPATCH__ = {dispatch:(a,cb)=>{if(cb)cb({ok:true});},"
                   "probe:()=>Promise.resolve({state:'ready'}),subscribe:()=>{},onStateChange:()=>{}};")
-
-
-def _serve(root: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(root))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _browser(p):
@@ -62,7 +51,7 @@ def test_a_dead_council_stops_polling_and_says_so(tmp_path, monkeypatch, stale):
     monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
     token = "stale_tok_%d" % int(stale)
     _seed_running(token, monkeypatch, stale=stale)
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with __import__("playwright.sync_api").sync_api.sync_playwright() as p:
             browser = _browser(p)
@@ -102,7 +91,7 @@ def test_a_failed_copy_does_not_say_copied(tmp_path, monkeypatch):
     monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
     monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
     rel = _launchpad(tmp_path, view="home")
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             browser = _browser(p)
@@ -143,7 +132,7 @@ def test_each_health_button_shows_only_for_its_issues(tmp_path, monkeypatch, iss
     monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
     monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
     rel = _launchpad(tmp_path, {"memoryHealth": {"issues": issues, "ok_count": 5, "total_count": 6}})
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             browser = _browser(p)

@@ -38,12 +38,10 @@ an isolated, PII-free synthetic council over http (file:// can't carry the
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import json
-import threading
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -94,13 +92,6 @@ _COMPLETED_STATUS = {
 }
 
 
-def _serve(directory) -> tuple[http.server.HTTPServer, int]:
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 def test_failed_member_banner_reports_responder_count_not_row_count(tmp_path, monkeypatch):
     pytest.importorskip("playwright.sync_api")
     monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
@@ -126,7 +117,7 @@ def test_failed_member_banner_reports_responder_count_not_row_count(tmp_path, mo
 
     from playwright.sync_api import sync_playwright
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:

@@ -36,12 +36,10 @@ without Playwright/chromium.
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import json
-import threading
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -90,13 +88,6 @@ def _completed_status(token: str) -> dict:
         "metadata": {"chairman_provider": "claude", "council_id": "c_done_arialive",
                      "members": ["claude", "antigravity"]},
     }
-
-
-def _serve(directory) -> tuple[http.server.HTTPServer, int]:
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _seed(tmp_path, monkeypatch, status):
@@ -172,7 +163,7 @@ def test_running_council_status_message_in_live_region(tmp_path, monkeypatch):
     pytest.importorskip("playwright.sync_api")
     token = "tok_run_arialive"
     _seed(tmp_path, monkeypatch, _running_status(token))
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         ancestor, mirror = _probe(port, token, ".status-message")
     finally:
@@ -208,7 +199,7 @@ def test_completed_council_verdict_in_live_region_and_mirror_announces_completio
     pytest.importorskip("playwright.sync_api")
     token = "tok_done_arialive"
     _seed(tmp_path, monkeypatch, _completed_status(token))
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         ancestor, mirror = _probe(port, token, ".winner-verdict")
     finally:

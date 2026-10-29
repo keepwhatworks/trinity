@@ -31,11 +31,8 @@ Synthetic data only; no PII. Slow + browser marked.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
-
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -126,13 +123,6 @@ def _seed_xss_council() -> None:
     write_portal_html()  # renders launchpad.html + stats.html + vendor assets
 
 
-def _serve(directory):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 @pytest.mark.parametrize("page_name", ["launchpad.html", "stats.html"])
 def test_launchpad_neutralizes_corpus_xss_in_real_browser(tmp_path, monkeypatch, page_name):
     pytest.importorskip("playwright.sync_api")
@@ -142,7 +132,7 @@ def test_launchpad_neutralizes_corpus_xss_in_real_browser(tmp_path, monkeypatch,
     monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
     _seed_xss_council()
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     dialogs: list[str] = []
     errors: list[str] = []
     try:

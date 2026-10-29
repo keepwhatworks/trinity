@@ -15,7 +15,6 @@ architectural commitment intact.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from typing import Any
 
 # THE canonical lens.md tension-heading shape. render_me_markdown() below emits
@@ -68,17 +67,6 @@ from .turn_pairs import (
     render_extraction_prompt as render_turn_pair_prompt,
     validate_signals,
 )
-
-
-@dataclass
-class PipelineState:
-    """Snapshot of intermediate artifacts for inspection / dry-run."""
-    basins: list[Basin]
-    decisions: list[Decision]
-    pairs_raw: list[LensPair]
-    pairs_filtered: list[LensPair]
-    accepted: list[LensPair]
-    orderings: list[LensPair]
 
 
 def stage1_basins(

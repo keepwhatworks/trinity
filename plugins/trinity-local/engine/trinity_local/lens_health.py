@@ -380,15 +380,17 @@ def _known_issues(other_findings: list[str]) -> LensCheck:
         return LensCheck("known_issues", "Known degeneracies", OK,
                          "No known degenerate-data patterns on the producer surfaces.")
     # WEAK (caution), not trust-blocking: these are localized producer-view blemishes
-    # (a vocab code-identifier leak, a web-era slug in a routing view) that the user
-    # clears with `lens`/`consolidate` — they don't make the chairman's reading of the
-    # lens geometry a caricature the way a TF-IDF/collapsed lens does.
+    # (a vocab code-identifier leak, a web-era slug in a routing view) — they don't make
+    # the chairman's reading of the lens geometry a caricature the way a TF-IDF/collapsed
+    # lens does. Only the vocabulary finding is the user's to clear; the rest come from
+    # Trinity's own producers (the `consolidate` verb this once named was retired).
     return LensCheck(
         "known_issues", "Known degeneracies", WEAK,
         "; ".join(other_findings),
         metric={"findings": len(other_findings)},
-        fix="Re-run `trinity-local lens` (rebuilds vocab/basins); slug leaks clear on the "
-            "next consolidate.",
+        fix="Re-run `trinity-local lens` to rebuild the vocabulary. The other findings "
+            "come from Trinity, not your data: run `trinity-local update`, and report one "
+            "that persists.",
     )
 
 

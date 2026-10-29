@@ -122,37 +122,8 @@ def test_corrupt_string_top_terms_does_not_blank_the_readers():
         try:
             page = browser.new_context(viewport={"width": 1400, "height": 1400}).new_page()
 
-            # ---- picks Reader (shares loadCrossMemoryMaps with the topics Reader) ----
-            picks_errs: list[str] = []
-            page.on("pageerror", lambda e: picks_errs.append(str(e)[:200]))
-            page.goto(f"file://{pages / 'memory.html'}?file=picks.json", wait_until="load")
-            page.wait_for_timeout(900)
-            pick_cards = page.eval_on_selector_all(
-                ".pick-card",
-                "els => els.map(c => (c.innerText || '').replace(/\\s+/g, ' ').trim())",
-            )
-            # The defect: a string top_terms in topics.json crashed loadCrossMemoryMaps,
-            # so the picks Reader rendered ZERO cards even though picks.json is valid.
-            if not pick_cards:
-                failures.append(
-                    "FOUNDER SYMPTOM: the picks Reader rendered ZERO cards on a VALID "
-                    "picks.json — collaterally blanked because the shared "
-                    "loadCrossMemoryMaps helper threw 'terms.slice(...).join is not a "
-                    "function' on topics.json's STRING top_terms (the un-Array.isArray-"
-                    f"guarded sibling). cards={pick_cards!r}"
-                )
-            if not any("Use Claude" in c for c in pick_cards):
-                failures.append(
-                    f"picks Reader did not paint the clean b00 pick ('Use Claude'); cards={pick_cards!r}"
-                )
-            for e in picks_errs:
-                if "join is not a function" in e:
-                    failures.append(
-                        "FOUNDER SYMPTOM: picks Reader threw the uncaught "
-                        f"'terms.slice(...).join is not a function' on a string top_terms: {e!r}"
-                    )
-
             # ---- topics Reader ----
+            # (A picks Reader half lived here until picks.json left the viewer, 2026-10-26.)
             topics_errs: list[str] = []
             page.on("pageerror", lambda e: topics_errs.append(str(e)[:200]))
             page.goto(f"file://{pages / 'memory.html'}?file=topics.json", wait_until="load")

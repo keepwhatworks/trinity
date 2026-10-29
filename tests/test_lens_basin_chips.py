@@ -39,17 +39,9 @@ class TestCrossMemoryChipSharedClass:
         assert ".cross-memory-chip--inline" in html, "--inline modifier missing"
         assert ".cross-memory-chip--pill" in html, "--pill modifier missing"
 
-    def test_lens_chip_uses_shared_class(self, isolated_home):
-        from trinity_local.launchpad_template import render_launchpad_html
-        page_data = _minimal_page_data_with_lens(basins_spanned=[])
-        html = render_launchpad_html(page_data=page_data)
-        # The cortex chip template (only present when cortexRules has
-        # rules with topology_basin) gets the shared class even if not
-        # rendered — it's the literal class attribute we check.
-        assert "cortex-topology-chip cross-memory-chip" in html, (
-            "lens basin chip not threading the shared base — will lose its "
-            "consistent styling when the CSS gets bumped"
-        )
+    # A cortex-chip check used to sit here under this same name, so the method below
+    # replaced it and it never ran. Its chip went with the router's cheat-sheet card
+    # (2026-08-11); it was removed 2026-10-27 rather than renamed into a failure.
 
     def test_lens_chip_uses_shared_class(self, isolated_home):
         from trinity_local.launchpad_template import render_launchpad_html
@@ -64,9 +56,9 @@ class TestCrossMemoryChipSharedClass:
     # → topology + PICK/ROUTING/SHARE PNG buttons) were deleted in
     # commit 8f1fd95 per user direction "what are the buttons under
     # it doing? remove them". The shared-class invariant for the
-    # cortex + lens chips that REMAIN is still guarded by
-    # test_cortex_chip_uses_shared_class + test_lens_chip_uses_shared_class
-    # above — only the deleted recent-card surface is sunset.
+    # lens chip that REMAINS is still guarded by
+    # test_lens_chip_uses_shared_class above — only the deleted recent-card
+    # surface is sunset.
 
 
 class TestTopologyBasinLabels:

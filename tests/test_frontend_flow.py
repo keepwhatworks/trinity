@@ -11,7 +11,6 @@ from trinity_local.config import AppConfig, ProviderConfig
 from trinity_local.council_runner import run_council
 from trinity_local.council_runtime import create_prompt_bundle, save_prompt_bundle
 from trinity_local.council_status import load_council_status, write_council_status
-from trinity_local.dispatch_registry import command_for_dispatch, make_dispatch_action
 from trinity_local.launchpad_page import write_portal_html
 from trinity_local.providers import ProviderError, ProviderResult
 from trinity_local.telemetry import (
@@ -91,7 +90,7 @@ class TestLaunchpadFlow:
         # to the post-2026-05-16 brand axis hero. Returning users see
         # "Run a Council" instead.
         assert "Ask all three. Keep what works." in html
-        assert "launch_council" in html
+        assert "kind: 'launch-council'" in html  # the action the Launch button dispatches
         assert "Launchpad controls" in html
         # IIFE form — Chrome blocks ES module imports on file:// (every
         # file URL is its own origin). Renamed from .es.js → .iife.js
@@ -368,42 +367,6 @@ class TestTelemetryFlow:
 
         snapshot = build_elo_snapshot()
         assert snapshot["providers"]["antigravity"]["elo"] > snapshot["providers"]["claude"]["elo"]
-
-
-class TestDispatchFlow:
-    def test_launch_council_dispatch_maps_to_command(self):
-        action = make_dispatch_action(
-            "launch_council",
-            args={
-                "task": "Write a launch announcement",
-                "goal": "Find the strongest answer.",
-                "members": ["claude", "antigravity", "codex"],
-                "primary_provider": "claude",
-                "cwd": "/tmp/project",
-                "notify": True,
-                "open_browser": True,
-            },
-        )
-
-        command = command_for_dispatch(action)
-
-        assert command is not None
-        assert command.startswith("trinity-local council-launch")
-        assert "--task 'Write a launch announcement'" in command
-        assert "--members claude antigravity codex" in command
-        assert "--primary-provider claude" in command
-        assert "--cwd /tmp/project" in command
-        assert "--open-browser" in command
-
-    def test_stop_council_dispatch_maps_to_command(self):
-        action = make_dispatch_action(
-            "stop_council",
-            args={"status_token": "launch_123"},
-        )
-
-        command = command_for_dispatch(action)
-
-        assert command == "trinity-local council-stop --status-token launch_123"
 
 
 class TestCouncilLaunchCommand:

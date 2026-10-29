@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -694,15 +695,17 @@ def _native_messaging_dir() -> Path:
 
 
 def handle_install_extension(args):
-    import shutil
+    from ..runtime_env import which_on_runtime_path
 
     extension_id = getattr(args, "extension_id", None)
-    host_path = getattr(args, "host_path", None) or shutil.which("trinity-local-capture-host")
+    # The same lookup dispatch_readiness() uses, so the check that names this
+    # command and the command agree on whether the host is installed.
+    host_path = getattr(args, "host_path", None) or which_on_runtime_path("trinity-local-capture-host")
 
     if not host_path:
         print(
-            "error: could not locate trinity-local-capture-host on PATH. "
-            "Reinstall the wheel (pip install -e .) so the console script lands, "
+            "error: could not locate trinity-local-capture-host. Reinstall Trinity "
+            "(curl -LsSf https://keepwhatworks.com/install.sh | sh) so the console script lands, "
             "or pass --host-path /full/path/to/trinity-local-capture-host."
         )
         return 1
@@ -1051,7 +1054,7 @@ def _program_uninstall_command() -> str:
     import sys
     if f"{os.sep}uv{os.sep}tools{os.sep}" in sys.prefix:
         return "uv tool uninstall trinity-local"
-    return f"{sys.executable} -m pip uninstall trinity-local"
+    return f"{shlex.quote(sys.executable)} -m pip uninstall trinity-local"
 
 
 # ── install-reflex (council_de2451dca3203cf1) ──────────────────────────────

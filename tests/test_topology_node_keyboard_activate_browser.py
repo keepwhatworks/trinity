@@ -23,10 +23,12 @@ Guard quality (the two BITE preconditions, met render-independently):
       circle (a tabindex/role regression makes .focus() a no-op or leaves focus on
       <body>, and the assertion reds);
   (B) the pre-activation detail panel is the OTHER state (empty "Click a basin …"),
-      so the post-Enter routing-winner line proves a REAL keyboard transition, not a
+      so the post-Enter basin detail proves a REAL keyboard transition, not a
       pre-populated panel.
-The effect assertion keys on the keydown handler's showDetail output ("Routes to
-<brand> · margin <X>" + the Launch button), the sole thing the binding produces.
+The effect assertion keys on the keydown handler's showDetail output (that basin's
+own top terms + the Launch button), the sole thing the binding produces. (It keyed
+on a "Routes to <brand>" line until picks.json left the viewer, 2026-10-26; a
+picks.json stays seeded so that line coming back is also red here.)
 
 Mutation-proven (Iter 232): strip the .attr("tabindex"/"role") + .on("keydown")
 block in renderTopicsReader (src/trinity_local/memory_viewer.py) → focusing the
@@ -55,9 +57,9 @@ REPO = Path(__file__).resolve().parents[1]
 
 def _render_portal(home: Path) -> Path:
     (home / "memories").mkdir(parents=True)
-    # Two basins with picks so showDetail renders the "Routes to <brand>" line +
-    # the Launch button — the keyboard-only-reachable payload. b00→claude (Enter
-    # path), b01→codex/GPT (Space path; codex≠its brand so the line is non-trivial).
+    # Two basins (b00 Enter path, b01 Space path) with distinct top terms, so each
+    # activation's detail is identifiable. picks.json is seeded on the same ids: the
+    # viewer must not attach its frozen winners to these basins.
     (home / "memories" / "topics.json").write_text(json.dumps({"basins": [
         {"id": "b00", "centroid": [1.0, 0.0, 0.0, 0.0], "size": 20, "label": "Design",
          "top_terms": ["design", "arch"],
@@ -158,10 +160,13 @@ def test_topology_node_is_keyboard_focusable_and_activatable():
                 page.keyboard.press("Enter")
                 page.wait_for_timeout(350)
                 after = _detail_text(page)
-                # The effect: the SAME detail the click produces — routing winner +
-                # the keyboard-only-reachable Launch button — proving the transition.
-                if "routes to" not in after or "0.42" not in after:
-                    failures.append(f"b00: Enter on the focused node did NOT open the basin detail (no 'Routes to … 0.42') — keyboard activation is a no-op: {after[:200]!r}")
+                # The effect: the SAME detail the click produces — this basin's top
+                # terms + the keyboard-only-reachable Launch button — proving the
+                # transition.
+                if "design, arch" not in after:
+                    failures.append(f"b00: Enter on the focused node did NOT open the basin detail (no 'design, arch' top terms) — keyboard activation is a no-op: {after[:200]!r}")
+                if "routes to" in after or "leans " in after:
+                    failures.append(f"b00: the detail claims a routing winner from the frozen picks.json: {after[:200]!r}")
                 launch_present = page.evaluate(
                     """() => [...document.querySelectorAll('.topics-graph-detail button')]
                            .some(b => /launch council/i.test(b.textContent || ''))"""
@@ -177,8 +182,8 @@ def test_topology_node_is_keyboard_focusable_and_activatable():
                 page.keyboard.press(" ")
                 page.wait_for_timeout(350)
                 after2 = _detail_text(page)
-                if "routes to" not in after2 or "0.31" not in after2:
-                    failures.append(f"b01: Space on the focused node did NOT open the basin detail (no 'Routes to … 0.31'): {after2[:200]!r}")
+                if "debug, fix" not in after2:
+                    failures.append(f"b01: Space on the focused node did NOT open the basin detail (no 'debug, fix' top terms): {after2[:200]!r}")
 
             if errs:
                 failures.append(f"JS errors during keyboard exploration: {errs[:3]}")

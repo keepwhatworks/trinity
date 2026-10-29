@@ -28,9 +28,9 @@ That asymmetry is the whole point. Trinity reads your transcripts from all three
 | **Bulk exports** (Claude.ai webapp export, ChatGPT export zip, Gemini Takeout) | `trinity-local import-export <path>` auto-detects the format and ingests. Claude.ai users: Settings → Privacy → Export data. |
 | **Provider-side memory loop** | The agent inside Claude Code / Codex / Cursor sees your full conversation history on its side. The `lens-import` / `eval-import` verbs let it pipe extracted tensions or rejections to Trinity directly. No scraping, no re-ingest. |
 
-**Trust boundary on the provider-side loop.** It trusts the agent inside the harness to extract honestly. A compromised agent could inject fabricated tensions or rejections. Mitigations: the same dedup logic catches duplicates, and the ≥3-basin lens-build threshold raises the bar (a poisoning attack needs to span unrelated topics to take). Single-basin signal is exploitable in principle.
+**Trust boundary on the provider-side loop.** It trusts the agent inside the harness to extract honestly. A compromised agent could inject fabricated tensions or rejections. Mitigations: the same dedup logic catches duplicates, and the two-basin lens-build floor raises the bar (a poisoning attack needs to span unrelated topics to take). Single-basin signal is exploitable in principle.
 
-Nothing ever leaves the machine. The MCP server, the embedding model (~600 MB, one-time download), the chairman calls, all run on your hardware or your existing CLI subscriptions.
+Your transcripts, prompts and lens never leave the machine. The MCP server, the embedding model (~600 MB, one-time download), the chairman calls, all run on your hardware or your existing CLI subscriptions. The only outbound data is anonymous categorical telemetry, on by default and off with `trinity-local telemetry-disable` (the README's "Privacy by default" lists every field).
 
 ## From files to embeddings (ingest → index → embed)
 
@@ -52,7 +52,7 @@ Every node gets passed through `modernbert-embed-base` when a real embedding run
 
 **Phase 3, Rejection signals.** For each prompt where you turned around and asked a follow-up, extract WHAT you changed: REFRAME (different question), REDIRECT (different output shape), COMPRESSION (shorter), SHARPENING (more precise). These rejection signals (stored in `~/.trinity/me/preference_acts.jsonl` with trigger=model_miss) are the empirical signal of your taste. The load-bearing input the chairman trains against.
 
-**Phase 4, Lens-build.** Synthesize the rejections into PAIRED TENSIONS in `~/.trinity/memories/lens.md`. On a working install: things like `mechanism inspection ↔ speculative inference under uncertainty`, `concrete specificity ↔ abstract pattern recognition`. A tension must span ≥3 basins to make the lens. Otherwise it's preserved as "ordering" (topic-local preference) or dropped. That floor is why one weird question can't pollute the lens.
+**Phase 4, Lens-build.** Synthesize the rejections into PAIRED TENSIONS in `~/.trinity/memories/lens.md`. On a working install: things like `mechanism inspection ↔ speculative inference under uncertainty`, `concrete specificity ↔ abstract pattern recognition`. A tension must span at least two basins to make the lens. Otherwise it's preserved as "ordering" (topic-local preference) or dropped. That floor is why one weird question can't pollute the lens.
 
 **Phase 5, Distill.** One-paragraph `~/.trinity/core.md`, the identity-level summary the chairman reads first at runtime. Drill-down to the other files happens on demand.
 

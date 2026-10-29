@@ -71,7 +71,7 @@ CLASSIFICATIONS: dict[str, str] = {
     "docs/historical/spec-v1.5.md": "aspirational",
     "docs/historical/spec-v1.6.md": "aspirational",
     "docs/historical/cross-platform-spec.md": "aspirational",
-    "docs/launcher-patterns.md": "aspirational",
+    "docs/historical/launcher-patterns.md": "historical",
     "docs/historical/sweep-patterns.md": "aspirational",
     "docs/design-frame.md": "aspirational",
     "docs/product-spec.md": "aspirational",

@@ -60,7 +60,7 @@ def test_a_council_does_not_block_other_tools(monkeypatch, patch_trinity_home):
         time.sleep(1.5)
         return {"council_run_id": "council_x", "task_path": "", "sync_path": "", "review_path": ""}
     monkeypatch.setattr(C, "handle_council_launch", slow_launch)
-    monkeypatch.setattr(mcp_server, "_lookup_council_status", lambda cid: None, raising=False)
+    monkeypatch.setattr(mcp_server, "_lookup_council_status", lambda cid: None)
     finished = {}
 
     async def council():

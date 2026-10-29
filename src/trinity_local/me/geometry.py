@@ -1,27 +1,21 @@
-"""Pure-numerical helpers for the cortex consolidation pass.
+"""Pure-numerical basin geometry, used by me/basin_split.py to split mega-basins.
 
-Extracted from cortex.py to keep the routing/schema concerns there focused
-on orchestration. Everything in this module is dependency-free Python math
-(stdlib only) — no scipy, no numpy in production paths, no awareness of
-RoutingPattern. The one impure function (`compute_basin_geometry`) is
-included because it composes the math on top of evidence embeddings and
-returns the structured geometric prior the flagship extraction prompt
-conditions on; isolating it here makes the basin-shape contract a single
-file's worth of code.
+Dependency-free Python math (stdlib only): no scipy, no numpy in production
+paths.
 
 Public symbols:
-- ``compute_basin_geometry(outcomes) -> dict``
 - ``weiszfeld_median(points) -> list[float]``
 - ``participation_ratio(points, center) -> float``
 - ``project_onto_first_pc(points, center) -> list[float]``
 - ``mean_cosine_to(center, points) -> float``
 - ``excess_kurtosis(values) -> float``
 - ``euclid(a, b) -> float``
-- Constants: ``BIMODALITY_KURTOSIS_THRESHOLD``, ``MANIFOLD_DIM_SATURATION``
+- Constant: ``BIMODALITY_KURTOSIS_THRESHOLD``
 
-The underscore-prefixed aliases (``_weiszfeld_median``, etc.) are kept so
-existing imports `from .cortex import _weiszfeld_median` continue to work
-when cortex.py re-exports them.
+(Extracted from the deleted cortex engine. Retired 2026-10-26 along with
+cortex.py: ``compute_basin_geometry``, which built the geometric prior for that
+engine's flagship prompt, had no caller and an unresolvable embed import; its
+underscore aliases; and the unused ``MANIFOLD_DIM_SATURATION``.)
 """
 from __future__ import annotations
 
@@ -31,14 +25,8 @@ import math
 # Calibration: -1.3 is just below uniform-distribution excess kurtosis
 # (-1.2) so uniformly-along-an-axis basins (which are coherent, not
 # bimodal) don't trip the flag. Truly twin-peaked distributions hit -1.4
-# to -2.0+. Used by `compute_basin_geometry`.
+# to -2.0+.
 BIMODALITY_KURTOSIS_THRESHOLD = -1.3
-
-# Manifold-dimensionality cap. The participation-ratio metric saturates
-# at this number of effective components. Kept here as a constant for
-# future tuning; not currently used as a hard ceiling in the coherence
-# score (which switched to mean-cosine-from-median, a cleaner metric).
-MANIFOLD_DIM_SATURATION = 5.0
 
 
 def euclid(a: list[float], b: list[float]) -> float:
@@ -208,142 +196,3 @@ def excess_kurtosis(values: list[float]) -> float:
         return 0.0
     fourth = sum((v - mean) ** 4 for v in values) / n
     return fourth / (var * var) - 3.0
-
-
-def _outcome_query_text(o: dict) -> str:
-    """The DISCRIMINATIVE text for centroid placement: the user's actual
-    question, NOT the chairman preamble.
-
-    The synthesis_prompt prefixes a FIXED preamble + the user's core.md
-    profile — both byte-identical across every council — and only later
-    carries ``Original task: <question>`` and ``Goal: <goal>``. The previous
-    code embedded ``synth.split("\\n\\n")[0]`` (the preamble), so every basin's
-    centroid was the SAME template embedding and centroid routing could not
-    discriminate between basins (the second root cause in #277, found
-    2026-05-31: all basins scored an identical ~0.27 against any query). Pull
-    the task + goal lines instead; fall back to the basin label for prompts
-    that predate the labeled format.
-    """
-    synth = o.get("synthesis_prompt") or ""
-    if synth:
-        import re
-
-        m_task = re.search(r"Original task:\s*(.+?)(?:\n\n|\Z)", synth, re.DOTALL)
-        m_goal = re.search(r"(?:^|\n)Goal:\s*(.+?)(?:\n\n|\Z)", synth, re.DOTALL)
-        parts = [m.group(1).strip() for m in (m_task, m_goal) if m]
-        if parts:
-            return " ".join(parts)[:500]
-        # No labeled task → older/plain synthesis_prompt where the FIRST
-        # paragraph IS the question (no fixed preamble). Use it directly.
-        first = synth.split("\n\n")[0] if "\n\n" in synth else synth
-        if first.strip():
-            return first.strip()[:500]
-    label = o.get("routing_label") or {}
-    return (label.get("task_type") or "")[:500]
-
-
-def compute_basin_geometry(outcomes: list[dict]) -> dict:
-    """Return the structured geometric prior for one basin's evidence
-    embeddings. The flagship extraction prompt conditions on this prior
-    to do rule-extraction-on-structure instead of geometry-in-language.
-
-    Returns dict with:
-      centroid:        geometric median (Weiszfeld iteration); robust to
-                       outliers via L1 minimization. ``[]`` if embedding fails.
-      manifold_dim:    effective dim via participation ratio (descriptive
-                       only — surfaced to the LLM prompt, not the trust score).
-      coherence_score: mean cosine similarity to the median, clipped 0..1.
-                       Direct trust component (catches "noisy basin" rules).
-      bimodal_flag:    excess-kurtosis(first PC) < threshold ⇒ basin
-                       plausibly splits into two modes; surfaced so flagship
-                       can emit two subroutes.
-      ordered_indices: outcomes sorted by L2 distance from the median
-                       (typical first, outliers last) so the LLM prompt
-                       lists representative episodes at the top.
-
-    Best-effort: any failure returns an empty geometry (centroid=[],
-    coherence=0.5 neutral, flag=False, ordered=[]). The caller then falls
-    through to label-only paths.
-    """
-    empty = {
-        "centroid": [],
-        "manifold_dim": 0.0,
-        "coherence_score": 0.5,
-        "bimodal_flag": False,
-        "ordered_indices": [],
-    }
-
-    try:
-        from .embeddings import embed
-    except ImportError:
-        return empty
-
-    indexed_prompts: list[tuple[int, str]] = []
-    for idx, o in enumerate(outcomes[:40]):
-        text = _outcome_query_text(o)
-        if text.strip():
-            indexed_prompts.append((idx, text.strip()))
-
-    if not indexed_prompts:
-        return empty
-
-    try:
-        vectors_raw = [(idx, embed(p)) for idx, p in indexed_prompts]
-    except Exception:
-        return empty
-    vectors_with_idx = [(idx, v) for idx, v in vectors_raw if v]
-    if not vectors_with_idx:
-        return empty
-
-    dim = len(vectors_with_idx[0][1])
-    vectors_with_idx = [(idx, v) for idx, v in vectors_with_idx if len(v) == dim]
-    if not vectors_with_idx:
-        return empty
-
-    indices = [idx for idx, _ in vectors_with_idx]
-    matrix = [list(v) for _, v in vectors_with_idx]
-    n = len(matrix)
-
-    median = weiszfeld_median(matrix)
-
-    distances = [(idx, euclid(matrix[i], median)) for i, idx in enumerate(indices)]
-    # Distance ASC, original index ASC as a stable tie-break so ordered_indices
-    # is deterministic when two points are equidistant from the median (else the
-    # enumerate order, which is input-order-derived, picks).
-    distances.sort(key=lambda t: (t[1], t[0]))
-    ordered_indices = [idx for idx, _ in distances]
-
-    manifold_dim = participation_ratio(matrix, median)
-    coherence = max(0.0, min(1.0, mean_cosine_to(median, matrix)))
-
-    # Floor N at 10 — kurtosis is too noisy below that to call bimodality
-    # with any confidence. False positives cost more than false negatives
-    # here (a wrongly-split basin produces two weak rules instead of one
-    # decent rule).
-    bimodal_flag = False
-    if n >= 10:
-        first_pc_scalars = project_onto_first_pc(matrix, median)
-        if first_pc_scalars:
-            bimodal_flag = excess_kurtosis(first_pc_scalars) < BIMODALITY_KURTOSIS_THRESHOLD
-
-    return {
-        "centroid": median,
-        "manifold_dim": manifold_dim,
-        "coherence_score": coherence,
-        "bimodal_flag": bimodal_flag,
-        "ordered_indices": ordered_indices,
-    }
-
-
-# Underscore aliases so existing `from .cortex import _xxx` calls keep
-# working after cortex.py re-exports these. Drop in v1.6 once the rest of
-# the tree has migrated to the no-underscore names.
-_euclid = euclid
-_mean_cosine_to = mean_cosine_to
-_weiszfeld_median = weiszfeld_median
-_participation_ratio = participation_ratio
-_project_onto_first_pc = project_onto_first_pc
-_excess_kurtosis = excess_kurtosis
-_compute_basin_geometry = compute_basin_geometry
-_BIMODALITY_KURTOSIS_THRESHOLD = BIMODALITY_KURTOSIS_THRESHOLD
-_MANIFOLD_DIM_SATURATION = MANIFOLD_DIM_SATURATION

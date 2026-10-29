@@ -46,12 +46,8 @@ Slow + browser marked; skips without Playwright/chromium; runs in CI `browser`.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
-from pathlib import Path
-
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -87,13 +83,6 @@ def _seed_degenerate_ledger() -> None:
         ))
 
 
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 def test_single_entrant_elo_shows_no_ranking_only_an_honest_message(tmp_path, monkeypatch):
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright
@@ -127,7 +116,7 @@ def test_single_entrant_elo_shows_no_ranking_only_an_honest_message(tmp_path, mo
     pp.mkdir(parents=True)
     (pp / "stats.html").write_text(render_stats_html(), encoding="utf-8")
     publish_vendor_files(pp)
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
     try:
         with sync_playwright() as p:
             try:

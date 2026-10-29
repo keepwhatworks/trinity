@@ -12,8 +12,10 @@ the panel change; a screen-reader user heard SILENCE — no signal the panel upd
 basin opened, or how it routes. The viewer's one populate-on-activation panel was mute.
 
 The fix (Iter 282): showDetail pushes a concise summary — "Showing basin <label>. <N>
-threads. routes to <brand>." (or "leans <brand>, a near-tie" below the routing floor) —
-through the SAME #sr-status live region the copy chips already use (announceCopy()).
+threads." — through the SAME #sr-status live region the copy chips already use
+(announceCopy()). Until 2026-10-26 it also said "routes to <brand>" from picks.json;
+that frozen tally left the viewer (basin ids are redrawn every lens build), and a
+picks.json stays seeded here so the routing clause coming back is red.
 Focus intentionally stays on the node (the user keeps exploring); the announcement is
 what makes the silent panel-swap perceivable.
 
@@ -28,8 +30,8 @@ Guard quality (the two BITE preconditions, met render-independently):
   (A) the page paints + the node actually takes keyboard focus (activeElement IS the
       circle) AND the detail TEXT transitions out of its empty "Click a basin" state —
       so a no-render / no-activation can't vacuously pass;
-  (B) the seed (b00→claude margin 0.42, b01→codex margin 0.31) is checked independently,
-      so the announcement's brand+verb are discriminating, not boilerplate.
+  (B) the seed (b00 "Design" with 7 threads, b01 "Debug") is checked independently, so
+      the announcement's basin name + count are discriminating, not boilerplate.
 
 Mutation-proven (Iter 282): delete the announceCopy(...) status push at the end of
 showDetail (src/trinity_local/memory_viewer.py) → the detail text still transitions
@@ -56,9 +58,8 @@ REPO = Path(__file__).resolve().parents[1]
 
 def _render_portal(home: Path) -> Path:
     (home / "memories").mkdir(parents=True)
-    # Two basins with picks so showDetail's announcement carries a real routing
-    # verb+brand: b00 routes to Claude (Enter path), b01 routes to GPT (codex≠brand,
-    # Space path) — both margins above the floor so neither is a near-tie.
+    # Two basins (b00 Enter path, b01 Space path). picks.json is seeded on the same
+    # ids with gate-clearing margins: the announcement must not name its winners.
     (home / "memories" / "topics.json").write_text(json.dumps({"basins": [
         {"id": "b00", "centroid": [1.0, 0.0, 0.0, 0.0], "size": 20, "thread_count": 7,
          "label": "Design", "top_terms": ["design", "arch"],
@@ -151,9 +152,9 @@ def test_topology_basin_detail_activation_announces_to_screen_reader():
                 # Positive control: the panel DID transition (so the announcement
                 # assertion below isn't blamed for a render that never happened).
                 after = _detail_text(page)
-                if "routes to" not in after or "0.42" not in after:
+                if "design, arch" not in after:
                     failures.append(
-                        f"b00: Enter did NOT open the basin detail (no 'Routes to … 0.42') — "
+                        f"b00: Enter did NOT open the basin detail (no 'design, arch' top terms) — "
                         f"can't attribute a missing announcement: {after[:160]!r}"
                     )
                 else:
@@ -170,12 +171,14 @@ def test_topology_basin_detail_activation_announces_to_screen_reader():
                             "the panel changed." % sr
                         )
                     else:
-                        # It must NAME the basin + its routing pick (discriminating —
-                        # not a bare 'updated'): the seed proves brand+label.
+                        # It must NAME the basin + its weight (discriminating — not a
+                        # bare 'updated'), and must not announce a frozen picks winner.
                         if "design" not in low:
                             failures.append(f"b00: announcement doesn't name the basin (Design): {sr!r}")
-                        if "claude" not in low:
-                            failures.append(f"b00: announcement doesn't carry the routing brand (Claude): {sr!r}")
+                        if "7 threads" not in low:
+                            failures.append(f"b00: announcement doesn't carry the basin's thread count (7): {sr!r}")
+                        if "routes to" in low or "leans " in low or "claude" in low:
+                            failures.append(f"b00: announcement names a routing winner from the frozen picks.json: {sr!r}")
 
             # ---- Space path (b01 → GPT) -------------------------------------
             # A second node + Space proves the announcement is wired to showDetail

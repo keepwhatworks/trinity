@@ -123,9 +123,9 @@ The marketing-headline form: "Model X scored 0.YZ on YOUR kind of question." Emp
 
 ## 10. Trust + privacy (current state, v1.0)
 
-Trinity does NOT make outbound network calls during normal operation. The embedding model is pulled once from Hugging Face on first run; afterwards `HF_HUB_OFFLINE=1` is pinned in process env. Every dispatch rides the user's own provider CLI subscriptions — no API keys leave the machine.
+Apart from anonymous categorical telemetry (below), Trinity makes no outbound network calls during normal operation. The embedding model is pulled once with `trinity-local download-embedder`; `HF_HUB_OFFLINE=1` is pinned in the process env. Every dispatch rides the user's own provider CLI subscriptions — no API keys leave the machine.
 
-The personal ledger (`~/.trinity/council_outcomes/`) never uploads. If the user opts into telemetry (`trinity-local telemetry-enable`), only categorical routing labels (`task_type`, `provider_scores`, `winner`) leave — never prompt content.
+The personal ledger (`~/.trinity/council_outcomes/`) never uploads. Anonymous telemetry is on by default and off with `trinity-local telemetry-disable`: only allowlisted categorical labels leave (`task_type`, `winner`, `member_count`, `mode`, and once per install `activation_source` and `surface`), never prompt content.
 
 **v1.1 will add** a uniform trust-mode + audit-log substrate (see `docs/three-tier-architecture.md`). v1.0 invariant: single active tier per `~/.trinity/` directory; concurrent multi-tier use is v1.1.
 

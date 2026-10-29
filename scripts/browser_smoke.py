@@ -35,7 +35,7 @@ Surfaces:
     4. Lenses Copy-for-sharing: clipboard write fires with non-empty text
     5. Recent council click: live page loads with chairman synthesis
     6. Live council: Back to Launchpad returns home; winner persists on reload
-    7. Launch Council button: present + clickable (full e2e gated on macOS Shortcut)
+    7. Launch Council button: present + clickable (a real dispatch goes through the extension; not fired here)
     8. Telemetry guard: no example.invalid console errors
     9. Multi-round thread render: 3 chain segments visible with round numbers
    10. Recent council card content: title + winner + rounds badge per card,
@@ -62,17 +62,14 @@ Surfaces:
        that rep's headline as the seed — lets the user replay any thread,
        not just the closest-to-centroid one (tick #29). Verifies
        stopPropagation so the chip doesn't toggle the expand state.
-   21. Topology → picks cross-link: if a basin has been consolidated into
-       a routing rule (picks.json carries .basin_id pointing back at the
-       topology), the basin detail panel shows a .topics-pick-xlink that
-       deep-links to picks.html?file=picks.json&task=<task_type> (tick #30).
-   22. Pick-basin node styling: SVG circles for basins crystallized into
-       routing rules get a .pick-basin class (warm-brown ring), so the
-       user sees which basins matter at a glance (tick #31).
-   23. Picks → topology cross-link: each pick card with a centroid match
-       renders 'View in topology →' targeting topics.html?basin=<id>;
-       topology auto-opens the matching basin's detail panel + highlights
-       its neighborhood on load (tick #32).
+   21. No frozen pick line: with a picks.json keyed by the same ids as the
+       topology, clicking every basin shows no link to picks.json and no
+       "Routes to" line (picks.json left the viewer 2026-10-26: its tally froze
+       2026-08-11 and basin ids are redrawn every lens build).
+   22. No pick ring: no topology node carries the .pick-basin ring or a
+       "Routing rule:" tooltip (same retirement).
+   23. Topology ?basin= deep-link: loading topics.json with ?basin=<id> opens
+       that basin's detail panel + highlights its neighborhood (tick #32).
    24. Routing → topology chip: each routing-table row whose task_type has
        a centroid-matched basin renders a small .routing-topology-chip
        next to the task name, completing the routing/picks/topology
@@ -90,11 +87,9 @@ Surfaces:
        cluster ids), the topology view surfaces a "not found" banner
        inside the detail panel + the lens-build copy chip — instead of
        landing silently with no panel open (tick #40).
-   29. Handoff demo nudge banner: post-#115 launchpad-side mirror of
-       the doctor 'try this next' hint. Asserts that pageData.handoffNudge.applicable
-       agrees with whether the banner renders, and when rendered the
-       command interpolates the picked target. Data/DOM mismatch in
-       either direction = v-if guard regression.
+   29. Retired handoff-demo nudge stays gone (negative check): the
+       `handoff` verb it advertised was retired 2026-05-26; asserts neither
+       pageData.handoffNudge nor the "Try the 60-second demo" banner returns.
    30. Personalized benchmark (eval summary) card: launchpad surface for
        the eval harness (#122/#116). Card is always present — empty
        state with CTA when no eval-run results exist, populated with
@@ -164,7 +159,7 @@ def _visible_memory_files() -> list[str]:
         # fall back to the always-on set so the gate degrades to under- not
         # over-strict.
         return ["core.md", "lens.md", "topics.json",
-                "vocabulary.md", "picks.json", "routing.json"]
+                "vocabulary.md", "routing.json"]
 
 # ── Poller-spin guard (live_council_two_pollers) ──────────────────────────────
 # A council_status_<token>.js poll that never reaches its MAX_MISSING_POLLS
@@ -619,7 +614,7 @@ def main() -> int:
             fails.append((6, "live council back-trip", "skipped (s5 failed)"))
 
         # ─── Surface 7: Launch Council button presence ───────────────────────
-        # E2E (fire a real council) is gated on macOS Shortcut; assert button is wired.
+        # A real council fires through the extension's Native Messaging host; assert the button is wired.
         # If we navigated mid-Surface-6, wait for the new page to be ready.
         if "launchpad.html" not in page.url:
             page.goto(f"{base_url}/portal_pages/launchpad.html", wait_until="networkidle", timeout=10000)
@@ -632,7 +627,7 @@ def main() -> int:
             }"""
         )
         if launch_state.get("present") and not launch_state.get("disabled"):
-            print("[ ✓ ] Surface 7 Launch Council button: present + enabled (e2e gated on macOS Shortcut, not asserted)")
+            print("[ ✓ ] Surface 7 Launch Council button: present + enabled (real dispatch not fired here)")
         else:
             print(f"[ ✗ ] Surface 7 Launch Council button: {launch_state}")
             fails.append((7, "Launch Council button", str(launch_state)))
@@ -1011,11 +1006,10 @@ def main() -> int:
             viewer_state = page.evaluate(
                 """() => {
                   // .md → .markdown-body (rendered via marked + DOMParser)
-                  // .json → .pick-card / .routing-table / .json-body (raw view)
+                  // .json → .routing-table / .json-body (raw view)
                   // Either way, the rendered region carries text.
                   const renderRoot =
                     document.querySelector('.markdown-body') ||
-                    document.querySelector('.pick-card') ||
                     document.querySelector('.routing-table') ||
                     document.querySelector('.json-body') ||
                     document.querySelector('pre.body');
@@ -1142,7 +1136,7 @@ def main() -> int:
         if ic > 0:
             stale_target = (health_state.get("first_name") or "").strip() or None
         # Healthy = a memory NOT in the issues list. Pick lens.md if no issue
-        # mentions it, else picks.json, else core.md (one of these is always
+        # mentions it, else vocabulary.md, else core.md (one of these is always
         # in the file set unless the install is completely empty).
         if ic == 0:
             healthy_target = "lens.md"
@@ -1156,7 +1150,7 @@ def main() -> int:
                 }"""
             )
             issue_names = set(issue_names_state or [])
-            for candidate in ("lens.md", "picks.json", "vocabulary.md", "core.md"):
+            for candidate in ("lens.md", "vocabulary.md", "core.md"):
                 if candidate not in issue_names:
                     healthy_target = candidate
                     break
@@ -1260,11 +1254,9 @@ def main() -> int:
         # the corresponding trinity-local subcommand. This is the always-on
         # action affordance (vs the staleness chip which only fires when
         # _memory_health flags an issue). Walk three memories: two with distinct
-        # rebuild CLIs, and one HISTORICAL file that must NOT offer a command —
-        # picks.json lost its writer (consolidate) and reader on 2026-08-11, and a
-        # chip copying `trinity-local lens` there promised a rebuild that never
-        # happens. `None` = assert the rebuild chip is absent and the historical
-        # marker is present.
+        # rebuild CLIs, and picks.json, which left the viewer 2026-10-26 (its tally
+        # froze 2026-08-11 and basin ids are redrawn every lens build). `None` =
+        # assert it opens as an unknown memory with no rebuild chip.
         rebuild_targets = [
             ("lens.md", "trinity-local lens"),
             ("picks.json", None),
@@ -1283,15 +1275,16 @@ def main() -> int:
             page.wait_for_timeout(200)
             if expected_cmd is None:
                 r = page.evaluate(
-                    """() => ({
-                      ok: !document.querySelector('.viewer-rebuild-chip')
-                          && !!document.querySelector('.viewer-historical-chip'),
-                      copied: null, expected: None,
-                      reason: document.querySelector('.viewer-rebuild-chip')
-                          ? 'a rebuild chip is offered for a file nothing rebuilds'
-                          : (document.querySelector('.viewer-historical-chip') ? null : 'no historical marker'),
-                      file: (document.querySelector('.viewer-historical-chip') || {}).dataset?.file,
-                    })""".replace("None", "null"),
+                    """() => {
+                      const unknown = /Unknown memory/.test(document.getElementById('content')?.innerText || '');
+                      const chip = !!document.querySelector('.viewer-rebuild-chip');
+                      return {
+                        ok: unknown && !chip,
+                        copied: null, expected: null,
+                        reason: chip ? 'a rebuild chip is offered for a retired file'
+                            : (unknown ? null : 'picks.json still opens as a memory view'),
+                      };
+                    }""",
                 )
                 rebuild_results.append((file_name, r))
                 continue
@@ -1461,149 +1454,81 @@ def main() -> int:
             print(f"[ ✗ ] Surface 20 rep-replay: {reason}")
             fails.append((20, "rep-replay chip", reason))
 
-        # ─── Surface 21: Topology → picks cross-link ─────────────────────────
-        # The basin detail panel renders a .topics-pick-xlink ONLY when
-        # this basin has been consolidated into a routing rule (picks
-        # carries a .basin_id pointing back). If no basin in the current
-        # topology has a corresponding pick, SKIP rather than fail — same
-        # legacy-data tolerance pattern as surfaces 17/19/20.
-        # Open topics.json fresh so we can scan all basins for one that
-        # has a pick link (the basin Surface 19 clicked may not).
+        # ─── Surfaces 21 + 22: no frozen picks.json routing on the topology ──
+        # Until 2026-10-26 a basin's detail linked to its picks.json entry ("Routes to
+        # <model>") and pick basins wore a ring with a "Routing rule:" tooltip. That
+        # tally froze 2026-08-11 and basin ids are redrawn every lens build, so the
+        # line put old winners on unrelated basins (council_9b8da321624a8f0f, amd_0612).
+        # The synthetic seed keys picks.json by the SAME ids as topics.json, so on it
+        # this is the worst case: click every basin and assert none of it comes back.
         page.goto(
             f"{base_url}/portal_pages/memory.html?file=topics.json",
             wait_until="networkidle",
             timeout=10000,
         )
         page.wait_for_timeout(400)
-        link_state = page.evaluate(
+        frozen_state = page.evaluate(
             """() => new Promise(resolve => {
               const nodes = Array.from(document.querySelectorAll('.topics-graph-svg .node'));
-              if (!nodes.length) { resolve({ok: true, skipped: true, reason: 'no graph nodes'}); return; }
-              // Walk basins one-by-one looking for the first that surfaces
-              // a .topics-pick-xlink on click. If none do, treat as SKIPPED
-              // (this install hasn't consolidated any basin into picks).
+              if (!nodes.length) { resolve({skipped: true, reason: 'no graph nodes'}); return; }
+              const ring = document.querySelectorAll('.topics-graph-svg .node.pick-basin').length;
+              const tip = nodes.filter(n => /Routing rule:/.test((n.querySelector('title') || {}).textContent || '')).length;
+              const hits = [];
               const tryClick = (i) => {
-                if (i >= nodes.length) { resolve({ok: true, skipped: true, reason: 'no basin has a pick xlink'}); return; }
+                if (i >= nodes.length) { resolve({total: nodes.length, ring, tip, hits}); return; }
                 nodes[i].dispatchEvent(new MouseEvent('click', {bubbles: true}));
                 setTimeout(() => {
-                  const xlink = document.querySelector('.topics-pick-xlink');
-                  if (xlink) {
-                    const href = xlink.getAttribute('href') || '';
-                    resolve({
-                      ok: href.startsWith('memory.html?file=picks.json&task='),
-                      href: href,
-                      label: xlink.textContent,
-                      basin_index: i,
-                      total_basins: nodes.length,
-                    });
-                  } else {
-                    tryClick(i + 1);
-                  }
-                }, 150);
+                  const d = document.querySelector('.topics-graph-detail');
+                  const text = (d && d.innerText || '').toLowerCase();
+                  if (document.querySelector('.topics-pick-xlink') || /routes to|near-tie → knn/.test(text)) hits.push(i);
+                  tryClick(i + 1);
+                }, 120);
               };
               tryClick(0);
             })"""
         )
-        page.screenshot(path=str(SHOTS_DIR / "21-topic-pick-xlink.png"))
-        if link_state.get("skipped"):
-            print(f"[ - ] Surface 21 topic→pick: SKIPPED ({link_state['reason']})")
-        elif link_state.get("ok"):
-            print(
-                f"[ ✓ ] Surface 21 topic→pick: basin #{link_state['basin_index']}/{link_state['total_basins']} "
-                f"links to '{link_state['href']}' (label: '{link_state['label']}')"
-            )
+        page.screenshot(path=str(SHOTS_DIR / "21-no-frozen-picks.png"))
+        if frozen_state.get("skipped"):
+            print(f"[ - ] Surface 21 no frozen pick line: SKIPPED ({frozen_state['reason']})")
+            print(f"[ - ] Surface 22 no pick ring: SKIPPED ({frozen_state['reason']})")
         else:
-            reason = f"href={link_state.get('href')!r}"
-            print(f"[ ✗ ] Surface 21 topic→pick: {reason}")
-            fails.append((21, "topic→pick xlink", reason))
-
-        # ─── Surface 22: Pick-basin SVG node styling ─────────────────────────
-        # Visual companion to Surface 21 — basins with picks should have
-        # class="node pick-basin" so they read at a glance. SKIPPED if no
-        # basin in the current topology was matched to a pick (same path
-        # Surface 21 takes when there are no picks). The topology view is
-        # already loaded from Surface 21.
-        node_state = page.evaluate(
-            """() => {
-              const all = document.querySelectorAll('.topics-graph-svg .node');
-              const marked = document.querySelectorAll('.topics-graph-svg .node.pick-basin');
-              // Also inspect the title element on a pick-basin node — it
-              // must surface the routing-rule label for passive discovery.
-              let tooltipOk = null;
-              if (marked.length) {
-                const t = marked[0].querySelector('title');
-                tooltipOk = t && /Routing rule:/.test(t.textContent || '');
-              }
-              return {
-                total: all.length,
-                marked: marked.length,
-                tooltipHasRoutingRule: tooltipOk,
-              };
-            }"""
-        )
-        page.screenshot(path=str(SHOTS_DIR / "22-pick-basin-style.png"))
-        if node_state.get("total", 0) == 0:
-            print("[ - ] Surface 22 pick-basin styling: SKIPPED (no graph nodes)")
-        elif node_state.get("marked", 0) == 0:
-            # Topology has nodes but none mapped to picks — same shape as
-            # Surface 21's no-pick skip.
-            print(
-                f"[ - ] Surface 22 pick-basin styling: SKIPPED "
-                f"(0/{node_state['total']} nodes matched to picks)"
-            )
-        else:
-            ok = node_state["marked"] > 0 and node_state.get("tooltipHasRoutingRule") is True
-            if ok:
-                print(
-                    f"[ ✓ ] Surface 22 pick-basin styling: "
-                    f"{node_state['marked']}/{node_state['total']} nodes carry .pick-basin · "
-                    f"tooltip surfaces routing rule"
-                )
+            if not frozen_state["hits"]:
+                print(f"[ ✓ ] Surface 21 no frozen pick line: {frozen_state['total']} basins clicked, none links to picks.json")
             else:
-                reason = f"marked={node_state['marked']} tooltipRoutingRule={node_state.get('tooltipHasRoutingRule')}"
-                print(f"[ ✗ ] Surface 22 pick-basin styling: {reason}")
-                fails.append((22, "pick-basin styling", reason))
+                reason = f"basins_with_routing_line={frozen_state['hits'][:5]}"
+                print(f"[ ✗ ] Surface 21 no frozen pick line: {reason}")
+                fails.append((21, "frozen picks routing line on topology", reason))
+            if not (frozen_state["ring"] or frozen_state["tip"]):
+                print(f"[ ✓ ] Surface 22 no pick ring: {frozen_state['total']} nodes, no ring or routing tooltip")
+            else:
+                reason = f"ring={frozen_state['ring']} tooltip={frozen_state['tip']}"
+                print(f"[ ✗ ] Surface 22 no pick ring: {reason}")
+                fails.append((22, "pick-basin ring on topology", reason))
 
-        # ─── Surface 23: Picks → topology cross-link + ?basin= deep-link ─────
-        # Two halves of the bidirectional bridge:
-        #   (a) picks Reader renders a 'View in topology →' xlink per
-        #       pick with a centroid match
-        #   (b) topology view opens that basin's detail panel when
-        #       loaded with ?basin=<id>
-        # SKIPPED if picks Reader has zero topology xlinks (means the
-        # current install has no picks matched to topology basins —
-        # same shape as Surface 21/22 skip).
+
+        # ─── Surface 23: topology ?basin= deep-link ───────────────────────────
+        # The topology view opens a basin's detail panel (and highlights its
+        # neighborhood) when loaded with ?basin=<id> — the launchpad and the
+        # stale-basin banner link here. Until 2026-10-26 the link under test came
+        # from the picks Reader's "View in topology →"; picks.json left the viewer,
+        # so the target is now read off the graph itself.
         page.goto(
-            f"{base_url}/portal_pages/memory.html?file=picks.json",
+            f"{base_url}/portal_pages/memory.html?file=topics.json",
             wait_until="networkidle",
             timeout=10000,
         )
         page.wait_for_timeout(300)
         xlink_info = page.evaluate(
             """() => {
-              const links = Array.from(document.querySelectorAll('.pick-xlink')).filter(
-                a => /View in topology/i.test(a.textContent || '')
-              );
-              if (!links.length) return {ok: true, skipped: true, reason: 'no topology xlinks rendered (no picks match topology basins)'};
-              const href = links[0].getAttribute('href') || '';
-              const m = href.match(/[?&]basin=([^&]+)/);
-              return {
-                ok: !!m,
-                total: links.length,
-                href: href,
-                basin: m ? decodeURIComponent(m[1]) : null,
-              };
+              const n = [...document.querySelectorAll('.topics-graph-svg .node')]
+                .find(x => x.__data__ && x.__data__.id);
+              return n ? {ok: true, total: 1, basin: String(n.__data__.id)}
+                       : {ok: true, skipped: true, reason: 'no graph nodes'};
             }"""
         )
         if xlink_info.get("skipped"):
-            print(f"[ - ] Surface 23 picks→topology: SKIPPED ({xlink_info['reason']})")
-        elif not xlink_info.get("ok"):
-            reason = f"href={xlink_info.get('href')!r} (no basin param)"
-            print(f"[ ✗ ] Surface 23 picks→topology: {reason}")
-            fails.append((23, "picks→topology xlink", reason))
+            print(f"[ - ] Surface 23 basin deep-link: SKIPPED ({xlink_info['reason']})")
         else:
-            # Now follow the link and verify the topology view opens the
-            # matching basin's detail panel — closes the round trip.
             target_basin = xlink_info["basin"]
             page.goto(
                 f"{base_url}/portal_pages/memory.html?file=topics.json&basin={target_basin}",
@@ -1657,7 +1582,7 @@ def main() -> int:
                     else "dimming not exercised (complete graph — no non-neighbors to dim)"
                 )
                 print(
-                    f"[ ✓ ] Surface 23 picks→topology: {xlink_info['total']} xlink(s) · "
+                    f"[ ✓ ] Surface 23 basin deep-link: "
                     f"?basin={target_basin} opened detail panel · {_dim_note}"
                 )
             else:
@@ -1668,8 +1593,8 @@ def main() -> int:
                     f"nodes_dimmed={panel_state.get('nodes_dimmed')} "
                     f"link_count={panel_state.get('link_count')}"
                 )
-                print(f"[ ✗ ] Surface 23 picks→topology: {reason}")
-                fails.append((23, "picks→topology xlink", reason))
+                print(f"[ ✗ ] Surface 23 basin deep-link: {reason}")
+                fails.append((23, "topology ?basin= deep-link", reason))
 
         # ─── Surface 24: Routing → topology chip ─────────────────────────────
         # The routing table renders a small .routing-topology-chip next
@@ -1867,14 +1792,12 @@ def main() -> int:
             print(f"[ ✗ ] Surface 28 stale-basin banner: {reason}")
             fails.append((28, "stale-basin banner", reason))
 
-        # ─── Surface 29: Handoff demo nudge banner ────────────────────────────
-        # The launchpad-side mirror of the doctor 'try this next' hint
-        # (post-#115 tick). pageData.handoffNudge.applicable gates whether
-        # the banner renders. When ≥2 CLI-class providers are enabled AND
-        # ≥1 prompt is indexed, the banner surfaces the demo command with
-        # a non-claude target. When the conditions aren't met, the banner
-        # is silent — both behaviors are valid; the check is that data
-        # and DOM agree (no orphan render, no silent omission).
+        # ─── Surface 29: the retired handoff-demo nudge stays gone ────────────
+        # A negative check (like Surfaces 21 and 22). The banner advertised the
+        # `trinity-local handoff` demo, a verb retired 2026-05-26, and nothing has
+        # produced pageData.handoffNudge since; the positive check passed vacuously
+        # ("silent, conditions not met") on every run. What it guards now: neither
+        # the data key nor the banner comes back.
         if "launchpad.html" not in page.url:
             page.goto(f"{base_url}/portal_pages/launchpad.html", wait_until="networkidle", timeout=10000)
             page.wait_for_timeout(600)
@@ -1882,50 +1805,20 @@ def main() -> int:
             """() => {
               const script = document.getElementById('page-data');
               const data = script ? JSON.parse(script.textContent || '{}') : {};
-              const nudge = data.handoffNudge || {};
-              // Find the banner: it carries the eyebrow text 'Try the 60-second demo'
               const eyebrows = Array.from(document.querySelectorAll('.eyebrow'));
-              const eyebrow = eyebrows.find(el => /Try the 60-second demo/i.test(el.textContent || ''));
-              const banner = eyebrow ? eyebrow.closest('section.card') : null;
-              const code = banner ? banner.querySelector('code') : null;
               return {
-                data_applicable: !!nudge.applicable,
-                data_target: nudge.target || null,
-                data_source_count: nudge.source_count || 0,
-                banner_rendered: !!banner,
-                command_text: code ? code.textContent.trim() : null,
+                data_key: Object.prototype.hasOwnProperty.call(data, 'handoffNudge'),
+                banner: eyebrows.some(el => /Try the 60-second demo/i.test(el.textContent || '')),
               };
             }"""
         )
         page.screenshot(path=str(SHOTS_DIR / "29-handoff-nudge.png"))
-        applicable = nudge_state.get("data_applicable")
-        rendered = nudge_state.get("banner_rendered")
-        # Data/DOM agreement is the load-bearing invariant — both true
-        # or both false. A drift (data says yes, banner missing) means
-        # the v-if guard regressed; the opposite means a stale banner
-        # got left in the template.
-        if applicable and rendered:
-            target = nudge_state.get("data_target")
-            cmd = nudge_state.get("command_text") or ""
-            target_in_cmd = target and target in cmd
-            if not target_in_cmd:
-                reason = f"banner rendered but target {target!r} missing from command {cmd!r}"
-                print(f"[ ✗ ] Surface 29 handoff nudge: {reason}")
-                fails.append((29, "handoff nudge banner", reason))
-            else:
-                print(
-                    f"[ ✓ ] Surface 29 handoff nudge: target={target!r} "
-                    f"sources={nudge_state['data_source_count']} command rendered"
-                )
-        elif not applicable and not rendered:
-            print("[ ✓ ] Surface 29 handoff nudge: silent (conditions not met)")
+        if nudge_state.get("data_key") or nudge_state.get("banner"):
+            reason = f"the retired handoff-demo nudge came back: {nudge_state}"
+            print(f"[ ✗ ] Surface 29 retired handoff nudge: {reason}")
+            fails.append((29, "retired handoff nudge", reason))
         else:
-            reason = (
-                f"data/DOM mismatch: applicable={applicable} rendered={rendered} "
-                f"— v-if guard regressed in one direction"
-            )
-            print(f"[ ✗ ] Surface 29 handoff nudge: {reason}")
-            fails.append((29, "handoff nudge banner", reason))
+            print("[ ✓ ] Surface 29 retired handoff nudge: absent (data key and banner)")
 
 
         # ─── (Surface 31 reserved — never shipped) ────────────────────────────
@@ -2055,11 +1948,9 @@ def main() -> int:
         # Surface 3 asserts the launchpad EMITS the memory.html?file=...&basin=
         # deep-links (string-presence only). This pairs that with a real
         # navigation — the dogfood lesson: never ship a string-presence assert
-        # un-paired with a browser hop. The launchpad's topology chips derive
-        # their basin id from launchpad_data._task_to_topology_basin, a
-        # DIFFERENT bridge than the picks-Reader xlink Surface 23 follows, so a
-        # drift there (an emitted basin id absent from topics.json) lands the
-        # user on a silent "not found" banner no other surface catches.
+        # un-paired with a browser hop. A drift in the launchpad's topology chips
+        # (an emitted basin id absent from topics.json) lands the user on a
+        # silent "not found" banner no other surface catches.
         # SKIPPED when the launchpad emits no ?basin= chip (un-consolidated
         # install — same shape as Surface 21/23).
         page.goto(

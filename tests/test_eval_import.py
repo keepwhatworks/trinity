@@ -426,7 +426,6 @@ class TestOriginalPromptScoreable:
         scoreable = _good_rejection(axis="REFRAME")
         scoreable["original_prompt"] = "explain quantum entanglement simply"
         # seam closure: the anchor must resolve — make it a real ingested prompt
-        import json as _json
         (home / "prompts" / "prompt_nodes.jsonl").write_text(
             _json.dumps({"id": "nq", "text": "explain quantum entanglement simply"}) + "\n",
             encoding="utf-8")

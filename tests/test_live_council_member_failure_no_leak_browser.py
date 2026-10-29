@@ -39,11 +39,8 @@ the founder symptom. Found 2026-06-21 driving a crashed-member council.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
-
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -56,15 +53,6 @@ _CRASH_EXC = (
 )
 _LEAKS = ("/Users/", "/home/", "/private/", "[Errno", "Traceback",
           "ProviderError", "FileNotFoundError", ".local/bin")
-
-
-def _serve(directory) -> tuple[http.server.HTTPServer, int]:
-    handler = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=str(directory)
-    )
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _seed_via_sink(tmp_path, monkeypatch, token):
@@ -149,7 +137,7 @@ def test_crashed_member_row_paints_no_internal_leak(tmp_path, monkeypatch):
             f"absolute path / Errno / type name to the live page (#43102d25)."
         )
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         body, badges = _drive(port, token)
     finally:

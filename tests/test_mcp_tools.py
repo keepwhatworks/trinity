@@ -448,7 +448,7 @@ class TestRemovedHostParams:
             launched.append(launch_args)
             return {"council_run_id": "council_x", "task_path": "", "sync_path": "", "review_path": ""}
         monkeypatch.setattr(C, "handle_council_launch", fake_launch)
-        monkeypatch.setattr(mcp_server, "_lookup_council_status", lambda cid: None, raising=False)
+        monkeypatch.setattr(mcp_server, "_lookup_council_status", lambda cid: None)
         result = _call_tool_sync("run_council", {"task": "why?", **args})
         assert "host-member council path is gone" not in str(result), result
         assert launched, "a normal council should have launched"

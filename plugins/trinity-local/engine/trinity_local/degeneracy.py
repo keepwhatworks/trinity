@@ -16,8 +16,9 @@ The classes mirror the bugs they were born from:
   C  basins        per-basin template/scaffolding concentration  (#248)
   D  Elo snapshot  web-era slug leaks into current-models view   (#275, v1.7.158)
   E  routing       legacy slug in by_task_type                   (#275)
-  E2 cortex picks  web-era slug in a picks.json routing rule      (ask mis-route, v1.7.166)
   F  lens          identical poles / 0-decision / empty tensions (the chairman's core)
+(E2, web-era slugs in picks.json, was retired 2026-10-26: nothing reads picks.json any
+more, so a finding there had no consumer and no command that cleared it.)
 """
 from __future__ import annotations
 
@@ -126,37 +127,6 @@ def _check_routing() -> list[str]:
         return [f"E/routing: sweep error {e!r}"]
 
 
-def _check_cortex_picks(patterns: "dict | None" = None) -> list[str]:
-    """Class E2 — the lens-derived routing picks `ask()` actually dispatches on
-    (`picks.json`). A pick whose `winner` names a web-era slug
-    (chatgpt/claude_ai/gemini) points at a provider the harness can't dispatch —
-    `ask` then drops the route and falls through to kNN. Post-collapse (#298) the
-    pick schema is the flat lens-basin tally `{winner, count, margin, ...}`, so
-    `winner` is the single dispatch target to check. `patterns` is injectable for
-    testing; production loads via `load_routing_patterns()`."""
-    try:
-        if patterns is None:
-            from .cortex import load_routing_patterns
-
-            patterns = load_routing_patterns()
-    except Exception as e:  # noqa: BLE001
-        return [f"E2/cortex: sweep error {e!r}"]
-    out: list[str] = []
-    for bid, p in (patterns or {}).items():
-        if not isinstance(p, dict):
-            continue
-        # isinstance(..., str) shape-guards the STRING field: a corrupt non-string
-        # `winner` (a NUMBER in a hand-edited picks.json) would hit `.strip()` on an
-        # int and crash the lens-health self-test (Iter 257 class).
-        winner_raw = p.get("winner")
-        winner = winner_raw.strip() if isinstance(winner_raw, str) else ""
-        if winner and winner in _WEB_ERA:
-            out.append(
-                f"E2/cortex: basin {bid!r} routes to web-era slug {winner!r} — not dispatchable"
-            )
-    return out
-
-
 def _check_lens() -> list[str]:
     """Class F — the lens itself (the chairman reads it every council). Degenerate
     shapes: a tension whose two poles are identical (no real tension), a tension
@@ -204,7 +174,6 @@ def run_degeneracy_sweep(*, include_eval: bool = True) -> list[str]:
         _check_basins,
         _check_elo,
         _check_routing,
-        _check_cortex_picks,
         _check_lens,
     ):
         findings.extend(fn())

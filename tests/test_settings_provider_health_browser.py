@@ -27,12 +27,10 @@ placeholder branch and the corresponding assertion reds with the exact symptom.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -64,15 +62,6 @@ _MISSING_PROVIDER_HEALTH = {
         "Trinity will pick up newly installed providers automatically."
     ),
 }
-
-
-def _serve(directory: Path) -> tuple[http.server.ThreadingHTTPServer, int]:
-    handler = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=str(directory)
-    )
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _render(tmp_path: Path, *, provider_health: dict | None, telemetry_settings: dict) -> Path:
@@ -143,7 +132,7 @@ def test_settings_provider_health_list_renders_and_copy_chip_flashes(tmp_path, m
             "share_install_id": "share_abc123",
         },
     )
-    httpd, port = _serve(serve_dir)
+    httpd, port = serve_directory(serve_dir)
     try:
         with sync_playwright() as p:
             try:
@@ -257,7 +246,7 @@ def test_settings_sharing_toggle_has_accessible_name(tmp_path, monkeypatch):
             "share_install_id": "share_abc123",
         },
     )
-    httpd, port = _serve(serve_dir)
+    httpd, port = serve_directory(serve_dir)
     try:
         with sync_playwright() as p:
             try:
@@ -398,7 +387,7 @@ def test_settings_sharing_toggle_label_tracks_state(tmp_path, monkeypatch):
                         "share_install_id": "share_state",
                     },
                 )
-                httpd, port = _serve(serve_dir)
+                httpd, port = serve_directory(serve_dir)
                 try:
                     page = browser.new_context(viewport={"width": 393, "height": 1400}).new_page()
                     errs: list[str] = []
@@ -482,7 +471,7 @@ def test_settings_sent_to_shows_the_destination_or_not_configured(tmp_path, monk
                         "share_install_id": share_id,
                     },
                 )
-                httpd, port = _serve(serve_dir)
+                httpd, port = serve_directory(serve_dir)
                 try:
                     page = browser.new_context(viewport={"width": 393, "height": 1400}).new_page()
                     errs: list[str] = []
@@ -558,7 +547,7 @@ def test_settings_modal_with_long_endpoint_url_does_not_clip_off_screen(
             "share_install_id": "share_abcdef0123456789abcdef0123456789_padding_more",
         },
     )
-    httpd, port = _serve(serve_dir)
+    httpd, port = serve_directory(serve_dir)
     try:
         with sync_playwright() as p:
             try:

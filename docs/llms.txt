@@ -1,11 +1,11 @@
 # Trinity Local
 
-> Ask all three. Keep what works. Trinity is a local, cross-provider AI council + memory layer. Ask once. It fans your question out to Claude, GPT, and Gemini, shows you where they split, and synthesizes a verdict. It learns which model to trust on your kind of question from a "lens" distilled from your own transcripts. No new app, no cloud, no API key: an MCP server inside Claude Code / Codex CLI / Antigravity / Cursor, plus a Chrome extension that captures web chats locally. Your transcripts never leave your machine.
+> Ask all three. Keep what works. Trinity is a local, cross-provider AI council + memory layer. Ask once. It fans your question out to Claude, GPT, and Gemini, shows you where they split, and synthesizes a verdict. It keeps a local ledger of where the models disagree and which side held up, and distills a "lens" from your own transcripts that the chairman reads when it synthesizes. No new app, no cloud, no API key: an MCP server inside Claude Code / Codex CLI / Antigravity / Cursor, plus a Chrome extension that captures web chats locally. Your transcripts never leave your machine.
 
 The moat is cross-provider data sovereignty: Anthropic can't recommend ChatGPT, OpenAI can't recommend Claude, Google can't recommend either. So the layer that reads your transcripts across all three has to come from outside the labs. Free for individuals, MIT, local-first. Councils dispatch through the CLIs you already authenticated (your own subscriptions), so there's nothing to meter and nothing to bill.
 
 ## When to use Trinity (for agents)
-Reach for Trinity when the question is contested, hard to reverse, or would benefit from more than one model's judgment: architecture and design calls, product decisions, debugging where two hypotheses compete, reviews where a second opinion changes the action. One `run_council` call fans the question to Claude, GPT, and Gemini and returns agreed claims, disagreed claims with a per-claim resolution, and a winner. Use `ask` for the cheap single-call default and `trust` to see which model this user historically sides with. Skip Trinity for syntax lookups, trivial bugs, mechanical refactors, and plain retrieval — one right answer wastes a council. Everything runs locally over the user's own CLI subscriptions: no API key, no hosted service, and prompt content never leaves the machine.
+Reach for Trinity when the question is contested, hard to reverse, or would benefit from more than one model's judgment: architecture and design calls, product decisions, debugging where two hypotheses compete, reviews where a second opinion changes the action. One `run_council` call fans the question to Claude, GPT, and Gemini and returns agreed claims, disagreed claims with a per-claim resolution, and a winner. Before calling a code change done, call `verify` with the diff and the project's own tests: a red relevant test returns STOP, anything else returns READ, which means a person still reads the change. `trust` shows the disagreements the labs keep having on a topic and who argued which side; `get_council_status` polls a council still running. Skip Trinity for syntax lookups, trivial bugs, mechanical refactors, and plain retrieval — one right answer wastes a council. Everything runs locally over the user's own CLI subscriptions: no API key, no hosted service, and prompt content never leaves the machine.
 
 ## Start here
 - [README](https://github.com/keepwhatworks/trinity/blob/main/README.md): install, how it works, objections, and a side-by-side comparison with LMArena / promptfoo / OpenRouter.
@@ -13,12 +13,12 @@ Reach for Trinity when the question is contested, hard to reverse, or would bene
 - [Install (one line)](https://github.com/keepwhatworks/trinity/blob/main/docs/install.sh): `curl -LsSf https://keepwhatworks.com/install.sh | sh`. Installs Trinity with uv and registers its MCP server in every CLI it finds.
 
 ## How it works
-- [How Trinity works](https://github.com/keepwhatworks/trinity/blob/main/docs/how-trinity-works.md): the end-to-end pipeline: transcripts → embeddings → dream → lens → runtime.
+- [How Trinity works](https://github.com/keepwhatworks/trinity/blob/main/docs/how-trinity-works.md): the end-to-end pipeline: transcripts → embeddings → the lens build → councils.
 - [Architecture](https://github.com/keepwhatworks/trinity/blob/main/docs/architecture.md): wire diagram + design rationale (chairman synthesizes member outputs into a structured JSON verdict).
 - [The lens](https://github.com/keepwhatworks/trinity/blob/main/docs/lens.md): identity → paired tensions → subject basins → vocabulary, read top-down on every council.
 
 ## For tool builders
-- [Preference corpus spec](https://github.com/keepwhatworks/trinity/blob/main/docs/PREFERENCE_CORPUS_SPEC.md): `~/.trinity/` is a CC0, JSON-Schema-validated on-disk contract any tool (Aider / Cline / Continue) can read or write. The folder is the API.
+- [Schemas](https://github.com/keepwhatworks/trinity/tree/main/schemas): JSON Schemas for the records Trinity writes under `~/.trinity/` (council outcomes, eval sets, rejection signals), so another tool can read them.
 
 ## For teams
 - [Trinity for teams](https://github.com/keepwhatworks/trinity/blob/main/docs/enterprise.md): same product, with support, for running it across a team.

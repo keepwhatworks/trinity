@@ -39,12 +39,10 @@ reliably). Slow-marked; skips without Playwright/chromium.
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import json
-import threading
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -95,13 +93,6 @@ def _canceled_status(token: str) -> dict:
         },
         "synthesis": {"status": "pending"},
     }
-
-
-def _serve(directory) -> tuple[http.server.HTTPServer, int]:
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _seed(tmp_path, monkeypatch, status):
@@ -157,7 +148,7 @@ def test_failed_council_retry_fires_launch_council_and_flips_to_running(tmp_path
     pytest.importorskip("playwright.sync_api")
     token = "tok_retry_ok"
     _seed(tmp_path, monkeypatch, _failed_status(token))
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         page, browser, pw, errs = _open(port, token, _MEMBERS, _stub("ready", {"ok": True}))
         try:
@@ -203,7 +194,7 @@ def test_failed_council_retry_no_dispatcher_surfaces_error_not_silent_noop(tmp_p
     pytest.importorskip("playwright.sync_api")
     token = "tok_retry_fail"
     _seed(tmp_path, monkeypatch, _failed_status(token))
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         # Dispatcher present but unreachable: the council can't actually start.
         page, browser, pw, errs = _open(
@@ -247,7 +238,7 @@ def test_canceled_council_offers_no_retry(tmp_path, monkeypatch):
     pytest.importorskip("playwright.sync_api")
     token = "tok_cancel_noretry"
     _seed(tmp_path, monkeypatch, _canceled_status(token))
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         page, browser, pw, errs = _open(
             port, token, ["claude", "codex"], _stub("ready", {"ok": True})

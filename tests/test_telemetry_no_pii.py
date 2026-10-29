@@ -399,6 +399,17 @@ class TestSettingsCorruptionFailsClosed:
         assert s.sharing_enabled is False, "corrupt settings must fail CLOSED (no send)"
         assert s.share_usage_events is False
 
+    @pytest.mark.parametrize("off", ['"false"', '"no"', "0", '"0"', "null", '""'])
+    def test_a_switch_written_as_anything_but_true_reads_off(self, patch_trinity_home: Path, off):
+        # The senders test truthiness; a hand-edited "false" string used to keep sharing on.
+        t.telemetry_settings_path().parent.mkdir(parents=True, exist_ok=True)
+        t.telemetry_settings_path().write_text(
+            f'{{"sharing_enabled": {off}, "share_usage_events": {off}, "share_install_id": "abc"}}',
+            encoding="utf-8")
+        s = t.load_telemetry_settings()
+        assert s.sharing_enabled is False and s.share_usage_events is False, off
+        assert s.share_install_id == "abc"
+
     def test_valid_settings_unchanged(self, patch_trinity_home: Path):
         t.save_telemetry_settings(t.TelemetrySettings(sharing_enabled=True, share_install_id="abc"))
         s = t.load_telemetry_settings()
@@ -434,8 +445,7 @@ def test_council_complete_member_count_reads_the_real_field(monkeypatch):
         ],
     )
     captured = {}
-    monkeypatch.setattr(council_runner, "record_event",
-                        lambda name, **kw: captured.update(kw), raising=False)
+    # _emit_council_telemetry imports record_event inside the function.
     monkeypatch.setattr("trinity_local.telemetry.record_event",
                         lambda name, **kw: captured.update(kw))
     council_runner._emit_council_telemetry(outcome)

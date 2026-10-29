@@ -103,10 +103,20 @@ class Criterion:
             raise ValueError(f"criterion {d.get('id')!r}: kind must be test|judgment, got {kind!r}")
         if kind == "test" and not d.get("command"):
             raise ValueError(f"criterion {d.get('id')!r}: kind=test requires a command")
-        advisory = bool(d.get("advisory", False))
+        # bool("false") is True, so "advisory": "false" made a test criterion advisory and a red
+        # run read READ instead of STOP. A flag that is not a JSON bool is refused like the rest;
+        # null is a host's unset optional field and takes the default.
+        flags = {"advisory": False, "blocking": True, "guard": False}
+        for name in flags:
+            value = d.get(name)
+            value = flags[name] if value is None else value
+            if not isinstance(value, bool):
+                raise ValueError(f"criterion {d.get('id')!r}: {name} must be true or false, got {value!r}")
+            flags[name] = value
+        advisory = flags["advisory"]
         return cls(id=str(d["id"]), kind=kind, statement=str(d.get("statement", "")),
-                   command=d.get("command"), blocking=bool(d.get("blocking", True)) and not advisory,
-                   advisory=advisory, guard=bool(d.get("guard", False)) and kind == "test")
+                   command=d.get("command"), blocking=flags["blocking"] and not advisory,
+                   advisory=advisory, guard=flags["guard"] and kind == "test")
 
 
 # A repository's own guard tests, run on EVERY verify call whatever the caller passes
@@ -275,6 +285,36 @@ _SHELL_BUILTINS = {"cd", "exit", "true", "false", "test", "[", "echo", "export",
                    "set", "eval", "exec", "command", "type", "printf", "read", "trap", "wait"}
 
 
+def _pytest_ran_nothing(command: str, rc: int | None, output: str) -> bool:
+    """pytest exit 4 (usage error) or 5 (no tests collected): no test ran, so no result.
+
+    Narrow on purpose (Codex's verify read: matching any `pytest` word let
+    `sh -c 'exit 4' pytest` through). All three must hold: the command is ONE
+    invocation whose program is pytest (`pytest ...` or `python -m pytest ...`,
+    after any VAR=value assignments) with no shell control operators; it exited 4 or
+    5; and pytest itself printed "no tests ran". Another program's 4 or 5, and
+    pytest's 3 (internal error), stay red."""
+    import os
+    import shlex
+
+    if rc not in (4, 5) or "no tests ran" not in (output or ""):
+        return False
+    if any(op in command for op in ("&&", "||", ";", "|", "`", "$(", "\n")):
+        return False
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        return False
+    words = [w for w in words if not ("=" in w and not w.startswith(("-", "/", ".")) and
+                                      w.split("=", 1)[0].isidentifier())]
+    if not words:
+        return False
+    prog = os.path.basename(words[0])
+    if prog == "pytest":
+        return True
+    return prog.startswith("python") and words[1:3] == ["-m", "pytest"]
+
+
 def run_kernel(criteria: list[Criterion], cwd: Path, timeout: int = 600,
                env: dict | None = None) -> tuple[Kernel, list[dict]]:
     """`env` is the harness's responsibility. A test that imports the project
@@ -295,10 +335,15 @@ def run_kernel(criteria: list[Criterion], cwd: Path, timeout: int = 600,
         # test running in the user's tree after verify had reported (scratch.run_shell).
         rc, out = run_shell(c.command, cwd, env, timeout)
         tail = out[-400:] if rc is not None else f"timeout after {timeout}s"
-        if rc in (126, 127) and not _program_resolves(c.command, env):
+        if ((rc in (126, 127) and not _program_resolves(c.command, env))
+                or (not c.guard and _pytest_ran_nothing(c.command, rc, out))):
             # The shell could not run the command (not found / not executable): a GUI-launched
             # host's PATH lacks the user's tools. That is no test result, and reading it as red
             # returned STOP for a change nothing had tested (coherence review 2026-10-15).
+            # pytest exiting 4 (usage error: a test path that does not exist) or 5 (nothing
+            # collected) is the same non-result; it read "a relevant test is red" (2026-10-26).
+            # Not for a repository guard: a guard whose test was renamed must stay loud, not
+            # quietly stop guarding.
             runs.append({"id": c.id, "command": c.command, "green": None, "could_not_run": True,
                          "seconds": round(time.time() - t0, 1), "tail": tail})
             continue
@@ -707,7 +752,8 @@ def read_panel(criteria: list[Criterion], diff: str, context: str, cwd: Path,
         reads = list(pool.map(one, eligible))      # provider order, whatever finishes first
     reads += lost
     votes = {r.provider: r.passed for r in reads if r.error is None}
-    return Panel(ran=bool(votes), votes=votes, partial=partial), reads
+    return Panel(ran=bool(votes), votes=votes, partial=partial,
+                 gated=any(c.blocking for c in judgments)), reads
 
 
 # --------------------------------------------------------------------------- verify
@@ -809,7 +855,7 @@ def verify(criteria_dicts: list[dict], diff: str, context: str, cwd: Path,
                    **({"fix": GUARDS_FIX} if guard_info["declared"] and not guard_info["trusted"] else {})},
         "panel": {"ran": panel.ran, "votes": panel.votes, "labs": sorted(panel.labs()),
                   "consensus_pass": panel.consensus_pass(), "split": panel.split(),
-                  "partial": panel.partial, "reads": [asdict(r) for r in reads]},
+                  "partial": panel.partial, "gated": panel.gated, "reads": [asdict(r) for r in reads]},
         "criteria": [asdict(c) for c in criteria],
         # Everything that did not verify this change, so a person must read it: criteria no
         # test runs, tests that never ran (--no-tests) or ran red without blocking, and tests

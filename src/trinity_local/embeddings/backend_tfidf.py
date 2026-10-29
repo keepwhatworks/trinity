@@ -12,11 +12,6 @@ import re
 from collections import Counter
 
 
-# Global document frequency table (built from observed texts)
-_doc_freq: Counter[str] = Counter()
-_n_docs: int = 0
-
-
 def _tokenize(text: str) -> list[str]:
     """Simple word tokenizer."""
     return re.findall(r'[a-z0-9_]+', text.lower())

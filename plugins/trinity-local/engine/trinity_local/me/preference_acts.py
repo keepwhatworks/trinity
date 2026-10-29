@@ -1,5 +1,5 @@
 """Unified preference-act evidence type — Stage 1 of the EXTRACT
-unification (docs/lens-redesign.md beauty audit).
+unification (docs/historical/lens-redesign.md beauty audit).
 
 The lens pipeline extracts user taste through two passes that are really
 one shape:

@@ -1,4 +1,4 @@
-"""#235 — embedding backfill + a coverage floor-guard.
+"""#235 — the embedding coverage floor-guard.
 
 incremental_ingest.ingest_recent writes PromptNodes with ``embedding=[]`` to
 keep the launchpad/search hot path fast, deferring the real vectors to a later
@@ -6,24 +6,16 @@ offline pass. That backfill stalled 2026-05-12, leaving ~66% of text-bearing
 prompt_nodes with empty embeddings — invisible to the k-means basins
 (``compute_basins`` silently skips non-finite embeddings).
 
-These tests pin both halves of the fix:
-  - ``backfill_prompt_node_embeddings`` batch-embeds text-bearing nodes that
-    lack a finite embedding and re-upserts them.
-  - a coverage *floor guard* that FAILS when >X% of text-bearing nodes lack
-    embeddings — the canary that would have fired on 2026-05-12.
-
-The TF-IDF fallback (no MLX needed) produces deterministic finite vectors, so
-these run everywhere.
+These tests pin the coverage *floor guard*, which FAILS when >X% of
+text-bearing nodes lack embeddings: the canary that would have fired on
+2026-05-12. The backfill itself is stale_pass.embed_backfill, tested in
+test_stale_pass.py.
 """
 from __future__ import annotations
 
 import pytest
 
-from trinity_local.embeddings import (
-    backfill_prompt_node_embeddings,
-    is_finite_embedding,
-    prompt_node_embedding_coverage,
-)
+from trinity_local.embeddings import prompt_node_embedding_coverage
 
 # Product floor: a healthy corpus keeps the missing-embedding fraction below
 # this. The 2026-05-12 regression sat at ~0.66; anything near that is a
@@ -82,43 +74,6 @@ class TestEmbeddingCoverage:
             "expected the stalled-backfill corpus to breach the floor"
         )
 
-    def test_backfill_closes_the_gap(self):
-        self._seed(embedded=3, empty=6, empty_text=2)
-        before = prompt_node_embedding_coverage()
-        assert before["missing"] == 6
-
-        report = backfill_prompt_node_embeddings()
-        assert report["scanned"] == 6
-        assert report["backfilled"] == 6
-        assert report["remaining"] == 0
-
-        after = prompt_node_embedding_coverage()
-        # Every text-bearing node now has a finite embedding → under the floor.
-        assert after["missing"] == 0
-        assert after["fraction_missing"] <= MAX_MISSING_FRACTION
-
-    def test_backfill_is_idempotent(self):
-        self._seed(embedded=2, empty=4)
-        backfill_prompt_node_embeddings()
-        second = backfill_prompt_node_embeddings()
-        # Nothing left to do on the second pass.
-        assert second["scanned"] == 0
-        assert second["backfilled"] == 0
-
-    def test_backfilled_vectors_are_finite_and_survive_reload(self):
-        from trinity_local.memory.store import iter_prompt_nodes
-
-        self._seed(embedded=0, empty=4)
-        backfill_prompt_node_embeddings()
-        nodes = [
-            n
-            for n in iter_prompt_nodes(limit=None)
-            if (n.text or "").strip()
-        ]
-        assert nodes
-        for n in nodes:
-            assert is_finite_embedding(n.embedding), n.id
-
     def test_empty_corpus_no_crash(self):
         cov = prompt_node_embedding_coverage()
         assert cov == {
@@ -127,5 +82,3 @@ class TestEmbeddingCoverage:
             "missing": 0,
             "fraction_missing": 0.0,
         }
-        report = backfill_prompt_node_embeddings()
-        assert report == {"scanned": 0, "backfilled": 0, "remaining": 0}

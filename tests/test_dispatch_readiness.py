@@ -25,12 +25,6 @@ def test_dispatch_readiness_empty_install(isolated_home, monkeypatch):
     return `ready: False` plus a hint that points at install-extension —
     the future path, not the legacy path."""
     monkeypatch.setattr("shutil.which", lambda name, **kw: None)
-    # Force shortcut to non-applicable so the test is independent of the
-    # dev machine's actual Shortcut state (it's typically installed).
-    monkeypatch.setattr(
-        "trinity_local.launchpad_data._shortcut_status",
-        lambda: {"ok": True, "applicable": False},
-    )
     from trinity_local.launchpad_data import dispatch_readiness
 
     result = dispatch_readiness()
@@ -56,12 +50,6 @@ def test_dispatch_readiness_extension_configured_and_host_present(
         lambda name, **kw: "/usr/local/bin/trinity-local-capture-host"
         if name == "trinity-local-capture-host" else None,
     )
-    # Force shortcut to look not-applicable so the test is independent
-    # of platform AND of whether the dev machine has the Shortcut.
-    monkeypatch.setattr(
-        "trinity_local.launchpad_data._shortcut_status",
-        lambda: {"ok": True, "applicable": False},
-    )
     from trinity_local.launchpad_data import dispatch_readiness
 
     result = dispatch_readiness()
@@ -84,10 +72,6 @@ def test_dispatch_readiness_extension_id_but_host_missing(
         "extension_id": "abcdefghijklmnopabcdefghijklmnop",
     }))
     monkeypatch.setattr("shutil.which", lambda name, **kw: None)
-    monkeypatch.setattr(
-        "trinity_local.launchpad_data._shortcut_status",
-        lambda: {"ok": True, "applicable": False},
-    )
     from trinity_local.launchpad_data import dispatch_readiness
 
     result = dispatch_readiness()
@@ -118,10 +102,6 @@ def test_portal_html_includes_dispatch_readiness(
     consume the output (CI, dev tooling) can read it without a separate
     CLI call."""
     monkeypatch.setattr("shutil.which", lambda name, **kw: None)
-    monkeypatch.setattr(
-        "trinity_local.launchpad_data._shortcut_status",
-        lambda: {"ok": True, "applicable": False},
-    )
     from trinity_local.commands.portal import handle_portal_html
 
     args = SimpleNamespace(title="Trinity test", open_browser=False)
@@ -143,10 +123,6 @@ def test_portal_html_emits_hint_on_open_when_not_ready(
     banner; this is the CLI-side mirror so headless invocations aren't
     silent."""
     monkeypatch.setattr("shutil.which", lambda name, **kw: None)
-    monkeypatch.setattr(
-        "trinity_local.launchpad_data._shortcut_status",
-        lambda: {"ok": True, "applicable": False},
-    )
     # No-op the actual file open — we don't want to launch a browser
     # from the test process. Also keep `opened: False` in the JSON.
     monkeypatch.setattr(

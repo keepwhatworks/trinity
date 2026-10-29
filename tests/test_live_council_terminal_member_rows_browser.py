@@ -39,12 +39,10 @@ without Playwright/chromium.
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import json
-import threading
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -95,13 +93,6 @@ def _canceled_midrun_status(token: str) -> dict:
         },
         "synthesis": {"status": "pending"},
     }
-
-
-def _serve(directory) -> tuple[http.server.HTTPServer, int]:
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _seed(tmp_path, monkeypatch, status):
@@ -158,7 +149,7 @@ def test_all_failed_council_member_rows_read_failed_not_queued(tmp_path, monkeyp
     pytest.importorskip("playwright.sync_api")
     token = "tok_term_allfail"
     _seed(tmp_path, monkeypatch, _all_failed_status(token))
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         body, badges = _drive(port, token)
     finally:
@@ -180,7 +171,7 @@ def test_early_death_council_member_rows_read_didnt_run_not_queued(tmp_path, mon
     pytest.importorskip("playwright.sync_api")
     token = "tok_term_earlydeath"
     _seed(tmp_path, monkeypatch, _early_death_status(token))
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         body, badges = _drive(port, token)
     finally:
@@ -213,7 +204,7 @@ def test_canceled_council_keeps_answer_marks_others_stopped_not_queued(tmp_path,
     pytest.importorskip("playwright.sync_api")
     token = "tok_term_canceled"
     _seed(tmp_path, monkeypatch, _canceled_midrun_status(token))
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         body, badges = _drive(port, token)
     finally:

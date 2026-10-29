@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.conftest import private_only
 from trinity_local import telemetry as T
 
 REPO = Path(__file__).resolve().parents[1]
@@ -67,3 +68,30 @@ def test_install_names_the_off_switch(monkeypatch, capsys):
     U.handle_install_umbrella(SimpleNamespace(check=False))
     out = capsys.readouterr().out
     assert re.search(r"telemetry-disable", out) and "telemetry-show --wire" in out
+
+
+def _assert_lists_exactly_what_ships(text: str, where: str) -> None:
+    """Every field that ships is named, and every snake_case name in backticks is one that
+    ships. provider_scores and routing_lesson are council-outcome fields that stay local;
+    the lock and the spec named them as telemetry until 2026-10-28."""
+    named = set(re.findall(r"`([a-z_]+)`", text))
+    missing = T.DISCLOSED_EVENT_PARAMS - named
+    extra = {n for n in named if "_" in n or n in T.DISCLOSED_EVENT_PARAMS} - T.DISCLOSED_EVENT_PARAMS
+    assert not missing, f"{where} omits fields that ship: {sorted(missing)}"
+    assert not extra, f"{where} names fields that never ship: {sorted(extra)}"
+
+
+def test_product_spec_names_exactly_the_fields_that_ship():
+    spec = (REPO / "docs" / "product-spec.md").read_text(encoding="utf-8")
+    lock = next(line for line in spec.splitlines() if line.startswith("2. **Prompt content never uploads.**"))
+    section = spec[spec.index("### Telemetry model"):]
+    section = section[: section.index("\n---")]
+    _assert_lists_exactly_what_ships(lock, "product-spec's 'Prompt content never uploads' commitment")
+    _assert_lists_exactly_what_ships(section, "product-spec's Telemetry model section")
+
+
+@private_only
+def test_agents_md_lock_names_exactly_the_fields_that_ship():
+    agents = (REPO / "AGENTS.md").read_text(encoding="utf-8")
+    lock = next(line for line in agents.splitlines() if line.startswith("2. **Prompt content never uploads.**"))
+    _assert_lists_exactly_what_ships(lock, "AGENTS.md's 'Prompt content never uploads' commitment")

@@ -83,3 +83,36 @@ def test_absent_list_field_is_fine(monkeypatch):
     _stdin(monkeypatch, json.dumps({"source_provider": "claude"}))
     out = read_provider_import(_args(from_json=True), list_fields=("tensions", "orderings"))
     assert isinstance(out, tuple)  # success — absent fields are legitimately empty
+
+
+# --- print_provider_prompt: `lens-prompt` and `eval-prompt` share it --------------
+
+def test_prompt_prints_only_the_body_after_the_marker(tmp_path, monkeypatch, capsys):
+    from trinity_local.commands.provider_import import PROMPT_BODY_MARKER, print_provider_prompt
+
+    doc = tmp_path / "p.md"
+    doc.write_text(f"# Title\nintro\n{PROMPT_BODY_MARKER}\n\nLook back\n", encoding="utf-8")
+    monkeypatch.setenv("TRINITY_TEST_PROMPT_DOC", str(doc))
+    assert print_provider_prompt("p.md", "TRINITY_TEST_PROMPT_DOC", with_instructions=False) == 0
+    assert capsys.readouterr().out == "Look back\n"
+
+
+def test_prompt_without_marker_prints_whole_doc_and_warns(tmp_path, monkeypatch, capsys):
+    from trinity_local.commands.provider_import import print_provider_prompt
+
+    doc = tmp_path / "p.md"
+    doc.write_text("# Title\nno marker here\n", encoding="utf-8")
+    monkeypatch.setenv("TRINITY_TEST_PROMPT_DOC", str(doc))
+    assert print_provider_prompt("p.md", "TRINITY_TEST_PROMPT_DOC", with_instructions=False) == 0
+    out = capsys.readouterr()
+    assert out.out == "# Title\nno marker here\n"
+    assert "marker not found" in out.err and "p.md" in out.err
+
+
+def test_prompt_override_to_a_missing_file_exits_1(tmp_path, monkeypatch, capsys):
+    from trinity_local.commands.provider_import import print_provider_prompt
+
+    monkeypatch.setenv("TRINITY_TEST_PROMPT_DOC", str(tmp_path / "absent.md"))
+    assert print_provider_prompt("p.md", "TRINITY_TEST_PROMPT_DOC", with_instructions=False) == 1
+    err = capsys.readouterr().err
+    assert "p.md" in err and "TRINITY_TEST_PROMPT_DOC" in err

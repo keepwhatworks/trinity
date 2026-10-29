@@ -21,11 +21,8 @@ Slow + browser marked. Synthetic data only; no PII.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
-
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -71,13 +68,6 @@ def _seed_local_member_council() -> None:
     write_live_council_page()
 
 
-def _serve(directory):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 def test_live_council_renders_local_member_without_fabricated_brand(tmp_path, monkeypatch):
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright
@@ -86,7 +76,7 @@ def test_live_council_renders_local_member_without_fabricated_brand(tmp_path, mo
     monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
     _seed_local_member_council()
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:

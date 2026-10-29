@@ -127,12 +127,10 @@ def test_rejects_malformed_extension_id(fake_home, capsys):
 
 
 def test_rejects_missing_host_path(fake_home, capsys, monkeypatch):
-    """If --host-path isn't given AND shutil.which finds nothing,
+    """If --host-path isn't given AND the runtime-PATH lookup finds nothing,
     refuse to write a manifest pointing at a broken path."""
     from trinity_local.commands import install
-    monkeypatch.setattr(install.shutil if hasattr(install, "shutil") else __import__("shutil"), "which", lambda name: None)
-    import shutil as real_shutil
-    monkeypatch.setattr(real_shutil, "which", lambda name: None)
+    monkeypatch.setattr("trinity_local.runtime_env.which_on_runtime_path", lambda name, **kw: None)
 
     bad_args = _make_args(host_path=None)
     rc = install.handle_install_extension(bad_args)

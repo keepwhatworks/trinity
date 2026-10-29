@@ -21,21 +21,11 @@ backfill → href is None again → the link never renders → this guard reds.
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import os
-import threading
 import time
-from pathlib import Path
 
 import pytest
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
+from tests.browser_harness import serve_directory
 
 
 @pytest.mark.slow
@@ -86,7 +76,7 @@ def test_memory_health_issue_renders_clickable_inspect_link(tmp_path, monkeypatc
         "<html><body id='memory-viewer-stub'>memory viewer</body></html>", encoding="utf-8"
     )
     publish_vendor_files(pp)
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
     try:
         with sync_playwright() as p:
             try:
@@ -251,7 +241,7 @@ def test_memory_health_headline_counts_match_the_issue_list(tmp_path, monkeypatc
     pp.mkdir(parents=True)
     (pp / "launchpad.html").write_text(html, encoding="utf-8")
     publish_vendor_files(pp)
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
     try:
         with sync_playwright() as p:
             try:

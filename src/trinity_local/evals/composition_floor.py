@@ -16,9 +16,9 @@ as DISTRIBUTIONS with pre-registered floors:
     items (one conversation shouldn't be a sixth of your "taste").
   - source diversity: at least MIN_THREADS distinct transcripts must be represented.
 
-Pure data — no LLM, no judge calls. Cheap enough to run on every build and refuse /
-caveat the headline when the SET is degenerate, the same way baseline_floor refuses
-when the JUDGE is degenerate.
+Pure data — no LLM, no judge calls. Today only its floor and tie constants are read
+(commands/eval.py); evaluate_composition is not called on a build, so nothing refuses or
+caveats a headline on it yet, unlike baseline_floor for a degenerate JUDGE.
 """
 from __future__ import annotations
 

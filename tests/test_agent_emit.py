@@ -36,11 +36,26 @@ def test_trinity_verify_excludes_its_own_host_lab():
     a 'different-lab' checker isn't different-lab at all."""
     claude_md = agent_emit.render_claude_subagent()
     codex_toml = agent_emit.render_codex_agent()
-    assert "EXCLUDE `claude`" in claude_md and "available_providers" in claude_md
-    assert "EXCLUDE `codex`" in codex_toml
+    assert "EXCLUDE `claude`" in claude_md and "`exclude_lab` = `claude`" in claude_md
+    assert "EXCLUDE `codex`" in codex_toml and "`exclude_lab` = `codex`" in codex_toml
     # Each routes to the OTHER two labs.
     assert "codex or antigravity" in claude_md
     assert "claude or antigravity" in codex_toml
+
+
+def test_every_parameter_trinity_verify_names_is_a_real_tool_parameter():
+    """The body told agents to pass `available_providers`, which neither MCP tool accepts
+    (found 2026-10-27). Check what it names against the live tool schemas instead of
+    pinning a word: `exclude_lab` is verify's and `members` is run_council's."""
+    import asyncio
+
+    from trinity_local.mcp_server import handle_list_tools
+    props = {t.name: set((t.inputSchema or {}).get("properties", {})) for t in asyncio.run(handle_list_tools())}
+    for text in (agent_emit.render_claude_subagent(), agent_emit.render_codex_agent()):
+        assert "available_providers" not in text
+        for tool, param in (("verify", "exclude_lab"), ("run_council", "members")):
+            assert f"`{param}`" in text, f"the verifier no longer names {param}"
+            assert param in props[tool], f"{tool} has no {param!r} parameter: {sorted(props[tool])}"
 
 
 def test_trinity_verify_mandates_independent_evidence():
@@ -176,3 +191,23 @@ def test_the_relay_never_offers_an_outcome_the_gate_cannot_emit():
     from trinity_local.agent_emit import render_claude_subagent
     if not verify_rule.SKIP_SHIPS:
         assert "SKIP" not in render_claude_subagent()
+
+
+def test_install_hints_do_what_install_does_from_a_hostile_path(tmp_path):
+    """The hints are pasted into a shell. A project path with a space, $(...) or
+    backticks must be copied to, not split or run."""
+    import subprocess
+
+    hostile = tmp_path / "p $(touch PWNED) `touch PWNED2` q"
+    project = hostile / "proj"
+    project.mkdir(parents=True)
+    res = agent_emit.write_verifier_agents(home=hostile / "home", install=False, project_root=project)
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    for hint in res["install_hints"]:
+        subprocess.run(["sh", "-c", hint], cwd=cwd, check=True)
+    assert sorted(p.name for p in cwd.iterdir()) == [], "a pasted hint ran a command"
+    claude_dst = project / ".claude" / "agents" / "trinity-verify.md"
+    codex_dst = project / ".codex" / "agents" / "trinity-verify.toml"
+    assert claude_dst.read_text() == Path(res["claude_source"]).read_text()
+    assert codex_dst.read_text() == Path(res["codex_source"]).read_text()

@@ -25,12 +25,10 @@ the in-panel assertion reds with the exact symptom.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -57,13 +55,6 @@ def test_cross_bootstrap_card_branches_on_in_panel_signal():
 
 
 # ── Real-browser proof ──
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 def _render_home(tmp_path, *, web_store_url: str | None = None,
                  sub: str = "serve") -> Path:
     """Render the home launchpad from an EMPTY home (no extension.json →
@@ -139,7 +130,7 @@ def test_side_panel_does_not_say_install_the_extension(tmp_path, monkeypatch):
     monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
 
     serve_dir = _render_home(tmp_path)
-    httpd, port = _serve(serve_dir)
+    httpd, port = serve_directory(serve_dir)
     try:
         with sync_playwright() as p:
             try:
@@ -187,7 +178,7 @@ def test_file_launchpad_keeps_install_the_extension_pitch(tmp_path, monkeypatch)
     monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
 
     serve_dir = _render_home(tmp_path)
-    httpd, port = _serve(serve_dir)
+    httpd, port = serve_directory(serve_dir)
     try:
         with sync_playwright() as p:
             try:
@@ -272,7 +263,7 @@ def test_cross_bootstrap_docs_cta_opens_correct_target(tmp_path, monkeypatch):
     )
 
     serve_dir = _render_home(tmp_path, web_store_url="", sub="serve_docs")
-    httpd, port = _serve(serve_dir)
+    httpd, port = serve_directory(serve_dir)
     try:
         with sync_playwright() as p:
             try:
@@ -340,7 +331,7 @@ def test_cross_bootstrap_add_to_chrome_cta_opens_web_store(tmp_path, monkeypatch
 
     web_store = "https://chromewebstore.google.com/detail/trinity-local/iterxbootstrapcta"
     serve_dir = _render_home(tmp_path, web_store_url=web_store, sub="serve_ws")
-    httpd, port = _serve(serve_dir)
+    httpd, port = serve_directory(serve_dir)
     try:
         with sync_playwright() as p:
             try:

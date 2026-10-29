@@ -25,12 +25,10 @@ Slow + browser; skips without Playwright/chromium.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -40,18 +38,13 @@ def test_ingest_result_handler_is_wired_not_the_council_path():
     handler, not the council handleDispatchResult (which polls to a false fail)."""
     src = (REPO / "src" / "trinity_local" / "launchpad_template.py").read_text(encoding="utf-8")
     assert "handleIngestResult" in src, "ingest lost its dedicated fire-and-forget result handler"
-    assert "onResult: (r) => this.handleIngestResult(r)" in src, "ingestOnce no longer routes to handleIngestResult"
+    assert "this.dispatchAction({{ kind: 'ingest-recent' }}, (r) => this.handleIngestResult(r))" in src, (
+        "ingestOnce no longer routes to handleIngestResult"
+    )
     assert "Transcript scan started" in src, "ingest completion heading missing"
 
 
 pytestmark_browser = [pytest.mark.slow, pytest.mark.browser]
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 @pytest.mark.slow
@@ -72,7 +65,7 @@ def test_successful_ingest_shows_confirmation_not_false_failure(tmp_path, monkey
     pp.mkdir(parents=True)
     (pp / "launchpad.html").write_text(render_launchpad_html(), encoding="utf-8")
     publish_vendor_files(pp)
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
     try:
         with sync_playwright() as p:
             try:

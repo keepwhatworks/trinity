@@ -158,34 +158,22 @@ def test_basins_check_still_fires_on_real_concentration_with_wrong_shape(home: P
     assert not any("sweep error" in f for f in findings), findings
 
 
-def test_cortex_picks_check_flags_web_era_routing_slug():
-    """Class E2: a lens-derived pick whose `winner` is a web-era slug
-    (chatgpt/claude_ai/gemini) points at a non-dispatchable provider — ask()
-    drops the route. Post-collapse (#298) the pick schema is the flat lens-basin
-    tally `{winner, count, margin, ...}`, so `winner` is the single dispatch
-    target the guard checks. (Injected picks bypass load-time canonicalization.)"""
-    from trinity_local.degeneracy import _check_cortex_picks
+def test_an_unread_picks_json_raises_no_finding(home: Path):
+    """Class E2 (a web-era slug in picks.json) was retired 2026-10-26. It guarded an
+    `ask` router removed 2026-08-11, and once the memory viewer stopped showing
+    picks.json nothing read the file, so an E2 finding had no consumer and no command
+    that cleared it: a permanent WEAK in lens-health. An old install's picks.json must
+    not bring it back."""
+    import json
 
-    bad = {
+    (home / "scoreboard").mkdir(parents=True, exist_ok=True)
+    (home / "scoreboard" / "picks.json").write_text(json.dumps({
         "b00": {"winner": "chatgpt", "count": 4, "margin": 0.5, "n_episodes": 4},
-    }
-    findings = _check_cortex_picks(bad)
-    assert any("E2/cortex" in f and "chatgpt" in f for f in findings)
+    }), encoding="utf-8")
+    from trinity_local.degeneracy import run_degeneracy_sweep
 
-    bad_gemini = {
-        "b01": {"winner": "gemini", "count": 3, "margin": 0.3, "n_episodes": 3},
-    }
-    assert any("gemini" in f for f in _check_cortex_picks(bad_gemini))
-
-
-def test_cortex_picks_check_clean_on_canonical_slugs():
-    from trinity_local.degeneracy import _check_cortex_picks
-
-    ok = {
-        "b00": {"winner": "codex", "count": 5, "margin": 0.6, "n_episodes": 5},
-        "b01": {"winner": "antigravity", "count": 3, "margin": 0.2, "n_episodes": 3},
-    }
-    assert _check_cortex_picks(ok) == []
+    findings = run_degeneracy_sweep(include_eval=False)
+    assert not [f for f in findings if "E2" in f or "picks" in f.lower()], findings
 
 
 def test_sweep_flags_degenerate_lens(home: Path):

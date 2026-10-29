@@ -528,6 +528,8 @@ class TestDocRegistryWiring:
 # Layer 2 — live corpus. The ONLY skippable test in this file.
 # ───────────────────────────────────────────────────────────────────────
 
+@pytest.mark.real_corpus
+@pytest.mark.usefixtures("real_corpus_home")
 class TestLiveLedgerAgreement:
     def test_claude_md_numbers_agree_with_the_live_ledger(self):
         from trinity_local.evidence_claims import (

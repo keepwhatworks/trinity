@@ -13,7 +13,6 @@ import json
 
 from ..adapters import check_all_adapters
 from ..health_checks import format_one_line, run_doctor
-from ..drift import check_drift
 from ..state_paths import state_dir, tasks_dir
 
 
@@ -153,9 +152,6 @@ def handle_status(args):
     # per-run "review_ready" records whose completion path died 2026-05-18;
     # the 18k-file scan this used to do was the slowest part of `status`.)
 
-    # Drift
-    drift_alerts = check_drift()
-
     # State dir
     home = state_dir()
 
@@ -268,7 +264,6 @@ def handle_status(args):
             "todos": task_count,
             "councils": council_count,
             "first_run": _first_run_rung(health, council_count, total_transcripts),
-            "drift_alerts": len(drift_alerts),
             "verify_runs": _verify_stats(),
             # Empty list when no signals fire — parallel to human
             # surface staying silent. Always present in payload so
@@ -432,20 +427,20 @@ def handle_status(args):
     # a thin ledger (n < threshold).
     try:
         from ..council_analytics import council_category_wedge, council_value_proof
-        _brand = {"codex": "GPT", "claude": "Claude", "antigravity": "Gemini"}
+        from ..council_schema import provider_model_brand
         vp = council_value_proof()
         if vp.get("ready"):
             print(f"    Council value: picked a different model than your "
                   f"default {vp['changed_pct']}% of the time "
                   f"(across {vp['comparable']} real contests)")
             split = " · ".join(
-                f"{_brand.get(p, p)} {d['pct']}%" for p, d in vp["win_split"].items()
+                f"{provider_model_brand(p)} {d['pct']}%" for p, d in vp["win_split"].items()
             )
             print(f"                   wins: {split}")
             wedge = council_category_wedge()
             if wedge:
                 kinds = ", ".join(
-                    f"{w['family']}→{_brand.get(w['leader'], w['leader'])}"
+                    f"{w['family']}→{provider_model_brand(w['leader'])}"
                     for w in wedge[:4]
                 )
                 print(f"                   by kind: {kinds}")
@@ -529,13 +524,6 @@ def handle_status(args):
         pass
     print()
 
-    # Drift
-    if drift_alerts:
-        print(f"  ⚠  {len(drift_alerts)} drift alert(s):")
-        for alert in drift_alerts:
-            print(f"    · {alert.message}")
-    else:
-        print("  Drift:     no alerts")
     vs = _verify_stats()
     if vs:
         print(f"  Verify:    {vs['vacuous']} of {vs['measured_tests']} green tests across {vs['runs']} "

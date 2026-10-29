@@ -21,11 +21,8 @@ Serves an isolated, PII-free synthetic council over http (the page reads
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
-
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -76,18 +73,11 @@ _GEOM = """() => {
 }"""
 
 
-def _serve(tmp_path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(tmp_path))
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 def _measure(tmp_path, cid: str, viewport_width: int) -> dict:
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:
@@ -259,7 +249,7 @@ def _measure_band(tmp_path, cid: str, vw: int) -> dict:
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
             try:

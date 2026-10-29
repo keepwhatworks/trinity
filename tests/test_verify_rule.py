@@ -211,3 +211,21 @@ def test_a_unanimous_objection_is_not_reported_as_agreement():
                                                "antigravity": False}))
     assert t.outcome == "READ"
     assert "agreed" not in t.reason and "all 3 reviewing labs objected" in t.reason
+
+
+def test_without_a_kernel_a_unanimous_objection_is_still_not_agreement():
+    """The no-test branch printed "panel agreed" over three FAIL votes (found 2026-10-26)."""
+    t = triage(Kernel.not_run(), Panel(ran=True, votes=ALL_FAIL))
+    assert t.outcome == "READ"
+    assert "agreed" not in t.reason and "every reviewing lab objected" in t.reason
+    assert "agreed" in triage(Kernel.not_run(), Panel(ran=True, votes=ALL_PASS)).reason
+
+
+def test_an_ungated_panel_is_neither_agreement_nor_objection():
+    """No blocking judgment: every vote is False whatever the readers said."""
+    ungated = Panel(ran=True, votes={"codex": False, "antigravity": False}, gated=False)
+    for kernel in (K(True), Kernel.not_run()):
+        reason = triage(kernel, ungated).reason
+        assert "objected" not in reason and "agreed" not in reason, reason
+        assert "no judgment item is blocking" in reason, reason
+    assert triage(K(False), ungated).outcome == "STOP"

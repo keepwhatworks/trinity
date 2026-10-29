@@ -83,9 +83,9 @@ def test_extension_vendor_in_sync_with_publisher(tmp_path):
     `publish_vendor_files` emits (the same call scripts/build_extension_launchpad.py
     makes) so a vendor refresh that forgets the extension can't ship stale JS/fonts
     to extension users. Regenerate: `python scripts/build_extension_launchpad.py`."""
-    from trinity_local.vendor import publish_vendor_files
+    from trinity_local.vendor import EXTENSION_VENDOR_FILES, publish_vendor_files
 
-    publish_vendor_files(tmp_path)
+    publish_vendor_files(tmp_path, names=EXTENSION_VENDOR_FILES)
     fresh = {p.name: p.read_bytes() for p in (tmp_path / "vendor").iterdir() if p.is_file()}
     committed = {p.name: p.read_bytes() for p in (EXT / "vendor").iterdir() if p.is_file()}
     assert set(committed) == set(fresh), (
@@ -94,6 +94,23 @@ def test_extension_vendor_in_sync_with_publisher(tmp_path):
     )
     drifted = sorted(n for n in fresh if committed[n] != fresh[n])
     assert not drifted, f"committed extension vendor bytes drifted from the publisher: {drifted}"
+
+
+def test_extension_ships_only_the_vendor_files_its_pages_load():
+    """Every vendored file the extension ships is one its pages reference, and every one
+    they reference ships. The full set (d3, marked, petite-vue's ES build) serves the
+    file:// memory viewer, which the extension does not include."""
+    import re
+
+    from trinity_local.vendor import EXTENSION_VENDOR_FILES
+
+    pages = [p for p in (EXT / "sandbox").iterdir() if p.suffix in {".html", ".js"}]
+    referenced = {m for p in pages for m in re.findall(r"vendor/([A-Za-z0-9_.-]+)", p.read_text(encoding="utf-8"))}
+    licenses = {n for n in EXTENSION_VENDOR_FILES if n.endswith("-OFL.txt")}
+    assert referenced | licenses == set(EXTENSION_VENDOR_FILES), (
+        f"unreferenced: {sorted(set(EXTENSION_VENDOR_FILES) - referenced - licenses)}; "
+        f"missing: {sorted(referenced - set(EXTENSION_VENDOR_FILES))}"
+    )
 
 
 def test_the_dead_extension_pages_stay_gone():

@@ -40,3 +40,18 @@ def test_the_benchmark_chart_reads_the_real_file_not_the_fallback():
 def test_both_are_declared_as_package_data():
     text = (REPO / "pyproject.toml").read_text(encoding="utf-8")
     assert '"data/reference_evals.json"' in text and '"data/extension/page-hook.js"' in text
+
+
+def test_the_refresh_tool_writes_the_rows_the_chart_reads():
+    """tools/sync_reference_evals.py keyed the Google row "gemini" while the shipped file
+    and its readers use "antigravity", so a re-run would have dropped Gemini from the chart
+    (found 2026-10-27). Its provider keys must be the shipped file's, and council slugs."""
+    import importlib.util
+    import json
+
+    from trinity_local.config import CANONICAL_COUNCIL_PROVIDERS
+    spec = importlib.util.spec_from_file_location("sync_reference_evals", REPO / "tools" / "sync_reference_evals.py")
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+    shipped = json.loads((Path(trinity_local.__file__).parent / "data" / "reference_evals.json").read_text())
+    assert set(tool.PROVIDER_TO_SLUG) == set(shipped["providers"]) == set(CANONICAL_COUNCIL_PROVIDERS)

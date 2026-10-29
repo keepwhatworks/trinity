@@ -83,7 +83,7 @@
   //     install site (the conversion path for a CLI-less user), keyboard- and
   //     pointer-actionable.
   //   • a shell command ("trinity-local lens-setup") → a COPY button with a ✓
-  //     ack (the launchpad's copyCodeBlock / popup's copy-setup-cmds pattern),
+  //     ack (the launchpad's copyCodeBlock pattern),
   //     since the user pastes it into a terminal — there's nothing to navigate.
   // A bare domain (no scheme, no slash) is treated as https://<domain>.
   const _DOMAIN_RX = /^(?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/\S*)?$/i;

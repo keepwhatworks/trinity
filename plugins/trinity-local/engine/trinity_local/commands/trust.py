@@ -57,15 +57,8 @@ def register(subparsers):
 def _load_summary(home=None) -> dict:
     """The persisted aggregate with the label gate applied on read (a summary built
     before the gate existed still says trustworthy)."""
-    from ..disagreement_ledger import _ledger_dir, gate_summary
-    path = _ledger_dir(home) / "summary.json"
-    if not path.exists():
-        return {}
-    try:
-        d = json.loads(path.read_text(encoding="utf-8"))
-    except (ValueError, OSError):
-        return {}
-    return gate_summary(d) if isinstance(d, dict) else {}
+    from ..disagreement_ledger import load_summary
+    return load_summary(home)
 
 
 def _print_dissent(as_json: bool) -> int:

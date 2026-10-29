@@ -1,6 +1,5 @@
-"""Regression tests for `me.geometry` — the pure-numerical core of
-cortex consolidation. The module ships as a dependency-free stdlib block
-that underpins basin-shape priors fed to the flagship extraction prompt.
+"""Regression tests for `me.geometry` — the pure-numerical basin geometry
+me/basin_split.py uses to split mega-basins (dependency-free stdlib math).
 
 Coverage rationale: me/geometry.py was extracted to its own file
 expressly so the math has a single home, but until now it was only
@@ -20,7 +19,6 @@ import pytest
 
 from trinity_local.me.geometry import (
     BIMODALITY_KURTOSIS_THRESHOLD,
-    compute_basin_geometry,
     euclid,
     excess_kurtosis,
     mean_cosine_to,
@@ -207,71 +205,10 @@ class TestExcessKurtosis:
 
     def test_bimodal_more_negative_than_threshold(self):
         # Two well-separated clusters → strongly platykurtic. This is the
-        # signal `compute_basin_geometry` uses to flag a bimodal basin.
+        # signal used to flag a bimodal basin.
         low = [0.0] * 50
         high = [10.0] * 50
         k = excess_kurtosis(low + high)
         assert k < BIMODALITY_KURTOSIS_THRESHOLD, (
             f"bimodal distribution kurtosis {k} should be < {BIMODALITY_KURTOSIS_THRESHOLD}"
         )
-
-
-class TestComputeBasinGeometry:
-    """End-to-end shape contract: the returned dict always has the same
-    five keys with safe defaults so the LLM prompt template never KeyErrors,
-    no matter how degenerate the input."""
-
-    def test_empty_outcomes_returns_neutral(self):
-        result = compute_basin_geometry([])
-        assert result == {
-            "centroid": [],
-            "manifold_dim": 0.0,
-            "coherence_score": 0.5,
-            "bimodal_flag": False,
-            "ordered_indices": [],
-        }
-
-    def test_outcomes_with_no_text_returns_neutral(self):
-        outcomes = [{"synthesis_prompt": "", "routing_label": {}}]
-        result = compute_basin_geometry(outcomes)
-        # No text → no embeddings → empty geometry. Same shape as the
-        # empty-input case — the LLM prompt path is unbreakable.
-        assert result["centroid"] == []
-        assert result["coherence_score"] == 0.5
-        assert result["bimodal_flag"] is False
-
-    def test_keys_always_present(self):
-        # Even if embedding succeeds, the result schema is fixed.
-        # We don't load mlx in tests, so synthesis_prompt with text will
-        # hit the embed import; the fallback path may or may not produce
-        # a centroid depending on the embedding backend. Either way the
-        # five keys are present.
-        outcomes = [
-            {"synthesis_prompt": "what is the best language for systems work?"},
-            {"synthesis_prompt": "how do I write fast python loops?"},
-        ]
-        result = compute_basin_geometry(outcomes)
-        assert set(result.keys()) == {
-            "centroid",
-            "manifold_dim",
-            "coherence_score",
-            "bimodal_flag",
-            "ordered_indices",
-        }
-
-
-def test_underscore_aliases_match_public_names():
-    """Back-compat aliases (`_weiszfeld_median`, etc.) exist so any leftover
-    `from .cortex import _weiszfeld_median` calls still resolve. Each alias
-    must point at the same function object as its public name — drift
-    would mean a caller hits a stale duplicate that doesn't track fixes.
-    """
-    from trinity_local.me import geometry as cg
-
-    assert cg._euclid is cg.euclid
-    assert cg._mean_cosine_to is cg.mean_cosine_to
-    assert cg._weiszfeld_median is cg.weiszfeld_median
-    assert cg._participation_ratio is cg.participation_ratio
-    assert cg._project_onto_first_pc is cg.project_onto_first_pc
-    assert cg._excess_kurtosis is cg.excess_kurtosis
-    assert cg._compute_basin_geometry is cg.compute_basin_geometry

@@ -275,9 +275,7 @@ def canonical_chrome_action_allowlist_count() -> int:
 
     This is the Chrome-extension Native-Messaging allowlist (dashed
     names like ``launch-council`` / ``ingest-recent`` /
-    ``render-me-card``), distinct from ``DISPATCH_ACTIONS`` in
-    dispatch_registry.py (underscored names used by launchpad URL
-    emitters). claude.md's status block + three-tier-architecture.md's
+    ``render-me-card``). claude.md's status block + three-tier-architecture.md's
     Tier-3 description both quote the count + enumeration; iter #28
     of the post-launch sweep caught claude.md at "10" while live
     count was 12 (council-iterate, dream, open-launchpad shipped
@@ -588,6 +586,34 @@ def docs_with_placeholders() -> list[Path]:
 # CLI
 # ───────────────────────────────────────────────────────────────────────
 
+# The plugin manifests carry the release version too, and JSON has no room for a
+# canonical placeholder, so the version is written into them here. They sat at 1.7.389
+# while pyproject moved to 1.7.407, because nothing tied them together (2026-10-27).
+PLUGIN_JSON = REPO / "plugins" / "trinity-local" / ".claude-plugin" / "plugin.json"
+MARKETPLACE_JSON = REPO / ".claude-plugin" / "marketplace.json"
+
+
+def render_plugin_versions(version: str, write: bool) -> list[Path]:
+    """Set the plugin's version in plugin.json and in its marketplace entry (the
+    marketplace's own version is left alone). Returns the files whose version differs;
+    writes them only when `write`."""
+    changed = []
+    for path in (PLUGIN_JSON, MARKETPLACE_JSON):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        entries = [data] if path == PLUGIN_JSON else [
+            e for e in data.get("plugins", []) if e.get("name") == "trinity-local"]
+        if not entries:
+            raise RuntimeError(f"{_rel(path)} has no trinity-local plugin entry")
+        if all(e.get("version") == version for e in entries):
+            continue
+        for e in entries:
+            e["version"] = version
+        changed.append(path)
+        if write:
+            path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return changed
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -718,6 +744,10 @@ def main() -> int:
         elif args.verbose:
             ph = find_placeholders(path)
             print(f"  unchanged ({len(ph)} placeholder(s)): {_rel(path)}")
+
+    for path in render_plugin_versions(values["version"], write=not args.check):
+        changed.append(path)
+        print(f"  plugin version -> {values['version']}: {_rel(path)}")
 
     if args.check and changed:
         print(

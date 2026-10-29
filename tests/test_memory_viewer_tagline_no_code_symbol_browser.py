@@ -114,7 +114,7 @@ def _browser():
 
 # The visible file tabs whose tagline prose must read as plain English. (generators.md
 # is optional + absent in this seed, so it never paints — not driven here.)
-_FILES = ["core.md", "lens.md", "topics.json", "vocabulary.md", "picks.json", "routing.json"]
+_FILES = ["core.md", "lens.md", "topics.json", "vocabulary.md", "routing.json"]
 
 
 def test_viewer_taglines_have_no_code_symbol_leak():
@@ -214,81 +214,6 @@ def test_vocabulary_tagline_names_its_runnable_verb_not_a_phase_number():
         "'Phase 2.5' — an opaque sub-step that maps to NO runnable command — instead of "
         "the dedicated `vocabulary` verb. Name the verb the user can run, not the phase "
         f"number. Tagline painted: {tagline!r}"
-    )
-
-
-def test_picks_tagline_describes_basin_keying_not_stale_task_type():
-    """The picks.json tab tagline must describe picks.json's ACTUAL post-#298 shape —
-    a per-lens-BASIN chairman-winner tally — not the pre-#298 "per task type" framing
-    that the data no longer matches.
-
-    Found 2026-06-21 (UX sweep iter 216) by driving the REAL picks.json reader at 320px:
-    the tab tagline (the `.meta` line under the file header) read
-
-        "Extracted model-selection rules per task type. Written by consolidate; read
-         by ask + chairman picker."
-
-    but the rows the reader paints DIRECTLY BELOW it are keyed by lens BASIN — "b00 ·
-    Design", "b01 · Debug" (the `renderPicksReader` docstring: "the flat lens-basin
-    tally {basin_id: {winner, count, margin, ...}}"). Post the cortex collapse (#298),
-    picks.json is the recency-weighted chairman winner placed per LENS BASIN (topics.json
-    centroids), NOT per task type — that is routing.json's keying (and routing.json's
-    SIBLING tagline correctly says "Per-task-type provider track record"). The picks
-    tagline named the wrong key space, contradicting the basin-labelled rows under it.
-    The launchpad cortex card — the OTHER surface that renders the same picks.json —
-    already says it right ("tallied from your own N basins ... the chairman pick for that
-    basin"); the viewer tagline was the lone stale outlier. Same shipped-label-derived-
-    from-a-stale-model class as the routing.json/picks.json snake_case-enum fixes (iters
-    165/191/196). `_SNAKE` above does NOT catch this — "per task type" is grammatically
-    clean English; the defect is semantic (wrong key space), so it needs its own pin.
-
-    Fix: "...rules per task type. Written by consolidate..." -> "The recency-weighted
-    chairman winner per lens basin. Written by consolidate..." (memory_viewer.py
-    ALLOWED_FILES). Mutation-provable: revert the tagline and "task type" reappears in
-    the painted picks tagline → this reds.
-    """
-    home = Path(tempfile.mkdtemp()) / "trinity"
-    home.mkdir(parents=True)
-    pages = _render_portal(home)
-    sp, browser = _browser()
-    try:
-        page = browser.new_context(viewport={"width": 1280, "height": 1000}).new_page()
-        page.goto(f"file://{pages / 'memory.html'}?file=picks.json")
-        page.wait_for_timeout(700)
-        tagline = page.evaluate(
-            """() => {
-              const p = document.querySelector('.content-header p.meta');
-              return p && p.offsetParent !== null ? p.textContent : null;
-            }"""
-        )
-    finally:
-        browser.close()
-        sp.stop()
-
-    # BITE precondition: the picks tagline must actually be painted, else the asserts
-    # below are vacuous.
-    assert tagline and len(tagline) > 10, (
-        "the picks.json header tagline didn't paint (offsetParent null / empty) — "
-        f"can't assert keying copy on a tagline that isn't visible: {tagline!r}"
-    )
-
-    low = tagline.lower()
-    # The picks tagline must name the BASIN keying (picks.json is keyed by lens basin
-    # post-#298) so it agrees with the basin-labelled rows the reader paints below it.
-    assert "basin" in low, (
-        "REGRESSION: the picks.json tagline doesn't name its actual key space (lens "
-        "BASIN). picks.json is the per-lens-basin chairman-winner tally post-#298; the "
-        "rows below it are labelled by basin (b00 · Design). The tagline must say so. "
-        f"Tagline painted: {tagline!r}"
-    )
-    # And it must NOT claim "task type" — that is routing.json's key space (its own
-    # sibling tagline already owns "Per-task-type provider track record"); on the picks
-    # tagline it contradicts the basin-labelled rows directly under it.
-    assert "task type" not in low and "task_type" not in low, (
-        "REGRESSION: the picks.json tagline claims picks are keyed 'per task type' — the "
-        "stale pre-#298 framing. Post the cortex collapse picks.json is keyed by lens "
-        "BASIN (task-type keying belongs to routing.json). The tagline contradicts the "
-        f"basin-labelled rows the reader paints below it. Tagline painted: {tagline!r}"
     )
 
 

@@ -52,25 +52,3 @@ def get_global_benchmarks() -> dict:
         except (json.JSONDecodeError, OSError):
             pass
     return _hardcoded_fallback()
-
-
-def get_reference_evals_meta() -> dict:
-    """Metadata about the loaded reference evals (source, fetched_at, providers).
-
-    Returns an empty dict if the JSON file isn't present (fallback in use).
-    """
-    path = _reference_evals_path()
-    if not path.exists():
-        return {}
-    try:
-        raw = json.loads(path.read_text())
-    except (json.JSONDecodeError, OSError):
-        return {}
-    if not isinstance(raw, dict):  # guard_shape_not_just_parse: .get below crashes on a non-dict
-        return {}
-    return {
-        "source": raw.get("source"),
-        "fetched_at": raw.get("fetched_at"),
-        "attribution": raw.get("attribution"),
-        "providers": raw.get("providers") or {},
-    }

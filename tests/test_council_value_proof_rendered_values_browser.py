@@ -40,12 +40,10 @@ from __future__ import annotations
 
 import trinity_local.council_analytics as _ca
 
-import functools
-import http.server
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
@@ -71,13 +69,6 @@ def _records():
             "routing_label": {"task_type": "code_review", "winner": win},
         })
     return out
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def test_value_proof_card_paints_correct_derived_numbers(tmp_path, monkeypatch):
@@ -110,7 +101,7 @@ def test_value_proof_card_paints_correct_derived_numbers(tmp_path, monkeypatch):
     pp.mkdir(parents=True)
     (pp / "launchpad.html").write_text(html, encoding="utf-8")
     publish_vendor_files(pp)
-    httpd, port = _serve(tmp_path / "serve")
+    httpd, port = serve_directory(tmp_path / "serve")
     try:
         with sync_playwright() as p:
             try:

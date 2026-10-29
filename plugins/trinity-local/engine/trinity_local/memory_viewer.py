@@ -24,7 +24,6 @@ from .state_paths import (
     core_path,
     generators_path,
     lens_path,
-    picks_path,
     portal_pages_dir,
     routing_path,
     topics_path,
@@ -51,34 +50,24 @@ ALLOWED_FILES: list[dict[str, str]] = [
      # refreshes this file, AND `vocabulary` is its dedicated standalone scan —
      # the tagline must name the dedicated verb (advice-closure: the user can
      # act on it) without dropping the lens-refresh truth.
-     "tagline": "Anchors (proper nouns) + homonyms + synonyms. Refreshed on every `lens` build; rescan standalone with `vocabulary`."},
+     "tagline": "Anchors (proper nouns) + homonyms. Refreshed on every `lens` build; rescan standalone with `vocabulary`."},
     # The OPTIONAL generators tier (the lens "lift") — the cross-domain invariants
     # the task tensions project from. On-demand (`lens-generators` verb); the
     # viewer shows this tab only when ~/.trinity/memories/generators.md exists.
     {"name": "generators.md", "brain": "generators (the lift)", "optional": "1",
      "tagline": "Cross-domain generating invariants — the reflex under your task tensions. Written by lens-generators."},
-    # The two OPERATIONAL scoreboards — derived from your council
-    # outcomes (the verdicts you log) and read by the chairman picker.
-    # Not cognitive memory, not part of the lens distillation.
-    {"name": "picks.json", "brain": "scoreboard (operational)",
-     "tagline": "Historical: the per-lens-basin chairman tally. Its writer (consolidate) and reader (the ask-side router) were both removed 2026-08-11."},
+    # The OPERATIONAL scoreboard — derived from your council outcomes. Not
+    # cognitive memory, not part of the lens distillation. picks.json left this list
+    # 2026-10-26 (council_9b8da321624a8f0f, amd_0612): its per-basin tally froze when
+    # its writer was retired 2026-08-11, and basin ids are redrawn on every lens build,
+    # so its winners sat on unrelated current topics.
     {"name": "routing.json", "brain": "scoreboard (operational)",
-     "tagline": "Per-task-type provider track record. Computed from council outcomes; read by ask + launchpad."},
+     "tagline": "Per-task-type provider track record. Computed from council outcomes; refreshed each time the launchpad renders."},
 ]
 
 
 _FILE_PATH_RESOLVERS = {
     "lens.md": lens_path,
-    # picks.json is STILL a viewable file and lost its resolver by accident. The
-    # 2026-08-11 router removal took the reader and the writer, and this entry went
-    # with them -- but picks.json stayed in ALLOWED_FILES and stayed in the nav, so
-    # every click answered "Not built yet. Run trinity-local lens to generate it."
-    # permanently, whatever was on disk. That it was meant to remain visible is not a
-    # guess: the same arc REWROTE its tagline to "Historical: the per-lens-basin
-    # chairman tally. Its writer (consolidate) and reader (the ask-side router) were
-    # both removed 2026-08-11." Nobody rewrites the description of a file they are
-    # removing from the viewer.
-    "picks.json": picks_path,
     "routing.json": routing_path,
     "topics.json": topics_path,
     "vocabulary.md": vocabulary_path,
@@ -133,13 +122,6 @@ def _read_memory_contents() -> dict[str, str | None]:
     return contents
 
 
-
-
-def _json_module():
-    import json as _json
-    return _json
-
-
 def _slim_topics_for_viewer(contents: dict[str, str | None]) -> dict[str, str | None]:
     """Trim the inlined topics.json payload to what the viewer actually renders.
 
@@ -156,10 +138,8 @@ def _slim_topics_for_viewer(contents: dict[str, str | None]) -> dict[str, str | 
     same principle as the client's swallow-and-degrade JSON.parse.
 
     (The per-basin 768-d `centroid` — ~820KB — is the larger remaining payload,
-    but the client uses its values for the basin↔pick cosine bridge
-    (`matchBasinsToPicks`), and that bridge is precision-sensitive near the 0.36
-    match threshold; removing it cleanly means precomputing the link maps
-    server-side, a separate higher-risk change. Left intact here.)
+    but the topology graph draws its similarity edges from it client-side, so it
+    stays.)
     """
     import json as _json
 
@@ -187,7 +167,7 @@ def _slim_topics_for_viewer(contents: dict[str, str | None]) -> dict[str, str | 
     # with NO prompt_ids (e.g. a freshly-built basin) would otherwise survive the
     # early-return as a bare `NaN` INSIDE this topics.json string, and the
     # client's `JSON.parse(slimmed)` (the topology graph at __TRINITY_MEMORIES__
-    # + the Raw-JSON view + the basin↔pick bridge) would throw on it and blank the
+    # + the Raw-JSON view) would throw on it and blank the
     # graph. Coerce to null at the source regardless of slimming.
     slimmed["topics.json"] = _json.dumps(
         _finite_json_safe(obj), ensure_ascii=True, allow_nan=False
@@ -259,38 +239,12 @@ def render_memory_viewer_html() -> str:
     # before inlining — ~20% smaller memory.html with no visible change.
     _memory_contents = _read_memory_contents()
     memories_payload = _inline(_slim_topics_for_viewer(_memory_contents))
-    # Pre-format picks margins server-side (Python 2dp) so the viewer renders the
-    # SAME margin string as the CLI + launchpad — never a JS toFixed half-up
-    # The Python/JS margin-rounding map lived here. It pre-formatted every
-    # picks.json margin to 2dp with PYTHON rounding so the viewer and the CLI
-    # could not print two different numbers for the same margin on an exact
-    # dyadic tie. Removed 2026-08-11 with picks.json. Checked before deleting:
-    # routing.json, the surviving scoreboard, carries {n, overall, wins} and no
-    # margin field, so the property does not transfer.
-    margin_fmt_json = _inline({})
-    # The real routing gate, threaded into the JS so the picks badge + topology
-    # basin detail use the SAME confidence threshold `ask` routes on (#299). Local
-    # import + literal fallback mirrors launchpad_data.py (avoids a hard module dep
-    # if lens_routing ever moves).
-    try:
-        from .lens_routing import WINNER_MARGIN_FLOOR as _wmf
-        winner_margin_floor = float(_wmf)
-    except Exception:
-        winner_margin_floor = 0.15
-    # The churn-decay floor `ask`/`pick_routes` also gates on (#298 model-churn
-    # decay): a basin whose winner-margin clears the floor but whose post-decay
-    # effective_n is thin is churn-dead — ask abstains on it. Injected so the
-    # viewer's confidence surfaces read the FULL gate, not margin alone.
-    try:
-        from .lens_routing import MIN_EFFECTIVE_N as _men
-        min_effective_n = float(_men)
-    except Exception:
-        min_effective_n = 3.0
+    # The picks margin map and the removed router's gate (WINNER_MARGIN_FLOOR,
+    # MIN_EFFECTIVE_N) were injected here for the picks views, which left with
+    # picks.json on 2026-10-26 (amd_0612).
     # Inline the same memory-health payload the launchpad surfaces so
     # the viewer can carry the staleness signals forward when the user
-    # clicks through to inspect. Same shape as launchpad_data._memory_health()
-    # — signals include core staleness, picks audit-disagreed,
-    # pre-thread-aware topology, and picks cortex-stale.
+    # clicks through to inspect. Same shape as launchpad_data._memory_health().
     # Resolved at render time so the warning travels with the file, not
     # with the page that linked you to it.
     try:
@@ -303,8 +257,8 @@ def render_memory_viewer_html() -> str:
         health_data = None
         health_payload = "{}"
     # Lens TRUSTWORTHINESS (not staleness). The memory-health payload above only
-    # carries *staleness* signals (core newer than lens, vocab behind, picks
-    # un-consolidated). It says NOTHING about whether the lens was built on real
+    # carries *staleness* signals (e.g. core newer than lens, vocab behind). It
+    # says NOTHING about whether the lens was built on real
     # 768d semantic embeddings or the SHA-1 TF-IDF fallback — yet a TF-IDF lens
     # is, per lens_health's own DEGRADED verdict, a keyword caricature, not the
     # user's taste (CLAUDE.md: semantic flows ABSTAIN under the fallback rather
@@ -332,10 +286,6 @@ def render_memory_viewer_html() -> str:
         # trust banner" (the staleness banners + content still render).
         lens_trust = {"embedder_degraded": False}
     lens_trust_payload = _inline(lens_trust)
-    # (#298 cortex collapse) The picks→topology bridge is now an identity match
-    # on the lens basin id (both picks.json and topics.json key by b00..), so the
-    # centroid-similarity threshold (BASIN_SIM_THRESHOLD) the old cosine bridge
-    # injected here is no longer needed — matchBasinsToPicks applies no threshold.
     # Pass the same health dict to the nav renderer so each chip can
     # show a dot when its file has issues. One source of truth across
     # the nav + per-file banner + launchpad row.
@@ -624,11 +574,6 @@ def render_memory_viewer_html() -> str:
        user can rebuild a memory before staleness signals it (e.g.,
        after a milestone session adds new prompts the lens should see).
        Warm-brown accent reads as "additive" rather than a warning. */
-    .viewer-historical-chip {{
-      display: inline-block; margin-left: 8px; padding: 2px 8px; font-size: 11px;
-      border-radius: 10px; border: 1px solid var(--border);
-      color: var(--meta); background: transparent; cursor: default;
-    }}
     .viewer-rebuild-chip {{
       font-family: "JetBrains Mono", ui-monospace, monospace;
       font-size: 12px;
@@ -731,56 +676,6 @@ def render_memory_viewer_html() -> str:
     .markdown-body tr:nth-child(even) td {{ background: #fbfbf8; }}
     .markdown-body em {{ color: var(--meta); }}
     /* JSON quick views ──────────────────────────────────────────────── */
-    .pick-card {{
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 16px 18px;
-      margin-bottom: 12px;
-      background: white;
-    }}
-    .pick-head {{ display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }}
-    .pick-basin {{
-      font-family: "JetBrains Mono", ui-monospace, "SF Mono", Monaco, monospace;
-      font-size: 14px;
-      color: var(--primary);  /* AA: --primary #3f777c (5.07:1 white / 4.55:1 active-tab tint) — NOT --accent #4f9095 (the WORDMARK teal, 3.08–3.65:1 as functional text). Wordmark-teal-as-text is sub-AA; --accent stays the fill (borders/svg strokes/focus rings). */
-      font-weight: 600;
-      word-break: break-all;   /* long basin/pick ids wrap instead of overflowing on a phone */
-    }}
-    /* Human-readable basin name beside the opaque basin id, so a pick reads
-       "b00 · Design" — what kind of question this routing rule is for. The name
-       is the topology `label` / top-terms — free corpus text, so a single
-       top_term can be a long unbreakable token (a dev identifier / path / URL
-       the user keeps citing). Unlike the sibling .pick-basin id (which already
-       carries word-break: break-all), this NAME had no break rule, so a long
-       label demanded its full intrinsic width and blew the picks.json view past
-       a 320px phone (pick-head scrollWidth 834 vs clientWidth 250 → the document
-       horizontal-scrolled to ~869px). Break it like the launchpad .lens-basin-chip
-       twin (same topology-label-on-a-narrow-card class). */
-    .pick-basin-name {{
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--fg);
-      min-width: 0;
-      overflow-wrap: anywhere;
-      word-break: break-word;
-    }}
-    .pick-primary {{
-      font-size: 13px;
-      color: var(--fg);
-    }}
-    .pick-badge {{
-      font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 10px;
-      background: var(--code-bg);
-      color: var(--meta);
-    }}
-    .pick-badge.high {{ background: #dcfce7; color: #166534; }}
-    .pick-badge.med  {{ background: #fef9c3; color: #854d0e; }}
-    .pick-badge.low  {{ background: #fee2e2; color: #991b1b; }}
-    .pick-meta {{ margin-top: 8px; font-size: 12px; color: var(--meta); }}
-    .pick-failures {{ margin-top: 10px; font-size: 13px; }}
-    .pick-failures ul {{ margin: 4px 0 0; padding-left: 20px; }}
     .routing-table {{
       border-collapse: collapse;
       font-size: 13px;
@@ -794,7 +689,7 @@ def render_memory_viewer_html() -> str:
     .routing-table th {{ background: var(--code-bg); font-weight: 600; text-align: left; }}
     .routing-table td.score {{ text-align: right; font-family: "JetBrains Mono", ui-monospace, monospace; }}
     .routing-table td.best {{ background: rgba(34, 197, 94, 0.08); font-weight: 600; }}
-    /* Cross-memory deep-links (picks ↔ routing) */
+    /* Deep-links into the routing table (?task=) */
     .routing-task-link {{
       color: var(--primary);  /* AA: --primary #3f777c (5.07:1 white / 4.55:1 active-tab tint) — NOT --accent #4f9095 (the WORDMARK teal, 3.08–3.65:1 as functional text). Wordmark-teal-as-text is sub-AA; --accent stays the fill (borders/svg strokes/focus rings). */
       text-decoration: none;
@@ -805,8 +700,8 @@ def render_memory_viewer_html() -> str:
     }}
     /* Routing → topology chip. Only renders when the row's task_type
        has a centroid match into topics.json. Sits inline next to the
-       task name link, kept visually quiet so the primary task→picks
-       link stays the dominant affordance. */
+       task name, kept visually quiet so the task name stays the
+       dominant affordance. */
     .routing-topology-chip {{
       display: inline-block;
       margin-left: 8px;
@@ -826,29 +721,6 @@ def render_memory_viewer_html() -> str:
     }}
     tr.routing-row-focused td {{
       background: rgba(79, 144, 149, 0.10);
-    }}
-    .pick-actions {{
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      margin-top: 12px;
-      flex-wrap: wrap;
-    }}
-    .pick-xlink {{
-      display: inline-block;
-      font-size: 12px;
-      color: var(--primary);  /* AA: --primary #3f777c (5.07:1 white / 4.55:1 active-tab tint) — NOT --accent #4f9095 (the WORDMARK teal, 3.08–3.65:1 as functional text). Wordmark-teal-as-text is sub-AA; --accent stays the fill (borders/svg strokes/focus rings). */
-      text-decoration: none;
-      padding: 4px 10px;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-    }}
-    .pick-xlink:hover {{
-      background: var(--surface-muted);
-    }}
-    .pick-card-focused {{
-      box-shadow: 0 0 0 2px var(--accent);
-      background: rgba(79, 144, 149, 0.04);
     }}
     /* topics.json reader — basin-relation graph (Obsidian-style). */
     .topics-graph-wrap {{
@@ -882,28 +754,12 @@ def render_memory_viewer_html() -> str:
       stroke-width: 1.5px;
     }}
     .topics-graph-svg .node:hover {{ stroke: white; stroke-width: 2.5px; }}
-    /* Basins crystallized into routing rules get a warm-brown outer
-       ring — same color family as the pick-xlink in the detail panel,
-       so the visual encoding reads consistently. At-a-glance the user
-       sees which basins matter vs which are noise. */
-    .topics-graph-svg .node.pick-basin {{
-      stroke: rgba(79, 144, 149, 0.95);
-      stroke-width: 2.5px;
-    }}
-    .topics-graph-svg .node.pick-basin:hover {{
-      stroke: rgba(79, 144, 149, 1);
-      stroke-width: 3.5px;
-    }}
     /* Visible keyboard focus (WCAG 2.4.7) for the now-focusable basin nodes.
        The default UA outline on an SVG element renders inconsistently / can be
        clipped by the viewport; a bright stroke ring reads clearly over the dark
-       graph canvas and matches the hover affordance's "this is interactive" cue.
-       Declared AFTER (and at higher specificity than) the .pick-basin stroke so
-       the focus ring wins on BOTH plain and pick basins — a pick-basin must not
-       swallow the keyboard focus indicator. */
+       graph canvas and matches the hover affordance's "this is interactive" cue. */
     .topics-graph-svg .node:focus {{ outline: none; }}
-    .topics-graph-svg .node.node:focus-visible,
-    .topics-graph-svg .node.pick-basin:focus-visible {{
+    .topics-graph-svg .node.node:focus-visible {{
       outline: none;
       stroke: var(--accent);
       stroke-width: 4px;
@@ -982,24 +838,6 @@ def render_memory_viewer_html() -> str:
     }}
     .topics-launch-chip:hover {{
       background: rgba(79, 144, 149, 0.08);
-    }}
-    /* Cross-memory pick link in the basin detail panel — surfaces
-       when a basin has been consolidated into a routing rule. Same
-       shape as .pick-xlink (used in the routing Reader). Reading
-       left-to-right: routing rule lives, click to see it. */
-    .topics-pick-xlink {{
-      display: inline-block;
-      margin-top: 10px;
-      margin-right: 10px;
-      font-size: 12px;
-      color: var(--primary);  /* AA: --primary #3f777c (5.07:1 white / 4.55:1 active-tab tint) — NOT --accent #4f9095 (the WORDMARK teal, 3.08–3.65:1 as functional text). Wordmark-teal-as-text is sub-AA; --accent stays the fill (borders/svg strokes/focus rings). */
-      text-decoration: none;
-      padding: 4px 10px;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-    }}
-    .topics-pick-xlink:hover {{
-      background: var(--surface-muted);
     }}
     .topics-reps-label {{
       color: var(--meta);
@@ -1119,7 +957,7 @@ def render_memory_viewer_html() -> str:
        UNBREAKABLE token lives. Without a break rule it demands its full
        intrinsic width even in the minmax(0,1fr) track; overflow-wrap:anywhere
        wraps it so it stays inside the basin-detail panel. Same rule the
-       headline + .pick-basin-name + the launchpad corpus chips carry. */
+       headline + the launchpad corpus chips carry. */
     .topics-rep-turn-text {{
       min-width: 0;
       overflow-wrap: anywhere;
@@ -1220,7 +1058,7 @@ def render_memory_viewer_html() -> str:
   </header>
   <div class="layout">
     <nav class="nav" aria-label="Memory files">
-      <div class="nav-eyebrow">Lens (core · lens · topics · vocabulary) + Scoreboards (picks · routing)</div>
+      <div class="nav-eyebrow">Lens (core · lens · topics · vocabulary) + Scoreboard (routing)</div>
       {nav_links}
     </nav>
     <main class="content" id="content">
@@ -1239,9 +1077,9 @@ def render_memory_viewer_html() -> str:
     // so the viewer works under file:// from the desktop shortcut.
     // Refreshes whenever portal-html runs.
     window.__TRINITY_MEMORIES__ = {memories_payload};
-    // Health signal travels with the file: when the launchpad surfaced
-    // "picks.json audit-disagreed", clicking through to inspect should
-    // KEEP that warning visible so the user reads the file in context.
+    // Health signal travels with the file: when the launchpad surfaced a
+    // staleness warning, clicking through to inspect should KEEP that
+    // warning visible so the user reads the file in context.
     window.__TRINITY_MEMORY_HEALTH__ = {health_payload};
     // Lens TRUSTWORTHINESS (distinct from the staleness signals above). When the
     // lens was built on the SHA-1 TF-IDF fallback embedder (a fresh install with
@@ -1250,34 +1088,9 @@ def render_memory_viewer_html() -> str:
     // the viewer must say the same instead of painting a confident lens over
     // garbage (#35 green-while-degraded). Drives the trust banner on the
     // embedding-derived files (lens/topics/core/generators) only — vocabulary is
-    // lexical anchors that stay correct under the fallback, and picks/routing are
-    // council-outcome scoreboards, not embedding-derived.
+    // lexical anchors that stay correct under the fallback, and routing is a
+    // council-outcome scoreboard, not embedding-derived.
     window.__TRINITY_LENS_TRUST__ = {lens_trust_payload};
-    // The REAL routing gate (lens_routing.WINNER_MARGIN_FLOOR), injected so the
-    // picks badge + the topology basin detail report a basin's confidence with the
-    // SAME threshold `ask` actually routes on — not a hardcoded one. A basin whose
-    // winner-margin is below this is a near-tie: `ask` ignores the tally and falls
-    // to kNN, so the viewer must NOT claim it "Routes to X" (#299, propagated to
-    // the viewer's two confidence surfaces).
-    const WINNER_MARGIN_FLOOR = {winner_margin_floor};
-    const MIN_EFFECTIVE_N = {min_effective_n};
-    // Mirror of lens_routing.pick_routes — THE gate ask() routes on — so the
-    // viewer's confidence surfaces agree with ask()/get_picks/the launchpad
-    // instead of recomputing margin-only (which called a churn-dead high-margin
-    // basin "routes" while ask abstained). Both constants are injected from
-    // Python; a legacy pick with no effective_n passes on the margin term alone.
-    function pickRoutes(margin, effectiveN) {{
-      if (!isFiniteNumber(margin) || margin < WINNER_MARGIN_FLOOR) return false;
-      if (effectiveN === null || effectiveN === undefined) return true;
-      return effectiveN >= MIN_EFFECTIVE_N;
-    }}
-    // Server-pre-formatted picks margins (raw-value repr → Python 2dp string), so
-    // the picks badge + topology basin detail render the SAME margin as the CLI
-    // `consolidate` line and the launchpad routing card. Re-rounding the raw
-    // float in JS would round half-UP (toFixed) and disagree with Python's
-    // half-to-even on an exact dyadic tie like 0.625 ("0.63" vs "0.62"). Keyed by
-    // round(value,3).toString() — see fmtMargin().
-    const MARGIN_FMT = {margin_fmt_json};
     const FILES = {files_json};
     // The FULL allowlist (incl. optional files like generators.md hidden from the
     // nav when absent). `?file=` validation resolves against this so a direct link
@@ -1360,121 +1173,6 @@ def render_memory_viewer_html() -> str:
       }});
     }}
 
-    // Bridge between picks.json and topics.json. Returns
-    // {{ basinIdToTask, taskToBasinId }} — bidirectional Maps for the
-    // cross-memory links. Both Reader views (picks, topics) call this
-    // so the matching rules can't drift between the two directions.
-    //
-    // POST-COLLAPSE (#298): the routing picks ARE keyed by the lens basin id
-    // (b00..), the SAME id space topics.json uses, so the bridge is now a plain
-    // identity match — a pick links to the topology basin of the same id. (Pre-
-    // collapse picks were keyed by a task_type label and carried a SEPARATE
-    // basin_centroid, so the bridge was a cosine match; that centroid is gone.)
-    // SIM_THRESHOLD is retained in the signature for the legacy centroid path
-    // but unused by the identity match.
-    function matchBasinsToPicks(basins, picksObj) {{
-      const basinIdToTask = new Map();
-      const taskToBasinId = new Map();
-      const basinIdToPick = new Map();
-      if (!Array.isArray(basins) || !picksObj) return {{ basinIdToTask, taskToBasinId, basinIdToPick }};
-      const topologyIds = new Set(basins.map(b => b.id).filter(Boolean));
-      Object.keys(picksObj).forEach(basinId => {{
-        const pick = picksObj[basinId];
-        // Only live lens-basin picks (carry a `winner`) bridge to topology.
-        const winner = pick && (pick.winner || (pick.routing_rule && pick.routing_rule.primary));
-        // String shape-guard: a corrupt non-string winner (a NUMBER 42 or an
-        // OBJECT {{primary:…}}) is truthy, but `String(winner)` here would freeze
-        // "42" / "[object Object]" into pick.winner — and the topology xlink then
-        // brands THAT string ("[object Object]" title-cased to garbage), past
-        // providerBrand's non-string gate (the string was already coerced here).
-        // Reject a non-string winner at the bridge so it never enters basinIdToPick.
-        if (typeof winner !== "string" || !winner.trim()) return;
-        if (topologyIds.has(basinId)) {{
-          if (!basinIdToTask.has(basinId)) basinIdToTask.set(basinId, basinId);
-          taskToBasinId.set(basinId, basinId);
-          // Expose winner + margin so the topology basin detail can show the
-          // routing pick INLINE (post-#298 a basin IS a routing unit, so its
-          // chairman-winner is its defining property — surfacing it where the
-          // user explores topics saves a click into the picks Reader).
-          const margin = isFiniteNumber(pick.margin) ? pick.margin : null;
-          // Carry effective_n through so the topology detail can apply the FULL
-          // pickRoutes gate (margin AND effective_n) — without it a churn-dead
-          // high-margin basin fell to the legacy margin-only pass and the detail
-          // falsely said "Routes to X" (workflow finding 2026-07-17).
-          const effectiveN = isFiniteNumber(pick.effective_n) ? pick.effective_n : null;
-          basinIdToPick.set(basinId, {{ winner: winner, margin, effective_n: effectiveN }});
-        }}
-      }});
-      return {{ basinIdToTask, taskToBasinId, basinIdToPick }};
-    }}
-
-    // Convenience: load the picks payload + topics payload from the
-    // inlined memories and run the centroid match. Swallows parse
-    // errors so a malformed memory can't break either Reader view.
-    function loadCrossMemoryMaps() {{
-      let picksObj = null, topicsObj = null;
-      try {{
-        const raw = window.__TRINITY_MEMORIES__?.["picks.json"];
-        if (raw) picksObj = JSON.parse(raw);
-      }} catch (_) {{}}
-      try {{
-        const raw = window.__TRINITY_MEMORIES__?.["topics.json"];
-        if (raw) topicsObj = JSON.parse(raw);
-      }} catch (_) {{}}
-      const basins = topicsObj && Array.isArray(topicsObj.basins) ? topicsObj.basins : [];
-      const maps = matchBasinsToPicks(basins, picksObj || {{}});
-      // Tick #39: also expose basin → top-3-terms labels for tooltip
-      // text on the cross-memory chips that target topology basins.
-      // Same data the launchpad reads server-side; mirrored here so
-      // viewer-side chips don't show opaque "b03" hovers.
-      const basinLabels = new Map();
-      // basinNames: the human-READABLE basin name (the semantic `label`,
-      // falling back to top_terms) — what topics.json's labelFor() shows on a
-      // node. The picks Reader heads each card with this so a routing pick reads
-      // "b00 · Design · Use Claude" instead of an opaque "b00 · Use Claude" the
-      // user can't connect to a kind of question (UX sweep: the picks scoreboard
-      // headed every pick with a bare basin id, leaving the user unable to tell
-      // WHAT a pick was for without hovering the off-card topology link).
-      const basinNames = new Map();
-      for (const b of basins) {{
-        const bid = b && b.id;
-        // Array.isArray guard, not a truthy `|| []`: a corrupt/hand-edited
-        // topics.json whose `top_terms` is a STRING ("design-arch-api") is
-        // truthy with a `.length`, so it slipped past `terms.length` and
-        // `terms.slice(0,3)` returned a STRING — whose `.join` is undefined →
-        // an UNCAUGHT "terms.slice(...).join is not a function" that blanked
-        // BOTH the picks Reader AND the topics Reader (this helper is shared
-        // by renderPicksReader + renderTopicsReader). Every other top_terms
-        // access in this file already Array.isArray-guards; this was the one
-        // un-guarded sibling. Non-array → treat as absent.
-        const terms = Array.isArray(b && b.top_terms) ? b.top_terms : [];
-        if (bid && terms.length) {{
-          basinLabels.set(String(bid), terms.slice(0, 3).join(" · "));
-        }}
-        if (bid) {{
-          const name = (b && typeof b.label === "string" && b.label.trim())
-            ? b.label.trim()
-            : (terms.length ? terms.slice(0, 2).join(" · ") : "");
-          if (name) basinNames.set(String(bid), name);
-        }}
-      }}
-      maps.basinLabels = basinLabels;
-      maps.basinNames = basinNames;
-      return maps;
-    }}
-
-    // Tooltip helper for cross-memory chips that deep-link into the
-    // topology view. Surfaces the basin's top-3 terms when available;
-    // falls back to a generic "Open basin <id>" when the label map is
-    // empty (cold install, no lens-build). Mirrors the Vue method
-    // basinHoverLabel in launchpad_template — same wording so the
-    // viewer + launchpad agree on hover text.
-    function basinHoverTitle(basinId, labels) {{
-      if (!basinId) return "";
-      const terms = labels && labels.get && labels.get(String(basinId));
-      if (terms) return "Basin " + basinId + " — " + terms;
-      return "Open basin " + basinId + " in the topology graph";
-    }}
     function renderHeader(file, isBuilt) {{
       const wrap = el("div", "content-header");
       // Title row: file name + persistent build/rebuild chip. The chip copies
@@ -1486,12 +1184,7 @@ def render_memory_viewer_html() -> str:
       titleRow.style.flexWrap = "wrap";
       titleRow.style.gap = "6px";
       titleRow.appendChild(el("h2", null, file.name));
-      // picks.json is HISTORICAL: its writer (consolidate) and reader (the
-      // ask-side router) were removed 2026-08-11, so no command rebuilds it. A
-      // chip that copied `trinity-local lens` here promised a rebuild that
-      // never happens (caught by browser_smoke Surface 18, 2026-09-01).
-      const historical = suggestionFor(file.name) === null;
-      const rebuildCmd = historical ? null : "trinity-local " + suggestionFor(file.name);
+      const rebuildCmd = "trinity-local " + suggestionFor(file.name);
       // ↻ Build / ↻ Rebuild — unified copy with launchpad lens-rebuild
       // (tick #76) and cortex-rebuild (tick #77) chips. Tick #79 brought the
       // memory viewer chip in line so the user sees the same affordance
@@ -1508,14 +1201,7 @@ def render_memory_viewer_html() -> str:
       rebuildChip.dataset.file = file.name;
       rebuildChip.dataset.built = isBuilt ? "1" : "0";
       rebuildChip.addEventListener("click", () => flashCopy(rebuildChip, rebuildCmd, buildLabel, 2200));
-      if (historical) {{
-        const hist = el("span", "viewer-historical-chip", "Historical — nothing rebuilds this");
-        hist.title = "Writer and reader removed 2026-08-11; the file is kept for the record.";
-        hist.dataset.file = file.name;
-        titleRow.appendChild(hist);
-      }} else {{
-        titleRow.appendChild(rebuildChip);
-      }}
+      titleRow.appendChild(rebuildChip);
       wrap.appendChild(titleRow);
       wrap.appendChild(el("p", "meta", file.brain + " · " + file.tagline));
       // Lens-TRUST banner (embedder honesty) — fires BEFORE the staleness banner
@@ -1525,7 +1211,7 @@ def render_memory_viewer_html() -> str:
       // cross-domain lift) — all built from the embedding geometry, so all are
       // caricatures under the TF-IDF fallback. NOT vocabulary.md (lexical anchors
       // stay correct on the fallback — CLAUDE.md's "always-correct lexical
-      // anchors") and NOT picks.json / routing.json (council-outcome scoreboards,
+      // anchors") and NOT routing.json (a council-outcome scoreboard,
       // not embedding-derived). One source of truth with the CLI `lens-health`
       // verb (lens_health._embedding_backend), so the surfaces can't disagree.
       const TRUST_SCOPED = ["lens.md", "topics.json", "core.md", "generators.md"];
@@ -1661,8 +1347,8 @@ def render_memory_viewer_html() -> str:
     }}
 
     // ─── JSON rendering ──────────────────────────────────────────────────
-    // Two views: a schema-aware "Reader" view (cards/tables for picks +
-    // routing) and a "Raw" pretty-printed JSON view. Toggle preserves
+    // Two views: a schema-aware "Reader" view (the routing table and the
+    // topics graph) and a "Raw" pretty-printed JSON view. Toggle preserves
     // across nav clicks via the active button state.
     function renderJson(target, name, jsonText) {{
       let parsed = null;
@@ -1672,12 +1358,12 @@ def render_memory_viewer_html() -> str:
         return;
       }}
 
-      // The Readers assume a specific object shape (picks: basin_id -> pattern;
-      // routing: a by_task_type map; topics: a basins array). A valid-JSON-but-
+      // The Readers assume a specific object shape (routing: a by_task_type map;
+      // topics: a basins array). A valid-JSON-but-
       // WRONG-TYPE file — a clobbered/corrupt array or scalar where an object is
       // expected — must fall to the Raw view, NOT iterate array indices as fake
       // basins (browser-found 2026-06-02 driving a corrupt home: an array-shaped
-      // picks.json rendered "0"/"1"/"2" cards with dead Mark-wrong actions). The
+      // picks.json, since retired, rendered "0"/"1"/"2" cards). The
       // client instance of the server-side guard_shape_not_just_parse fixes.
       function readerShapeOk(p) {{
         if (p === null || typeof p !== "object" || Array.isArray(p)) return false;
@@ -1686,9 +1372,9 @@ def render_memory_viewer_html() -> str:
           const bt = p.by_task_type;
           return bt === undefined || (bt !== null && typeof bt === "object" && !Array.isArray(bt));
         }}
-        return true;  // picks.json: any non-array object (basin_id -> pattern)
+        return true;
       }}
-      const isJsonReaderFile = name === "picks.json" || name === "routing.json" || name === "topics.json";
+      const isJsonReaderFile = name === "routing.json" || name === "topics.json";
       const readerSupported = isJsonReaderFile && readerShapeOk(parsed);
       const toggleWrap = el("div", "view-toggle");
       // The Reader/Raw toggle is a 2-state view switch; its selected view was
@@ -1711,8 +1397,7 @@ def render_memory_viewer_html() -> str:
         rawBtn.classList.remove("active");
         rawBtn.setAttribute("aria-pressed", "false");
         clearChildren(viewWrap);
-        if (name === "picks.json") renderPicksReader(viewWrap, parsed);
-        else if (name === "routing.json") renderRoutingReader(viewWrap, parsed);
+        if (name === "routing.json") renderRoutingReader(viewWrap, parsed);
         else if (name === "topics.json") renderTopicsReader(viewWrap, parsed);
       }}
       function showRaw() {{
@@ -1742,79 +1427,22 @@ def render_memory_viewer_html() -> str:
 
     function isFiniteNumber(value) {{
       // The numeric shape-guard for every value loaded from a state file the user
-      // can hand-edit (picks.json margin/count, routing.json overall/n). A bare
-      // `typeof x === "number"` ACCEPTS NaN and Infinity — and picks.json /
-      // routing.json are inlined as RAW TEXT (NOT re-serialized through
-      // _finite_json_safe like topics.json), so a poisoned `"margin": 1e400`
-      // survives JS JSON.parse as `Infinity` and `value.toFixed(2)` paints the
-      // literal "Infinity" / "-Infinity" / "NaN" into the pick badge ("margin
-      // Infinity · n=Infinity"). This is the JS analog of utils.finite_float_or_none
+      // can hand-edit (routing.json overall/n). A bare
+      // `typeof x === "number"` ACCEPTS NaN and Infinity — and
+      // routing.json is inlined as RAW TEXT (NOT re-serialized through
+      // _finite_json_safe like topics.json), so a poisoned `1e400` survives JS
+      // JSON.parse as `Infinity`, and a render that calls `value.toFixed(2)`
+      // paints the literal "Infinity" / "-Infinity" / "NaN". This is the JS analog of utils.finite_float_or_none
       // (#304): require a FINITE number or treat the field as absent so the render
       // degrades to "—"/hidden instead of leaking a non-finite token.
       return typeof value === "number" && isFinite(value);
     }}
 
-    function trustBadgeClass(margin, routes) {{
-      // Color by the SAME gate ask routes on (pickRoutes: margin AND effective_n):
-      // a basin ask won't route (near-tie OR churn-dead thin evidence) → "low"
-      // (red). Routed basins split >=0.5 decisive ("high") else modest ("med").
-      // The old margin-only cut painted a churn-dead high-margin basin green as
-      // if ask routed it, disagreeing with ask()/get_picks/the launchpad.
-      if (!isFiniteNumber(margin)) return "";
-      if (!routes) return "low";
-      if (margin >= 0.5) return "high";
-      return "med";
-    }}
-
-    function fmtMargin(value) {{
-      // Render a picks.json margin to 2dp matching EVERY Python surface that
-      // touches the same file — the CLI `consolidate` line (cortex.py Python 2dp
-      // format) and the launchpad routing card (pre-formatted server-side via
-      // _fmt_score). JS `Number.toFixed(2)` rounds half-UP while Python's float
-      // format rounds half-to-EVEN, so a 0.625 margin painted "0.63" here while
-      // the CLI printed "0.62" — same picks.json, two numbers across surfaces
-      // (the cross-language rounding class _fmt_score closed for eval scores).
-      // Re-deriving Python's binary-correct rounding in JS arithmetic is not
-      // reliable (toFixed/toString hide whether the binary value sits above or
-      // below the decimal half), so we don't: the server pre-formats each
-      // margin into MARGIN_FMT (keyed by the raw value's repr) and we render
-      // that string verbatim. Falls back to toFixed only for a value the server
-      // didn't pre-format (legacy inlined data) — still correct off the tie grid.
-      // isFiniteNumber (not bare typeof) rejects a non-finite margin so a poisoned
-      // picks.json 1e400 can't fall through to value.toFixed(2) === "Infinity".
-      if (!isFiniteNumber(value)) return "";
-      const k = (Math.round(value * 1000) / 1000).toString();
-      const pre = (MARGIN_FMT && Object.prototype.hasOwnProperty.call(MARGIN_FMT, k))
-        ? MARGIN_FMT[k] : null;
-      return (pre !== null && pre !== undefined) ? pre : value.toFixed(2);
-    }}
-
-    // First-timer gloss for the bare "margin 0.42" badge. The number is the
-    // routing-confidence proxy — how decisively the chairman's winner beat the
-    // runner-up across this basin's councils — but a first-timer reading
-    // "margin 0.42" on the picks scoreboard has NO way to tell what 0.42 means,
-    // which direction is better, or that it gates whether `ask` actually routes
-    // on this pick. The launchpad cheat-sheet already glosses the identical
-    // value (margin-over-runner-up + the gate); the viewer's picks Reader badge
-    // and the topology basin-detail xlink were the un-glossed siblings. One
-    // helper feeds the :title at both sites so the explanation can't drift.
-    // Returns "" for a non-number so the badge title stays absent on bad data.
-    function marginGloss(margin, routes) {{
-      if (!isFiniteNumber(margin)) return "";
-      const decisive = !routes
-        ? "Ask falls back to kNN here, a near-tie under the " + fmtMargin(WINNER_MARGIN_FLOOR) + " routing gate or thin/decayed evidence, until more councils sharpen it."
-        : (margin >= 0.5
-            ? "A decisive lead, so ask routes this pick directly."
-            : "Above the " + fmtMargin(WINNER_MARGIN_FLOOR) + " routing gate with fresh evidence, so ask routes this pick.");
-      return "Margin = how decisively the chairman's winner beat the runner-up across this basin's councils (0 = coin-flip, 1 = unanimous). " + decisive;
-    }}
-
     // Web-era capture slugs (chatgpt / claude_ai / gemini) fold to the CLI
-    // dispatch slugs (codex / claude / antigravity). A picks.json consolidated
-    // before the #249/#260 outcome-slug canon can still carry a web-era
-    // `routing_rule.primary` ("chatgpt"); cortex canonicalizes it at LOAD for
-    // `ask`, but THIS reader reads the raw inlined file, so without folding here
-    // a stale "Use chatgpt" leaks while every other surface shows "codex"
+    // dispatch slugs (codex / claude / antigravity). A state file written
+    // before the #249/#260 outcome-slug canon can still carry a web-era slug
+    // ("chatgpt"); THIS reader reads the raw inlined file, so without folding
+    // here a stale "chatgpt" leaks while every other surface shows "codex"
     // (symmetric to the eval-leaderboard display canon, #292). Mirrors
     // council_schema.normalize_provider_slug for the web-era set. The brand
     // display (codex → GPT) is a separate, founder-gated call (#275).
@@ -1829,7 +1457,7 @@ def render_memory_viewer_html() -> str:
       // Python AND the launchpad cheat-sheet on google/bard/anthropic/claude.ai:
       // a picks.json winner of "google" branded "Google" here while Python (and
       // the launchpad) both branded it "Gemini". Same value, two readers, two
-      // answers — folded onto one alias set so the picks reader can't drift.
+      // answers — folded onto one alias set so the readers can't drift.
       const webEra = {{
         gemini: "antigravity", google: "antigravity", bard: "antigravity",
         chatgpt: "codex", openai: "codex", gpt: "codex",
@@ -1840,18 +1468,14 @@ def render_memory_viewer_html() -> str:
 
     // DISPLAY brand for a provider slug — the MODEL trio (Claude / GPT / Gemini),
     // single-sourced to match council_schema.provider_model_brand AND the
-    // launchpad's formatProviderLabel. #275 raw-slug-vs-brand: the picks Reader's
-    // "Use <X>" and the topology basin detail's "Routes to <X>" are USER-FACING
-    // routing recommendations — the SAME picks.json winner the launchpad cheat-
-    // sheet already brands "GPT"/"Gemini". Reading them as the raw dispatch slug
-    // (codex/antigravity) was the leftover #275 sibling (the founder call landed
-    // 2026-06-06; the eval-leaderboard judge sibling closed alongside). Folds
-    // web-era slugs first (chatgpt/gemini → codex/antigravity) so a pre-canon
-    // picks.json brands correctly too. The raw slug stays in canonProviderSlug
-    // for the picks↔topology IDENTITY bridge — only the DISPLAY brands.
+    // launchpad's formatProviderLabel. #275 raw-slug-vs-brand: the routing
+    // Reader's column headers and "Best" cell show the SAME providers the
+    // launchpad cheat-sheet brands "GPT"/"Gemini", so they read the brand, not the
+    // raw dispatch slug (codex/antigravity). Folds web-era slugs first
+    // (chatgpt/gemini → codex/antigravity) so an older routing.json brands too.
     function providerBrand(slug) {{
       // STRING shape-guard for a slug loaded from a state file the user can hand-
-      // edit (picks.json `winner`, routing.json `best_per_task_type` value). These
+      // edit (routing.json `best_per_task_type` value). These
       // are inlined as RAW TEXT and JSON.parse'd client-side, so a poisoned/half-
       // migrated entry can carry a NUMBER (`"winner": 42`), an OBJECT
       // (`{{"primary": "claude"}}`), null, or an array where a slug string is
@@ -1897,124 +1521,6 @@ def render_memory_viewer_html() -> str:
         .join(" ");
     }}
 
-    function renderPicksReader(target, picks) {{
-      // picks.json shape (post-collapse #298): the flat lens-basin tally
-      // {{basin_id: {{winner, count, margin, n_episodes, evidence}}}}. A legacy
-      // RoutingPattern dict (routing_rule/trust_score/...) is rendered
-      // best-effort via the same fields where they overlap.
-      const basins = Object.keys(picks);
-      if (basins.length === 0) {{
-        target.appendChild(el("p", "meta", "picks.json is a historical artifact — the router that read it was removed 2026-08-11."));
-        return;
-      }}
-      // Cross-memory bridge: picks → topology via the shared centroid
-      // match. taskToBasinId[task_type] = topology basin id (e.g. b00).
-      // Used to render the "View in topology →" xlink per pick card,
-      // completing the bidirectional bridge tick #30 opened. basinLabels
-      // (tick #39) feeds richer hover text on the topology chip.
-      const {{ taskToBasinId, basinLabels, basinNames }} = loadCrossMemoryMaps();
-      // Deep-link target: ?task=<basin_id> scrolls to + highlights the
-      // matching card so cross-links from routing.json land usefully.
-      // The "run consolidate to add it" rebuild chip lived here. Both the
-      // verb and the router that read picks.json were removed 2026-08-11
-      // (res_022), so advising a rebuild would point at a retired command --
-      // caught by test_every_suggested_verb_is_a_live_registered_cli_command,
-      // which is the advice-closure guard doing exactly its job.
-      //
-      // What that removal ALSO took, and should not have: `focusTask` was
-      // declared inside the deleted block, while two consumers below still read
-      // it (the focused-card class and the scroll-into-view). And the block's
-      // trailing `}});` + appendChild calls were left behind with nothing opening
-      // them, which is a SYNTAX error -- so the whole viewer script failed to
-      // parse and every file view sat at "Loading…" forever.
-      const focusTask = params.get("task");
-      basins.forEach(basinId => {{
-        const p = picks[basinId];
-        const card = el("div", "pick-card");
-        card.dataset.task = basinId;
-        if (focusTask === basinId) card.classList.add("pick-card-focused");
-        const head = el("div", "pick-head");
-        head.appendChild(el("span", "pick-basin", basinId));
-        // Human-readable basin name (the topology `label` / top-terms) so the
-        // user can tell WHAT kind of question this pick is for — an opaque
-        // "b00" alone is meaningless on the routing scoreboard. Rendered only
-        // when topics.json carries a name for this basin (a pick whose source
-        // basin no longer exists just shows the id, same as the topology xlink).
-        const basinName = basinNames.get(basinId);
-        if (basinName) {{
-          head.appendChild(el("span", "pick-basin-name", basinName));
-        }}
-        // Margin is the confidence proxy (how decisively the winner beat the
-        // runner-up); fall back to a legacy trust_score.value when present.
-        const trust = p.trust_score || {{}};
-        const mval = isFiniteNumber(p.margin)
-          ? p.margin
-          : (isFiniteNumber(trust.value) ? trust.value : null);
-        // A basin ask does NOT route (near-tie OR churn-dead thin evidence) isn't
-        // a pick ask uses — it falls to kNN. Say "Lean X" not "Use X" so the
-        // primary doesn't overclaim a route. Gate on the SHARED pickRoutes
-        // (margin AND effective_n), not margin alone.
-        const pickRoutesFlag = (mval !== null) && pickRoutes(mval, p.effective_n);
-        const advisory = (mval !== null) && !pickRoutesFlag;
-        // Post-collapse the winner is the top-level field; a legacy
-        // RoutingPattern dict carried it under routing_rule.primary.
-        const winner = p.winner || (p.routing_rule && p.routing_rule.primary) || null;
-        // Gate on the BRANDED string, not the raw field: a corrupt non-string
-        // winner (42 / {{}} / []) is truthy but providerBrand now coerces it to ""
-        // — so "Use 42" / "Use [object Object]" no longer paints (no chip at all,
-        // same as a missing winner). Clean slugs are unaffected.
-        const winnerBrand = providerBrand(winner);
-        if (winnerBrand) {{
-          head.appendChild(el("span", "pick-primary",
-            (advisory ? "Lean " : "Use ") + winnerBrand));
-        }}
-        if (mval !== null) {{
-          const badge = el("span", "pick-badge " + trustBadgeClass(mval, pickRoutesFlag),
-            "margin " + fmtMargin(mval) + (advisory ? " · near-tie" : ""));
-          // Gloss the bare number so a first-timer learns what 0.42 means + which
-          // way is better (the badge color alone can't say). Same value the
-          // launchpad cheat-sheet already glosses.
-          badge.title = marginGloss(mval, pickRoutesFlag);
-          head.appendChild(badge);
-        }}
-        const n = isFiniteNumber(p.count) ? p.count
-          : (isFiniteNumber(p.n_episodes) ? p.n_episodes : null);
-        if (n !== null) {{
-          head.appendChild(el("span", "pick-badge", "n=" + n));
-        }}
-        card.appendChild(head);
-        // Action row holds the cross-memory links for this basin.
-        const actions = el("div", "pick-actions");
-        // NO picks→routing link post-#298: picks.json keys by basin_id (b00..)
-        // while routing.json keys by task_type — different key spaces. A basin
-        // spans MANY task_types, so it has no single routing row; a
-        // `routing.json&task=<basin_id>` link landed every card on a dead "No
-        // routing data" banner (verified in-browser). The valid cross-refs are
-        // the evidence councils (in the head, above) + the topology basin
-        // (below, both basin-keyed).
-        // Cross-memory link: jump to the topology basin this pick was
-        // extracted from. Centroid-matched (see loadCrossMemoryMaps).
-        // Only renders when a match cleared SIM_THRESHOLD — orphan picks
-        // (those whose source basin no longer exists in topics.json)
-        // get no chip rather than a broken link.
-        const topologyBasinId = taskToBasinId.get(basinId);
-        if (topologyBasinId) {{
-          const tlink = el("a", "pick-xlink", "View in topology →");
-          tlink.href = "memory.html?file=topics.json&basin=" + encodeURIComponent(topologyBasinId);
-          tlink.title = basinHoverTitle(topologyBasinId, basinLabels);
-          actions.appendChild(tlink);
-        }}
-        card.appendChild(actions);
-        target.appendChild(card);
-      }});
-
-      // Scroll focused card into view after the DOM settles.
-      if (focusTask) {{
-        const focused = target.querySelector(".pick-card-focused");
-        if (focused) setTimeout(() => focused.scrollIntoView({{block: "center", behavior: "smooth"}}), 100);
-      }}
-    }}
-
     function renderRoutingReader(target, routing) {{
       // routing.json shape: {{by_task_type: {{task: {{provider: {{n, overall}}}}}},
       //   best_per_task_type: {{task: provider}}, computed_at: iso}}
@@ -2037,7 +1543,7 @@ def render_memory_viewer_html() -> str:
       // founder's home: 349 of 424 task_types are n=1-only → a 22k-px wall of
       // "(n=1)" rows). Same n>=2 floor as the launchpad routing cheat-sheet
       // (#290); the Raw JSON toggle still shows the full table. (No
-      // task_type→basin bridge clause post-#298 — picks/topology key by
+      // task_type→basin bridge clause post-#298 — topology keys by
       // basin_id, routing by task_type; the old bridge was a phantom.)
       const MIN_N = 2;
       const maxN = (t) => Math.max(0, ...Object.values(by[t] || {{}})
@@ -2054,13 +1560,13 @@ def render_memory_viewer_html() -> str:
       // | Best") and ZERO body rows — a header-only ghost table that reads as
       // broken/loading, with the real "all single-council" explanation buried in
       // a meta note below it. Show the honest empty-state instead (mirrors the
-      // picks reader's "No picks yet" + the launchpad cheat-sheet sibling).
+      // launchpad cheat-sheet sibling).
       if (taskTypes.length === 0) {{
         const msg = el("p", "meta",
           "No routing pattern yet — all " + allTaskTypes.length + " task type" +
           (allTaskTypes.length === 1 ? " has" : "s have") + " just a single " +
-          "council each (n=1 isn't a track record). Run more councils, then " +
-          "trinity-local consolidate. Switch to Raw JSON to see every entry.");
+          "council each (n=1 isn't a track record). Rows appear as you run more " +
+          "councils. Switch to Raw JSON to see every entry.");
         target.appendChild(msg);
         return;
       }}
@@ -2082,7 +1588,7 @@ def render_memory_viewer_html() -> str:
       tbl.appendChild(thead);
 
       // Deep-link target: ?task=<task_type> scrolls to + highlights the
-      // matching row so a click from picks.json lands usefully. The "not yet"
+      // matching row so a click from the launchpad lands usefully. The "not yet"
       // banner fires only when the task is genuinely absent from routing
       // (checked against allTaskTypes — a singleton focus row is KEPT visible
       // by the filter above, so it must not trip this banner).
@@ -2092,7 +1598,7 @@ def render_memory_viewer_html() -> str:
         const hint = el("span", "viewer-health-hint");
         hint.textContent =
           'No routing data for "' + humanizeTaskType(focusTask) + '" yet — no councils for this ' +
-          'task. Run a council on it, then trinity-local consolidate.';
+          'task. Run a council on it and it appears here.';
         banner.appendChild(hint);
         target.appendChild(banner);
       }}
@@ -2103,7 +1609,7 @@ def render_memory_viewer_html() -> str:
         tr.dataset.task = t;
         if (focusTask === t) tr.classList.add("routing-row-focused");
         // Task name is plain text. Post-#298 routing.json (keyed by task_type)
-        // has NO bridge to picks/topology (keyed by basin_id): there is no
+        // has NO bridge to topology (keyed by basin_id): there is no
         // stored task_type→basin map, and the viewer can't embed client-side to
         // derive one. Both cross-link directions resolved to dead "No pick / No
         // routing data" banners (verified in-browser), so routing.json stands
@@ -2181,12 +1687,6 @@ def render_memory_viewer_html() -> str:
         target.appendChild(el("p", "meta", "No topics yet — run trinity-local lens to compute basins."));
         return;
       }}
-
-      // Cross-memory bridge: picks ↔ topology. Post-#298 picks.json keys by
-      // the lens basin id (same id space topics.json uses), so this is a plain
-      // identity match (see matchBasinsToPicks). basinIdToPick carries the
-      // winner+margin so the detail can show the routing pick inline.
-      const {{ basinIdToTask: basinToPickTask, basinIdToPick }} = loadCrossMemoryMaps();
 
       // Detail panel above the graph — populated on node click.
       const detail = el("div", "topics-graph-detail");
@@ -2391,11 +1891,7 @@ def render_memory_viewer_html() -> str:
         .selectAll("circle")
         .data(nodes)
         .join("circle")
-        // Mark basins that have crystallized into routing rules — the
-        // warm-brown ring (.node.pick-basin) is the visual companion
-        // to the "Routing rule: <task> →" chip in the detail panel
-        // shipped tick #30.
-        .attr("class", d => basinToPickTask.has(d.id) ? "node pick-basin" : "node")
+        .attr("class", "node")
         .attr("r", radiusFor)
         .attr("fill", d => {{
           // Light teal (small) → deep teal (large) by size for hierarchy.
@@ -2441,12 +1937,7 @@ def render_memory_viewer_html() -> str:
 
       // Native SVG <title> for hover tooltip — first representative or
       // fallback to TF-IDF top terms. Browser renders it natively, no JS.
-      // Pick-bearing basins also surface their routing rule in the
-      // tooltip so the user can identify them without clicking.
-      nodeSel.append("title").text(d => {{
-        const pickTask = basinToPickTask.get(d.id);
-        return pickTask ? (d.tooltip + "\\n— Routing rule: " + pickTask) : d.tooltip;
-      }});
+      nodeSel.append("title").text(d => d.tooltip);
 
       // Drag re-energizes the sim so the dragged node "pulls" neighbors
       // with it (Obsidian feel).
@@ -2590,12 +2081,12 @@ def render_memory_viewer_html() -> str:
       }}
 
       // Deep-link target: ?basin=<id> auto-opens the matching basin's
-      // detail panel + highlights its neighborhood. Used by the picks
-      // Reader's "View in topology →" xlink + the lens-card chips.
+      // detail panel + highlights its neighborhood. Used by the lens-card
+      // chips.
       // Stale-basin case (tick #40): when the requested id doesn't
       // match any node, surface a small "not yet" banner inside the
-      // detail panel — same warm-warning shape the picks Reader uses
-      // when ?task= points at an unconsolidated task. Lens cards
+      // detail panel — same warm-warning shape the routing table uses
+      // when ?task= points at a task it has no row for. Lens cards
       // reference basin ids from the lens-build run that produced
       // them; if topology has since been rebuilt with different ids,
       // the link lands but the user otherwise has no feedback.
@@ -2753,9 +2244,8 @@ def render_memory_viewer_html() -> str:
         // dead-end render that tells the user a basin holds 29% of their
         // corpus but reveals nothing about it and offers no action. Say so
         // and point at the rebuild that repopulates it (same warm-warning
-        // shape as the ?basin= stale notice + the picks Reader's unbuilt
-        // copy). Below the representatives/top_terms branches everything
-        // else (pick xlink, launch chip) already no-ops on this shape.
+        // shape as the ?basin= stale notice). Below the representatives/top_terms
+        // branches everything else (launch chip) already no-ops on this shape.
         const hasReps = Array.isArray(b.representatives) && b.representatives.length;
         const hasTerms = Array.isArray(b.top_terms) && b.top_terms.length;
         if (!hasReps && !hasTerms) {{
@@ -2802,47 +2292,6 @@ def render_memory_viewer_html() -> str:
         // `trinity-local council-launch --task "<seed>"`. Closes the
         // topology action arc from the forward arc bullet "click a basin
         // → launch a council on this topic".
-        // Cross-memory pick link: if this basin has been consolidated
-        // into a routing rule, link straight to its picks.json entry.
-        // basinToPickTask is precomputed once in renderTopicsReader.
-        const pickTask = basinToPickTask.get(b.id);
-        if (pickTask) {{
-          const xlink = el("a", "topics-pick-xlink");
-          xlink.href = "memory.html?file=picks.json&task=" + encodeURIComponent(pickTask);
-          // Show the routing WINNER (+ margin) inline — post-#298 a basin's
-          // defining property IS its chairman-winner, so surface it here rather
-          // than making the user click through to read it. providerBrand brands
-          // the display (codex → GPT) so this reads consistent with the picks
-          // Reader's "Use <brand>" AND the launchpad cheat-sheet — #275. Falls
-          // back to the basin id when the winner/margin aren't available.
-          const pick = basinIdToPick.get(b.id);
-          // Gate on the BRANDED winner string, not the raw field: a corrupt non-
-          // string pick.winner (42 / {{}}) is truthy but providerBrand coerces it
-          // to "" — so "Routes to [object Object]" / "Routes to 42" no longer
-          // paints; the basin falls back to the "Routing rule: <task>" label.
-          const pickBrand = (pick && pick.winner) ? providerBrand(pick.winner) : "";
-          if (pickBrand) {{
-            const hasM = isFiniteNumber(pick.margin);
-            const m = hasM ? " · margin " + fmtMargin(pick.margin) : "";
-            // A basin ask does NOT route (near-tie OR churn-dead thin evidence) —
-            // don't assert "Routes to X" (a false claim for ~half the real picks,
-            // margin p50≈0.17, plus any churn-dead high-margin basin). Gate on the
-            // shared pickRoutes (margin AND effective_n), not margin alone.
-            const adv = hasM && !pickRoutes(pick.margin, pick.effective_n);
-            xlink.textContent = adv
-              ? "Leans " + pickBrand + m + " · near-tie → kNN →"
-              : "Routes to " + pickBrand + m + " →";
-          }} else {{
-            xlink.textContent = "Routing rule: " + pickTask + " →";
-          }}
-          // When this xlink paints a "· margin 0.42", gloss what that number means
-          // (first-timer can't read the bare value) AND keep the click-action hint.
-          const pick2 = basinIdToPick.get(b.id);
-          const mg = (pick2 && isFiniteNumber(pick2.margin))
-            ? marginGloss(pick2.margin, pickRoutes(pick2.margin, pick2.effective_n)) : "";
-          xlink.title = (mg ? mg + " " : "") + "Click to open this basin's pick in the picks Reader.";
-          detail.appendChild(xlink);
-        }}
         const seedRep = Array.isArray(b.representatives) ? b.representatives[0] : null;
         const seedText = seedRep ? (seedRep.headline || seedRep.snippet || "") : "";
         if (seedText) {{
@@ -2896,12 +2345,6 @@ def render_memory_viewer_html() -> str:
           const sz0 = (b.size || 0);
           detailParts.push(sz0.toLocaleString() + " prompt" + (sz0 === 1 ? "" : "s"));
         }}
-        const announcePick = basinIdToPick.get(b.id);
-        const announceBrand = (announcePick && announcePick.winner) ? providerBrand(announcePick.winner) : "";
-        if (announceBrand) {{
-          const advTie = isFiniteNumber(announcePick.margin) && !pickRoutes(announcePick.margin, announcePick.effective_n);
-          detailParts.push(advTie ? ("leans " + announceBrand + ", a near-tie") : ("routes to " + announceBrand));
-        }}
         announceCopy(detailParts.join(". ") + ".");
       }}
     }}
@@ -2938,7 +2381,6 @@ def render_memory_viewer_html() -> str:
       if (name === "lens.md" || name === "topics.json") return "lens";
       if (name === "generators.md") return "lens-generators";
       if (name === "routing.json") return "lens";
-      if (name === "picks.json") return null;   // historical: nothing rebuilds it (2026-08-11)
       if (name === "vocabulary.md") return "vocabulary";
       if (name === "core.md") return "lens --only-distill";
       return "lens";

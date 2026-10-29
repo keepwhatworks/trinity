@@ -13,8 +13,8 @@ landed 2026-06-06; this surface was simply never flipped.
 
 The fix brands at the two DISPLAY sites via a new `providerBrand()` helper
 (canonProviderSlug for web-era folding + the Claude/GPT/Gemini map, single-sourced
-to match the launchpad's formatProviderLabel). The slug stays raw only in the
-picks↔topology IDENTITY bridge logic, never on a user-facing label.
+to match the launchpad's formatProviderLabel), never a raw slug on a user-facing
+label.
 
 The KEY to this guard biting: seed `codex` and `antigravity` — the two slugs that
 DIFFER from their brand — as both a column AND the Best winner. `claude` self-brands
@@ -146,68 +146,46 @@ def test_routing_reader_brands_headers_and_best_column():
     )
 
 
-# --- picks Reader: cross-language brand parity on legacy-alias winners --------
-# The picks Reader paints "Use <providerBrand(winner)>" per card. providerBrand
-# folds the winner via canonProviderSlug, which CLAIMED to mirror the Python
-# _LEGACY_PROVIDER_ALIASES but carried only {chatgpt,gpt,claude_ai,gemini}. So a
-# picks.json winner of "google" / "bard" / "anthropic" / "claude.ai" painted
-# "Use Google" / "Use Bard" / "Use Anthropic" here while Python
-# provider_model_brand (and the launchpad cheat-sheet) both branded them
-# "Gemini" / "Gemini" / "Claude" / "Claude". Same picks.json winner, two readers,
-# two answers. This drives the REAL picks Reader and asserts each "Use <brand>"
-# equals "Use <provider_model_brand(winner)>". Mutation-provable: shrink
-# canonProviderSlug back to the 4-key subset → "Use Google" reds here while
-# Python still says Gemini.
-
-# Margins all >= the 0.15 routing floor → the card says "Use" (not "Lean"), so
-# the painted prefix is stable.
-_PICKS_LEGACY_ALIASES = {
-    "b00": {"winner": "gpt", "count": 9, "margin": 0.42, "n_episodes": 9, "evidence": []},
-    "b01": {"winner": "google", "count": 6, "margin": 0.31, "n_episodes": 6, "evidence": []},
-    "b02": {"winner": "bard", "count": 5, "margin": 0.28, "n_episodes": 5, "evidence": []},
-    "b03": {"winner": "anthropic", "count": 4, "margin": 0.22, "n_episodes": 4, "evidence": []},
-}
+# --- cross-language brand parity on legacy-alias providers --------------------
+# providerBrand folds a slug through canonProviderSlug, which once claimed to mirror
+# Python's _LEGACY_PROVIDER_ALIASES but carried only {chatgpt,gpt,claude_ai,gemini},
+# so "google" / "bard" / "anthropic" painted as themselves here while Python
+# provider_model_brand (and the launchpad) branded them Gemini / Gemini / Claude.
+# This drove the picks Reader until picks.json left the viewer (2026-10-26); the
+# routing Reader's Best column runs the same providerBrand, so it pins the parity
+# now. Mutation-provable: shrink canonProviderSlug back to the 4-key subset and
+# "Google" paints here while Python still says Gemini.
+_LEGACY_BEST = {"t_gpt": "gpt", "t_google": "google", "t_bard": "bard", "t_anthropic": "anthropic"}
 
 
-def _render_portal_with_picks(home: Path, picks: dict) -> Path:
-    (home / "scoreboard").mkdir(parents=True)
-    (home / "scoreboard" / "picks.json").write_text(json.dumps(picks), encoding="utf-8")
-    env = dict(os.environ)
-    env["TRINITY_HOME"] = str(home)
-    env["TRINITY_AUTOSCAN_DISABLED"] = "1"
-    env["PYTHONPATH"] = str(REPO / "src") + os.pathsep + env.get("PYTHONPATH", "")
-    result = subprocess.run(
-        [sys.executable, "-m", "trinity_local.main", "portal-html"],
-        env=env, capture_output=True, text=True, timeout=180,
-    )
-    assert result.returncode == 0, f"portal-html failed: {result.stderr[-400:]}"
-    pages = home / "portal_pages"
-    assert (pages / "memory.html").exists()
-    return pages
+def _legacy_alias_routing() -> dict:
+    return {
+        "by_task_type": {task: {slug: {"n": 3, "overall": 0.8, "wins": 2}}
+                         for task, slug in _LEGACY_BEST.items()},
+        "best_per_task_type": dict(_LEGACY_BEST),
+        "pick_is_tie": {},
+        "computed_at": "2026-10-26T00:00:00Z",
+    }
 
 
-def test_picks_reader_brands_legacy_alias_winner_like_python():
-    """The picks Reader's providerBrand must brand a legacy-alias winner
-    identically to Python provider_model_brand — no cross-language divergence
-    (the founder's same-value-two-readers shape)."""
+def test_routing_reader_brands_legacy_alias_best_like_python():
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright
     from trinity_local.council_schema import provider_model_brand
 
-    # Python truth, in the render order (picks render in their dict/key order; we
-    # match by reading the basin id off each card so order can't desync the
-    # assertion).
-    py_brand = {
-        bid: provider_model_brand(p["winner"]) for bid, p in _PICKS_LEGACY_ALIASES.items()
-    }
-    # Source sanity: these slugs genuinely fold to the brand trio in Python.
-    assert set(py_brand.values()) == {"GPT", "Gemini", "Claude"}, (
-        f"Python brand baseline shifted: {py_brand}"
-    )
+    py_brand = {task: provider_model_brand(slug) for task, slug in _LEGACY_BEST.items()}
+    assert set(py_brand.values()) == {"GPT", "Gemini", "Claude"}, f"Python brand baseline shifted: {py_brand}"
 
     home = Path(tempfile.mkdtemp()) / "trinity"
     home.mkdir(parents=True)
-    pages = _render_portal_with_picks(home, _PICKS_LEGACY_ALIASES)
+    (home / "scoreboard").mkdir(parents=True)
+    (home / "scoreboard" / "routing.json").write_text(json.dumps(_legacy_alias_routing()), encoding="utf-8")
+    env = dict(os.environ, TRINITY_HOME=str(home), TRINITY_AUTOSCAN_DISABLED="1")
+    env["PYTHONPATH"] = str(REPO / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    r = subprocess.run([sys.executable, "-m", "trinity_local.main", "portal-html"],
+                       env=env, capture_output=True, text=True, timeout=180)
+    assert r.returncode == 0, f"portal-html failed: {r.stderr[-400:]}"
+    pages = home / "portal_pages"
 
     failures: list[str] = []
     with sync_playwright() as sp:
@@ -219,77 +197,44 @@ def test_picks_reader_brands_legacy_alias_winner_like_python():
             page = browser.new_context(viewport={"width": 1400, "height": 1100}).new_page()
             errs: list[str] = []
             page.on("pageerror", lambda e: errs.append(str(e)[:160]))
-            page.goto(f"file://{pages / 'memory.html'}?file=picks.json", wait_until="load")
-            page.wait_for_selector(".pick-card .pick-primary", timeout=10000)
-            page.wait_for_timeout(400)
-
-            # Read {basin_id: painted "Use <brand>"} so the assertion is order-free.
+            page.goto(f"file://{pages / 'memory.html'}?file=routing.json", wait_until="load")
+            page.wait_for_selector(".routing-table tbody tr", timeout=10000)
             painted = page.evaluate(
-                """() => {
-                    const out = {};
-                    for (const card of document.querySelectorAll('.pick-card')) {
-                        const bid = card.dataset.task;
-                        const prim = card.querySelector('.pick-primary');
-                        if (bid && prim) out[bid] = (prim.innerText || '').trim();
-                    }
-                    return out;
-                }"""
+                """() => Object.fromEntries([...document.querySelectorAll('.routing-table tbody tr')]
+                     .map(tr => [tr.dataset.task, (tr.lastElementChild.innerText || '').trim()]))"""
             )
-
-            # Precondition: every seeded pick card mounted (bite = the brand,
-            # not a vacuous empty map).
-            if set(painted.keys()) != set(py_brand.keys()):
-                failures.append(
-                    f"not all pick cards mounted: painted basins={sorted(painted.keys())} "
-                    f"expected {sorted(py_brand.keys())}"
-                )
-            for bid, brand in py_brand.items():
-                want = f"Use {brand}"
-                got = painted.get(bid, "")
-                if got != want:
-                    failures.append(
-                        f"basin {bid} winner {_PICKS_LEGACY_ALIASES[bid]['winner']!r}: "
-                        f"picks Reader painted {got!r} but Python provider_model_brand "
-                        f"says {want!r} — canonProviderSlug dropped a legacy alias the "
-                        "Python map (and the launchpad cheat-sheet) fold."
-                    )
+            if set(painted) != set(py_brand):
+                failures.append(f"not every row mounted: {sorted(painted)} vs {sorted(py_brand)}")
+            for task, brand in py_brand.items():
+                got = painted.get(task, "")
+                if brand not in got:
+                    failures.append(f"{task} ({_LEGACY_BEST[task]!r}): Best painted {got!r}, Python brands it {brand!r}")
             if errs:
-                failures.append(f"JS errors rendering the picks reader: {errs[:3]}")
+                failures.append(f"JS errors rendering the routing reader: {errs[:3]}")
         finally:
             browser.close()
 
     assert not failures, (
-        "CROSS-LANGUAGE BRAND DIVERGENCE on the picks Reader — a legacy-alias "
-        "winner branded differently than Python provider_model_brand:\n  "
-        + "\n  ".join(failures)
+        "cross-language brand divergence in the routing Reader — a legacy-alias provider "
+        "branded differently than Python provider_model_brand:\n  " + "\n  ".join(failures)
     )
 
 
-def test_routing_subtitle_names_a_tool_the_user_can_invoke_not_retired_route():
-    """The routing.json header subtitle must name a LIVE reader, not the retired
-    standalone `route` tool.
-
-    Found 2026-06-19 by DRIVING the real memory viewer routing.json view: its
-    subtitle read "...read by route + launchpad" — but the standalone `route`
-    MCP tool was REMOVED 2026-06-08 (loop-primitive surface cut; see
-    retired_names.py `mcp_tool:route`). There is no `route` MCP tool AND no
-    `route` CLI verb, so the copy named a reader the user cannot find anywhere —
-    the routing track record is actually read by `ask` (which aggregates
-    compute_personal_routing_table) + the launchpad, exactly as the SIBLING
-    picks.json subtitle correctly says "read by ask + chairman picker".
-
-    This asserts the RENDERED subtitle text (not a source string): it must NOT
-    say "read by route" and MUST name `ask`. Mutation-proven: revert the tagline
-    to "...read by route + launchpad" and this reds.
-    """
+def test_routing_subtitle_names_no_retired_reader():
+    """The routing.json header subtitle once named `route` (removed 2026-06-08) and
+    then `ask` (removed 2026-08-11) as its reader. An earlier version of this test
+    REQUIRED "ask" and passed only because "per-task-type" contains those letters.
+    Whole words now: no retired reader, and the subtitle says where the numbers
+    come from."""
     pytest.importorskip("playwright.sync_api")
+    import re
+
     from playwright.sync_api import sync_playwright
 
     home = Path(tempfile.mkdtemp()) / "trinity"
     home.mkdir(parents=True)
     pages = _render_portal(home)
 
-    failures: list[str] = []
     with sync_playwright() as sp:
         try:
             browser = sp.chromium.launch()
@@ -299,44 +244,18 @@ def test_routing_subtitle_names_a_tool_the_user_can_invoke_not_retired_route():
             page = browser.new_context(viewport={"width": 1400, "height": 1100}).new_page()
             page.goto(f"file://{pages / 'memory.html'}?file=routing.json", wait_until="load")
             page.wait_for_timeout(900)
-
-            # The subtitle is the .meta line under the routing.json <h2> header
-            # ("scoreboard (operational) · <tagline>"). Read the rendered text.
             subtitle = page.evaluate(
                 """() => {
                     const metas = [...document.querySelectorAll('#content .content-header .meta, #content .meta')];
-                    const hit = metas.find(e => /track record|read by/.test(e.innerText || ''));
+                    const hit = metas.find(e => /track record/.test(e.innerText || ''));
                     return hit ? (hit.innerText || '').trim() : '';
                 }"""
             )
-
-            if not subtitle:
-                failures.append(
-                    "could not find the routing.json header subtitle — the .meta "
-                    "tagline line did not render (precondition for this guard)"
-                )
-            else:
-                low = subtitle.lower()
-                # THE BITE: must not name the retired standalone `route` tool.
-                if "read by route" in low or "route + launchpad" in low:
-                    failures.append(
-                        "routing.json subtitle names the RETIRED `route` tool as a "
-                        "reader (removed 2026-06-08; no `route` MCP tool or CLI verb "
-                        "exists) — the user is pointed at a reader they cannot find. "
-                        f"Subtitle: {subtitle!r}"
-                    )
-                # And it must name a reader the user CAN invoke (ask), matching the
-                # picks.json sibling's "read by ask".
-                if "ask" not in low:
-                    failures.append(
-                        "routing.json subtitle does not name `ask` as its reader — "
-                        "the routing track record is read by ask (+ launchpad), like "
-                        f"the picks.json sibling. Subtitle: {subtitle!r}"
-                    )
         finally:
             browser.close()
 
-    assert not failures, (
-        "routing.json header subtitle copy regressed — it named a retired/unfindable "
-        "reader:\n  " + "\n  ".join(failures)
-    )
+    assert subtitle, "the routing.json header subtitle did not render"
+    low = subtitle.lower()
+    retired = [w for w in ("route", "ask", "get_picks") if re.search(rf"\b{w}\b", low)]
+    assert not retired, f"routing.json subtitle names a retired reader {retired}: {subtitle!r}"
+    assert "council outcomes" in low, f"routing.json subtitle no longer says where its numbers come from: {subtitle!r}"

@@ -11,6 +11,7 @@ result files without re-dispatching.
 from __future__ import annotations
 
 import json
+import sys
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -252,7 +253,7 @@ def run_eval(
             print(f"  item filter: dispatching {len(winnable)}/{len(all_items)} items "
                   f"({n_context_bound} context-bound prompts + {n_unreachable} unreachable-gold "
                   f"excluded — a cold dispatch of those scores apologies or shared zeros, "
-                  f"not taste). Pass --include-context-bound to run everything.")
+                  f"not taste). Pass --include-context-bound to run everything.", file=sys.stderr)
         all_items = winnable
     items_to_run = all_items[:limit] if limit else all_items
     started = datetime.now(timezone.utc).isoformat(timespec="seconds")

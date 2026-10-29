@@ -1,20 +1,15 @@
 #!/usr/bin/env bash
 # ───────────────────────────────────────────────────────────
-#  Trinity Local — Launch Verification (T-0 Step 1)
+#  Trinity Local — release check
 #
-#  Runs the six programmatic gates that close the public-repo-flip
-#  risk. Single command, green/red verdict per step, non-zero exit
-#  on any failure.
+#  Runs the six programmatic gates every release must pass. Single
+#  command, green/red verdict per step, non-zero exit on any failure.
+#  (Named for the 2026 launch, when it guarded the public-repo flip.)
 #
 #  Usage:
 #    bash scripts/launch-check.sh
 #
-#  After this passes, run the remaining T-0 steps
-#  (the ones requiring credentials and external services):
-#    - gh repo edit --visibility public ...
-#    - gh repo edit --description ... --add-topic ...
-#    - upload social card via Settings UI
-#    - pin starter issues
+#  After it passes, commit the docs step 1 re-rendered with the release.
 # ───────────────────────────────────────────────────────────
 set -uo pipefail
 
@@ -35,7 +30,7 @@ fi
 for arg in "$@"; do
     case "$arg" in
         -h|--help)
-            sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
     esac
@@ -75,8 +70,8 @@ if [ ${#failed_steps[@]} -eq 0 ]; then
         | sed 's/$/ (from the fresh measurement; commit them with the release)/' || true
 fi
 
-# Step 2: doc-consistency guards (the launch-credibility checks)
-run_step "Step 2/6: doc-consistency guards (launch-credibility checks)" \
+# Step 2: doc-consistency guards
+run_step "Step 2/6: doc-consistency guards" \
     $PYTEST tests/test_doc_count_consistency.py -q
 
 # Step 3: install.sh bash syntax check + the install-sh guards
@@ -110,18 +105,17 @@ run_step "Step 6/6: clean-wheel smoke (install the wheel, run what a new user is
 # Verdict
 printf "${BOLD}═══════════════════════════════════════════════════════${NC}\n"
 if [ ${#failed_steps[@]} -eq 0 ]; then
-    printf "${GREEN}${BOLD}✓ All gates passed — ready for the public flip.${NC}\n"
+    printf "${GREEN}${BOLD}✓ All gates passed — ready to release.${NC}\n"
     # A green here attests every test that RAN. Browser-marked guards skip without
     # Chrome, and measured on this repo's own history (hq_099b/hq_099c) they carry the
     # entire guard for ~30% of fix commits. Say so rather than let the tick imply it.
     printf "${DIM}"; .venv/bin/python scripts/coverage_disclosure.py; printf "${NC}"
-    printf "${DIM}Next manual steps (need credentials + GitHub): make the repo public + set description/topics via gh.${NC}\n"
     exit 0
 else
     printf "${RED}${BOLD}✗ %d gate(s) failed:${NC}\n" "${#failed_steps[@]}"
     for step in "${failed_steps[@]}"; do
         printf "${RED}  - %s${NC}\n" "$step"
     done
-    printf "${DIM}Fix before flipping the repo public.${NC}\n"
+    printf "${DIM}Fix before releasing.${NC}\n"
     exit 1
 fi

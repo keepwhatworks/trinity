@@ -27,12 +27,13 @@ from dataclasses import dataclass, field
 from .ingest import iter_prompt_turns
 from .ingest_helpers import existing_prompt_node_ids as _shared_existing_ids
 from .memory import PromptNode, upsert_prompt_node
+from .registry import INGEST_SOURCES
 from .state_paths import ingest_cursors_path
 from .task_types import guess_task_type
 from .utils import now_iso, stable_id
 
 
-DEFAULT_SOURCES = ("claude", "codex", "gemini", "antigravity", "cowork", "browser_claude", "browser_chatgpt", "browser_gemini")
+DEFAULT_SOURCES = INGEST_SOURCES
 DEFAULT_DEADLINE_S = 2.0
 
 

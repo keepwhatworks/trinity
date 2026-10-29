@@ -112,3 +112,27 @@ class TestUpdateUserFacingMessagesPointAtLiveCommands:
             "(\"the former `doctor` command\") or replace with "
             "`status`.\n\n" + "\n---\n".join(leaks[:5])
         )
+
+
+def test_the_diverged_checkout_advice_runs_from_a_hostile_path(tmp_path, monkeypatch, capsys):
+    """With local commits ahead, update refuses and names `cd <dir> && git status`.
+    A checkout path with a space or $(...) must reach cd intact."""
+    import json
+    import subprocess
+    from types import SimpleNamespace
+
+    from trinity_local.commands import update
+
+    checkout = tmp_path / "c $(touch PWNED) d"
+    checkout.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+    monkeypatch.setattr(update, "_uv_managed", lambda: False)
+    monkeypatch.setattr(update, "_fetch_and_compute_lag", lambda _d: (1, 1, None))
+    assert update.handle_update(SimpleNamespace(skill_dir=str(checkout), json=True)) == 1
+    msg = json.loads(capsys.readouterr().err)["error"]
+    advice = msg.split("`")[1]
+    assert advice.startswith("cd ") and advice.endswith(" && git status"), msg
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    subprocess.run(["sh", "-c", advice], cwd=cwd, check=True, capture_output=True)
+    assert sorted(p.name for p in cwd.iterdir()) == [], "the advice ran a command"

@@ -160,8 +160,8 @@ def test_reader_raw_toggle_conveys_aria_pressed(tmp_path, monkeypatch):
             pytest.skip(f"no launchable chromium: {exc}")
         try:
             page = browser.new_page(viewport={"width": 1400, "height": 1100})
-            # picks.json renders the Reader/Raw toggle (Reader is the default view).
-            page.goto(f"file://{mv}?file=picks.json", wait_until="load")
+            # topics.json renders the Reader/Raw toggle (Reader is the default view).
+            page.goto(f"file://{mv}?file=topics.json", wait_until="load")
             page.wait_for_timeout(900)
 
             def read_toggle():
@@ -177,8 +177,9 @@ def test_reader_raw_toggle_conveys_aria_pressed(tmp_path, monkeypatch):
                 )
 
             before = read_toggle()
-            if len(before) < 2:
-                pytest.skip("picks.json did not render a 2-button view toggle here")
+            # An assert, not a skip: when this skipped (picks.json lost its reader on
+            # 2026-10-26) the WCAG check silently checked nothing.
+            assert len(before) == 2, f"topics.json did not render the 2-button view toggle: {before}"
 
             def find(rows, label):
                 for r in rows:

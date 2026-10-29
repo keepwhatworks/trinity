@@ -33,12 +33,10 @@ without Playwright/chromium.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -56,13 +54,6 @@ _STUB = (
     "  if(o&&o.onResult)setTimeout(function(){{o.onResult({result});}},15);"
     "}}}};"
 )
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _seed(tmp_path, monkeypatch) -> Path:
@@ -146,7 +137,7 @@ def test_dispatch_success_keeps_optimistic_running(tmp_path, monkeypatch):
     A regression that rolls back on SUCCESS (inverted predicate) reds here."""
     pytest.importorskip("playwright.sync_api")
     serve_root = _seed(tmp_path, monkeypatch)
-    httpd, port = _serve(serve_root)
+    httpd, port = serve_directory(serve_root)
     try:
         st = _drive(port, "{tier:'extension', ok:true}")
     finally:
@@ -182,7 +173,7 @@ def test_dispatch_no_route_rolls_back_and_banners(tmp_path, monkeypatch):
     A dropped rollback (the founder stuck-launch symptom) reds here."""
     pytest.importorskip("playwright.sync_api")
     serve_root = _seed(tmp_path, monkeypatch)
-    httpd, port = _serve(serve_root)
+    httpd, port = serve_directory(serve_root)
     try:
         st = _drive(port, "{tier:'install-prompt', ok:false}")
     finally:
@@ -216,7 +207,7 @@ def test_dispatch_extension_error_surfaces_detail_and_rolls_back(tmp_path, monke
     detail in the .status-error ribbon (not a generic banner)."""
     pytest.importorskip("playwright.sync_api")
     serve_root = _seed(tmp_path, monkeypatch)
-    httpd, port = _serve(serve_root)
+    httpd, port = serve_directory(serve_root)
     try:
         st = _drive(port, "{tier:'extension', ok:false, response:{error:'quota-exhausted-detail'}}")
     finally:

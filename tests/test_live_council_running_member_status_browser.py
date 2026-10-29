@@ -30,12 +30,10 @@ skips without Playwright/chromium.
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import json
-import threading
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -70,13 +68,6 @@ def _running_status(token: str) -> dict:
         },
         "synthesis": {"status": "pending"},
     }
-
-
-def _serve(directory) -> tuple[http.server.HTTPServer, int]:
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _seed(tmp_path, monkeypatch, status):
@@ -167,7 +158,7 @@ def test_running_council_member_rows_match_seed_and_no_premature_verdict(tmp_pat
     )
 
     _seed(tmp_path, monkeypatch, status)
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     try:
         body, rows, running_banner, verdict_count, errs = _drive(port, token)
     finally:

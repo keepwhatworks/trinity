@@ -17,33 +17,14 @@ sync with ``evals-from-provider.md``.
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 
 from ..me.preference_acts import preference_acts_path
 from ..me.turn_pairs import RejectionSignal
 from ..utils import stable_id
-from .provider_import import read_provider_import
+from .provider_import import print_provider_prompt, read_provider_import
 
 
-# Same anchor + lookup logic as lens_import. Kept independent so the
-# two doc files can evolve separately if one ever shifts naming.
-_PROMPT_BODY_MARKER = "## The prompt — copy below this line"
 _VALID_REJECTION_TYPES = {"REFRAME", "REDIRECT", "SHARPENING", "COMPRESSION"}
-
-
-def _prompt_doc_path() -> Path | None:
-    """The packaged evals-from-provider.md, or $TRINITY_EVAL_PROMPT_DOC when set.
-
-    It lived under the repo's docs/, which no wheel ships, so `eval-prompt` exited 1 on every
-    install (coherence review 2026-10-15); it is package data now."""
-    import os
-    override = os.environ.get("TRINITY_EVAL_PROMPT_DOC")
-    if override:
-        p = Path(override).expanduser()
-        return p if p.exists() else None
-    from .provider_import import packaged_prompt
-    return packaged_prompt("evals-from-provider.md")
 
 
 def register(subparsers):
@@ -112,33 +93,9 @@ def register(subparsers):
 
 
 def handle_eval_prompt(args) -> int:
-    doc = _prompt_doc_path()
-    if doc is None:
-        print(
-            "error: couldn't find evals-from-provider.md. Set "
-            "TRINITY_EVAL_PROMPT_DOC to its absolute path if you're "
-            "running from a non-checkout install.",
-            file=sys.stderr,
-        )
-        return 1
-    text = doc.read_text(encoding="utf-8")
-    if args.with_instructions:
-        sys.stdout.write(text)
-        return 0
-    idx = text.find(_PROMPT_BODY_MARKER)
-    if idx < 0:
-        print(
-            "warning: prompt-body marker not found in doc; emitting "
-            "full file. Update evals-from-provider.md to restore "
-            f"the '{_PROMPT_BODY_MARKER}' anchor.",
-            file=sys.stderr,
-        )
-        sys.stdout.write(text)
-        return 0
-    after = text[idx:].split("\n", 2)
-    body = after[-1] if len(after) == 3 else text[idx:]
-    sys.stdout.write(body)
-    return 0
+    return print_provider_prompt(
+        "evals-from-provider.md", "TRINITY_EVAL_PROMPT_DOC", with_instructions=args.with_instructions
+    )
 
 
 # ---------------------------------------------------------------------

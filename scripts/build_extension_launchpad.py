@@ -51,7 +51,7 @@ _FETCH_BOOTSTRAP = """(async () => {
     // subsystem that does nothing for this panel). Naming `install-mcp` here was
     // a wrong-CTA dead-end: a user who hit this fallback and ran it reloaded to
     // the exact same error. Match every sibling host-unavailable message
-    // (popup.js / background.js / launchpad-init's dispatch-failure reasons /
+    // (background.js / launchpad-init's dispatch-failure reasons /
     // live_council.html) and auto-fill the extension id so it's copy-pasteable.
     var __extId = (window.chrome && chrome.runtime && chrome.runtime.id) || '&lt;ID&gt;';
     document.body.innerHTML =
@@ -126,9 +126,9 @@ def build() -> tuple[str, str]:
 
 
 def main() -> int:
-    from trinity_local.vendor import publish_vendor_files
+    from trinity_local.vendor import EXTENSION_VENDOR_FILES, publish_vendor_files
 
-    vendored = publish_vendor_files(EXT)
+    vendored = publish_vendor_files(EXT, names=EXTENSION_VENDOR_FILES)
     print(f"published vendor/ ({len(vendored)} files) into {EXT}")
     return 0
 

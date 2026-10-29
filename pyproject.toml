@@ -62,7 +62,7 @@ trinity_local = [
 # guard shells out to a missing `python -m pyflakes`, gets empty stdout, and
 # passes VACUOUSLY — a false green exactly in CI, which installs only `.[test]`.
 test = ["pytest>=7", "pyflakes>=3", "Pillow>=10"]  # Pillow: the share-card tests still exercise the [share] path in CI
-# Share cards (me-card / eval-share / council-share PNGs) — demoted from core
+# Share cards (me-card / council-share PNGs) — demoted from core
 # 2026-07-10 per council_25c534c5f1bf826c: measured-dormant (2 PNGs ever, both
 # pre-launch experiments), so the image dependency doesn't belong in every
 # install. The commands degrade with a clear install hint when PIL is absent.
@@ -82,7 +82,7 @@ mlx = [
 
 [tool.pytest.ini_options]
 markers = [
-    "real_corpus: runs against the real ~/.trinity install; skipped when none present",
+    "real_corpus: checks the real data distribution. Most read TRINITY_REAL_CORPUS, a copy of a real ~/.trinity, through the real_corpus_home fixture and skip without it; two topology classes read ~/.trinity/memories/topics.json read-only.",
     "slow: tests that hit real Chrome / MLX / provider subprocesses; deselect with '-m \"not slow\"' for fast feedback. Run all with TRINITY_SLOW=1 or pytest -m slow.",
     "browser: real-Chrome Playwright render tests (also 'slow'). Run in the dedicated CI 'browser' job via `pytest -m browser` after `playwright install chromium`; each skips cleanly when chromium is unavailable. These guard the production HTML surfaces (launchpad / memory viewer / live council) that the default suite never renders.",
 ]

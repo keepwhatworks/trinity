@@ -3,7 +3,7 @@
 Reads ~/.trinity/prompts/prompt_nodes.jsonl and emits
 ~/.trinity/memories/vocabulary.md — the user's terminology overlay.
 
-Three flavors of distinctive terminology surfaced (no LLM call):
+Two flavors of distinctive terminology surfaced (no LLM call):
 
 1. **Anchors** (proper-noun recurrence): capitalized multi-word entities the
    user names across ≥3 distinct conversation threads. Pure regex + thread
@@ -16,15 +16,10 @@ Three flavors of distinctive terminology surfaced (no LLM call):
    embeddings — a high split-variance ratio signals the same token sitting in
    two semantic contexts.
 
-3. **Synonyms** (two words → one meaning): pairs of distinct tokens whose
-   mean context embeddings are cosine-similar above threshold. Each token's
-   "mean context" is the centroid of every prompt embedding the token appears
-   in. Near-identical centroids → the words are used in the same semantic
-   territory.
-
-The same machinery the cortex layer uses (bimodality flagging via geometric
-prior) applied to the user's own terminology. Pure numpy; no chairman call;
-runs ~1s on a 5k-prompt index.
+A third view, synonyms (two words → one meaning), was cut: on a real corpus
+its top pairs were tokens that travel together in templated prompts, not
+synonyms (see render_vocabulary_md). Pure numpy; no chairman call; runs ~1s on
+a 5k-prompt index.
 
 Output schema is markdown, intentionally human-legible — chairman reads
 vocabulary.md as one of the three thinking core memories before synthesizing.
@@ -43,7 +38,6 @@ from .embeddings import is_finite_embedding
 # starts dominating signal.
 DEFAULT_MIN_FREQ = 5
 DEFAULT_TOP_HOMONYMS = 10
-DEFAULT_TOP_SYNONYMS = 10
 DEFAULT_TOP_ANCHORS = 15
 DEFAULT_ANCHOR_MIN_THREADS = 3
 # An anchor in more than this fraction of ALL threads is boilerplate, not a
@@ -58,19 +52,11 @@ DEFAULT_ANCHOR_MAX_THREAD_FRACTION = 0.40
 # stands alone (a small/new user hasn't generated scaffolding pollution
 # yet anyway — that needs many Trinity runs = many threads).
 MIN_THREADS_FOR_PREVALENCE_CAP = 20
-DEFAULT_SYNONYM_COSINE_THRESHOLD = 0.92
 # #250 — a homonym needs evidence from enough DISTINCT conversations, not just
 # ≥ min_freq occurrences. A token used 5 times in ONE thread can score high
 # bimodality off noise (two phrasings within a single session); a real overload
 # ("lens" the optic vs "lens" the taste model) shows up across separate threads.
 DEFAULT_HOMONYM_MIN_THREADS = 3
-# #250 — two tokens with cosine ≈ 1.0 are usually a CO-OCCURRENCE artifact: they
-# appear in (nearly) the same prompts, so their mean context vectors collapse
-# onto each other. That's not synonymy — it's two words that always travel
-# together (template phrasing, a fixed bigram). A true synonym pair occupies
-# DIFFERENT prompts with similar surrounding context. Drop pairs whose prompt
-# sets overlap at or above this Jaccard.
-DEFAULT_SYNONYM_MAX_JACCARD = 0.5
 # #250 — the DOMINANT vocab pollution on a real corpus is template
 # concentration: one automated agent loop (e.g. a floor-plan engine emitting
 # the same JSON shape thousands of times) floods every token view with its
@@ -78,18 +64,11 @@ DEFAULT_SYNONYM_MAX_JACCARD = 0.5
 # raw frequency but their prompts are near-DUPLICATES of each other — so they
 # collapse to very few *distinct* contexts. A real vocabulary word recurs across
 # genuinely different prompts. Require ≥ this many effectively-distinct contexts
-# (near-dup-collapsed) before a token can surface as a homonym or synonym.
+# (near-dup-collapsed) before a token can surface as a homonym.
 DEFAULT_MIN_DISTINCT_CONTEXTS = 4
 # Two context vectors at or above this cosine are treated as the same prompt
 # (near-duplicate template instance) when counting distinct contexts.
 DEFAULT_CONTEXT_DUP_COSINE = 0.97
-# #250 — a synonym candidate appearing in more than this fraction of ALL prompts
-# is a high-frequency function/common word ("been", "within", "every", "state");
-# its mean context vector collapses onto the corpus centroid, so it scores
-# spuriously high cosine against every other ubiquitous word. The IDF intuition,
-# tuned tight (real distinctive vocab sits well under 1% prevalence; the function
-# words that polluted the synonym view sit at 3-5%).
-DEFAULT_SYNONYM_MAX_PREVALENCE = 0.02
 
 # Stopwords kept tight — only words a developer would reflexively skip,
 # nothing that could plausibly be a load-bearing term. The whole point is
@@ -405,17 +384,15 @@ def _two_means_split_variance(vectors, *, max_samples: int = 200) -> float:
 
 def _gather_token_index(
     nodes: Iterable, *, min_freq: int
-) -> tuple[dict[str, list], dict[str, set], dict[str, set]]:
-    """Map each token to (context embeddings, prompt-id set, thread-id set)
-    from the prompts where it appears.
+) -> tuple[dict[str, list], dict[str, set]]:
+    """Map each token to (context embeddings, thread-id set) from the
+    prompts where it appears.
 
-    The prompt-id and thread-id sets power the #250 guards: Jaccard
-    co-occurrence detection for synonyms (shared prompts) and the
-    distinct-thread floor for homonyms (separate conversations). Only tokens
-    in ≥ min_freq distinct prompts are kept (cheap long-tail/typo filter).
+    The thread-id set powers the #250 distinct-thread floor for homonyms
+    (separate conversations). Only tokens in ≥ min_freq distinct prompts are
+    kept (cheap long-tail/typo filter).
     """
     contexts: dict[str, list] = defaultdict(list)
-    prompts: dict[str, set] = defaultdict(set)
     threads: dict[str, set] = defaultdict(set)
     for node in nodes:
         emb = getattr(node, "embedding", None)
@@ -424,28 +401,23 @@ def _gather_token_index(
         # the filter in me/depth.py and me/basins.py.
         if not is_finite_embedding(emb):
             continue
-        pid = getattr(node, "id", None)
         tid = getattr(node, "transcript_id", None)
         text = getattr(node, "text", "") or ""
         for tok in set(_tokenize(text)):
             contexts[tok].append(emb)
-            if pid:
-                prompts[tok].add(pid)
             if tid:
                 threads[tok].add(tid)
     keep = {tok for tok, vecs in contexts.items() if len(vecs) >= min_freq}
     return (
         {tok: contexts[tok] for tok in keep},
-        {tok: prompts[tok] for tok in keep},
         {tok: threads[tok] for tok in keep},
     )
 
 
 def _gather_token_contexts(nodes: Iterable, *, min_freq: int) -> dict[str, list]:
-    """Map token → list of embeddings (back-compat wrapper over
-    `_gather_token_index`; callers that don't need the prompt/thread index
-    keep their old signature)."""
-    contexts, _prompts, _threads = _gather_token_index(nodes, min_freq=min_freq)
+    """Map token → list of embeddings (`_gather_token_index` without the
+    thread index)."""
+    contexts, _threads = _gather_token_index(nodes, min_freq=min_freq)
     return contexts
 
 
@@ -501,7 +473,6 @@ def find_homonyms(
 
 def render_vocabulary_md(
     *, homonyms: list[tuple[str, float, int]],
-    synonyms: list[tuple[str, str, float, int, int]],
     anchors: list[tuple[str, int, int]],
     corpus_size: int,
     total_corpus: int | None = None,
@@ -509,7 +480,7 @@ def render_vocabulary_md(
     """Compose the markdown output. Chairman reads it as one of the three
     thinking core memories — keep it human-legible, no JSON dump.
 
-    `corpus_size` is the EMBEDDED prompt count the homonym/synonym scan ran
+    `corpus_size` is the EMBEDDED prompt count the homonym scan ran
     over; `total_corpus` (when given) is the full prompt count the anchor
     scan saw. Naming both keeps the "Scanned N" line honest — it used to
     print only the embedded count as if it were the whole corpus (#250
@@ -565,7 +536,6 @@ def render_vocabulary_md(
     # mean "these tokens travel together in templated content", which neither
     # the Jaccard nor centroid-margin guards (#250) reliably separate from real
     # synonymy. Distance ≠ synonymy; the section produced noise, so it's gone.
-    # `synonyms` stays in the signature for back-compat (always passed empty).
     return "\n".join(lines)
 
 
@@ -573,18 +543,15 @@ def distill_vocabulary(
     *,
     min_freq: int = DEFAULT_MIN_FREQ,
     top_homonyms: int = DEFAULT_TOP_HOMONYMS,
-    top_synonyms: int = DEFAULT_TOP_SYNONYMS,
     top_anchors: int = DEFAULT_TOP_ANCHORS,
     anchor_min_threads: int = DEFAULT_ANCHOR_MIN_THREADS,
-    synonym_threshold: float = DEFAULT_SYNONYM_COSINE_THRESHOLD,
     homonym_min_threads: int = DEFAULT_HOMONYM_MIN_THREADS,
     min_distinct: int = DEFAULT_MIN_DISTINCT_CONTEXTS,
-    synonym_max_jaccard: float = DEFAULT_SYNONYM_MAX_JACCARD,
-    synonym_max_prevalence: float = DEFAULT_SYNONYM_MAX_PREVALENCE,
 ) -> dict:
     """End-to-end Phase 2.5: scan corpus → emit vocabulary.md.
 
-    Returns a report dict (`{ok, path, homonyms, synonyms, corpus_size}`).
+    Returns a report dict (`{ok, path, corpus_size, tokens_scanned,
+    anchors_emitted, homonyms_emitted}`).
     Returns `skipped: True` cleanly when no embedded prompts exist yet.
 
     Uses `iter_prompt_nodes(limit=None)` to walk the full corpus. The
@@ -606,7 +573,7 @@ def distill_vocabulary(
             "reason": "no embedded prompts yet — run `import-export` first",
         }
 
-    contexts, token_prompts, token_threads = _gather_token_index(
+    contexts, token_threads = _gather_token_index(
         nodes_with_emb, min_freq=min_freq
     )
     # Anchors run on the FULL node set (not just embedded ones) — proper-noun
@@ -621,8 +588,7 @@ def distill_vocabulary(
         }
 
     # #250: distinct-thread floor for homonyms (kills intra-session phrasing
-    # noise) + Jaccard co-occurrence guard for synonyms (kills cos≈1.0
-    # always-together artifacts).
+    # noise).
     homonyms = (
         find_homonyms(
             contexts, top_n=top_homonyms,
@@ -630,13 +596,8 @@ def distill_vocabulary(
             min_distinct=min_distinct,
         ) if contexts else []
     )
-    # #250 follow-on: the synonyms section was cut (measured ~0% useful —
-    # template co-occurrence, not synonymy). No longer computed; `find_synonyms`
-    # stays as a dormant, unit-tested function pending a redesign that separates
-    # synonymy from "tokens that travel together".
-    synonyms: list = []
     md = render_vocabulary_md(
-        homonyms=homonyms, synonyms=synonyms, anchors=anchors,
+        homonyms=homonyms, anchors=anchors,
         corpus_size=len(nodes_with_emb), total_corpus=len(nodes),
     )
     path = vocabulary_path()
@@ -648,5 +609,4 @@ def distill_vocabulary(
         "tokens_scanned": len(contexts),
         "anchors_emitted": len(anchors),
         "homonyms_emitted": len(homonyms),
-        "synonyms_emitted": len(synonyms),
     }

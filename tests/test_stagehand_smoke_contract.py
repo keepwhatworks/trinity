@@ -56,8 +56,8 @@ def test_stagehand_smoke_stays_deterministic_and_local_only():
 
 
 def test_python_packaging_does_not_depend_on_selenium():
+    # pyproject.toml is the only packaging file (the empty setup.py stub went 2026-10-27).
     pyproject = (REPO / "pyproject.toml").read_text(encoding="utf-8").lower()
-    setup_py = (REPO / "setup.py").read_text(encoding="utf-8").lower()
 
     assert "selenium" not in pyproject
-    assert "selenium" not in setup_py
+    assert not (REPO / "setup.py").exists()

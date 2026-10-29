@@ -454,24 +454,28 @@ def _render_portal_files(home: Path, files: dict) -> Path:
     return home / "portal_pages"
 
 
-def test_wrong_type_json_falls_to_raw_not_fake_cards():
+@pytest.mark.parametrize("rel, name, wrong", [
+    # A JSON array where the routing reader expects an object with a by_task_type map.
+    ("scoreboard/routing.json", "routing.json", '[1, 2, 3, "not an object"]'),
+    # An object whose basins is not a list, where the topics reader iterates basins.
+    ("memories/topics.json", "topics.json", '{"basins": "not a list"}'),
+])
+def test_wrong_type_json_falls_to_raw_not_fake_cards(rel, name, wrong):
     """guard_shape_not_just_parse — the CLIENT instance. renderJson inlines the
     raw memory-file string and parses it in the browser; the Readers
-    (renderPicksReader/Routing/Topics) then assume a specific object shape. The
-    server-side wrong-type guards (test_corrupted_state_resilience.py) never reach
-    this client path. A valid-JSON-but-WRONG-TYPE picks.json (a clobbered/corrupt
-    ARRAY) made the picks reader iterate array indices as fake basins — "0"/"1"/"2"
-    cards with dead Mark-wrong/View-routing actions (browser-found 2026-06-02
-    driving a corrupt home). The readerShapeOk guard now falls such a file to the
-    Raw view. Mutation: drop readerShapeOk (readerSupported stays true) → the fake
-    basin cards (pick-veto buttons) reappear and this reds."""
+    (routing / topics) then assume a specific object shape. The server-side
+    wrong-type guards (test_corrupted_state_resilience.py) never reach this
+    client path. A valid-JSON-but-WRONG-TYPE file once made a reader iterate
+    array indices as fake cards (browser-found 2026-06-02 on the since-retired
+    picks.json reader). The readerShapeOk guard falls such a file to the Raw view.
+    Mutation: make readerShapeOk return true → the Reader toggle appears for a
+    shape it cannot render and this reds."""
     home = Path(tempfile.mkdtemp()) / "trinity"
     home.mkdir(parents=True)
     pages = _render_portal_files(home, {
         # A valid lens proves one corrupt file doesn't break the whole viewer.
         "memories/lens.md": "# Lens\n\n- infrastructure over features\n",
-        # WRONG TYPE: a JSON array where the picks reader expects a basin->pattern map.
-        "scoreboard/picks.json": '[1, 2, 3, "not an object"]',
+        rel: wrong,
     })
     sp, browser = _browser()
     try:
@@ -482,14 +486,13 @@ def test_wrong_type_json_falls_to_raw_not_fake_cards():
             "console",
             lambda m: errors.append(m.text) if m.type == "error" else None,
         )
-        page.goto(f"file://{pages / 'memory.html'}?file=picks.json")
+        page.goto(f"file://{pages / 'memory.html'}?file={name}")
         page.wait_for_timeout(1200)
         info = page.evaluate(
             """() => {
               const t = (document.getElementById('content') || document.body).innerText;
               return {
                 stuckLoading: /^Loading/.test(t.trim()),
-                fakeBasinCards: document.querySelectorAll('button.pick-veto').length,
                 hasReaderButton: [...document.querySelectorAll('.view-toggle button')]
                   .some(b => b.textContent.trim() === 'Reader'),
                 rawPre: !!document.querySelector('pre'),
@@ -500,14 +503,10 @@ def test_wrong_type_json_falls_to_raw_not_fake_cards():
         browser.close()
         sp.stop()
 
-    assert not info["stuckLoading"], "the corrupt picks.json view hung on 'Loading…'"
-    assert info["fakeBasinCards"] == 0, (
-        f"the wrong-type (array) picks.json rendered {info['fakeBasinCards']} fake "
-        "basin cards (array indices as basins) — readerShapeOk didn't fall it to Raw"
-    )
+    assert not info["stuckLoading"], f"the corrupt {name} view hung on 'Loading…'"
     assert not info["hasReaderButton"], (
-        "the Reader toggle must be hidden for a wrong-shape file (it can't render it)"
+        f"the Reader toggle must be hidden for a wrong-shape {name} (it can't render it)"
     )
-    assert info["rawPre"], "the wrong-type file must show its raw JSON in a <pre>"
+    assert info["rawPre"], f"the wrong-type {name} must show its raw JSON in a <pre>"
     fatal = [e for e in errors if "favicon" not in e]
-    assert not fatal, f"the corrupt picks.json view threw a JS error: {fatal}"
+    assert not fatal, f"the corrupt {name} view threw a JS error: {fatal}"

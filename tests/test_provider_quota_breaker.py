@@ -122,8 +122,7 @@ class TestStatusDisclosesIt:
         with patch.object(status_mod, "run_doctor", lambda: DoctorReport(checks=[])), \
              patch.object(status_mod, "state_dir", lambda: tmp_path), \
              patch.object(status_mod, "tasks_dir", lambda: tmp_path / "t"), \
-             patch.object(status_mod, "check_all_adapters", lambda: []), \
-             patch.object(status_mod, "check_drift", lambda: []):
+             patch.object(status_mod, "check_all_adapters", lambda: []):
             handle_status(type("A", (), {"as_json": False})())
         out = capsys.readouterr().out
         assert "codex: usage limit reached until 4:12 AM" in out, (

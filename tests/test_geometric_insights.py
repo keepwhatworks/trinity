@@ -19,7 +19,7 @@ def test_outliers_rank_farthest_first(tmp_path, monkeypatch):
     import json
     import trinity_local.state_paths as sp
     monkeypatch.setattr(sp, "state_dir", lambda: tmp_path)
-    monkeypatch.setattr(sp, "trinity_home", lambda: tmp_path, raising=False)
+    monkeypatch.setattr(sp, "trinity_home", lambda: tmp_path)
     (tmp_path / "memories").mkdir(parents=True, exist_ok=True)
     # Two unit-axis basins.
     (tmp_path / "memories" / "topics.json").write_text(json.dumps({"basins": [
@@ -42,7 +42,6 @@ def test_outliers_rank_farthest_first(tmp_path, monkeypatch):
         def __init__(self, text, emb):
             self.text, self.embedding = text, emb
 
-    monkeypatch.setattr(gi, "iter_prompt_nodes", lambda limit=None: [_N(t, e) for t, e in nodes], raising=False)
     # iter_prompt_nodes is imported inside the function from ..memory.store;
     # patch there.
     import trinity_local.memory.store as store
@@ -51,7 +50,7 @@ def test_outliers_rank_farthest_first(tmp_path, monkeypatch):
     # This test exercises the GEOMETRY (farthest-first ranking) given embeddings —
     # not embedding quality — so force past the real-embeddings abstain gate, which
     # otherwise (correctly) abstains when [mlx] isn't installed (e.g. in CI).
-    monkeypatch.setattr("trinity_local.embeddings.mlx_actually_loaded", lambda: True, raising=False)
+    monkeypatch.setattr("trinity_local.embeddings.mlx_actually_loaded", lambda: True)
 
     res = gi.outlier_prompts(top_n=3, min_chars=40)
     assert res["ready"] is True
@@ -69,7 +68,7 @@ def test_outliers_abstain_without_real_embeddings(tmp_path, monkeypatch):
 
     import trinity_local.state_paths as sp
     monkeypatch.setattr(sp, "state_dir", lambda: tmp_path)
-    monkeypatch.setattr(sp, "trinity_home", lambda: tmp_path, raising=False)
+    monkeypatch.setattr(sp, "trinity_home", lambda: tmp_path)
     (tmp_path / "memories").mkdir(parents=True, exist_ok=True)
     (tmp_path / "memories" / "topics.json").write_text(json.dumps({"basins": [
         {"id": "b00", "label": "alpha", "centroid": [1.0, 0.0, 0.0]},
@@ -89,7 +88,7 @@ def test_outliers_abstain_without_real_embeddings(tmp_path, monkeypatch):
     import trinity_local.memory.store as store
     monkeypatch.setattr(store, "iter_prompt_nodes", lambda limit=None: nodes)
     # Force the no-[mlx] state deterministically (don't depend on the runner).
-    monkeypatch.setattr("trinity_local.embeddings.mlx_actually_loaded", lambda: False, raising=False)
+    monkeypatch.setattr("trinity_local.embeddings.mlx_actually_loaded", lambda: False)
 
     res = gi.outlier_prompts(top_n=3, min_chars=40)
     assert res.get("ready") is False, (

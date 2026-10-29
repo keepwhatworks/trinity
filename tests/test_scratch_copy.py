@@ -270,3 +270,20 @@ def test_a_timed_out_command_takes_its_children_with_it(tmp_path):
             return
         time.sleep(0.1)
     raise AssertionError(f"child {pid} survived the timeout")
+
+
+def test_link_env_dirs_links_what_the_copy_left_out(tmp_path):
+    """differential and build_mode both copy the tree and link its environments
+    back; they share this helper. It links an environment that exists, keeps one
+    already in the copy, and invents none."""
+    from trinity_local.scratch import link_env_dirs
+
+    src, work = tmp_path / "src", tmp_path / "work"
+    (src / ".venv" / "bin").mkdir(parents=True)
+    (src / "node_modules").mkdir()
+    (work / "node_modules").mkdir(parents=True)  # already in the copy: kept as is
+    link_env_dirs(src, work)
+    assert (work / ".venv").is_symlink()
+    assert (work / ".venv").resolve() == (src / ".venv").resolve()
+    assert not (work / "node_modules").is_symlink()
+    assert not (work / "venv").exists()

@@ -12,7 +12,7 @@ from pathlib import Path
 # must be TYPE-only honest: NEVER leak a raw `{exc}` carrying an absolute
 # filesystem path, an `[Errno N]`, a Python type name, or a traceback frame. Two
 # independent paths feed user-painted error copy from a raw `str(exc)`:
-#   • the capture host's dispatch error (popup "Failed: <error>" + launchpad
+#   • the capture host's dispatch error (side panel "Failed: <error>" + launchpad
 #     dispatch ribbon) — capture_host._safe_error,
 #   • a council MEMBER's failure detail (`update_member_failure(..., str(exc))`)
 #     which lands in `members.<p>.reasoning_summary` and is painted by the live
@@ -113,6 +113,16 @@ def now_dt() -> datetime:
 def now_iso() -> str:
     """Return the current UTC time as an ISO 8601 string with second precision."""
     return now_dt().replace(microsecond=0).isoformat()
+
+
+def autoscan_disabled() -> bool:
+    """True when TRINITY_AUTOSCAN_DISABLED switches background work off.
+
+    The suite-wide kill switch for the cold-start scan, the stale pass and the
+    embedder wizard; tests, CI and the MCP-stdio safe recipe set it. Empty, "0"
+    and "false" leave background work on; any other value turns it off.
+    """
+    return os.environ.get("TRINITY_AUTOSCAN_DISABLED", "").strip() not in ("", "0", "false", "False")
 
 
 def stable_id(prefix: str, *parts: str) -> str:

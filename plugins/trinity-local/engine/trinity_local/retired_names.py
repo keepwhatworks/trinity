@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 
-RetirementKind = Literal["cli", "mcp_tool", "module", "file", "config_field", "concept"]
+RetirementKind = Literal["cli", "mcp_tool", "module", "function", "file", "config_field", "concept"]
 
 
 @dataclass(frozen=True)
@@ -164,6 +164,93 @@ RETIRED: dict[str, RetirementRecord] = {
         ),
         kind="module",
         artifact_persists=True,
+    ),
+    # ── 2026-10-26: what read picks.json after its writer and router were gone ──
+    # The memory viewer stopped showing picks.json (council_9b8da321624a8f0f,
+    # amd_0612): basin ids are redrawn on every lens build, and 23 of 24 frozen keys
+    # had collided with current ids, so the views put old winners on unrelated
+    # topics. That left the code below with no production caller.
+    "memory viewer picks.json views": RetirementRecord(
+        name="memory viewer picks.json views",
+        retired_at="2026-10-26",
+        commit="484539db",
+        replacement="the launchpad's live per-task-type routing card (routing.json)",
+        reason=(
+            "The picks Reader, the topology basin detail's 'Routes to <model>' link, its "
+            "screen-reader clause, the pick-basin ring and the 'Routing rule:' tooltip "
+            "joined a tally frozen 2026-08-11 to basin ids redrawn on every lens build"
+        ),
+        kind="concept",
+    ),
+    "src/trinity_local/cortex.py": RetirementRecord(
+        name="src/trinity_local/cortex.py",
+        retired_at="2026-10-26",
+        commit="dead-routing-2026-10-26",
+        replacement="(none — nothing reads picks.json)",
+        reason=(
+            "Its last function, load_routing_patterns, read picks.json for the E2 "
+            "degeneracy check and a launchpad basin bridge; both had no consumer left"
+        ),
+        kind="module",
+        artifact_persists=True,
+    ),
+    "trinity_local.lens_routing per-basin router": RetirementRecord(
+        name="trinity_local.lens_routing per-basin router",
+        retired_at="2026-10-26",
+        commit="dead-routing-2026-10-26",
+        replacement="internal/experiments/frozen_basin_routing.py (compute_basin_routing, frozen)",
+        reason=(
+            "compute_basin_routing, pick_routes, thompson_route/_thompson_masses/"
+            "thompson_eligible, classify_basins, prune_orphan_rules, _load_council_records, "
+            "consolidate_via_lens_basins, _current_models and the WINNER_MARGIN_FLOOR / "
+            "MIN_EFFECTIVE_N / MIN_COUNT / HALF_LIFE_DAYS / STALE_MODEL_DECAY / prune floors "
+            "outlived the router's 2026-08-11 removal with tests as their only callers. The "
+            "tally moved, verbatim, to internal/experiments because the pre-registered "
+            "reopen condition in lens_routing.py re-runs T4b with it; place_query, "
+            "scope_for_query and council_tensions stay"
+        ),
+        kind="function",
+    ),
+    "degeneracy E2 cortex-picks check": RetirementRecord(
+        name="degeneracy E2 cortex-picks check",
+        retired_at="2026-10-26",
+        commit="dead-routing-2026-10-26",
+        replacement="",
+        reason=(
+            "Flagged web-era slugs in picks.json for an `ask` router removed 2026-08-11; "
+            "with no reader left, a finding had no consumer and no command that cleared it"
+        ),
+        kind="concept",
+    ),
+    "trinity_local.launchpad_data._task_to_topology_basin": RetirementRecord(
+        name="trinity_local.launchpad_data._task_to_topology_basin",
+        retired_at="2026-10-26",
+        commit="dead-routing-2026-10-26",
+        replacement="",
+        reason="A picks.json -> topology basin-id bridge with no caller outside its own tests",
+        kind="function",
+    ),
+    "trinity_local.me.geometry.compute_basin_geometry": RetirementRecord(
+        name="trinity_local.me.geometry.compute_basin_geometry",
+        retired_at="2026-10-26",
+        commit="dead-routing-2026-10-26",
+        replacement="",
+        reason=(
+            "Built the geometric prior for the deleted cortex engine's flagship prompt; no "
+            "caller, and its `from .embeddings import embed` named a module that does not exist "
+            "inside me/, so it only ever returned its empty fallback. Its underscore aliases "
+            "and the unused MANIFOLD_DIM_SATURATION went with it; the math helpers stay for "
+            "basin_split"
+        ),
+        kind="function",
+    ),
+    "trinity_local.state_paths.cortex_routing_patterns_path": RetirementRecord(
+        name="trinity_local.state_paths.cortex_routing_patterns_path",
+        retired_at="2026-10-26",
+        commit="dead-routing-2026-10-26",
+        replacement="state_paths.picks_path",
+        reason="A back-compat alias whose only caller was the retired cortex.py",
+        kind="function",
     ),
     "src/trinity_local/cortex_geometry.py": RetirementRecord(
         name="src/trinity_local/cortex_geometry.py",
@@ -353,6 +440,60 @@ RETIRED: dict[str, RetirementRecord] = {
         replacement="(none) — a local model can still be configured as a council member (providers mlx / ollama)",
         reason="Auto-discovered Ollama / MLX models into ask's routing pool; its only caller was "
                "ask's local dispatch, deleted with ask.",
+        kind="module",
+    ),
+    "drift.py": RetirementRecord(
+        name="drift.py",
+        retired_at="2026-10-27",
+        commit="",
+        replacement="(none)",
+        reason="check_drift read ~/.trinity/outcomes.jsonl, which nothing has written since the "
+               "watcher subsystem's append_outcome callers went (2026-05-18), so status's drift "
+               "line could never fire. `status --json` drops its drift_alerts count with it.",
+        kind="module",
+    ),
+    "merges.py": RetirementRecord(
+        name="merges.py",
+        retired_at="2026-10-27",
+        commit="",
+        replacement="(none)",
+        reason="An append-only log of 'tacit-record acts' (~/.trinity/me/merges.jsonl) whose only "
+               "writer, record_merge, lost its last callers with the user-pick layer (b201722b, "
+               "2026-06-05). Its summary reached the launchpad as the mergeLog page key, which no "
+               "page script read.",
+        kind="module",
+    ),
+    "me/exposures.py": RetirementRecord(
+        name="me/exposures.py",
+        retired_at="2026-10-28",
+        commit="",
+        replacement="(none)",
+        reason="The behavioral tier's exposure lane (council_9f4b3ab0a9b640c2, 2026-07-14): per-provider "
+               "losses over exposures with Wilson intervals. Nothing outside its tests ever read it; the "
+               "founder retired it in the coherence sweep (W8).",
+        kind="module",
+    ),
+    "holdout_scorer.score_holdout": RetirementRecord(
+        name="holdout_scorer.score_holdout",
+        retired_at="2026-10-28",
+        commit="",
+        replacement="(none) — holdout_scorer.one_sided_sign_p stays for preference_collapse and regression_gate",
+        reason="A draft holdout scorer for the lens (2026-06-02): a thread-level sign test of lens@T "
+               "against recency and basin baselines, returning flip_recommended. Its real-data feed was "
+               "only sketched, so nothing ever called it. Retired with ItemPrediction, PairedVerdict, "
+               "paired_thread_sign_test, HoldoutScorecard and its pre-registered floors.",
+        kind="function",
+        artifact_persists=False,
+    ),
+    "dispatch_registry.py": RetirementRecord(
+        name="dispatch_registry.py",
+        retired_at="2026-10-27",
+        commit="",
+        replacement="capture_host.ACTION_ALLOWLIST, the actions the Native Messaging host enforces",
+        reason="A second, underscored action registry the capture host never enforced: "
+               "make_dispatch_action only validated a kind and launchpad_data discarded the result; "
+               "command_for_dispatch (which still built the retired `council-launch` verb) had only "
+               "test callers; docs/historical/launcher-patterns.md and a test pinned its set as the host's.",
         kind="module",
     ),
     "launchpad Personalization column": RetirementRecord(
@@ -986,6 +1127,18 @@ RETIRED: dict[str, RetirementRecord] = {
         commit="702da53",
         replacement="status",
         reason="`status` absorbed the role; one canonical health-check entry",
+        kind="cli",
+    ),
+    # Recorded 2026-10-26: the retirement lived only under its module path
+    # (src/trinity_local/commands/cortex.py), so the verb got argparse's invalid-choice error
+    # instead of this hint, and three surfaces kept telling users to run it (the memory
+    # viewer's routing view, lens-health's known-issues fix, distill's cold-start reason).
+    "consolidate": RetirementRecord(
+        name="consolidate",
+        retired_at="2026-08-11",
+        commit="a184e15a",
+        replacement="",
+        reason="Nothing reads the routing picks it wrote; routing views refill from your councils on their own",
         kind="cli",
     ),
     "watch-once": RetirementRecord(

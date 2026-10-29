@@ -48,6 +48,58 @@ class TestNoBlockingTestIsNoGreen:
         out = _verify(tmp_path, [{"id": "t", "kind": "test", "statement": "s", "command": "false"}])
         assert out["triage"] == "STOP"
 
+    @pytest.mark.parametrize("flag, value", [("advisory", "false"), ("blocking", "true"),
+                                             ("guard", "false"), ("advisory", 0), ("blocking", 1)])
+    def test_a_flag_that_is_not_a_bool_is_refused(self, tmp_path, flag, value):
+        # bool("false") is True: "advisory": "false" made this red test advisory, so it read READ.
+        with pytest.raises(ValueError, match=f"{flag} must be true or false"):
+            _verify(tmp_path, [{"id": "t", "kind": "test", "statement": "s", "command": "false",
+                                flag: value}])
+
+    def test_pytest_that_ran_nothing_is_no_result_not_red(self, tmp_path):
+        # A mistyped test path (pytest exit 4) or a file with no tests (exit 5) ran nothing,
+        # and read "a relevant test is red" -> STOP (twice on 2026-10-26).
+        import sys
+        empty = tmp_path / "test_empty.py"
+        empty.write_text("x = 1\n", encoding="utf-8")
+        base = f"{sys.executable} -m pytest -q -p no:cacheprovider "
+        for cmd in (base + str(tmp_path / "test_missing.py"), base + str(empty)):
+            out = _verify(tmp_path, [{"id": "t", "kind": "test", "statement": "s", "command": cmd}])
+            assert out["triage"] == "READ", (cmd, out["reason"])
+            assert out["kernel"]["runs"][0]["could_not_run"] is True, out["kernel"]
+
+    def test_a_real_pytest_failure_and_another_programs_exit_4_still_stop(self, tmp_path):
+        import sys
+        red = tmp_path / "test_red.py"
+        red.write_text("def test_x():\n    assert False\n", encoding="utf-8")
+        # Programs that print pytest's own words and exit 4, invoked with no shell operator,
+        # so only the which-program check can tell them from a real pytest run.
+        fake_sh = tmp_path / "fake.sh"
+        fake_sh.write_text("echo no tests ran\nexit 4\n", encoding="utf-8")
+        fake_py = tmp_path / "fake.py"
+        fake_py.write_text("print('no tests ran')\nraise SystemExit(4)\n", encoding="utf-8")
+        for cmd in (f"{sys.executable} -m pytest -q -p no:cacheprovider {red}", "sh -c 'exit 4'",
+                    f"sh {fake_sh} pytest", f"{sys.executable} {fake_py} pytest",
+                    # Codex's verify read: a pytest WORD is not a pytest run.
+                    "sh -c 'echo no tests ran; exit 4' pytest", "echo pytest no tests ran; exit 4",
+                    f"{sys.executable} -m pytest -q -p no:cacheprovider {tmp_path / 'gone.py'} && sh -c 'exit 4'"):
+            out = _verify(tmp_path, [{"id": "t", "kind": "test", "statement": "s", "command": cmd}])
+            assert out["triage"] == "STOP", (cmd, out["reason"])
+
+    def test_a_guard_whose_test_path_is_gone_still_stops(self, tmp_path):
+        # A renamed or deleted guard test must not quietly stop guarding.
+        import sys
+        cmd = f"{sys.executable} -m pytest -q -p no:cacheprovider {tmp_path / 'test_gone.py'}"
+        out = _verify(tmp_path, [{"id": "g", "kind": "test", "statement": "s", "command": cmd, "guard": True},
+                                 {"id": "t", "kind": "test", "statement": "s", "command": "true"}])
+        assert out["triage"] == "STOP", out["reason"]
+
+    def test_a_null_flag_is_unset_and_a_red_test_still_stops(self, tmp_path):
+        # Hosts send null for optional fields they did not set; bool(None) made this non-blocking.
+        out = _verify(tmp_path, [{"id": "t", "kind": "test", "statement": "s", "command": "false",
+                                  "blocking": None, "advisory": None, "guard": None}])
+        assert out["triage"] == "STOP"
+
 
 def _fake_reader(votes_for):
     def fake(name, prompt, cwd, config, effort):
@@ -71,6 +123,20 @@ class TestVacuousPassIsNotAPass:
         monkeypatch.setattr(V, "_dispatch", _fake_reader(["j"]))
         panel, _ = V.read_panel(crit, "diff", "ctx", tmp_path)
         assert panel.votes and all(panel.votes.values())
+
+    def test_it_is_not_reported_as_an_objection(self, monkeypatch, tmp_path):
+        """2026-10-26: two readers voted PASS on every item, none of them blocking, and the
+        verdict read "all 2 reviewing labs objected". Not passing is not objecting."""
+        from trinity_local.verify_rule import Kernel, triage
+        crit = [Criterion.from_dict({"id": "j", "kind": "judgment", "statement": "s",
+                                     "blocking": False})]
+        monkeypatch.setattr(V, "_dispatch", _fake_reader(["j"]))
+        panel, _ = V.read_panel(crit, "diff", "ctx", tmp_path)
+        assert panel.ran and panel.gated is False
+        for kernel in (Kernel(ran=True, relevant=True, green=True), Kernel.not_run()):
+            reason = triage(kernel, panel).reason
+            assert "objected" not in reason and "agreed" not in reason, reason
+            assert "no judgment item is blocking" in reason, reason
 
 
 class TestEffortOnlyRaises:

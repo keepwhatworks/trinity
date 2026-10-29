@@ -29,12 +29,10 @@ to ``{{ threadTaskTextDisplay.slice(0, 200) }}…`` and this reds with count == 
 
 from __future__ import annotations
 
-import functools
-import http.server
-import threading
 from urllib.parse import quote
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -54,15 +52,6 @@ _OPEN_BAND_TASK = (
 assert 240 < len(_OPEN_BAND_TASK) <= 600, len(_OPEN_BAND_TASK)
 
 
-def _serve(directory) -> tuple[http.server.HTTPServer, int]:
-    handler = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=str(directory)
-    )
-    httpd = http.server.HTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
-
-
 def test_live_council_open_band_task_renders_question_once(tmp_path, monkeypatch):
     """A 241–600 char task (open-by-default ``<details>``) must render the
     question's leading text ONCE, not duplicated by a teaser ``<summary>`` slice.
@@ -78,7 +67,7 @@ def test_live_council_open_band_task_renders_question_once(tmp_path, monkeypatch
     write_portal_html()  # vendor assets the live page references
     write_live_council_page()
 
-    httpd, port = _serve(tmp_path)
+    httpd, port = serve_directory(tmp_path)
     errors: list[str] = []
     try:
         with sync_playwright() as p:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import html
 import json
 from pathlib import Path
 
@@ -18,17 +17,7 @@ PETITE_VUE_IIFE = "../portal_pages/vendor/petite-vue.iife.js"
 # the single source instead of hand-maintaining a second copy. launchpad_data
 # doesn't import council_review, so this module-level import can't cycle.
 from .launchpad_data import COUNCIL_LOADING_MESSAGES as LIVE_COUNCIL_LOADING_MESSAGES
-# The macOS-Shortcut dispatch tier retired 2026-05-17 (Native Messaging
-# via the Chrome extension's capture_host took over). These constants
-# stay as harmless data-attr defaults the JS dispatch knows to skip
-# when the URL is empty. See retired_names.py: `shortcuts_integration`.
-DEFAULT_SHORTCUT_NAME = "Trinity Dispatch"
-_EMPTY_SHORTCUT_URL = ""
 from .state_paths import review_pages_dir
-
-
-def _esc(value: str | None) -> str:
-    return html.escape(value or "")
 
 
 def write_unified_council_page(bundle: PromptBundle, outcome: CouncilOutcome) -> Path:
@@ -62,7 +51,6 @@ def render_live_council_page() -> str:
         "statusScriptBaseUrl": "../portal_pages/status",
         "outcomeScriptBaseUrl": "../council_outcomes",
         "loadingMessages": LIVE_COUNCIL_LOADING_MESSAGES,
-        "shortcutName": DEFAULT_SHORTCUT_NAME,
         "launchpadUrl": "../portal_pages/launchpad.html",
         "reviewPagesBaseUrl": ".",
         # Threaded so __TRINITY_DISPATCH__ on this page can route
@@ -385,8 +373,7 @@ def render_live_council_page() -> str:
          the launch-status card (and the document) wider than the viewport:
          the "Council failed" line streamed off-screen right and the 320px live
          companion horizontal-scrolled to ~1535px. Same class the launchpad
-         running card (.provider-status-detail) and the popup .panel-tip already
-         break; this was the asymmetric live-page miss. */
+         running card (.provider-status-detail) already breaks; this was the asymmetric live-page miss. */
       overflow-wrap: anywhere;
       min-width: 0;
     }}
@@ -972,7 +959,7 @@ def render_live_council_page() -> str:
       const normalized = normalizeProviderSlug(String(provider).trim().toLowerCase());
       // #275: provider/winner labels read as the MODEL BRAND (Claude / GPT /
       // Gemini), matching the launchpad panel + the eval surfaces (folded in
-      // 2026-06-06, founder call) — so a council launched in the popup reads the
+      // 2026-06-06, founder call) — so a council launched from the extension reads the
       // same brand here on its review page, not the old harness trio.
       const labels = {{
         claude: 'Claude',
@@ -1366,7 +1353,7 @@ def render_live_council_page() -> str:
             this.segments.push(seg);
             this._loadOutcomeIntoSegment(seg, params.councilId);
           }} else {{
-            // No URL params. Over file:// (the popup's "Open council page" path)
+            // No URL params. Over file:// (the extension's "Open council page" path)
             // macOS strips the ?status_token=… query, so the page lands bare and
             // renders nothing (founder report 2026-06-12). Recover which council
             // to show from the sidecar the host wrote next to this page.

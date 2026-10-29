@@ -1,17 +1,11 @@
-"""Tick #34 — launchpad recent-card → topology chip.
+"""The launchpad's topics.json basin cache (`_load_topics_basins`).
 
-The card already had → pick and → routing chips (tick #15). The
-third chip → topology closes the loop from the launchpad directly,
-sparing the bounce through picks. The Python-side centroid match
-must agree with the JS-side match in memory_viewer (same threshold,
-same first-task-wins rule) — these tests guard the Python half.
+This file also held the picks.json -> topology bridge tests
+(`_task_to_topology_basin`) until that bridge was retired 2026-10-26 with no caller.
 """
 from __future__ import annotations
 
 from trinity_local.me import basins as _mb
-
-import json
-from pathlib import Path
 
 import pytest
 
@@ -20,97 +14,7 @@ import pytest
 def isolated_home(tmp_path, monkeypatch):
     monkeypatch.setenv("TRINITY_HOME", str(tmp_path))
     (tmp_path / "memories").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "cortex").mkdir(parents=True, exist_ok=True)
     return tmp_path
-
-
-def _seed_topics(home: Path, basins: list[dict]) -> None:
-    (home / "memories" / "topics.json").write_text(
-        json.dumps({"basins": basins}), encoding="utf-8"
-    )
-
-
-def _seed_picks(home: Path, patterns: dict) -> None:
-    # cortex.load_routing_patterns reads from picks_path() which today
-    # resolves to ~/.trinity/scoreboard/picks.json (the cortex_routing_
-    # patterns_path is a back-compat alias).
-    (home / "scoreboard").mkdir(parents=True, exist_ok=True)
-    (home / "scoreboard" / "picks.json").write_text(
-        json.dumps(patterns), encoding="utf-8"
-    )
-
-
-class TestTaskToTopologyBasin:
-    """POST-COLLAPSE (#298): the routing picks ARE keyed by the lens basin id
-    (b00..), the SAME id space topics.json uses, so the picks→topology bridge is
-    a plain identity match (a pick links to the topology basin of the same id).
-    These pin the contract: identity, presence-gating, graceful degradation."""
-
-    def test_cold_install_returns_empty(self, isolated_home):
-        from trinity_local.launchpad_data import _task_to_topology_basin
-        # No topics.json, no picks → empty map (must NOT raise).
-        assert _task_to_topology_basin() == {}
-
-    def test_no_picks_returns_empty(self, isolated_home):
-        # Topics exist but no picks → still empty.
-        _seed_topics(isolated_home, [
-            {"id": "b00", "centroid": [1.0, 0.0, 0.0]},
-        ])
-        from trinity_local.launchpad_data import _task_to_topology_basin
-        assert _task_to_topology_basin() == {}
-
-    def test_match_returns_basin_for_aligned_centroid(self, isolated_home):
-        # A pick keyed b00 bridges to the topology basin b00 (identity).
-        _seed_topics(isolated_home, [
-            {"id": "b00", "centroid": [1.0, 0.0, 0.0]},
-            {"id": "b01", "centroid": [0.0, 1.0, 0.0]},
-        ])
-        _seed_picks(isolated_home, {
-            "b00": _minimal_pattern_payload("b00"),
-        })
-        from trinity_local.launchpad_data import _task_to_topology_basin
-        result = _task_to_topology_basin()
-        assert result == {"b00": "b00"}
-
-    def test_pick_basin_absent_from_topics_drops_match(self, isolated_home):
-        # A pick whose basin id has no corresponding topology basin → no bridge.
-        _seed_topics(isolated_home, [
-            {"id": "b00", "centroid": [1.0, 0.0, 0.0]},
-            {"id": "b01", "centroid": [0.0, 1.0, 0.0]},
-        ])
-        _seed_picks(isolated_home, {
-            "b99": _minimal_pattern_payload("b99"),  # not in topics
-        })
-        from trinity_local.launchpad_data import _task_to_topology_basin
-        assert _task_to_topology_basin() == {}
-
-    def test_malformed_pick_without_winner_skipped(self, isolated_home):
-        # A legacy/malformed pick (no `winner`) does not bridge even if its
-        # basin id matches a topology basin.
-        _seed_topics(isolated_home, [
-            {"id": "b00", "centroid": [1.0, 0.0, 0.0]},
-        ])
-        _seed_picks(isolated_home, {
-            "b00": {"count": 5, "margin": 0.8},  # no winner
-        })
-        from trinity_local.launchpad_data import _task_to_topology_basin
-        assert _task_to_topology_basin() == {}
-
-    def test_multiple_picks_each_bridge_their_own_basin(self, isolated_home):
-        # Each live pick bridges to the topology basin of the same id.
-        _seed_topics(isolated_home, [
-            {"id": "b00", "centroid": [1.0, 0.0, 0.0]},
-            {"id": "b01", "centroid": [0.0, 1.0, 0.0]},
-        ])
-        _seed_picks(isolated_home, {
-            "b00": _minimal_pattern_payload("b00"),
-            "b01": _minimal_pattern_payload("b01"),
-        })
-        from trinity_local.launchpad_data import _task_to_topology_basin
-        result = _task_to_topology_basin()
-        assert result == {"b00": "b00", "b01": "b01"}
-
-
 
 
 class TestTopicsBasinsCache:
@@ -225,26 +129,3 @@ class TestTopicsBasinsCache:
         assert _mb._TOPICS_BASINS_CACHE is None, (
             "missing file should clear the cache, not keep stale data"
         )
-
-
-# TestRecentCardTopologyTooltip + TestRecentCardTopologyChip removed
-# 2026-05-21 in commit e5ef20c. The recent-card cross-memory chip strip
-# (→ pick / → routing / → topology + PICK PNG / ROUTING PNG / SHARE
-# PNG share buttons) was deleted in commit 8f1fd95 per user direction
-# "what are the buttons under it doing? remove them". The data layer
-# the topology chip read from (_task_to_topology_basin,
-# _topology_basin_labels) still exists and is exercised by
-# TestTaskToTopologyBasin + TestTopicsBasinsCache above — those keep
-# the underlying mechanism guarded. Only the now-deleted chip surface
-# is sunset.
-
-
-def _minimal_pattern_payload(basin_id: str) -> dict:
-    """A post-collapse (#298) picks.json entry — the flat lens-basin tally."""
-    return {
-        "winner": "claude",
-        "count": 5,
-        "margin": 0.7,
-        "n_episodes": 5,
-        "evidence": [],
-    }

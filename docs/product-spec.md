@@ -27,10 +27,10 @@ Trinity **convenes Claude, ChatGPT, and Gemini in a structured council** when yo
 1. **Trust layer** (the value): *"models agreed on X, disagreed on Y, here's why."*
 2. **Verifier** (the engine): chairman synthesis emitting structured Routing JSON.
 3. **Personal preference graph** (the differentiator): every council's chairman pick (lens-governed, so it already reflects the user's taste) aggregates on demand into a `task_type → strongest provider` table. No durable state file. The council outcomes directory IS canonical. Post task #134 (rating retirement 2026-05-22) `compute_personal_routing_table()` aggregates from `routing_label.winner` directly, with no user-rating step.
-4. **Router** (the implementation): `route()` / chain mode / cost optimization.
+4. **Router**: not built, and not planned. Per-context routing was measured and killed four times, most recently by the oracle-headroom ceiling test; the product exposes the judgment signal instead of routing on it.
 5. **Closed loop with state and replay**: the v2 product. Agents that don't drift over long horizons because Trinity retains state and can replay failures.
 
-The router is the implementation. The verifier is the value. The personal preference graph is the differentiator. The closed loop with state and replay is the product that doesn't exist yet.
+The verifier is the value. The personal preference graph is the differentiator. The closed loop with state and replay is the product that doesn't exist yet.
 
 **Reading list (research context, not current shipped identity):** RouteLLM (router baseline), LLM-Blender (generator-verifier asymmetry), Conductor / Fugu (recursive self-orchestration). These are the research patterns Trinity Local's *evidence ledger* generates supervision signal for. When a learned controller is eventually trained against the ledger (Phase 9 future work, not in this repo), the ledger is the right shape to feed it. **Today's repo ships the ledger and the synthesizer, not the controller.**
 
@@ -41,8 +41,8 @@ The router is the implementation. The verifier is the value. The personal prefer
 ### Load-bearing commitments (non-negotiable)
 
 1. **No LLM calls outside councils.** Ingest, embedding, theme assignment, search ranking, and clustering use pure heuristics + metadata. The only LLM invocations Trinity makes are council member calls and chairman synthesis. Both ride the user's existing CLI subscriptions.
-2. **Prompt content never uploads.** Even with future opt-in aggregation, only categorical routing labels (`task_type`, `provider_scores`, `winner`) leave the machine. `lens` content is treated as sensitive derived prompt content. It stays local by default.
-3. **Local-first inference.** Phase 9's learned router runs on the user's hardware. No hosted controller, no per-call API billing.
+2. **Prompt content never uploads.** Only categorical labels (`task_type`, `winner`, `member_count`, `mode`, and once per install `activation_source` + `surface`) leave the machine: anonymous, on by default, off with one command (founder decision 2026-10-11). `lens` content is treated as sensitive derived prompt content and stays local.
+3. **Local-first inference.** No hosted controller, no per-call API billing. There is no learned router: per-context routing was tested and killed four times.
 4. **Consumer subscriptions as cost basis.** Trinity dispatches via the user's CLI subscriptions (Claude Code, Codex CLI, Antigravity). If anyone proposes a hosted API tier, push back hard. That destroys both the cost basis and the privacy commitment. (Cowork, Anthropic Managed Agents, is an *ingest source* via `parse_cowork_session`, not a dispatch target. The live `config.json` providers dict is `claude / codex / antigravity / mlx`.)
 5. **Hosted components may only be registries, not controllers.** Trinity may host public registry metadata, public cold-start priors, and curated public/famous persona documents. It must not host ordinary users' private `/lens.md`, raw prompts, transcript derivatives, per-call inference, or a routing controller.
 
@@ -314,11 +314,11 @@ over internal refactoring during the launch phase.
 
 ### Telemetry model
 
-Public benchmarking should use an **opt-in summary-sharing model**, not raw transcript upload:
+Anonymous summary telemetry, never raw transcript upload:
 
-- Consent during install (default off)
+- On by default, off with `trinity-local telemetry-disable` (founder decision 2026-10-11, which replaced opt-in)
 - Editable later from launchpad settings
-- Categorical routing labels only (`task_type`, `provider_scores`, `winner`, `routing_lesson`)
+- Categorical labels only: `task_type`, `winner`, `member_count`, `mode`, and once per install `activation_source` + `surface` (`telemetry.DISCLOSED_EVENT_PARAMS`)
 - No raw prompts, outputs, file paths, or repo contents. Ever.
 
 See [telemetry-spec.md](telemetry-spec.md) for the event schema and upload cadence.

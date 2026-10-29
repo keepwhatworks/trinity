@@ -16,6 +16,7 @@ A fix to the shape-guard now lands in both loops at once. `import_provider_memor
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Union
@@ -94,3 +95,48 @@ def packaged_prompt(name: str) -> Path | None:
         return Path(str(ref)) if ref.is_file() else None
     except (ModuleNotFoundError, FileNotFoundError):
         return None
+
+
+# The heading in each packaged prompt doc that starts the paste-ready body.
+PROMPT_BODY_MARKER = "## The prompt — copy below this line"
+
+
+def print_provider_prompt(doc_name: str, env_var: str, *, with_instructions: bool) -> int:
+    """Print a packaged provider prompt for `lens-prompt` / `eval-prompt`.
+
+    `$env_var` overrides the packaged doc. By default prints only the body after
+    PROMPT_BODY_MARKER, so `lens-prompt | pbcopy` is paste-ready;
+    `with_instructions` prints the whole doc. Returns the exit code.
+    """
+    override = os.environ.get(env_var)
+    if override:
+        p = Path(override).expanduser()
+        doc = p if p.exists() else None
+    else:
+        doc = packaged_prompt(doc_name)
+    if doc is None:
+        print(
+            f"error: couldn't find {doc_name}. Set {env_var} to its absolute "
+            "path if you're running from a non-checkout install.",
+            file=sys.stderr,
+        )
+        return 1
+    text = doc.read_text(encoding="utf-8")
+    if with_instructions:
+        sys.stdout.write(text)
+        return 0
+    idx = text.find(PROMPT_BODY_MARKER)
+    if idx < 0:
+        # The doc lost its marker: print it whole rather than nothing, and say so.
+        print(
+            "warning: prompt-body marker not found in doc; emitting full file. "
+            f"Update {doc_name} to restore the '{PROMPT_BODY_MARKER}' anchor.",
+            file=sys.stderr,
+        )
+        sys.stdout.write(text)
+        return 0
+    # Skip past the marker line itself + the blank line after it.
+    after = text[idx:].split("\n", 2)
+    body = after[-1] if len(after) == 3 else text[idx:]
+    sys.stdout.write(body)
+    return 0

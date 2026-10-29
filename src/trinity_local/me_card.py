@@ -30,9 +30,6 @@ from .share_card_base import (
     save_png,
 )
 
-# Card-specific accent — the sage tint behind the paired-tension block.
-COLOR_LENS_BG = (37, 88, 71, 12)
-
 
 def _text(value: Any) -> str | None:
     """Coerce a corpus/disk-derived lens field to a renderable string.
@@ -280,9 +277,7 @@ def render_me_card(data: CardLensData) -> bytes:
     # Twitter has the URL to follow. We used to append LANDING_URL again here,
     # which rendered the domain twice on one line ("…keepwhatworks.com   ·
     # keepwhatworks.com") — found 2026-05-31 by eyeballing the generated PNG.
-    # The other cards show it twice ON PURPOSE but in distinct roles (Install
-    # CTA block vs wordmark, via draw_footer); the me-card has only the
-    # wordmark line, so once is correct.
+    # The me-card has only the wordmark line, so once is correct.
     draw_wordmark(draw, font=footer, margin=margin)
 
     # Bottom-left orderings preview. 100-persona audit P96 fix: prior

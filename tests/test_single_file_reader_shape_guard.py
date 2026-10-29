@@ -8,12 +8,12 @@ render path; these run elsewhere and were unverified:
     hand-edit) crashed _coerce_stale_running_status's `.get` with an uncaught
     AttributeError (verified: `'list' object has no attribute 'get'`). This is USER
     STATE under ~/.trinity, written at runtime — genuinely corruptible.
-  * global_benchmarks.get_global_benchmarks / get_reference_evals_meta — read the
+  * global_benchmarks.get_global_benchmarks — reads the
     bundled data/reference_evals.json; `.get` past the `except (JSONDecodeError,
     OSError)` crashed on a non-dict. Lower risk (bundled data ships valid), but the
     `fetched_at` field implies it can be refreshed → a bad refresh could corrupt it.
 
-Both now degrade (None / hardcoded fallback / {}). Mutation-proven: drop the relevant
+Both now degrade (None / hardcoded fallback). Mutation-proven: drop the relevant
 isinstance guard → the non-dict file crashes → reds.
 """
 from __future__ import annotations
@@ -61,5 +61,3 @@ def test_global_benchmarks_non_dict_degrades(tmp_path, monkeypatch, bad):
     # get_global_benchmarks falls back to the hardcoded baseline (non-empty dict).
     cats = gb.get_global_benchmarks()
     assert isinstance(cats, dict) and cats, "should fall back to the hardcoded baseline, not crash"
-    # get_reference_evals_meta returns {} on a non-dict.
-    assert gb.get_reference_evals_meta() == {}

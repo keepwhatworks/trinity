@@ -120,6 +120,38 @@ class TestDetectAvailableSources:
         # No file matching *.jsonl → not picked up
         assert "claude" not in cold_start.detect_available_sources()
 
+    def test_an_agy_only_home_gets_a_first_run_scan(self, tmp_path, monkeypatch):
+        """antigravity was ingested from 2026-05-30 but missing from the first-run list until
+        2026-10-27, so a user whose only CLI was agy got no first-run scan at all."""
+        from trinity_local import cold_start
+
+        fake_home = tmp_path / "fake_home"
+        logs = fake_home / ".gemini" / "antigravity-cli" / "brain" / "conv-1" / ".system_generated" / "logs"
+        logs.mkdir(parents=True)
+        (logs / "transcript.jsonl").write_text("{}\n", encoding="utf-8")
+        monkeypatch.setattr("trinity_local.watch_runtime.Path.home", lambda: fake_home)
+
+        assert cold_start.detect_available_sources() == ["antigravity"]
+
+    def test_every_ingest_source_has_a_transcript_root(self):
+        """The first-run scan, ingest-recent and incremental ingest share one source list;
+        each entry must be a source the scanner can locate."""
+        from trinity_local.registry import CLI_INGEST_SOURCES, INGEST_SOURCES
+        from trinity_local.watch_runtime import _source_root
+
+        for source in INGEST_SOURCES:
+            _source_root(source)   # raises ValueError for a source it cannot read
+        assert set(CLI_INGEST_SOURCES) <= set(INGEST_SOURCES)
+        assert "antigravity" in CLI_INGEST_SOURCES and not any(
+            s.startswith("browser_") for s in CLI_INGEST_SOURCES)
+
+    def test_ingest_recent_accepts_every_ingest_source(self):
+        from trinity_local.main import build_parser
+        from trinity_local.registry import INGEST_SOURCES
+
+        argv = ["ingest-recent"] + [a for s in INGEST_SOURCES for a in ("--source", s)]
+        assert build_parser().parse_args(argv).sources == list(INGEST_SOURCES)
+
 
 class TestKickColdStartScan:
     def test_returns_none_when_not_cold_start(self, isolated_home):

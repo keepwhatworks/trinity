@@ -1,5 +1,5 @@
 """#264 — MCP protocol features beyond tools/resources/sampling: logging,
-progress, roots, elicitation, and prompts.
+progress, elicitation, and prompts.
 
 The host-side helpers (mcp_features) run from worker threads and schedule onto
 the captured event loop, so the session-active tests spin a real loop in a
@@ -21,7 +21,6 @@ class _FakeSession:
     def __init__(self):
         self.logs: list = []
         self.progress: list = []
-        self.roots_result = None
         self.elicit_result = None
 
     async def send_log_message(self, *, level, data, logger=None, related_request_id=None):
@@ -31,9 +30,6 @@ class _FakeSession:
         self, *, progress_token, progress, total=None, message=None, related_request_id=None
     ):
         self.progress.append((progress_token, progress, total, message))
-
-    async def list_roots(self):
-        return self.roots_result
 
     async def elicit(self, *, message, requestedSchema, related_request_id=None):
         return self.elicit_result
@@ -186,28 +182,6 @@ class TestProgress:
         assert live_session.progress
         token, prog, total, msg = live_session.progress[0]
         assert token == "tok-1" and prog == 0.5 and msg == "half"
-
-
-# ─── Roots ──────────────────────────────────────────────────────────
-
-
-class TestRoots:
-    def test_roots_degrade_to_empty_without_session(self):
-        from trinity_local import mcp_features
-
-        assert mcp_features.discover_roots() == []
-
-    def test_roots_parses_file_uris(self, live_session):
-        from trinity_local import mcp_features
-
-        live_session.roots_result = SimpleNamespace(
-            roots=[
-                SimpleNamespace(uri="file:///Users/x/proj"),
-                SimpleNamespace(uri="file:///tmp/y"),
-            ]
-        )
-        roots = mcp_features.discover_roots()
-        assert roots == ["/Users/x/proj", "/tmp/y"]
 
 
 # ─── Elicitation ────────────────────────────────────────────────────

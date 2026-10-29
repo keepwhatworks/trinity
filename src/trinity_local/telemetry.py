@@ -188,7 +188,14 @@ def load_telemetry_settings() -> TelemetrySettings:
             sharing_enabled=False, share_usage_events=False,
         )
     known_fields = {f.name for f in fields(TelemetrySettings)}
-    return TelemetrySettings(**{k: v for k, v in raw.items() if k in known_fields})
+    values = {k: v for k, v in raw.items() if k in known_fields}
+    # Same fail-closed rule for a switch: a hand-edit can write "false" or 0, and the
+    # senders test truthiness, so the string "false" used to keep sharing ON. Only a
+    # JSON true turns a switch on.
+    for f in fields(TelemetrySettings):
+        if f.type == "bool" and f.name in values and values[f.name] is not True:
+            values[f.name] = False
+    return TelemetrySettings(**values)
 
 
 def save_telemetry_settings(settings: TelemetrySettings) -> Path:
@@ -455,11 +462,11 @@ def launchpad_telemetry_state() -> dict[str, Any]:
 
 # ─── GA4 Measurement Protocol ───────────────────────────────────────────
 #
-# Trinity sends categorical routing labels + install/usage events to GA4
-# when the user has opted in. This is the only outbound
-# data Trinity emits. Per CLAUDE.md "Architectural commitments" #2:
+# Trinity sends categorical labels + install/usage events to GA4 unless the
+# user has turned sharing off (on by default; `telemetry-disable`). This is the
+# only outbound data Trinity emits. Per AGENTS.md "Architectural commitments" #2:
 # NO prompt content, NO lens text, NO user_substitute strings — only the
-# categorical labels (task_type, winner, provider_scores keys).
+# allowlisted labels in DISCLOSED_EVENT_PARAMS.
 #
 # Implementation:
 #   - Fire-and-forget via a daemon thread so the CLI flow never blocks.

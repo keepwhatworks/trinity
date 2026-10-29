@@ -15,15 +15,13 @@ Slow + browser marked; skips when Playwright/chromium are absent.
 """
 from __future__ import annotations
 
-import functools
-import http.server
 import json
 import shutil
 import sys
-import threading
 from pathlib import Path
 
 import pytest
+from tests.browser_harness import serve_directory
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -31,13 +29,6 @@ REPO = Path(__file__).resolve().parents[1]
 EXT = REPO / "browser-extension"
 
 _SIDEBAR_MARKER = "SOAK-SIDEBAR-OK"
-
-
-def _serve(directory: Path):
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(directory))
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, httpd.server_address[1]
 
 
 def _build_render_dir(dst: Path, payload: dict) -> None:
@@ -80,7 +71,7 @@ def test_extension_launchpad_mounts_from_native_messaging(tmp_path, monkeypatch)
     render_dir.mkdir()
     _build_render_dir(render_dir, wire)
 
-    httpd, port = _serve(render_dir)
+    httpd, port = serve_directory(render_dir)
     try:
         with sync_playwright() as p:
             try:
@@ -156,7 +147,7 @@ def test_extension_launchpad_host_unreachable_fallback_names_install_extension(t
     )
     (render_dir / "launchpad.html").write_text(html, encoding="utf-8")
 
-    httpd, port = _serve(render_dir)
+    httpd, port = serve_directory(render_dir)
     try:
         with sync_playwright() as p:
             try:

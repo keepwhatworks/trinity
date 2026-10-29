@@ -149,8 +149,10 @@ These are load-bearing for Trinity's identity. PRs that violate them get rejecte
 1. **No LLM calls outside councils.** Ingest, embedding, theme assignment, search,
    clustering — pure embeddings + heuristics. Only council member calls + chairman
    synthesis use LLMs, and both ride user subscriptions.
-2. **Prompts never upload.** Default-off opt-in telemetry sends categorical labels only
-   (`task_type`, `winner`, `confidence`). No content, ever.
+2. **Prompts never upload.** Anonymous telemetry is on by default and off with
+   `trinity-local telemetry-disable`; it sends only allowlisted categorical labels
+   (`task_type`, `winner`, `member_count`, `mode`, and once per install
+   `activation_source` and `surface`). No content, ever.
 3. **Local-first inference.** No hosted controller, no per-call API billing.
 4. **Subsidized consumer credits as cost basis.** Trinity dispatches via the user's own
    CLI subscriptions (Claude Code, Codex, Antigravity). If a PR proposes a hosted API

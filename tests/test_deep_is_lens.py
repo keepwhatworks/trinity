@@ -73,7 +73,6 @@ def live_and_legacy(monkeypatch, patch_trinity_home):
                 '"task_type": "coding", "agreed_claims": [], "disagreed_claims": []}\n```\n'),
                 stderr="", returncode=0)
     monkeypatch.setattr(P, "make_provider", lambda cfg: Chair())
-    monkeypatch.setattr("trinity_local.telemetry.emit_council_complete", lambda *a, **k: None, raising=False)
     asyncio.run(handle_call_tool("run_council", {
         "task": "pick", "primary_provider": "claude",
         "responses": [{"provider": "codex", "content": "A long enough answer " * 20},

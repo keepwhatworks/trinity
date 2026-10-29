@@ -377,37 +377,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
-  // ─── Background-tab sync (kept for callers that prefer it) ───────────
-  // Gemini blocks iframe-based sync (the bundle detects iframe context
-  // and doesn't fire its canonical hNvQHb fetch). Background tabs
-  // bypass this: real top-level navigation that triggers the full
-  // page-load flow including all auth-injected fetches, while
-  // active:false keeps them out of the user's focus.
-  if (message?.type === "open_sync_tab") {
-    try {
-      chrome.tabs.create({ url: message.url, active: false }, (tab) => {
-        if (chrome.runtime.lastError) {
-          sendResponse({ ok: false, error: chrome.runtime.lastError.message });
-          return;
-        }
-        sendResponse({ ok: true, tabId: tab?.id });
-      });
-    } catch (e) {
-      sendResponse({ ok: false, error: String(e) });
-    }
-    return true;
-  }
-  if (message?.type === "close_sync_tab") {
-    try {
-      chrome.tabs.remove(message.tabId, () => {
-        sendResponse({ ok: !chrome.runtime.lastError });
-      });
-    } catch {
-      sendResponse({ ok: false });
-    }
-    return true;
-  }
-
   // ─── Read-only query path (new — used by the in-provider sync pill) ──
   // Content scripts ask the host for cheap read-only info like
   // "how many threads in the sidebar aren't captured locally?" Same
@@ -432,7 +401,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   // ─── Phase 1+3 action-dispatch (new — launchpad bridge) ───────
-  // Popup/launchpad sends {type: "action", kind: "launch-council",
+  // The side panel's launchpad sends {type: "action", kind: "launch-council",
   // task: "..."} to invoke a CLI command via Native Messaging. The
   // host's ACTION_ALLOWLIST gates which kinds are runnable; this
   // service worker is a transparent forwarder.
@@ -466,7 +435,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // ─── Phase 4: external messaging from the launchpad ───────
 // The launchpad calls chrome.runtime.sendMessage(TRINITY_EXTENSION_ID, ...)
 // directly. That path uses `onMessageExternal`, NOT `onMessage` — internal
-// popups + content scripts use onMessage, externally-connectable pages use
+// extension pages + content scripts use onMessage, externally-connectable pages use
 // the External variant. They are NOT interchangeable.
 //
 // Security gates (codex's Phase 4 verdict, council_fb374b01311885cc):

@@ -127,3 +127,34 @@ class TestTheDetectorIsNotVacuous:
             + f"\n\nUpdate {BASELINE.name} — a baseline pointing at ghosts "
             "grandfathers nothing and hides new skippers."
         )
+
+
+# The scan above reads top-level instruments only, so one in a subdirectory skipped the gate unseen
+# (internal/rule-enforcement.md, 2026-10-26). These three predate the ratchet. The set is frozen: it only shrinks,
+# and every other subdirectory instrument that emits a verdict must route through the gate.
+SUBDIR_GRANDFATHERED = frozenset({
+    "memory_bakeoff/score.py",
+    "memory_bakeoff/timem.py",
+    "pairwise-falsifier-2026-07-13/pairwise_falsifier.py",
+})
+
+
+class TestSubdirectoryInstrumentsToo:
+    def _skipping(self) -> set[str]:
+        emits_verdict, routes_through_gate = _detectors()
+        out = set()
+        for f in sorted(EXPERIMENTS.glob("*/**/*.py")):
+            text = f.read_text(encoding="utf-8", errors="replace")
+            if emits_verdict(text) and not routes_through_gate(text):
+                out.add(f.relative_to(EXPERIMENTS).as_posix())
+        return out
+
+    def test_no_new_subdirectory_instrument_skips_the_gate(self):
+        new = self._skipping() - SUBDIR_GRANDFATHERED
+        assert not new, ("an instrument in a subdirectory emits a verdict outside verdict_gate:\n  "
+                         + "\n  ".join(sorted(new)) + "\nRoute it through gated_verdict.")
+
+    def test_the_subdirectory_grandfather_set_only_shrinks(self):
+        stale = SUBDIR_GRANDFATHERED - self._skipping()
+        assert not stale, (f"no longer skipping the gate (adopted it, or gone): {sorted(stale)}; strike them from "
+                           "SUBDIR_GRANDFATHERED")

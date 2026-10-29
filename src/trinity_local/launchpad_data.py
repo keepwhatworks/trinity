@@ -15,14 +15,7 @@ from .categories import (
 from .config import load_config
 from .council_runtime import load_prompt_bundle
 from .council_status import load_council_status
-from .dispatch_registry import make_dispatch_action
-from .global_benchmarks import get_global_benchmarks, get_reference_evals_meta
-# The macOS-Shortcut dispatch tier retired 2026-05-17 (Native Messaging
-# via the Chrome extension's capture_host took over). These constants
-# stay as harmless data-attr defaults the JS dispatch knows to skip
-# when the URL is empty. See retired_names.py: `shortcuts_integration`.
-DEFAULT_SHORTCUT_NAME = "Trinity Dispatch"
-_EMPTY_SHORTCUT_URL = ""
+from .global_benchmarks import get_global_benchmarks
 from .state_paths import (
     council_outcomes_dir,
     council_status_dir,
@@ -55,16 +48,6 @@ COUNCIL_LOADING_MESSAGES = [
     "Summoning the chairman...",
     "Counting the votes that matter...",
 ]
-
-
-# Centroid-similarity threshold for the picks↔topology bridge. A pick
-# is considered to map onto a topology basin only when their nomic
-# centroids share ≥ this cosine similarity. Empirical: 0.5 was too
-# lax (oranges mapped to apples), 0.8 too strict (real matches dropped).
-# Single source of truth — the JS helper in memory_viewer.py reads
-# this same value via render-time injection, so the launchpad-side
-# Python match and the in-viewer JS match can't drift.
-BASIN_SIM_THRESHOLD = 0.65
 
 
 def _esc(value: str | None) -> str:
@@ -822,25 +805,6 @@ def _elo_chart_data(snapshot: dict) -> dict:
 
 
 def _settings_links() -> dict[str, dict[str, str]]:
-    # Register dispatch actions so the extension's Native Messaging path
-    # has a known kind; shortcutUrl is empty post-shortcut-retirement
-    # (2026-05-17) so the JS dispatch skips tier-2-shortcut and goes
-    # straight to the extension.
-    make_dispatch_action(
-        "run_command",
-        args={"command": "trinity-local telemetry-enable"},
-        metadata={"kind": "telemetry_enable"},
-    )
-    make_dispatch_action(
-        "run_command",
-        args={"command": "trinity-local telemetry-disable"},
-        metadata={"kind": "telemetry_disable"},
-    )
-    make_dispatch_action(
-        "run_command",
-        args={"command": "trinity-local telemetry-reset-id"},
-        metadata={"kind": "telemetry_reset"},
-    )
     # cliCommand is the no-extension fallback: the launchpad dispatches via the
     # Chrome extension, but a user who declines the extension (e.g. for privacy)
     # must STILL be able to apply a privacy setting the modal promises ("toggle
@@ -851,11 +815,11 @@ def _settings_links() -> dict[str, dict[str, str]]:
     # bottom near the sharing toggle, which read as confirming the WRONG action and
     # told a Reset-clicker "the toggle stays as-is" — there's no toggle in Reset).
     return {
-        "enable": {"shortcutUrl": _EMPTY_SHORTCUT_URL, "extensionKind": "telemetry-enable",
+        "enable": {"extensionKind": "telemetry-enable",
                    "cliCommand": "trinity-local telemetry-enable", "feedbackKey": "settings-cli"},
-        "disable": {"shortcutUrl": _EMPTY_SHORTCUT_URL, "extensionKind": "telemetry-disable",
+        "disable": {"extensionKind": "telemetry-disable",
                     "cliCommand": "trinity-local telemetry-disable", "feedbackKey": "settings-cli"},
-        "reset": {"shortcutUrl": _EMPTY_SHORTCUT_URL, "extensionKind": "telemetry-reset-id",
+        "reset": {"extensionKind": "telemetry-reset-id",
                   "cliCommand": "trinity-local telemetry-reset-id", "feedbackKey": "settings-reset-cli"},
     }
 
@@ -967,7 +931,6 @@ def build_page_data(
     # yet, build one" on a completed-but-empty build).
     taste_lenses = _load_taste_lenses()
     return {
-        "shortcutName": DEFAULT_SHORTCUT_NAME,
         "defaultGoal": "Find the strongest answer.",
         "defaultMembers": __import__("trinity_local.config", fromlist=["default_council_members"]).default_council_members(),
         "defaultPrimaryProvider": None,
@@ -992,7 +955,6 @@ def build_page_data(
         "personalChartCategoryLabels": _category_labels(),
         "providerModels": provider_models,
         "providerEfforts": provider_efforts,
-        "referenceEvalsMeta": get_reference_evals_meta(),
         # Relative URLs so the launchpad works under both file:// (double-click
         # the HTML) and http://localhost:PORT (when serving ~/.trinity via
         # `python -m http.server`). The launchpad lives at
@@ -1011,11 +973,6 @@ def build_page_data(
         # the lens is a TF-IDF caricature, the taste card SAYS SO instead of
         # painting "The patterns in how you think" as settled truth.
         "lensTrust": _lens_trust(),
-        # Merge corpus summary (tick #48) — small counts dict so future
-        # launchpad surfaces can show "Trinity has captured N tacit-
-        # record acts" without re-walking the log. Computed-view-on-
-        # demand same as personal_routing_table — no separate state file.
-        "mergeLog": _safe_merge_summary(),
         # Map basin_id → "top_term1 · top_term2 · top_term3" — used by
         # the launchpad chip tooltips that deep-link into topology so
         # the user sees what a basin is *about* without having to click.
@@ -1034,15 +991,6 @@ def build_page_data(
         # branches on this (promise wins the H1 in idle state); kept exposed
         # in case other sections want a first-run greeting affordance.
         "recentCouncilsCount": len(recent_councils),
-        # verdictStats removed from pageData 2026-05-21 with the
-        # rating UX sunset (commit 8f1fd95). The compute function
-        # _verdict_stats() was retired 2026-05-22 alongside its
-        # sole remaining consumer doctor._check_verdict_rate.
-        # Retired 2026-05-17. The macOS Shortcut dispatcher is gone;
-        # _shortcut_status() now always reports applicable=False so the
-        # legacy banner stays hidden. Kept on the payload for template
-        # backward compat — the JS dispatch reads it and short-circuits.
-        "shortcutStatus": _shortcut_status(),
         # #212 cold-start aha: ONE surprising true tension about how the user
         # decides, shown as the hero cold-open the instant the lens has signal.
         # None on a cold install (hero shows the council promise instead).
@@ -1198,19 +1146,19 @@ def _council_value_for_launchpad() -> dict | None:
     """
     try:
         from .council_analytics import council_category_wedge, council_value_proof
+        from .council_schema import provider_model_brand
         vp = council_value_proof()
         if not vp.get("ready"):
             return None
-        brand = {"codex": "GPT", "claude": "Claude", "antigravity": "Gemini"}
         wins = [
-            {"label": brand.get(p, p), "pct": d["pct"], "count": d["count"]}
+            {"label": provider_model_brand(p), "pct": d["pct"], "count": d["count"]}
             for p, d in vp["win_split"].items()
         ]
         # The asymmetric wedge: which lab wins which KIND of question. Only the
         # confident families (volume + margin floors) come back, so this self-
         # trims to a tight, honest "who wins what" list.
         wedge = [
-            {"family": w["family"], "leader": brand.get(w["leader"], w["leader"])}
+            {"family": w["family"], "leader": provider_model_brand(w["leader"])}
             for w in council_category_wedge()[:4]
         ]
         return {
@@ -1221,12 +1169,6 @@ def _council_value_for_launchpad() -> dict | None:
         }
     except Exception:
         return None
-
-
-
-
-
-
 
 
 def _fmt_score(value, digits: int) -> str | None:
@@ -1258,8 +1200,6 @@ def _fmt_score(value, digits: int) -> str | None:
     if not math.isfinite(f):
         return None
     return f"{f:.{digits}f}"
-
-
 
 
 # _rate_limit_saves() retired 2026-05-21 alongside the
@@ -1471,8 +1411,8 @@ def dispatch_readiness() -> dict:
         if ext["configured"] and not host_on_path:
             recommendation = (
                 "Extension ID is configured but `trinity-local-capture-host` is "
-                "not on PATH. Reinstall: `pip install -e .` (or `pip install "
-                "trinity-local`) so the console script lands."
+                "not on PATH. Reinstall Trinity (`curl -LsSf "
+                "https://keepwhatworks.com/install.sh | sh`) so the console script lands."
             )
         else:
             recommendation = (
@@ -1489,20 +1429,6 @@ def dispatch_readiness() -> dict:
         "ready": ready,
         "recommended_action": recommendation,
     }
-
-
-def _shortcut_status() -> dict:
-    """Retired 2026-05-17 with the macOS Shortcut dispatcher kill, then
-    deeper-cleaned in Pass B (commit 0555a25) when `canUseShortcut()`
-    and the JS Tier-2 branch went away. Kept as a stable empty payload
-    so `page_data["shortcutStatus"]` doesn't KeyError in any consumer.
-    Always reports `applicable: False`; the launchpad banner stays
-    hidden, and the JS dispatch path never tries the Shortcut tier
-    because that branch no longer exists in launchpad_runtime.js.
-    """
-    return {"ok": True, "applicable": False}
-
-
 
 
 def _core_status() -> dict:
@@ -1788,7 +1714,7 @@ def _memory_health() -> dict:
     # qualify — the `extension` repair signals aren't files, so they stay None.
     # Mirrors the established launchpad cross-link form (../portal_pages/memory.html
     # ?file=<name>) used by the routing/picks/topology cards + the "four files" card.
-    _inspectable = {"core.md", "lens.md", "vocabulary.md", "topics.json", "picks.json"}
+    _inspectable = {"core.md", "lens.md", "vocabulary.md", "topics.json"}
     for issue in issues:
         name = issue.get("name")
         if name in _inspectable and not issue.get("href"):
@@ -1863,17 +1789,9 @@ def _load_trust_data() -> dict | None:
         xprov = 0
     if xprov <= 0:
         return None
-    summary: dict = {}
-    sp = _ledger_dir() / "summary.json"
-    if sp.exists():
-        try:
-            loaded = json.loads(sp.read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                summary = loaded
-        except Exception:
-            summary = {}
-    from .disagreement_ledger import gate_summary
-    summary = gate_summary(summary) if summary else summary
+    from .disagreement_ledger import load_summary
+    sp = _ledger_dir() / "summary.json"  # `built` below: on disk, even when unreadable
+    summary = load_summary()
     trustworthy = bool(summary.get("tally_trustworthy"))
     # A person may see the rows when only the label gate fails, marked directional.
     directional = bool(summary.get("tally_displayable")) and summary.get("label_reliable") is False
@@ -1915,8 +1833,6 @@ def _load_trust_data() -> dict | None:
         "records": rows,
         "caveat": caveat,
     }
-
-
 
 
 def _load_decisions_by_id() -> dict:
@@ -2169,9 +2085,8 @@ def _load_topics_basins() -> list[dict]:
     """Shape-guarded basin list for the launchpad render. Thin alias for the
     single canonical reader `me_basins.load_topics_basins()` (which owns the
     mtime cache + the dict-root/list/dict-entry guard that #304 hardened here).
-    Kept as a local name so `_topology_basin_labels`/`_task_to_topology_basin`
-    read through one function and a single launchpad render re-parses topics.json
-    at most once."""
+    Kept as a local name so `_topology_basin_labels` and its siblings read through
+    one function and a single launchpad render re-parses topics.json at most once."""
     from .me.basins import load_topics_basins
 
     return load_topics_basins()
@@ -2202,65 +2117,6 @@ def _topology_basin_labels() -> dict[str, str]:
             # the topology view's label style.
             out[str(bid)] = " · ".join(str(t) for t in terms[:3])
     return out
-
-
-def _safe_merge_summary() -> dict:
-    """Return summarize_merges() output, falling back to a zero-filled
-    dict if the import fails (cold install / circular dep). Keeps
-    page_data shape stable across cold + warm installs."""
-    try:
-        from .merges import summarize_merges
-        return summarize_merges()
-    except Exception:
-        return {
-            "total": 0,
-            "by_type": {},
-            "by_signal_type": {},
-            "first_ts": None,
-            "last_ts": None,
-        }
-
-
-def _task_to_topology_basin() -> dict[str, str]:
-    """Return {pick_basin_id: topology_basin_id} for each routing pick whose
-    basin id exists in topics.json.
-
-    POST-COLLAPSE (#298): the routing basins ARE the topology basins — both keyed
-    by the lens basin id (b00..) — so this is an identity map read straight off
-    the picks keys, no centroid match. (Pre-collapse this centroid-matched the
-    cortex's SEPARATE basin_centroid into topics.json; the new picks carry no
-    centroid.) Degrades gracefully: a malformed/legacy pick (missing `winner`) is
-    skipped. Returns {} on any error (cold install, missing topics.json) so the
-    cards keep rendering.
-    """
-    try:
-        from .cortex import load_routing_patterns
-    except Exception:
-        return {}
-    try:
-        patterns = load_routing_patterns()
-    except Exception:
-        patterns = None
-    if not patterns:
-        return {}
-    basins = _load_topics_basins()
-    if not basins:
-        return {}
-    topology_ids = {str(b.get("id")) for b in basins if b.get("id")}
-    result: dict[str, str] = {}
-    for basin_id, pick in patterns.items():
-        # Skip legacy/malformed picks (a dict missing `winner`); the topology
-        # bridge only applies to live lens-basin picks. _safe_text shape-guards
-        # the STRING field — a corrupt non-string winner (a NUMBER / OBJECT in a
-        # hand-edited picks.json) used to hit `.strip()` on an int and crash the
-        # whole launchpad render here too (the sibling of the _load_cortex_rules
-        # site). Degrades to "" → skipped.
-        if not isinstance(pick, dict) or not _safe_text(pick.get("winner")):
-            continue
-        bid = str(basin_id)
-        if bid in topology_ids:
-            result[bid] = bid
-    return result
 
 
 def build_recent_sidebar_html(recent_councils: list[dict[str, str | None]]) -> str:

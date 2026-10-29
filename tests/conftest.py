@@ -4,6 +4,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shutil
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -17,6 +19,29 @@ import pytest
 # test imports trinity_local.embeddings, which picks its backend at import.
 if not any(importlib.util.find_spec(m) for m in ("mlx_embeddings", "sentence_transformers")):
     os.environ.setdefault("TRINITY_DISABLE_MLX", "1")
+
+# Tests never touch the real ~/.trinity (AGENTS.md; internal/rule-enforcement.md found nothing enforcing it,
+# 2026-10-26). A run with no TRINITY_HOME, as public CI's and CONTRIBUTING's plain `pytest -q` are, gets a fresh
+# temporary home, removed at the end; a run pointed at the real home stops before any test. (Two real_corpus
+# topology classes read Path.home()/.trinity/memories/topics.json directly and read-only; the rest of the
+# real_corpus tests take the real_corpus_home fixture below, which reads a COPY.)
+_SESSION_HOME: str | None = None
+
+
+def pytest_configure(config):
+    global _SESSION_HOME
+    home = os.environ.get("TRINITY_HOME")
+    if not home:
+        _SESSION_HOME = tempfile.mkdtemp(prefix="trinity-test-home-")
+        os.environ["TRINITY_HOME"] = _SESSION_HOME
+    elif Path(home).expanduser().resolve() == (Path.home() / ".trinity").resolve():
+        pytest.exit("TRINITY_HOME points at the real ~/.trinity; the suite runs only against an isolated home "
+                    "(TRINITY_HOME=$(mktemp -d) pytest ...)", returncode=4)
+
+
+def pytest_unconfigure(config):
+    if _SESSION_HOME:
+        shutil.rmtree(_SESSION_HOME, ignore_errors=True)
 
 
 def pytest_collection_modifyitems(config, items):
@@ -244,6 +269,33 @@ def _disable_cold_start_autoscan(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.
     """
     monkeypatch.setenv("TRINITY_AUTOSCAN_DISABLED", "1")
+
+
+@pytest.fixture
+def real_corpus_home(monkeypatch: pytest.MonkeyPatch) -> Path:
+    """TRINITY_HOME pointed at TRINITY_REAL_CORPUS, a COPY of a real ~/.trinity, for the
+    real_corpus tests that check the real data distribution through the normal readers.
+
+    Under the isolated home every one of them could only skip, with a reason that read
+    like a fact about the data ("corpus too small (0)"). They are the only checks against
+    a real distribution, so they are opt-in rather than deleted (amd_0619):
+
+        cp -R ~/.trinity /tmp/trinity-copy
+        TRINITY_REAL_CORPUS=/tmp/trinity-copy pytest -m real_corpus
+
+    The live ~/.trinity is refused: tests never point at it.
+    """
+    copy = os.environ.get("TRINITY_REAL_CORPUS")
+    if not copy:
+        pytest.skip("real-data check: set TRINITY_REAL_CORPUS to a copy of a real ~/.trinity "
+                    "and run `pytest -m real_corpus`")
+    path = Path(copy).expanduser().resolve()
+    if path == (Path.home() / ".trinity").resolve():
+        pytest.fail("TRINITY_REAL_CORPUS points at the live ~/.trinity; give it a copy")
+    if not path.is_dir():
+        pytest.skip(f"TRINITY_REAL_CORPUS={copy} is not a directory")
+    monkeypatch.setenv("TRINITY_HOME", str(path))
+    return path
 
 
 @pytest.fixture
