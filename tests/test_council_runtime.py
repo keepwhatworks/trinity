@@ -33,20 +33,15 @@ class TestResolveWinner:
     Routing JSON is structured and explicit — trust it first."""
 
     def test_routing_json_wins_over_narrative_substring(self):
-        """The reproducer: chairman picked Codex but the Winner section
-        narrative names claude in the first sentence. Old code returned
-        'claude'. New code returns 'codex' from the structured Routing JSON."""
+        """The reproducer: chairman picked Codex while the Winner prose named
+        claude first; the old text scan returned 'claude'. The resolver now
+        takes only the structured Routing JSON (it has no prose parameter), so
+        it returns the canonical 'codex'."""
         from types import SimpleNamespace
         from trinity_local.council_runner import _resolve_winner
 
-        routing_label = SimpleNamespace(winner="Codex")
-        winner_section = (
-            "**Codex.** Same pick (A) but adds the load-bearing follow-on "
-            "that claude argued against — chairman ruled in codex's favour."
-        )
         result = _resolve_winner(
-            routing_label=routing_label,
-            winner_section=winner_section,
+            routing_label=SimpleNamespace(winner="Codex"),
             sequence=["claude", "antigravity", "codex"],
         )
         assert result == "codex"
@@ -55,19 +50,12 @@ class TestResolveWinner:
         # The prose-section + A/B/C label fallbacks were removed. With Routing
         # JSON parse-success ≥85%, the fallbacks were silently masking parse
         # failures rather than fixing them — `winner_provider=None` is the
-        # honest signal that the rater needs to fix it.
+        # honest absence, never a guess.
         from trinity_local.council_runner import _resolve_winner
 
         assert _resolve_winner(
             routing_label=None,
-            winner_section="**Gemini.** Wins on terseness.",
             sequence=["claude", "antigravity", "codex"],
-        ) is None
-        assert _resolve_winner(
-            routing_label=None,
-            winner_section="A",
-            sequence=["claude", "antigravity", "codex"],
-            label_to_provider={"A": "antigravity"},
         ) is None
 
 

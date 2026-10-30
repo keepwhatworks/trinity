@@ -209,7 +209,7 @@ Before submitting to any registry:
 - [ ] Working install one-liner verified on a fresh macOS install
       (`curl -fsSL .../install.sh | bash` followed by
       `trinity-local status`)
-- [ ] CHANGELOG entry noting the registry inclusion (so future
+- [ ] Release notes mention the registry inclusion (so future
       contributors know it's listed)
 
 After each submission, drop the registry URL into the table below for

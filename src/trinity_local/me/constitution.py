@@ -25,11 +25,11 @@ TF-IDF fallback the per-act axis geometry is meaningless, so the miner **abstain
 """
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from typing import Callable, Iterable, Sequence
 
 from .correction_lens import TASTE_AXES
+from .geometry import mean_vector, unit_vector
 from .preference_acts import PreferenceAct, Q_CONFOUND, Q_OPERATIVE, Q_UNCERTAIN
 
 EmbedFn = Callable[[list[str]], Sequence[Sequence[float]]]
@@ -85,24 +85,6 @@ class EvidenceBundle:
     reason: str = ""
 
 
-# ── geometry helpers (local, so the constitution doesn't depend on another module's
-#    private internals) ───────────────────────────────────────────────────────────────
-def _unit(vec: Sequence[float]) -> list[float]:
-    n = math.sqrt(sum(x * x for x in vec))
-    return [x / n for x in vec] if n else list(vec)
-
-
-def _mean(rows: list[Sequence[float]]) -> list[float]:
-    if not rows:
-        return []
-    dim = len(rows[0])
-    acc = [0.0] * dim
-    for r in rows:
-        for i, x in enumerate(r):
-            acc[i] += x
-    return [x / len(rows) for x in acc]
-
-
 def _default_embed() -> EmbedFn | None:
     """The real embedder, or None under the TF-IDF fallback (so the caller abstains)."""
     try:
@@ -119,9 +101,9 @@ def _axis_vectors(embed_fn: EmbedFn) -> dict[str, list[float]]:
     embedder, so act projections and the axis frame live in one space."""
     out: dict[str, list[float]] = {}
     for name, (pos, neg) in TASTE_AXES.items():
-        pcen = _mean(list(embed_fn(pos)))
-        ncen = _mean(list(embed_fn(neg)))
-        out[name] = _unit([p - q for p, q in zip(pcen, ncen)])
+        pcen = mean_vector(list(embed_fn(pos)))
+        ncen = mean_vector(list(embed_fn(neg)))
+        out[name] = unit_vector([p - q for p, q in zip(pcen, ncen)])
     return out
 
 
@@ -153,8 +135,8 @@ def label_q_status(acts: Iterable[PreferenceAct], *, embed_fn: EmbedFn | None = 
     if not usable:
         return 0
     axis_vecs = _axis_vectors(embed_fn)
-    pri = [_unit(v) for v in embed_fn([a.privileged for a in usable])]
-    sac = [_unit(v) for v in embed_fn([a.sacrificed for a in usable])]
+    pri = [unit_vector(v) for v in embed_fn([a.privileged for a in usable])]
+    sac = [unit_vector(v) for v in embed_fn([a.sacrificed for a in usable])]
     labeled = 0
     for a, pv, sv in zip(usable, pri, sac):
         steer = [p - s for p, s in zip(pv, sv)]

@@ -324,24 +324,15 @@ def _synthesize_with_fallback(
     return output, sections, error, chair, model
 
 
-def _resolve_winner(
-    *,
-    routing_label,
-    winner_section: str | None = None,
-    sequence: list[str],
-    label_to_provider: dict[str, str] | None = None,
-) -> str | None:
+def _resolve_winner(*, routing_label, sequence: list[str]) -> str | None:
     """Resolve the winning provider from the chairman's Routing JSON.
 
     Trusts `routing_label.winner` only. The prior implementation had two
     additional fallbacks (first line of the "Winner" prose section, A/B/C
     label mapping) that existed for chairmen which used to write prose. With
     parse-success ≥85% on Routing JSON, those fallbacks now silently mask
-    parse failures rather than fix them — better to mark `winner_provider=None`
-    and let the user/rater fix it explicitly.
-
-    `winner_section` and `label_to_provider` are kept as accepted arguments
-    so call sites compile, but they're ignored.
+    parse failures rather than fix them, so a missing or unmatched winner is
+    `None`: an honest absence, never a guess from the prose.
     """
     if routing_label is None:
         return None
@@ -862,11 +853,6 @@ def run_council(
             "Cannot proceed with zero successful responses."
         )
 
-    label_to_provider = {
-        f"Response {chr(ord('A') + index)}": member.provider
-        for index, member in enumerate(member_results)
-    }
-
     primary_config = config.providers.get(primary_provider)
     if primary_config is None or not primary_config.enabled:
         raise ProviderError(f"Unknown or disabled primary provider: {primary_provider}")
@@ -921,9 +907,7 @@ def run_council(
     # passing — see _resolve_winner.
     winner_provider = _resolve_winner(
         routing_label=routing_label,
-        winner_section=sections.get("winner"),
         sequence=[*member_providers, primary_provider],
-        label_to_provider=label_to_provider,
     )
 
     final_metadata: dict = {

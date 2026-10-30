@@ -38,7 +38,8 @@ import sys
 from dataclasses import dataclass
 from typing import Callable, Iterable
 
-from .constitution import EmbedFn, _default_embed, _unit
+from .constitution import EmbedFn, _default_embed
+from .geometry import unit_vector
 from .holdout_scorer import one_sided_sign_p
 from .pair_mining import LensPair
 from .preference_acts import PreferenceAct
@@ -61,7 +62,7 @@ class FlipVerdict:
 
 def _steer_unit(embed_fn: EmbedFn, privileged: str, sacrificed: str) -> list[float]:
     pv, sv = embed_fn([privileged, sacrificed])
-    return [p - s for p, s in zip(_unit(pv), _unit(sv))]
+    return [p - s for p, s in zip(unit_vector(pv), unit_vector(sv))]
 
 
 def flip_check(
@@ -78,7 +79,7 @@ def flip_check(
     if not pa or not pb:
         return FlipVerdict("abstain", 0, 0, None, "candidate has an empty pole")
 
-    axis = _unit([a - b for a, b in zip(*[_unit(v) for v in embed_fn([pa, pb])])])
+    axis = unit_vector([a - b for a, b in zip(*[unit_vector(v) for v in embed_fn([pa, pb])])])
     if not any(axis):
         return FlipVerdict("abstain", 0, 0, None, "degenerate axis")
 

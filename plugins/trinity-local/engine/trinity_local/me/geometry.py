@@ -10,6 +10,9 @@ Public symbols:
 - ``mean_cosine_to(center, points) -> float``
 - ``excess_kurtosis(values) -> float``
 - ``euclid(a, b) -> float``
+- ``unit_vector(vec) -> list[float]`` and ``mean_vector(rows) -> list[float]`` (shared by the
+  lens's statistical modules: constitution, correction_lens, semantic_filter,
+  preference_collapse, regression_gate)
 - Constant: ``BIMODALITY_KURTOSIS_THRESHOLD``
 
 (Extracted from the deleted cortex engine. Retired 2026-10-26 along with
@@ -20,6 +23,7 @@ underscore aliases; and the unused ``MANIFOLD_DIM_SATURATION``.)
 from __future__ import annotations
 
 import math
+from typing import Sequence
 
 
 # Calibration: -1.3 is just below uniform-distribution excess kurtosis
@@ -31,6 +35,24 @@ BIMODALITY_KURTOSIS_THRESHOLD = -1.3
 
 def euclid(a: list[float], b: list[float]) -> float:
     return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
+
+
+def unit_vector(vec: Sequence[float]) -> list[float]:
+    """`vec` scaled to length 1; the zero vector comes back unchanged (no division by zero)."""
+    n = math.sqrt(sum(x * x for x in vec))
+    return [x / n for x in vec] if n else list(vec)
+
+
+def mean_vector(rows: Sequence[Sequence[float]]) -> list[float]:
+    """Element-wise mean of equal-length vectors; [] for no rows."""
+    if not rows:
+        return []
+    dim = len(rows[0])
+    acc = [0.0] * dim
+    for r in rows:
+        for i, x in enumerate(r):
+            acc[i] += x
+    return [x / len(rows) for x in acc]
 
 
 def mean_cosine_to(center: list[float], points: list[list[float]]) -> float:

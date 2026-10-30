@@ -15,10 +15,12 @@ from trinity_local.me import correction_lens as cl
 
 
 def test_helpers_unit_and_mean():
-    u = cl._unit([3.0, 4.0])
+    from trinity_local.me.geometry import mean_vector, unit_vector
+
+    u = unit_vector([3.0, 4.0])
     assert math.isclose(math.hypot(*u), 1.0, abs_tol=1e-6)
-    assert cl._mean([[1.0, 2.0], [3.0, 4.0]]) == [2.0, 3.0]
-    assert cl._unit([0.0, 0.0]) == [0.0, 0.0]  # zero vector → no div-by-zero
+    assert mean_vector([[1.0, 2.0], [3.0, 4.0]]) == [2.0, 3.0]
+    assert unit_vector([0.0, 0.0]) == [0.0, 0.0]  # zero vector → no div-by-zero
 
 
 @pytest.mark.real_corpus

@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 import shutil
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -296,6 +297,18 @@ def real_corpus_home(monkeypatch: pytest.MonkeyPatch) -> Path:
         pytest.skip(f"TRINITY_REAL_CORPUS={copy} is not a directory")
     monkeypatch.setenv("TRINITY_HOME", str(path))
     return path
+
+
+@pytest.fixture(scope="module")
+def render_docs_module():
+    """scripts/render_docs.py imported as a module, without making scripts/ a package."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    try:
+        import render_docs  # type: ignore[import-not-found]
+
+        return render_docs
+    finally:
+        sys.path.pop(0)
 
 
 @pytest.fixture

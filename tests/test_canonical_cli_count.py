@@ -14,21 +14,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-
-
-@pytest.fixture(scope="module")
-def render_docs_module():
-    """Import scripts/render_docs.py without making scripts/ a package."""
-    sys.path.insert(0, str(REPO_ROOT / "scripts"))
-    try:
-        import render_docs  # type: ignore[import-not-found]
-        return render_docs
-    finally:
-        sys.path.pop(0)
 
 
 class TestCanonicalCliCommandCount:

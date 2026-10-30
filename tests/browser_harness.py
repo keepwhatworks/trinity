@@ -1,4 +1,5 @@
-"""Helpers the browser tests share: a local static server and the WCAG contrast ratio.
+"""Helpers the browser tests share: a local static server, the production page layout, and the
+WCAG contrast ratio.
 
 Not a test module (no test_ prefix), so pytest does not collect it. Import it as
 `from tests.browser_harness import serve_directory`.
@@ -21,6 +22,20 @@ def serve_directory(directory: Path | str) -> tuple[http.server.ThreadingHTTPSer
     httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd, httpd.server_address[1]
+
+
+def write_prod_layout(html: str, serve_root: Path) -> str:
+    """Lay the launchpad out as production does: launchpad.html in portal_pages/, the vendor files
+    in portal_pages/vendor/. The shared CSS's @font-face uses `../portal_pages/vendor/...` and the
+    launchpad's own JS `./vendor/...`; both resolve only from the portal_pages/ depth. Returns
+    the page's path relative to `serve_root`."""
+    from trinity_local.vendor import publish_vendor_files
+
+    pp = serve_root / "portal_pages"
+    pp.mkdir(parents=True, exist_ok=True)
+    (pp / "launchpad.html").write_text(html, encoding="utf-8")
+    publish_vendor_files(pp)
+    return "portal_pages/launchpad.html"
 
 
 def relative_luminance(rgb) -> float:

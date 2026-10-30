@@ -19,7 +19,8 @@ caveat, not a claim that every correction agrees.
 from __future__ import annotations
 
 import math
-from typing import Sequence
+
+from .geometry import mean_vector, unit_vector
 
 # Interpretable taste axes, each a (positive-pole, negative-pole) prototype pair.
 # The signature reports the mean correction's cosine to each axis: + leans to the
@@ -45,22 +46,6 @@ TASTE_AXES: dict[str, tuple[list[str], list[str]]] = {
 
 # Below this many corrections the signature isn't worth surfacing.
 _MIN_CORRECTIONS = 12
-
-
-def _unit(vec: Sequence[float]) -> list[float]:
-    n = math.sqrt(sum(x * x for x in vec))
-    return [x / n for x in vec] if n else list(vec)
-
-
-def _mean(rows: list[list[float]]) -> list[float]:
-    if not rows:
-        return []
-    dim = len(rows[0])
-    acc = [0.0] * dim
-    for r in rows:
-        for i, x in enumerate(r):
-            acc[i] += x
-    return [x / len(rows) for x in acc]
 
 
 def correction_signature() -> dict:
@@ -90,23 +75,23 @@ def correction_signature() -> dict:
         return {"ready": False, "n": len(pairs), "min": _MIN_CORRECTIONS}
 
     try:
-        sac = [_unit(v) for v in embed_batch([s for s, _ in pairs])]
-        pri = [_unit(v) for v in embed_batch([p for _, p in pairs])]
+        sac = [unit_vector(v) for v in embed_batch([s for s, _ in pairs])]
+        pri = [unit_vector(v) for v in embed_batch([p for _, p in pairs])]
     except Exception as exc:
         return {"ready": False, "reason": f"embed failed: {exc!r}"}
 
     corrections = [[p - s for p, s in zip(pv, sv)] for pv, sv in zip(pri, sac)]
-    mean_c = _mean(corrections)
+    mean_c = mean_vector(corrections)
     norms = [math.sqrt(sum(x * x for x in c)) for c in corrections]
     mean_norm = sum(norms) / len(norms) if norms else 0.0
     coherence = (math.sqrt(sum(x * x for x in mean_c)) / mean_norm) if mean_norm else 0.0
-    mc = _unit(mean_c)
+    mc = unit_vector(mean_c)
 
     axes: dict[str, float] = {}
     for name, (pos, neg) in TASTE_AXES.items():
-        pcen = _mean([list(v) for v in embed_batch(pos)])
-        ncen = _mean([list(v) for v in embed_batch(neg)])
-        ax = _unit([p - n for p, n in zip(pcen, ncen)])
+        pcen = mean_vector([list(v) for v in embed_batch(pos)])
+        ncen = mean_vector([list(v) for v in embed_batch(neg)])
+        ax = unit_vector([p - n for p, n in zip(pcen, ncen)])
         axes[name] = round(sum(a * b for a, b in zip(mc, ax)), 3)
 
     return {
@@ -189,14 +174,14 @@ def taste_signature(max_axes: int = 3, min_loading: float = 0.05) -> dict:
         return {"ready": False, "n": len(pairs), "min": _MIN_CORRECTIONS}
 
     try:
-        sac = [_unit(v) for v in embed_batch([s for s, _ in pairs])]
-        pri = [_unit(v) for v in embed_batch([p for _, p in pairs])]
+        sac = [unit_vector(v) for v in embed_batch([s for s, _ in pairs])]
+        pri = [unit_vector(v) for v in embed_batch([p for _, p in pairs])]
         axisvec = _axis_vectors()
     except Exception as exc:
         return {"ready": False, "reason": f"embed failed: {exc!r}"}
 
     corrections = [[p - s for p, s in zip(pv, sv)] for pv, sv in zip(pri, sac)]
-    mc = _unit(_mean(corrections))
+    mc = unit_vector(mean_vector(corrections))
 
     # Adjectives: the pole each axis steers toward (sign of the loading).
     loaded: list[tuple[float, str, float]] = []
@@ -211,7 +196,7 @@ def taste_signature(max_axes: int = 3, min_loading: float = 0.05) -> dict:
     # Representative correction: the steer best aligned with the mean direction
     # — the single most "you" rephrasing, quotable in the user's own words.
     aligns = [
-        sum(ci * mi for ci, mi in zip(_unit(c), mc)) for c in corrections
+        sum(ci * mi for ci, mi in zip(unit_vector(c), mc)) for c in corrections
     ]
     best = max(range(len(pairs)), key=lambda i: aligns[i])
     representative = {
@@ -235,9 +220,9 @@ def _axis_vectors() -> dict:
 
     out = {}
     for name, (pos, neg) in TASTE_AXES.items():
-        pcen = _mean([list(v) for v in embed_batch(pos)])
-        ncen = _mean([list(v) for v in embed_batch(neg)])
-        out[name] = _unit([p - n for p, n in zip(pcen, ncen)])
+        pcen = mean_vector([list(v) for v in embed_batch(pos)])
+        ncen = mean_vector([list(v) for v in embed_batch(neg)])
+        out[name] = unit_vector([p - n for p, n in zip(pcen, ncen)])
     return out
 
 
@@ -246,10 +231,10 @@ def _mean_correction_unit(pairs: list[tuple[str, str]]) -> list[float]:
     pairs — embed(privileged) − embed(sacrificed), averaged, normalized."""
     from ..embeddings import embed_batch
 
-    sac = [_unit(v) for v in embed_batch([s for s, _ in pairs])]
-    pri = [_unit(v) for v in embed_batch([p for _, p in pairs])]
+    sac = [unit_vector(v) for v in embed_batch([s for s, _ in pairs])]
+    pri = [unit_vector(v) for v in embed_batch([p for _, p in pairs])]
     corrections = [[p - s for p, s in zip(pv, sv)] for pv, sv in zip(pri, sac)]
-    return _unit(_mean(corrections))
+    return unit_vector(mean_vector(corrections))
 
 
 def _basin_labels() -> dict:

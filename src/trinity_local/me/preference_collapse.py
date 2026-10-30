@@ -39,7 +39,8 @@ from __future__ import annotations
 import hashlib
 from typing import Iterable
 
-from .constitution import EmbedFn, _default_embed, _mean, _unit
+from .constitution import EmbedFn, _default_embed
+from .geometry import mean_vector, unit_vector
 from .holdout_scorer import one_sided_sign_p
 from .preference_acts import MODEL_MISS, PreferenceAct
 
@@ -73,9 +74,9 @@ def _split(acts: list[PreferenceAct]) -> tuple[list[PreferenceAct], list[Prefere
 
 
 def _fit_direction(train: list[PreferenceAct], embed_fn: EmbedFn) -> list[float]:
-    pri = [_unit(v) for v in embed_fn([a.privileged for a in train])]
-    sac = [_unit(v) for v in embed_fn([a.sacrificed for a in train])]
-    return _unit(_mean([[p - s for p, s in zip(pv, sv)] for pv, sv in zip(pri, sac)]))
+    pri = [unit_vector(v) for v in embed_fn([a.privileged for a in train])]
+    sac = [unit_vector(v) for v in embed_fn([a.sacrificed for a in train])]
+    return unit_vector(mean_vector([[p - s for p, s in zip(pv, sv)] for pv, sv in zip(pri, sac)]))
 
 
 def evaluate_split(
@@ -92,8 +93,8 @@ def evaluate_split(
     if not any(direction):
         return {"ready": False, "reason": "degenerate train direction"}
 
-    vp = [_unit(v) for v in embed_fn([a.privileged for a in val])]
-    vs = [_unit(v) for v in embed_fn([a.sacrificed for a in val])]
+    vp = [unit_vector(v) for v in embed_fn([a.privileged for a in val])]
+    vs = [unit_vector(v) for v in embed_fn([a.sacrificed for a in val])]
     concordant = 0
     false_accepts: list[str] = []
     for a, pv, sv in zip(val, vp, vs):

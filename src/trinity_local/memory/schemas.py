@@ -14,6 +14,12 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 
+def _known_fields(cls, raw: dict[str, Any]) -> dict[str, Any]:
+    """`raw` minus keys `cls` does not declare, so records written by an older schema still load."""
+    known = set(cls.__dataclass_fields__)
+    return {k: v for k, v in raw.items() if k in known}
+
+
 @dataclass
 class PromptNode:
     """A single user-facing prompt, embedded and indexed for retrieval."""
@@ -54,10 +60,7 @@ class PromptNode:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> PromptNode:
-        # Tolerant of unknown fields so older records still load
-        known = {f for f in cls.__dataclass_fields__}
-        filtered = {k: v for k, v in raw.items() if k in known}
-        return cls(**filtered)
+        return cls(**_known_fields(cls, raw))
 
 
 @dataclass
@@ -76,8 +79,6 @@ class TurnWindow:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> TurnWindow:
-        known = {f for f in cls.__dataclass_fields__}
-        filtered = {k: v for k, v in raw.items() if k in known}
-        return cls(**filtered)
+        return cls(**_known_fields(cls, raw))
 
 

@@ -839,7 +839,7 @@ RETIRED: dict[str, RetirementRecord] = {
     # was REVIVED 2026-07-18 for a different feature: the `trust` verb over the
     # disagreement ledger (commands/trust.py + disagreement_ledger.py — which model
     # you side with when the labs split). The module path is active again, so it
-    # can no longer be in RETIRED. The old surface lives in git history + CHANGELOG.
+    # can no longer be in RETIRED. The old surface lives in git history.
     # The v1.0 trust-mode CLI *tokens* (trust-init / trust-show / audit-show) stay
     # retired below — they are not the new verb.
     "implementation-notes.html": RetirementRecord(

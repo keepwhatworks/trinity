@@ -36,7 +36,7 @@ from pathlib import Path
 import pytest
 
 from trinity_local.launchpad_data import _TIER_INSTALL_HELP
-from tests.browser_harness import serve_directory
+from tests.browser_harness import serve_directory, write_prod_layout
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -86,26 +86,13 @@ _TIER_PROBE = """() => {
 }"""
 
 
-def _write_prod_layout(html: str, serve_root: Path) -> str:
-    """Mirror prod: launchpad.html at portal_pages/, vendor at portal_pages/vendor/.
-    The shared-CSS @font-face uses `../portal_pages/vendor/…` and the launchpad's
-    own JS uses `./vendor/…`; both only resolve from the portal_pages/ depth."""
-    from trinity_local.vendor import publish_vendor_files
-
-    pp = serve_root / "portal_pages"
-    pp.mkdir(parents=True, exist_ok=True)
-    (pp / "launchpad.html").write_text(html, encoding="utf-8")
-    publish_vendor_files(pp)
-    return "portal_pages/launchpad.html"
-
-
 def test_tier1_card_renders_with_resolved_bindings(tmp_path, monkeypatch):
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright
 
     html = _render_at_tier(monkeypatch, tmp_path / "home", only_claude=True)
     serve_root = tmp_path / "serve"
-    rel = _write_prod_layout(html, serve_root)
+    rel = write_prod_layout(html, serve_root)
     httpd, port = serve_directory(serve_root)
     try:
         with sync_playwright() as p:
@@ -172,7 +159,7 @@ def test_tier3_hides_the_card(tmp_path, monkeypatch):
 
     html = _render_at_tier(monkeypatch, tmp_path / "home", only_claude=False)
     serve_root = tmp_path / "serve"
-    rel = _write_prod_layout(html, serve_root)
+    rel = write_prod_layout(html, serve_root)
     httpd, port = serve_directory(serve_root)
     try:
         with sync_playwright() as p:
@@ -223,7 +210,7 @@ def _drive_and_probe(tmp_path, html: str, viewport_w: int = 1100):
     from playwright.sync_api import sync_playwright
 
     serve_root = tmp_path / "serve"
-    rel = _write_prod_layout(html, serve_root)
+    rel = write_prod_layout(html, serve_root)
     httpd, port = serve_directory(serve_root)
     try:
         with sync_playwright() as p:
@@ -354,7 +341,7 @@ def test_tier_card_icon_action_clears_44px_tap_target(tmp_path, monkeypatch):
 
     html = _render_at_tier(monkeypatch, tmp_path / "home", only_claude=True)
     serve_root = tmp_path / "serve"
-    rel = _write_prod_layout(html, serve_root)
+    rel = write_prod_layout(html, serve_root)
     httpd, port = serve_directory(serve_root)
     try:
         with sync_playwright() as p:

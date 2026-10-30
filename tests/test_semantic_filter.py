@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import pytest
 
+from trinity_local.me.geometry import unit_vector
+
 from trinity_local.me import semantic_filter as sf
 
 
@@ -31,7 +33,7 @@ def vectors():
         "how should I stack QOZ and QSBS to defer the gain",
         "make the monkey look more expressive not a blob",
     ]
-    taste = [sf._l2(v) for v in embed_batch(taste_texts)]
+    taste = [unit_vector(v) for v in embed_batch(taste_texts)]
     return noise, taste
 
 
@@ -78,11 +80,11 @@ def test_max_cosine_handles_dim_mismatch():
     # Matryoshka: a 768-d prototype vs a truncated stored vector must align to
     # the common prefix + re-normalize, not silently zip-truncate (adversarial
     # review, v1.7.77). Identical-direction vectors at different dims → ~1.0.
-    full = sf._l2([1.0, 1.0, 1.0, 1.0])
-    trunc = sf._l2([1.0, 1.0])  # same direction, fewer dims
+    full = unit_vector([1.0, 1.0, 1.0, 1.0])
+    trunc = unit_vector([1.0, 1.0])  # same direction, fewer dims
     assert sf._max_cosine(full, [trunc]) == pytest.approx(1.0, abs=1e-6)
     # Orthogonal common-prefix → ~0.
-    assert sf._max_cosine(sf._l2([1.0, 0.0, 5.0]), [sf._l2([0.0, 1.0])]) == pytest.approx(0.0, abs=1e-6)
+    assert sf._max_cosine(unit_vector([1.0, 0.0, 5.0]), [unit_vector([0.0, 1.0])]) == pytest.approx(0.0, abs=1e-6)
 
 
 def test_clear_noise_beats_floor_and_margin(vectors):

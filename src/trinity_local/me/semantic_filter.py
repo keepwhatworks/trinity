@@ -24,8 +24,9 @@ This is one of three geometric axes that replace hand-tuned heuristics:
 """
 from __future__ import annotations
 
-import math
 from typing import Sequence
+
+from .geometry import unit_vector
 
 # Universal noise prototypes — the same harness/agent-ops/extraction shapes
 # show up for every user, so these are not user-specific. Add an EXAMPLE here,
@@ -57,11 +58,6 @@ NOISE_FLOOR = 0.45
 NOISE_MARGIN = 0.05
 
 
-def _l2(vec: Sequence[float]) -> list[float]:
-    n = math.sqrt(sum(x * x for x in vec))
-    return [x / n for x in vec] if n else list(vec)
-
-
 def _max_cosine(unit_vec: Sequence[float], unit_matrix: Sequence[Sequence[float]]) -> float:
     best = -1.0
     for row in unit_matrix:
@@ -72,7 +68,7 @@ def _max_cosine(unit_vec: Sequence[float], unit_matrix: Sequence[Sequence[float]
         # re-normalize so the score stays a true cosine.
         if len(a) != len(b):
             m = min(len(a), len(b))
-            a, b = _l2(list(a[:m])), _l2(list(b[:m]))
+            a, b = unit_vector(list(a[:m])), unit_vector(list(b[:m]))
         dot = sum(x * y for x, y in zip(a, b))
         if dot > best:
             best = dot
@@ -97,7 +93,7 @@ def noise_prototype_vectors() -> list[list[float]]:
         raw = embed_batch(texts)
     except Exception:
         return []
-    return [_l2(v) for v in raw if v]
+    return [unit_vector(v) for v in raw if v]
 
 
 def is_semantic_noise(
@@ -114,7 +110,7 @@ def is_semantic_noise(
     empty, the filter abstains (returns False) rather than guess."""
     if not embedding or not noise_unit or not taste_unit:
         return False
-    v = _l2(embedding)
+    v = unit_vector(embedding)
     noise_s = _max_cosine(v, noise_unit)
     if noise_s < floor:
         return False
@@ -133,7 +129,7 @@ def semantic_noise_report(limit: int | None = None) -> dict:
 
     noise_unit = noise_prototype_vectors()
     basins = load_basins()
-    taste_unit = [_l2(b.centroid) for b in basins if getattr(b, "centroid", None)]
+    taste_unit = [unit_vector(b.centroid) for b in basins if getattr(b, "centroid", None)]
     if not noise_unit or not taste_unit:
         return {"ready": False, "reason": "no embedder or no basins"}
 

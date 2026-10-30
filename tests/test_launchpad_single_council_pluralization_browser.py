@@ -32,10 +32,8 @@ Slow + browser marked; skips when Playwright/chromium are absent.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
-from tests.browser_harness import serve_directory
+from tests.browser_harness import serve_directory, write_prod_layout
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -90,16 +88,6 @@ _PROBE = """() => {
 }"""
 
 
-def _write_prod_layout(html: str, serve_root: Path) -> str:
-    from trinity_local.vendor import publish_vendor_files
-
-    pp = serve_root / "portal_pages"
-    pp.mkdir(parents=True, exist_ok=True)
-    (pp / "launchpad.html").write_text(html, encoding="utf-8")
-    publish_vendor_files(pp)
-    return "portal_pages/launchpad.html"
-
-
 _ALL_N1_PAGE_DATA = {
     "benchmarkProviders": ["claude", "codex"],
     "providerModels": {"claude": "Opus 4.8", "codex": "gpt-5.5"},
@@ -141,7 +129,7 @@ def test_all_single_council_routing_suppresses_header_only_ghost_table(tmp_path)
     from trinity_local.launchpad_template import render_launchpad_html
 
     html = render_launchpad_html(page_data=_ALL_N1_PAGE_DATA, view="stats")
-    rel = _write_prod_layout(html, tmp_path)
+    rel = write_prod_layout(html, tmp_path)
     httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:

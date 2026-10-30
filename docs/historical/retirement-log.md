@@ -35,10 +35,10 @@ Removed ~5,000 LOC of features that didn't earn their keep:
   user-state `~/.trinity/research/` directory is NOT retired — it
   remains live as the k-NN advisory corpus (read via
   `state_paths.research_dir()`).
-- **10+ internal CLI commands** — see CHANGELOG v1.7.4 entry for
-  the list. Pre-launch simplification (Passes A–BB) collapsed
-  task/bundle/launch/watch/distill/cache/depth/metric/trust/
-  shortcut/council-last/auto-chain/auto-open.
+- **10+ internal CLI commands** — pre-launch simplification (Passes
+  A–BB) collapsed task/bundle/launch/watch/distill/cache/depth/metric/
+  trust/shortcut/council-last/auto-chain/auto-open;
+  `src/trinity_local/retired_names.py` records each retired command.
 
 ## CLI surface drops
 

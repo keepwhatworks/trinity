@@ -38,10 +38,8 @@ REDS with the founder symptom while the order-agnostic sibling tests stay GREEN.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
-from tests.browser_harness import serve_directory
+from tests.browser_harness import serve_directory, write_prod_layout
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -108,16 +106,6 @@ _N_DESC_ORDER = sorted(_INSERTION_ORDER, key=lambda tt: (-_N_OF[tt], tt))
 _EXPECTED_LABELS = [tt.replace("_", " ").title() for tt in _N_DESC_ORDER]
 
 
-def _write_prod_layout(html: str, serve_root: Path) -> str:
-    from trinity_local.vendor import publish_vendor_files
-
-    pp = serve_root / "portal_pages"
-    pp.mkdir(parents=True, exist_ok=True)
-    (pp / "launchpad.html").write_text(html, encoding="utf-8")
-    publish_vendor_files(pp)
-    return "portal_pages/launchpad.html"
-
-
 def test_routing_cheatsheet_paints_rows_in_council_count_descending_order(tmp_path):
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright
@@ -138,7 +126,7 @@ def test_routing_cheatsheet_paints_rows_in_council_count_descending_order(tmp_pa
     )
 
     html = render_launchpad_html(page_data=_PAGE_DATA, view="stats")
-    rel = _write_prod_layout(html, tmp_path)
+    rel = write_prod_layout(html, tmp_path)
     httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:

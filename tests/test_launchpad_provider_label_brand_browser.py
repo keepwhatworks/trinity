@@ -30,10 +30,8 @@ this codifies that invariant.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
-from tests.browser_harness import serve_directory
+from tests.browser_harness import serve_directory, write_prod_layout
 
 pytestmark = [pytest.mark.slow, pytest.mark.browser]
 
@@ -79,23 +77,13 @@ _PROBE = """() => {
 }"""
 
 
-def _write_prod_layout(html: str, serve_root: Path) -> str:
-    from trinity_local.vendor import publish_vendor_files
-
-    pp = serve_root / "portal_pages"
-    pp.mkdir(parents=True, exist_ok=True)
-    (pp / "launchpad.html").write_text(html, encoding="utf-8")
-    publish_vendor_files(pp)
-    return "portal_pages/launchpad.html"
-
-
 def test_cheatsheet_headers_and_chart_legend_render_branded(tmp_path):
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright
     from trinity_local.launchpad_template import render_launchpad_html
 
     html = render_launchpad_html(page_data=_PAGE_DATA, view="stats")
-    rel = _write_prod_layout(html, tmp_path)
+    rel = write_prod_layout(html, tmp_path)
     httpd, port = serve_directory(tmp_path)
     try:
         with sync_playwright() as p:
